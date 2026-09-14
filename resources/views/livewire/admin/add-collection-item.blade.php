@@ -25,7 +25,7 @@
             </div>
         @endif
 
-        @error('selectedTcgdexId') <p class="text-red-600 text-sm mb-3">{{ $message }}</p> @enderror
+        @error('selectedTcgdexId') <p class="text-sm mb-3" style="color: var(--danger)">{{ $message }}</p> @enderror
 
         @if ($selectedTcgdexId)
             <div class="mb-4 p-3 rounded" style="background: var(--bone-2)">
@@ -43,12 +43,12 @@
                     <option value="HP">Heavily Played</option>
                     <option value="DMG">Damaged</option>
                 </select>
-                @error('condition') <p class="text-red-600 text-sm">{{ $message }}</p> @enderror
+                @error('condition') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Quantity</label>
                 <input type="number" min="1" wire:model="quantity" class="w-full border rounded px-3 py-2">
-                @error('quantity') <p class="text-red-600 text-sm">{{ $message }}</p> @enderror
+                @error('quantity') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Grading company (optional)</label>

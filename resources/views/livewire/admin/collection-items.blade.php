@@ -38,7 +38,7 @@
                         </td>
                         <td class="p-3 text-right">
                             <button wire:click="startEditingItem({{ $item->id }})" class="text-xs mr-2" style="color: var(--ink)">Edit</button>
-                            <button wire:click="delete({{ $item->id }})" wire:confirm="Remove this card from your collection?" class="text-red-600 text-xs">Delete</button>
+                            <button wire:click="delete({{ $item->id }})" wire:confirm="Remove this card from your collection?" class="text-xs" style="color: var(--danger)">Delete</button>
                         </td>
                     </tr>
                     @if ($editingFullItemId === $item->id)
@@ -55,27 +55,27 @@
                                                 <option value="HP">Heavily Played</option>
                                                 <option value="DMG">Damaged</option>
                                             </select>
-                                            @error('editingCondition') <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                                            @error('editingCondition') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Quantity</label>
                                             <input type="number" min="1" wire:model="editingQuantity" class="w-full border rounded px-2 py-1">
-                                            @error('editingQuantity') <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                                            @error('editingQuantity') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Variant</label>
                                             <input type="text" wire:model="editingVariant" class="w-full border rounded px-2 py-1">
-                                            @error('editingVariant') <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                                            @error('editingVariant') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Grading company</label>
                                             <input type="text" wire:model="editingGradeCompany" class="w-full border rounded px-2 py-1" placeholder="PSA, BGS...">
-                                            @error('editingGradeCompany') <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                                            @error('editingGradeCompany') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Grade</label>
                                             <input type="text" wire:model="editingGradeValue" class="w-full border rounded px-2 py-1">
-                                            @error('editingGradeValue') <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                                            @error('editingGradeValue') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                                         </div>
                                     </div>
                                     <div class="mt-3 flex gap-2">
