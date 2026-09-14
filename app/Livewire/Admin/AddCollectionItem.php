@@ -87,20 +87,26 @@ final class AddCollectionItem extends Component
             return null;
         }
 
-        $collection = $this->collectionId !== null
-            ? Collection::findOrFail($this->collectionId)
-            : Collection::firstOrCreate(
-                ['user_id' => auth()->id(), 'slug' => 'my-collection'],
-                ['name' => 'My Collection', 'is_public' => false],
-            );
-
-        $photoPath = null;
-        if ($this->photo) {
-            $storedPath = $this->photo->store('/', 'collection-photos');
-            $photoPath = basename($storedPath);
-        }
-
         try {
+            // Collection resolution lives inside this try too: $collectionId
+            // is a public Livewire property, so it's client-settable. A
+            // foreign ID trips TenantScope and findOrFail() throws a
+            // ModelNotFoundException here — caught below like any other
+            // save failure, so an IDOR attempt degrades to the same
+            // friendly error instead of an uncaught exception.
+            $collection = $this->collectionId !== null
+                ? Collection::findOrFail($this->collectionId)
+                : Collection::firstOrCreate(
+                    ['user_id' => auth()->id(), 'slug' => 'my-collection'],
+                    ['name' => 'My Collection', 'is_public' => false],
+                );
+
+            $photoPath = null;
+            if ($this->photo) {
+                $storedPath = $this->photo->store('/', 'collection-photos');
+                $photoPath = basename($storedPath);
+            }
+
             $service->addItem($collection, $this->selectedTcgdexId, [
                 'variant' => $this->variant,
                 'condition' => $this->condition,

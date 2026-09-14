@@ -138,6 +138,33 @@ test('a brand-new user with no Collection row can save a card, which creates one
     expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->where('collection_id', $collection->id)->exists())->toBeTrue();
 });
 
+test('a user cannot save a card into another users collection by passing its ID (IDOR)', function () {
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $this->actingAs($user);
+    $otherUsersCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class, ['collectionId' => $otherUsersCollection->id])
+        ->call('selectCard', 'me05-116')
+        ->set('condition', 'NM')
+        ->set('quantity', 1)
+        ->call('save')
+        ->assertHasErrors('selectedTcgdexId');
+
+    expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();
+});
+
 test('a catalog sync failure during save shows a friendly error and does not create an item', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
