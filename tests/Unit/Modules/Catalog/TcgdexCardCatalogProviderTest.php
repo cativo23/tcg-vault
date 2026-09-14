@@ -238,6 +238,13 @@ test('searchCardsByName maps tcgdex brief results into CardSummaryData', functio
     });
 });
 
+test('MalformedCatalogResponseException::forSearch strips control characters from the query to prevent log injection', function () {
+    $exception = MalformedCatalogResponseException::forSearch("Darkrai\r\n[2026-09-14 12:00:00] production.CRITICAL: forged log entry", 'response body is not a JSON array.');
+
+    expect($exception->getMessage())->not->toContain("\r");
+    expect($exception->getMessage())->not->toContain("\n");
+});
+
 test('searchCardsByName throws MalformedCatalogResponseException when the response is not a list', function () {
     Http::fake([
         'api.tcgdex.net/v2/en/cards*' => Http::response(['id' => 'not-a-list'], 200),
