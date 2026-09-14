@@ -103,16 +103,17 @@ body {
 }
 
 .nw-link {
-  color: var(--muted);
+  color: var(--ink);
+  opacity: 0.65;
   text-decoration: none;
   border-bottom: 2px solid transparent;
-  transition: color 160ms var(--ease), border-color 160ms var(--ease);
+  transition: opacity 160ms var(--ease), border-color 160ms var(--ease);
 }
 .nw-link:hover {
-  color: var(--ink);
+  opacity: 1;
 }
 .nw-link.is-active {
-  color: var(--ink);
+  opacity: 1;
   border-bottom-color: var(--signal);
 }
 
