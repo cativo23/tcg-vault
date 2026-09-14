@@ -48,6 +48,7 @@ final class AddCollectionItem extends Component
     #[Validate('nullable|string|max:2000')]
     public ?string $notes = null;
 
+    #[Validate('nullable|image|mimes:jpeg,png,webp|max:5120')]
     public $photo = null;
 
     public function runSearch(CardCatalogProvider $provider): void
@@ -95,6 +96,8 @@ final class AddCollectionItem extends Component
                 'photo_path' => $photoPath,
             ]);
         } catch (Throwable $e) {
+            report($e);
+
             $this->addError('selectedTcgdexId', 'Could not add this card right now. Please try again.');
 
             return null;

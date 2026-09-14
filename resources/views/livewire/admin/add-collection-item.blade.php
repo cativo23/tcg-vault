@@ -11,7 +11,7 @@
         @if (count($results) > 0)
             <div class="grid grid-cols-3 gap-3 mb-6">
                 @foreach ($results as $result)
-                    <button type="button" wire:click="selectCard('{{ $result->tcgdexId }}')"
+                    <button type="button" wire:click="selectCard(@js($result->tcgdexId))"
                             class="border rounded p-2 text-left text-sm {{ $selectedTcgdexId === $result->tcgdexId ? 'ring-2' : '' }}"
                             style="{{ $selectedTcgdexId === $result->tcgdexId ? 'box-shadow: 0 0 0 2px var(--ink)' : '' }}">
                         @if ($result->imageUrl)

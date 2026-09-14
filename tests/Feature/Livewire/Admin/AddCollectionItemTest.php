@@ -89,3 +89,24 @@ test('an uploaded photo is stored and its path saved on the item', function () {
     expect($item->photo_path)->not->toBeNull();
     Storage::disk('collection-photos')->assertExists(basename($item->photo_path));
 });
+
+test('a catalog sync failure during save shows a friendly error and does not create an item', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andThrow(
+        \App\Modules\Catalog\Exceptions\CardNotFoundException::forTcgdexId('me05-116'),
+    );
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'me05-116')
+        ->set('condition', 'NM')
+        ->set('quantity', 1)
+        ->call('save')
+        ->assertHasErrors('selectedTcgdexId');
+
+    expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();
+});
