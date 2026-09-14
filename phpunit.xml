@@ -32,5 +32,11 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Registration is off by default in production (single-admin personal
+             vault, see config/tcgvault.php). Enabled here so Breeze's own
+             registration tests exercise the real flow; the dedicated
+             "off" regression test in RegistrationTest.php flips this back
+             off for itself via putenv()+refreshApplication(). -->
+        <env name="TCGVAULT_ALLOW_REGISTRATION" value="true"/>
     </php>
 </phpunit>

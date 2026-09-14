@@ -5,8 +5,13 @@ use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
 Route::middleware('guest')->group(function () {
-    Volt::route('register', 'pages.auth.register')
-        ->name('register');
+    // Single-admin personal vault: registration is a deliberate opt-in,
+    // gated behind config('tcgvault.allow_registration') (see config/tcgvault.php).
+    // Off by default, so the route doesn't exist at all rather than exist-but-blocked.
+    if (config('tcgvault.allow_registration')) {
+        Volt::route('register', 'pages.auth.register')
+            ->name('register');
+    }
 
     Volt::route('login', 'pages.auth.login')
         ->name('login');

@@ -9,4 +9,10 @@ return [
     // missing rather than seeding a guessable admin account.
     'admin_email' => env('TCGVAULT_ADMIN_EMAIL'),
     'admin_password' => env('TCGVAULT_ADMIN_PASSWORD'),
+
+    // This is a single-admin personal vault, not a multi-tenant SaaS — an
+    // open /register is unwanted account-creation surface. Off by default;
+    // flip it on only for the rare case a second account is genuinely
+    // wanted.
+    'allow_registration' => env('TCGVAULT_ALLOW_REGISTRATION', false),
 ];
