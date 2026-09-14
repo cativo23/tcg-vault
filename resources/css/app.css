@@ -117,6 +117,20 @@ body {
   border-bottom-color: var(--signal);
 }
 
+/* Dark-bar context (the top nav, .nw-topbar) — links/hover states swap
+   from ink-on-bone to bone-on-ink so they stay readable against the same
+   dark background the table header bars use. */
+.nw-topbar .nw-link,
+.nw-topbar .nw-hover-tint {
+  color: var(--bone);
+}
+.nw-topbar .nw-row-hover:hover {
+  background: var(--ink-2);
+}
+.nw-topbar .nw-row-hover.is-active {
+  background: var(--ink-2) !important;
+}
+
 .nw-dropdown-link:hover {
   background: var(--bone-2);
 }
