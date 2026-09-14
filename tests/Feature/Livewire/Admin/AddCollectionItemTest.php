@@ -90,6 +90,36 @@ test('an uploaded photo is stored and its path saved on the item', function () {
     Storage::disk('collection-photos')->assertExists(basename($item->photo_path));
 });
 
+test('a brand-new user with no Collection row can save a card, which creates one on demand', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    // Deliberately no Collection::factory() call here — this is the case
+    // that used to hit Collection::firstOrFail() and 404 on first save.
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->call('selectCard', 'me05-116')
+        ->set('condition', 'NM')
+        ->set('quantity', 1)
+        ->call('save')
+        ->assertRedirect();
+
+    $collection = Collection::where('user_id', $user->id)->where('slug', 'my-collection')->first();
+    expect($collection)->not->toBeNull();
+    expect($collection->name)->toBe('My Collection');
+    expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->where('collection_id', $collection->id)->exists())->toBeTrue();
+});
+
 test('a catalog sync failure during save shows a friendly error and does not create an item', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

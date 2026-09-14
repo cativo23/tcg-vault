@@ -77,7 +77,10 @@ final class AddCollectionItem extends Component
 
         $collection = $this->collectionId !== null
             ? Collection::findOrFail($this->collectionId)
-            : Collection::firstOrFail();
+            : Collection::firstOrCreate(
+                ['user_id' => auth()->id(), 'slug' => 'my-collection'],
+                ['name' => 'My Collection', 'is_public' => false],
+            );
 
         $photoPath = null;
         if ($this->photo) {
