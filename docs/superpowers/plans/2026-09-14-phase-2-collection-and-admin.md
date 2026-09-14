@@ -1860,6 +1860,198 @@ Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
 
 ---
 
+### Task 8: Edit as an animated modal + real variant options
+
+> Added at Carlos's explicit request: the inline edit panel felt bolted-on,
+> and "variant" as a bare text input was confusing with no hint of what to
+> type. Confirmed against the live tcgdex/tcgplayer API (`api.tcgdex.net`)
+> which variant keys actually occur: `normal`, `holofoil`, `reverse-holofoil`
+> — those are the values to offer, not invented ones.
+
+**Files:**
+- Modify: `app/Livewire/Admin/CollectionItems.php`
+- Modify: `resources/views/livewire/admin/collection-items.blade.php`
+- Test: `tests/Feature/Livewire/Admin/CollectionItemsTest.php`
+
+**Interfaces:**
+- Consumes: `ownedItemOrFail()`, `startEditingItem()`/`saveItem()`/
+  `cancelEditingItem()` (Task 7 — reuse the state machine, don't rewrite
+  it; only the PRESENTATION moves from an inline table row to a modal, and
+  `editingVariant` moves from an `<input type="text">` to a `<select>`).
+- No motion library is installed in this project (`package.json` has no
+  `framer-motion`/`gsap`/etc.) — animation must be plain CSS
+  (`transition`/`@keyframes`), matching `design.md`'s existing "Motion
+  stance" section (short eased transitions, `prefers-reduced-motion`
+  fallback to instant/no animation).
+
+- [ ] **Step 1: Change `editingVariant` from free text to a constrained select**
+
+In `app/Livewire/Admin/CollectionItems.php`, change the `editingVariant`
+property's validation from `nullable|string|max:64` to
+`nullable|in:normal,holofoil,reverse-holofoil` (an out-of-list value,
+including the empty string, must be rejected the same way `editingCondition`
+already rejects an invalid value — check how that field's `#[Validate]`
+attribute and `saveItem()`'s `$this->validate()` call work today and mirror
+that exactly, don't invent a different validation flow for this one field).
+
+In the view, replace the `<input type="text" wire:model="editingVariant">`
+with:
+```blade
+<select wire:model="editingVariant" class="w-full border rounded px-2 py-1">
+    <option value="">— not specified —</option>
+    <option value="normal">Normal</option>
+    <option value="holofoil">Holofoil</option>
+    <option value="reverse-holofoil">Reverse Holofoil</option>
+</select>
+```
+Do the same replacement on the ADD form (`app/Livewire/Admin/AddCollectionItem.php`
++ `resources/views/livewire/admin/add-collection-item.blade.php`) for
+consistency — both forms edit the same column, they should offer the same
+options. `AddCollectionItem::$variant`'s validation moves from
+`nullable|string|max:64` to the same `nullable|in:normal,holofoil,reverse-holofoil`.
+
+- [ ] **Step 2: Write the failing tests**
+
+Add to `tests/Feature/Livewire/Admin/CollectionItemsTest.php`:
+```php
+test('editing an items variant only accepts the known values', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->set('editingVariant', 'reverse-holofoil')
+        ->call('saveItem');
+
+    expect($item->fresh()->variant)->toBe('reverse-holofoil');
+});
+
+test('an invalid variant value is rejected', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'variant' => 'normal',
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->set('editingVariant', 'first-edition-ultra-rainbow-secret')
+        ->call('saveItem')
+        ->assertHasErrors('editingVariant');
+
+    expect($item->fresh()->variant)->toBe('normal');
+});
+```
+
+- [ ] **Step 3: Turn the edit panel into a modal**
+
+Replace the inline `@if ($editingFullItemId === $item->id)` table row
+(currently rendered directly under the item's row) with a modal overlay,
+rendered ONCE outside the `@forelse` loop (not once per row — a modal is a
+single overlay, its content just needs to know which item is being edited).
+Structure:
+
+```blade
+@if ($editingFullItemId !== null)
+    <div class="fixed inset-0 z-40 flex items-center justify-center p-4"
+         style="background: rgba(20,20,18,.5)"
+         wire:click.self="cancelEditingItem">
+        <div class="nw-card w-full max-w-md p-5" style="animation: modal-in 180ms var(--ease)">
+            <h2 class="text-lg font-semibold mb-4" style="color: var(--ink)">Edit item</h2>
+            {{-- move the existing grid of Condition/Quantity/Variant/Grading fields here verbatim,
+                 same wire:model bindings, same @error blocks --}}
+            <div class="mt-4 flex gap-2">
+                <button wire:click="saveItem" class="nw-btn-primary text-sm px-4 py-2">Save</button>
+                <button wire:click="cancelEditingItem" class="text-sm px-4 py-2" style="color: var(--muted)">Cancel</button>
+            </div>
+        </div>
+    </div>
+@endif
+```
+
+Add to `resources/css/app.css` (not inline — this project keeps animation
+keyframes in the stylesheet, check how `design.md`'s "Motion stance"
+section describes the existing card entrance animation and follow the same
+convention):
+```css
+@keyframes modal-in {
+    from { opacity: 0; transform: scale(.96) translateY(8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nw-card[style*="modal-in"] { animation: none !important; }
+}
+```
+(If a cleaner selector than the attribute-contains hack is available given
+how `.nw-card` is used elsewhere, use that instead — the requirement is
+"no animation when the user has reduced motion enabled," not this exact
+selector.)
+
+The `Edit` button (`wire:click="startEditingItem({{ $item->id }})"`) and
+the table row stay exactly as they are — only what renders when
+`editingFullItemId` is set changes, from an inline row to this overlay.
+Pressing `Escape` should also close the modal if that's a quick addition
+(a `wire:keydown.escape.window="cancelEditingItem"` on the outer div is
+enough) — nice-to-have, not blocking if it turns out to need more than a
+few minutes.
+
+- [ ] **Step 4: Run the tests**
+
+```bash
+./vendor/bin/sail artisan test --filter=CollectionItemsTest
+./vendor/bin/sail artisan test --filter=AddCollectionItemTest
+```
+Expected: all passing, no regressions. Then the full suite:
+```bash
+./vendor/bin/sail artisan test
+```
+
+- [ ] **Step 5: Rebuild frontend assets**
+
+```bash
+./vendor/bin/sail npm run build
+```
+This project has no Vite dev-server/watcher running in this environment —
+a stale `public/build` was the direct cause of a real bug earlier this
+session (Tailwind's `grid-cols-3` silently missing from the compiled CSS
+because the last build predated the blade file that used it). Always
+rebuild after changing any Blade/CSS file's classes, and confirm the new
+build hash differs from the old one before verifying manually.
+
+- [ ] **Step 6: Verify manually in the browser**
+
+With Sail running on port 8090, log in, go to `/admin`, click Edit on an
+existing item. Confirm: the modal fades/scales in (not an instant snap),
+clicking outside the modal or Cancel closes it, the Variant field is now a
+dropdown with the 3 real options, saving persists correctly, and the
+underlying table doesn't visually break while the modal is open (no
+double-scrollbars, no layout shift). Describe what you see.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add app/Livewire/Admin/CollectionItems.php app/Livewire/Admin/AddCollectionItem.php resources/views/livewire/admin/collection-items.blade.php resources/views/livewire/admin/add-collection-item.blade.php resources/css/app.css tests/Feature/Livewire/Admin/CollectionItemsTest.php
+git commit -m "feat(admin): turn item edit into an animated modal, constrain variant to real values
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+```
+
+---
+
 ## What Phase 2 deliberately does NOT include
 
 - No public gallery — that's Phase 3.
