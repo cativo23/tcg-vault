@@ -55,6 +55,66 @@ test('email verification status is unchanged when the email address is unchanged
     $this->assertNotNull($user->refresh()->email_verified_at);
 });
 
+test('username can be updated within length and character limits', function () {
+    $user = User::factory()->create(['username' => 'oldname']);
+    $this->actingAs($user);
+
+    Volt::test('profile.update-profile-information-form')
+        ->set('username', 'new-handle')
+        ->call('updateProfileInformation');
+
+    expect($user->refresh()->username)->toBe('new-handle');
+});
+
+test('a username shorter than 3 characters is rejected', function () {
+    $user = User::factory()->create(['username' => 'oldname']);
+    $this->actingAs($user);
+
+    Volt::test('profile.update-profile-information-form')
+        ->set('username', 'ab')
+        ->call('updateProfileInformation')
+        ->assertHasErrors('username');
+
+    expect($user->refresh()->username)->toBe('oldname');
+});
+
+test('a username with an illegal character is rejected', function () {
+    $user = User::factory()->create(['username' => 'oldname']);
+    $this->actingAs($user);
+
+    Volt::test('profile.update-profile-information-form')
+        ->set('username', 'not_valid!')
+        ->call('updateProfileInformation')
+        ->assertHasErrors('username');
+
+    expect($user->refresh()->username)->toBe('oldname');
+});
+
+test('a username matching one of the apps own route segments is rejected', function () {
+    $user = User::factory()->create(['username' => 'oldname']);
+    $this->actingAs($user);
+
+    Volt::test('profile.update-profile-information-form')
+        ->set('username', 'admin')
+        ->call('updateProfileInformation')
+        ->assertHasErrors('username');
+
+    expect($user->refresh()->username)->toBe('oldname');
+});
+
+test('a username already taken by another user is rejected', function () {
+    User::factory()->create(['username' => 'taken']);
+    $user = User::factory()->create(['username' => 'oldname']);
+    $this->actingAs($user);
+
+    Volt::test('profile.update-profile-information-form')
+        ->set('username', 'taken')
+        ->call('updateProfileInformation')
+        ->assertHasErrors('username');
+
+    expect($user->refresh()->username)->toBe('oldname');
+});
+
 test('user can delete their account', function () {
     $user = User::factory()->create();
 

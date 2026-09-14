@@ -10,6 +10,7 @@ new class extends Component
 {
     public string $name = '';
     public string $email = '';
+    public string $username = '';
 
     /**
      * Mount the component.
@@ -18,6 +19,7 @@ new class extends Component
     {
         $this->name = Auth::user()->name;
         $this->email = Auth::user()->email;
+        $this->username = Auth::user()->username;
     }
 
     /**
@@ -27,9 +29,21 @@ new class extends Component
     {
         $user = Auth::user();
 
+        $reserved = ['login', 'logout', 'register', 'admin', 'profile', 'gallery', 'forgot-password', 'reset-password', 'verify-email', 'confirm-password'];
+
         $validated = $this->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)->ignore($user->id)],
+            'username' => [
+                'required',
+                'string',
+                'lowercase',
+                'min:3',
+                'max:30',
+                'regex:/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/',
+                Rule::unique(User::class)->ignore($user->id),
+                Rule::notIn($reserved),
+            ],
         ]);
 
         $user->fill($validated);
@@ -78,6 +92,13 @@ new class extends Component
             <x-input-label for="name" :value="__('Name')" />
             <x-text-input wire:model="name" id="name" name="name" type="text" class="mt-1 block w-full" required autofocus autocomplete="name" />
             <x-input-error class="mt-2" :messages="$errors->get('name')" />
+        </div>
+
+        <div>
+            <x-input-label for="username" :value="__('Username')" />
+            <x-text-input wire:model="username" id="username" name="username" type="text" class="mt-1 block w-full" required autocomplete="username" />
+            <x-input-error class="mt-2" :messages="$errors->get('username')" />
+            <p class="mt-1 text-xs" style="color: var(--muted)">{{ __('This is your public gallery URL: ') }}{{ url('/'.$username.'/gallery') }}</p>
         </div>
 
         <div>
