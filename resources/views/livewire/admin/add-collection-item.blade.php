@@ -13,8 +13,8 @@
             <div class="grid grid-cols-3 gap-3 mb-6">
                 @foreach ($results as $result)
                     <button type="button" wire:click="selectCard(@js($result->tcgdexId))"
-                            class="border rounded p-2 text-left text-sm {{ $selectedTcgdexId === $result->tcgdexId ? 'ring-2' : '' }}"
-                            style="{{ $selectedTcgdexId === $result->tcgdexId ? 'box-shadow: 0 0 0 2px var(--ink)' : '' }}">
+                            class="nw-stagger-item border rounded p-2 text-left text-sm {{ $selectedTcgdexId === $result->tcgdexId ? 'ring-2' : '' }}"
+                            style="--nw-stagger-index: {{ min($loop->index, 10) }}; {{ $selectedTcgdexId === $result->tcgdexId ? 'box-shadow: 0 0 0 2px var(--ink)' : '' }}">
                         @if ($result->imageUrl)
                             <img src="{{ $result->imageUrl }}" alt="{{ $result->name }}" class="w-full rounded mb-1">
                         @endif

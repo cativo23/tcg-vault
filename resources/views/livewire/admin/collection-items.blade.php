@@ -18,7 +18,7 @@
             </thead>
             <tbody>
                 @forelse ($items as $item)
-                    <tr class="border-t" style="border-color: var(--hair)">
+                    <tr class="nw-stagger-item nw-row-hover border-t" style="border-color: var(--hair); --nw-stagger-index: {{ min($loop->index, 10) }}">
                         <td class="p-3 font-medium">
                             @if ($item->photo_path)
                                 <img src="{{ \Illuminate\Support\Facades\Storage::disk('collection-photos')->url($item->photo_path) }}"
