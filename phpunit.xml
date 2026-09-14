@@ -38,5 +38,11 @@
              "off" regression test in RegistrationTest.php flips this back
              off for itself via putenv()+refreshApplication(). -->
         <env name="TCGVAULT_ALLOW_REGISTRATION" value="true"/>
+        <!-- Forced empty so the test suite never inherits whatever real
+             admin username is set in a developer's local .env — several
+             DatabaseSeederTest cases specifically test the email-derived
+             fallback and must not be affected by that machine's own
+             override. -->
+        <env name="TCGVAULT_ADMIN_USERNAME" value=""/>
     </php>
 </phpunit>
