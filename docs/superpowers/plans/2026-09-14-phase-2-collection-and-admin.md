@@ -2728,6 +2728,130 @@ Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
 
 ---
 
+### Task 12: Finish `design.md` on the profile page + bolder nav link color
+
+> Two small visual fixes Carlos flagged from live browser inspection
+> after Task 10 landed. Originally sent as follow-up messages to Task
+> 11's implementer, which correctly treated unverifiable mid-task scope
+> changes as suspicious and declined to act — so this is the same work,
+> now dispatched properly as its own task with its own brief.
+
+**Files:**
+- Modify: `resources/views/profile.blade.php`
+- Modify: `resources/views/livewire/profile/update-profile-information-form.blade.php`
+- Modify: `resources/views/livewire/profile/update-password-form.blade.php`
+- Modify: `resources/views/livewire/profile/delete-user-form.blade.php`
+- Modify: `resources/views/components/modal.blade.php`
+- Modify: `resources/css/app.css`
+
+## Item 1 — Restyle the profile page
+
+`profile.blade.php` currently wraps each Livewire sub-component in
+`<div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">` and has a header
+`<h2 class="font-semibold text-xl text-gray-800 leading-tight">` — none of
+it was touched by Task 10 (which only covered shared components, not
+individual page markup).
+
+- [ ] **Step 1: `profile.blade.php`**
+
+Replace each `bg-white shadow sm:rounded-lg` wrapper div's classes with
+`p-4 sm:p-8 nw-card` (reuse the existing `.nw-card` class). Replace the
+header with the same pattern used elsewhere in this app (check
+`resources/views/livewire/admin/collection-items.blade.php`'s `<h1>` for
+the exact convention): `text-xl font-semibold` plus
+`style="color: var(--ink)"`.
+
+- [ ] **Step 2: the 3 profile Livewire components**
+
+In `update-profile-information-form.blade.php`,
+`update-password-form.blade.php`, and `delete-user-form.blade.php`:
+replace every `text-gray-900` with `style="color: var(--ink)"` (or a
+class, your call, stay consistent within each file), and every
+`text-gray-600`/`text-gray-800` with `style="color: var(--muted)"`. Leave
+`text-green-600` occurrences (e.g. a "saved"/"verification link sent"
+confirmation) as-is — `design.md` doesn't define a success-state color and
+inventing a `--color-success` token isn't this task's call to make; note
+it in your report as a follow-up question instead of guessing.
+
+- [ ] **Step 3: `modal.blade.php`** (used by the delete-account confirmation)
+
+Change the backdrop div's `bg-gray-500 opacity-75` to
+`style="background: rgba(20,20,18,.5)"` (matches the ink-based backdrop
+Task 8's edit modal already uses). On the panel div, keep
+`rounded-lg overflow-hidden` but replace `bg-white ... shadow-xl` with
+`nw-card` added alongside those (check the full existing class list
+first, only swap the color/shadow classes — keep every Alpine
+`x-transition:*` attribute exactly as-is, this component's animation
+already works correctly and Task 10 didn't need to touch it for the same
+reason).
+
+## Item 2 — Bolder nav link color
+
+- [ ] **Step 4: `resources/css/app.css`**
+
+Task 10 defined `.nw-link { color: var(--muted); ... }` with
+`:hover`/`.is-active` going to `var(--ink)`. Carlos looked at the live nav
+and wants links to read as bold black by default, like the table header
+bars (`.nw-topbar`, solid ink background), not muted gray. Change:
+
+```css
+.nw-link {
+  color: var(--ink);
+  opacity: 0.65;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  transition: opacity 160ms var(--ease), border-color 160ms var(--ease);
+}
+.nw-link:hover {
+  opacity: 1;
+}
+.nw-link.is-active {
+  opacity: 1;
+  border-bottom-color: var(--signal);
+}
+```
+
+This keeps the same hierarchy (inactive links recede, hovered/active is
+fully prominent) but recedes via opacity instead of a lighter color, so
+links always render as true ink, never gray.
+
+- [ ] **Step 5: Run everything, rebuild, verify**
+
+```bash
+./vendor/bin/sail artisan test
+```
+Expected: no regressions (should stay at whatever count Task 11 left it
+at — this is pure presentation, no logic changed).
+
+```bash
+./vendor/bin/sail npm run build
+```
+Confirm a new asset hash.
+
+With Sail on port 8090: visit `/profile`, confirm the cards read as
+`.nw-card` (bone-tinted, 1px ink outline, no heavy shadow) and text uses
+ink/muted, not gray-900/gray-600. Click "Delete Account" and confirm the
+confirmation modal matches. Check the nav bar — links should read solid
+black, not gray, with the active page fully opaque and others slightly
+faded.
+
+- [ ] **Step 6: Commit**
+
+Two commits, one per item:
+```bash
+git add resources/views/profile.blade.php resources/views/livewire/profile/update-profile-information-form.blade.php resources/views/livewire/profile/update-password-form.blade.php resources/views/livewire/profile/delete-user-form.blade.php resources/views/components/modal.blade.php
+git commit -m "style(profile): finish design.md token migration on the profile page
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+
+git add resources/css/app.css
+git commit -m "style(nav): use ink + opacity instead of muted gray for nav link color
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+```
+
+---
+
 ## What Phase 2 deliberately does NOT include
 
 - No public gallery — that's Phase 3.
