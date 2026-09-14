@@ -17,4 +17,9 @@ final class MalformedCatalogResponseException extends RuntimeException
     {
         return new self("Malformed tcgdex set response for [{$tcgdexId}]: {$reason}");
     }
+
+    public static function forSearch(string $query, string $reason): self
+    {
+        return new self("Malformed tcgdex search response for query [{$query}]: {$reason}");
+    }
 }

@@ -53,9 +53,21 @@ final class AddCollectionItem extends Component
 
     public function runSearch(CardCatalogProvider $provider): void
     {
-        $this->results = $this->search !== ''
-            ? $provider->searchCardsByName($this->search)
-            : [];
+        if ($this->search === '') {
+            $this->results = [];
+
+            return;
+        }
+
+        try {
+            $this->results = $provider->searchCardsByName($this->search);
+        } catch (Throwable $e) {
+            report($e);
+
+            $this->addError('search', 'Could not search right now. Please try again.');
+
+            $this->results = [];
+        }
     }
 
     public function selectCard(string $tcgdexId): void

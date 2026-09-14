@@ -6,6 +6,7 @@
             <label class="block text-sm font-medium mb-1">Search tcgdex by name</label>
             <input type="text" wire:model.live.debounce.400ms="search" wire:keyup="runSearch"
                    class="w-full border rounded px-3 py-2" placeholder="e.g. Mega Darkrai ex">
+            @error('search') <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
         </div>
 
         @if (count($results) > 0)

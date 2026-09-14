@@ -90,6 +90,24 @@ test('an uploaded photo is stored and its path saved on the item', function () {
     Storage::disk('collection-photos')->assertExists(basename($item->photo_path));
 });
 
+test('a malformed catalog search response shows a friendly error instead of crashing', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Darkrai')->andThrow(
+        new \App\Modules\Catalog\Exceptions\MalformedCatalogResponseException('Malformed tcgdex search response for query [Darkrai]: response body is not a JSON array.'),
+    );
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Darkrai')
+        ->call('runSearch')
+        ->assertHasErrors('search')
+        ->assertSet('results', []);
+});
+
 test('a brand-new user with no Collection row can save a card, which creates one on demand', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

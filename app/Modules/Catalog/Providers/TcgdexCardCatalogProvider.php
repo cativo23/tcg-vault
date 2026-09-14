@@ -99,6 +99,10 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
         $response->throw();
 
+        $json = $response->json();
+
+        $this->assertValidSearchShape($query, $json);
+
         return array_map(
             fn (array $card): CardSummaryData => new CardSummaryData(
                 tcgdexId: $card['id'],
@@ -107,7 +111,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
                 name: $card['name'],
                 imageUrl: isset($card['image']) ? "{$card['image']}/high.webp" : null,
             ),
-            $response->json(),
+            $json,
         );
     }
 
@@ -237,6 +241,38 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
         if (! isset($json['name']) || ! is_string($json['name'])) {
             throw MalformedCatalogResponseException::forSet($tcgdexId, 'missing or non-string "name".');
+        }
+    }
+
+    /**
+     * @param mixed $json
+     */
+    private function assertValidSearchShape(string $query, mixed $json): void
+    {
+        if (! is_array($json) || ! array_is_list($json)) {
+            throw MalformedCatalogResponseException::forSearch($query, 'response body is not a JSON array.');
+        }
+
+        foreach ($json as $card) {
+            if (! is_array($card)) {
+                throw MalformedCatalogResponseException::forSearch($query, 'a result entry is not a JSON object.');
+            }
+
+            if (! isset($card['id']) || ! is_string($card['id'])) {
+                throw MalformedCatalogResponseException::forSearch($query, 'a result is missing a non-string "id".');
+            }
+
+            if (! isset($card['localId']) || ! is_string($card['localId'])) {
+                throw MalformedCatalogResponseException::forSearch($query, 'a result is missing a non-string "localId".');
+            }
+
+            if (! isset($card['name']) || ! is_string($card['name'])) {
+                throw MalformedCatalogResponseException::forSearch($query, 'a result is missing a non-string "name".');
+            }
+
+            if (isset($card['image']) && ! is_string($card['image'])) {
+                throw MalformedCatalogResponseException::forSearch($query, 'a result has a non-string "image".');
+            }
         }
     }
 

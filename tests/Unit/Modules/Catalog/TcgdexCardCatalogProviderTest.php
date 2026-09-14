@@ -238,6 +238,30 @@ test('searchCardsByName maps tcgdex brief results into CardSummaryData', functio
     });
 });
 
+test('searchCardsByName throws MalformedCatalogResponseException when the response is not a list', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/cards*' => Http::response(['id' => 'not-a-list'], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+
+    expect(fn () => $provider->searchCardsByName('Mega Darkrai'))
+        ->toThrow(MalformedCatalogResponseException::class);
+});
+
+test('searchCardsByName throws MalformedCatalogResponseException when a result entry is missing required fields', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/cards*' => Http::response([
+            ['localId' => '048', 'name' => 'Mega Darkrai ex'], // 'id' missing
+        ], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+
+    expect(fn () => $provider->searchCardsByName('Mega Darkrai'))
+        ->toThrow(MalformedCatalogResponseException::class);
+});
+
 test('searchCardsByName sends the query as a URL parameter, never string-interpolated into the path', function () {
     Http::fake(['api.tcgdex.net/v2/en/cards*' => Http::response([], 200)]);
 
