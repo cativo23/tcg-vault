@@ -63,3 +63,10 @@ rainbow-holo rings, per-type accent colors, and ~6 rejected font pairings).
 No `tokens.css` extracted yet — `vault-final.html`'s inline `:root` block is
 the source of truth until the Laravel app scaffolds and these tokens move to
 a real stylesheet. Port them verbatim; don't re-derive.
+
+## Language
+- **UI copy: English first**, Spanish is not the default (this reverses the
+  Spanish-language mockups used during brainstorming — those were faster to
+  iterate on with Carlos, not a product decision). Translate all screens to
+  English once the visual design is locked, in a single pass — do not
+  translate incrementally mid-brainstorm.
