@@ -1,9 +1,7 @@
 <?php
 
-use App\Modules\Catalog\CatalogServiceProvider;
-use App\Providers\AppServiceProvider;
-
 return [
-    AppServiceProvider::class,
-    CatalogServiceProvider::class,
+    App\Modules\Catalog\CatalogServiceProvider::class,
+    App\Providers\AppServiceProvider::class,
+    App\Providers\VoltServiceProvider::class,
 ];

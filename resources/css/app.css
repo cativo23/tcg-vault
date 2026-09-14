@@ -1,9 +1,59 @@
-@import 'tailwindcss';
+/* CSS spec requires @import to precede all other statements (besides
+   @charset) or the build tool silently drops it — must stay above the
+   @tailwind directives, not inline where design.md's snippet placed it. */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Martian+Mono:wdth,wght@75..112.5,300..800&display=swap');
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+/* ─── design.md tokens — the locked visual system, ported verbatim ─── */
+:root {
+  --bone: #f2efe6;
+  --bone-2: #e9e5d8;
+  --bone-3: #ded9c9;
+  --ink: #141412;
+  --ink-2: #23231f;
+  --muted: #6d6c62;
+  --hair: rgba(20, 20, 18, 0.14);
+  --signal: #37d17f;
+  --flat: #9a988c;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+body {
+  background: var(--bone);
+  color: var(--ink);
+  font-family: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-variation-settings: 'wdth' 100;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: 'Martian Mono', 'SFMono-Regular', ui-monospace, monospace;
+  font-variation-settings: 'wdth' 87.5, 'wght' 600;
+  letter-spacing: -0.04em;
+}
+
+.nw-topbar {
+  background: var(--ink);
+  color: var(--bone);
+}
+
+.nw-btn-primary {
+  background: var(--ink);
+  color: var(--bone);
+  border-radius: 8px;
+  padding: 0.6rem 1.1rem;
+  font-weight: 600;
+  transition: opacity 160ms var(--ease);
+}
+.nw-btn-primary:hover {
+  opacity: 0.85;
+}
+
+.nw-card {
+  background: #fbf9f3;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--ink);
 }
