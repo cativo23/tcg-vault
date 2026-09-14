@@ -19,7 +19,13 @@
             <tbody>
                 @forelse ($items as $item)
                     <tr class="border-t" style="border-color: var(--hair)">
-                        <td class="p-3 font-medium">{{ $item->card->name }}</td>
+                        <td class="p-3 font-medium">
+                            @if ($item->photo_path)
+                                <img src="{{ \Illuminate\Support\Facades\Storage::disk('collection-photos')->url($item->photo_path) }}"
+                                     alt="" class="w-10 h-10 object-cover rounded inline-block mr-2 align-middle">
+                            @endif
+                            {{ $item->card->name }}
+                        </td>
                         <td class="p-3" style="color: var(--muted)">{{ $item->card->set->name }}</td>
                         <td class="p-3 mono">{{ $item->condition }}</td>
                         <td class="p-3 mono">{{ $item->quantity }}</td>

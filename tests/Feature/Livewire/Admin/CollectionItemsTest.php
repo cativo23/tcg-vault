@@ -7,6 +7,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 test('the collection index lists the authenticated users items', function () {
@@ -44,6 +45,79 @@ test('an admin can update an items notes', function () {
         ->call('saveNotes');
 
     expect($item->fresh()->notes)->toBe('Bought at a con');
+});
+
+test('an item with a photo shows a thumbnail in the rendered view', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'card.jpg',
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSee(Storage::disk('collection-photos')->url('card.jpg'), false);
+});
+
+test('an item with no photo renders no image tag for it', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertDontSee('<img', false);
+});
+
+test('deleting an item removes its stored photo from disk', function () {
+    Storage::fake('collection-photos');
+    Storage::disk('collection-photos')->put('card.jpg', 'fake-image-bytes');
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'card.jpg',
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('delete', $item->id);
+
+    Storage::disk('collection-photos')->assertMissing('card.jpg');
+});
+
+test('deleting an item with an already-missing photo file does not throw', function () {
+    Storage::fake('collection-photos');
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'already-gone.jpg',
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('delete', $item->id);
+
+    expect(CollectionItem::find($item->id))->toBeNull();
 });
 
 test('an admin can delete an item', function () {

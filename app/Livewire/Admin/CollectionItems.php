@@ -7,6 +7,7 @@ namespace App\Livewire\Admin;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
@@ -90,7 +91,15 @@ final class CollectionItems extends Component
 
     public function delete(int $itemId): void
     {
-        $this->ownedItemOrFail($itemId)->delete();
+        $item = $this->ownedItemOrFail($itemId);
+
+        if ($item->photo_path) {
+            // Guarded: a file that's already gone (manual cleanup, a prior
+            // failed delete) must not block removing the row.
+            Storage::disk('collection-photos')->delete($item->photo_path);
+        }
+
+        $item->delete();
     }
 
     public function startEditingItem(int $itemId): void
