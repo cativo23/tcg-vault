@@ -30,8 +30,21 @@ final class AddCollectionItem extends Component
 
     public ?string $selectedName = null;
 
-    #[Validate('nullable|string|max:64')]
+    #[Validate('nullable|in:normal,holofoil,reverse-holofoil')]
     public ?string $variant = null;
+
+    /**
+     * Populated in selectCard() from the selected card's actual pricing data
+     * — not every card has all 3 known variant values (some are holofoil-only,
+     * some have no reverse-holofoil print, etc.), so the dropdown only offers
+     * what's real for this specific card. Falls back to the full known list
+     * when tcgdex can't be reached, rather than leaving the field unusable.
+     *
+     * @var array<int, string>
+     */
+    public array $availableVariants = self::KNOWN_VARIANTS;
+
+    private const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
 
     #[Validate('required|string|max:16')]
     public string $condition = 'NM';
@@ -70,11 +83,35 @@ final class AddCollectionItem extends Component
         }
     }
 
-    public function selectCard(string $tcgdexId): void
+    public function selectCard(string $tcgdexId, CardCatalogProvider $provider): void
     {
         $this->selectedTcgdexId = $tcgdexId;
         $match = collect($this->results)->first(fn (CardSummaryData $c) => $c->tcgdexId === $tcgdexId);
         $this->selectedName = $match?->name;
+
+        // A tcgdex failure here must not block selecting the card — it only
+        // narrows the Variant dropdown to what's real for this card, so on
+        // failure we fall back to the full known list rather than an empty
+        // or broken select.
+        try {
+            $prices = collect($provider->findCard($tcgdexId)->prices->items())->pluck('variant');
+            $this->availableVariants = array_values(array_intersect(self::KNOWN_VARIANTS, $prices->unique()->all()));
+
+            if ($this->availableVariants === []) {
+                $this->availableVariants = self::KNOWN_VARIANTS;
+            }
+        } catch (Throwable $e) {
+            report($e);
+
+            $this->availableVariants = self::KNOWN_VARIANTS;
+        }
+
+        // Only one real variant for this card and nothing chosen yet —
+        // default to it instead of making the user pick from a single
+        // option. Never overrides an existing value.
+        if ($this->variant === null && count($this->availableVariants) === 1) {
+            $this->variant = $this->availableVariants[0];
+        }
     }
 
     public function save(CollectionService $service): mixed

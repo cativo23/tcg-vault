@@ -90,6 +90,46 @@ test('an uploaded photo is stored and its path saved on the item', function () {
     Storage::disk('collection-photos')->assertExists(basename($item->photo_path));
 });
 
+test('selecting a card narrows the variant dropdown to what that card actually has priced', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, [
+            new PriceEntryData(source: 'tcgplayer', variant: 'holofoil', currency: 'USD', marketMinor: 1000, lowMinor: 800, trendMinor: 900, sourceUpdatedAt: null, raw: []),
+            new PriceEntryData(source: 'cardmarket', variant: 'holofoil', currency: 'EUR', marketMinor: 900, lowMinor: 700, trendMinor: 800, sourceUpdatedAt: null, raw: []),
+        ]),
+        raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->call('selectCard', 'me05-116')
+        ->assertSet('availableVariants', ['holofoil'])
+        ->assertSet('variant', 'holofoil');
+});
+
+test('selecting a card falls back to the full known variant list when the catalog lookup fails', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andThrow(
+        \App\Modules\Catalog\Exceptions\CardNotFoundException::forTcgdexId('me05-116'),
+    );
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->call('selectCard', 'me05-116')
+        ->assertSet('availableVariants', ['normal', 'holofoil', 'reverse-holofoil'])
+        ->assertSet('variant', null);
+});
+
 test('a malformed catalog search response shows a friendly error instead of crashing', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

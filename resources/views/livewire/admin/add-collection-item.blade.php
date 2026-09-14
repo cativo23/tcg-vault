@@ -51,6 +51,16 @@
                 @error('quantity') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
             </div>
             <div>
+                <label class="block text-sm font-medium mb-1">Variant</label>
+                <select wire:model="variant" class="w-full border rounded px-3 py-2">
+                    <option value="">— not specified —</option>
+                    @foreach ($availableVariants as $v)
+                        <option value="{{ $v }}">{{ \Illuminate\Support\Str::headline($v) }}</option>
+                    @endforeach
+                </select>
+                @error('variant') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
+            </div>
+            <div>
                 <label class="block text-sm font-medium mb-1">Grading company (optional)</label>
                 <input type="text" wire:model="gradeCompany" class="w-full border rounded px-3 py-2" placeholder="PSA, BGS...">
             </div>

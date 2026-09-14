@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -28,7 +29,7 @@ final class CollectionItems extends Component
     #[Validate('required|integer|min:1')]
     public int $editingQuantity = 1;
 
-    #[Validate('nullable|string|max:64')]
+    #[Validate('nullable|in:normal,holofoil,reverse-holofoil')]
     public ?string $editingVariant = null;
 
     #[Validate('nullable|string|max:32')]
@@ -36,6 +37,20 @@ final class CollectionItems extends Component
 
     #[Validate('nullable|string|max:16')]
     public ?string $editingGradeValue = null;
+
+    /**
+     * Not every card actually has all 3 known variants (some are
+     * holofoil-only, some never printed a reverse-holofoil, etc.), so the
+     * modal's Variant dropdown is narrowed to what's real for THIS item's
+     * card, sourced from its synced pricing snapshots. Falls back to just
+     * the item's current value (or nothing, if it has none) when the card
+     * was never synced with pricing rather than showing all 3 or crashing.
+     *
+     * @var array<int, string>
+     */
+    public array $editingAvailableVariants = [];
+
+    private const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
 
     /**
      * `CollectionItem` has no `user_id` column, so it can never carry
@@ -111,6 +126,22 @@ final class CollectionItems extends Component
         $this->editingVariant = $item->variant;
         $this->editingGradeCompany = $item->grade_company;
         $this->editingGradeValue = $item->grade_value;
+
+        $variants = array_values(array_intersect(
+            self::KNOWN_VARIANTS,
+            CardPriceSnapshot::where('card_id', $item->card_id)->distinct()->pluck('variant')->all(),
+        ));
+
+        $this->editingAvailableVariants = $variants !== []
+            ? $variants
+            : array_values(array_filter([$item->variant]));
+
+        // Only one real variant for this card and the item has no explicit
+        // choice yet — default to it instead of making the user pick from a
+        // single option. Never overrides an existing value.
+        if ($this->editingVariant === null && count($this->editingAvailableVariants) === 1) {
+            $this->editingVariant = $this->editingAvailableVariants[0];
+        }
     }
 
     public function cancelEditingItem(): void
