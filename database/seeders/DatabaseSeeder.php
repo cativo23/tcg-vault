@@ -24,14 +24,16 @@ class DatabaseSeeder extends Seeder
             );
         }
 
+        $username = config('tcgvault.admin_username') ?: Str::of(explode('@', $email)[0])
+            ->lower()
+            ->replaceMatches('/[^a-z0-9]/', '')
+            ->toString();
+
         $user = User::firstOrCreate(
             ['email' => $email],
             [
                 'name' => 'Carlos',
-                'username' => Str::of(explode('@', $email)[0])
-                    ->lower()
-                    ->replaceMatches('/[^a-z0-9]/', '')
-                    ->toString(),
+                'username' => $username,
                 'password' => bcrypt($password),
                 'email_verified_at' => now(),
             ],
