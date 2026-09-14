@@ -1,0 +1,88 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\User;
+use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
+use App\Modules\Catalog\Models\Set;
+use App\Modules\Collection\Models\Collection;
+use App\Modules\Collection\Models\CollectionItem;
+
+test('shows every card in the set, marks owned ones, computes stats from the whole set', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 2]);
+    $owned = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $notOwned = Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis']);
+
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $owned->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    CardPriceSnapshot::create(['card_id' => $owned->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5000]);
+    CardPriceSnapshot::create(['card_id' => $notOwned->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1000]);
+
+    $response = $this->get('/carlos/gallery/me05');
+
+    $response->assertOk();
+    $response->assertSee('Mega Darkrai ex'); // owned, shown
+    $response->assertSee('Fomantis'); // not owned, still shown per spec §6
+    $response->assertSee('Mega Darkrai ex'); // most expensive card in the SET, not just owned
+});
+
+test('a set that exists but the user has never touched 404s', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    Set::create(['tcgdex_id' => 'untouched', 'name' => 'Never Added']);
+
+    $response = $this->get('/carlos/gallery/untouched');
+
+    $response->assertNotFound();
+});
+
+test('uses the users own photo over official art when owned and photographed', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 1]);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex', 'official_image_url' => 'https://official.example/card.webp']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'my-photo.jpg']);
+
+    $response = $this->get('/carlos/gallery/me05');
+
+    $response->assertSee(\Illuminate\Support\Facades\Storage::disk('collection-photos')->url('my-photo.jpg'), false);
+    $response->assertDontSee('https://official.example/card.webp', false);
+});
+
+test('search filters the card grid by name', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 2]);
+    $card1 = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $card2 = Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis']);
+
+    // mount()'s existence-gate (borrowed from Task 4) only shows a set the
+    // user has touched — without this, the set 404s before search is ever
+    // exercised.
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card1->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    \Livewire\Livewire::test(\App\Livewire\Gallery\Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
+        ->set('search', 'Darkrai')
+        ->assertSee('Mega Darkrai ex')
+        ->assertDontSee('Fomantis');
+});
+
+test('rarity filter only shows cards of the selected rarity', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 2]);
+    $card1 = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex', 'rarity' => 'SIR']);
+    Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis', 'rarity' => 'Common']);
+
+    // Same existence-gate note as the search test above.
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card1->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    \Livewire\Livewire::test(\App\Livewire\Gallery\Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
+        ->set('rarityFilter', 'SIR')
+        ->assertSee('Mega Darkrai ex')
+        ->assertDontSee('Fomantis');
+});
