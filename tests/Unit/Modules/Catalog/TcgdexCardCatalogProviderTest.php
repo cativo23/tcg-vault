@@ -213,3 +213,42 @@ test('findSet throws MalformedCatalogResponseException when a required field is 
     expect(fn () => $provider->findSet('me05'))
         ->toThrow(MalformedCatalogResponseException::class);
 });
+
+test('searchCardsByName maps tcgdex brief results into CardSummaryData', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/cards*' => Http::response([
+            ['id' => 'me05-048', 'localId' => '048', 'name' => 'Mega Darkrai ex', 'image' => 'https://assets.tcgdex.net/en/me/me05/048'],
+            ['id' => 'me05-101', 'localId' => '101', 'name' => 'Mega Darkrai ex', 'image' => 'https://assets.tcgdex.net/en/me/me05/101'],
+        ], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $results = $provider->searchCardsByName('Mega Darkrai');
+
+    expect($results)->toHaveCount(2);
+    expect($results[0]->tcgdexId)->toBe('me05-048');
+    expect($results[0]->setTcgdexId)->toBe('me05');
+    expect($results[0]->localId)->toBe('048');
+    expect($results[0]->imageUrl)->toBe('https://assets.tcgdex.net/en/me/me05/048/high.webp');
+
+    Http::assertSent(function ($request) {
+        // Guzzle/Laravel's array-form query encoding uses %20 for spaces
+        // (RFC 3986), not '+' — verified against this app's HTTP client.
+        return $request->url() === 'https://api.tcgdex.net/v2/en/cards?name=Mega%20Darkrai';
+    });
+});
+
+test('searchCardsByName sends the query as a URL parameter, never string-interpolated into the path', function () {
+    Http::fake(['api.tcgdex.net/v2/en/cards*' => Http::response([], 200)]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    // A query containing "://" must never be able to redirect the request —
+    // because this goes through Http::get('cards', ['name' => $query]) as a
+    // query-string parameter (Guzzle-encoded), not string interpolation into
+    // the path, there is no absolute-URL-override risk here at all.
+    $provider->searchCardsByName('https://evil.example/x');
+
+    Http::assertSent(function ($request) {
+        return str_starts_with($request->url(), 'https://api.tcgdex.net/v2/en/cards?name=');
+    });
+});

@@ -6,6 +6,7 @@ namespace App\Modules\Catalog\Providers;
 
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardDetailData;
+use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Data\PriceEntryData;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
@@ -90,6 +91,24 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         $cards = $response->json('cards', []);
 
         return array_map(static fn (array $card): string => $card['id'], $cards);
+    }
+
+    public function searchCardsByName(string $query): array
+    {
+        $response = Http::baseUrl($this->baseUrl)->get('cards', ['name' => $query]);
+
+        $response->throw();
+
+        return array_map(
+            fn (array $card): CardSummaryData => new CardSummaryData(
+                tcgdexId: $card['id'],
+                setTcgdexId: explode('-', $card['id'])[0],
+                localId: $card['localId'],
+                name: $card['name'],
+                imageUrl: isset($card['image']) ? "{$card['image']}/high.webp" : null,
+            ),
+            $response->json(),
+        );
     }
 
     /**

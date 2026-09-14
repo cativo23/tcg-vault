@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Contracts;
 
 use App\Modules\Catalog\Data\CardDetailData;
+use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Data\SetSummaryData;
 
 interface CardCatalogProvider
@@ -31,4 +32,12 @@ interface CardCatalogProvider
      * @return array<int, string>
      */
     public function listSetCardIds(string $setTcgdexId): array;
+
+    /**
+     * Search tcgdex by card name (brief results only — no pricing; call
+     * findCard() on a chosen result for full detail + current price).
+     *
+     * @return array<int, CardSummaryData>
+     */
+    public function searchCardsByName(string $query): array;
 }
