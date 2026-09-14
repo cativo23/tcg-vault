@@ -15,6 +15,10 @@ uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class
 // but this binding does not apply to other Unit tests.
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Catalog');
 
+// Unit tests under Modules/Collection need the Laravel container and a real database
+// (CollectionService writes CollectionItem rows via Eloquent), same rationale as Catalog above.
+uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Collection');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations
