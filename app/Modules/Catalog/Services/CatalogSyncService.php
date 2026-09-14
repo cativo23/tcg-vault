@@ -22,15 +22,22 @@ final class CatalogSyncService
 
     public function syncCard(string $tcgdexCardId): Card
     {
-        return DB::transaction(function () use ($tcgdexCardId): Card {
-            $cardDetail = $this->provider->findCard($tcgdexCardId);
+        $cardDetail = $this->provider->findCard($tcgdexCardId);
 
-            if ($cardDetail->tcgdexId !== $tcgdexCardId) {
-                throw CatalogIdentityMismatchException::forCardMismatch($tcgdexCardId, $cardDetail->tcgdexId);
-            }
+        if ($cardDetail->tcgdexId !== $tcgdexCardId) {
+            throw CatalogIdentityMismatchException::forCardMismatch($tcgdexCardId, $cardDetail->tcgdexId);
+        }
 
-            $set = $this->syncSet($cardDetail->setTcgdexId);
+        // The Set upsert (and its memoization cache) must complete and commit
+        // independently of the card/snapshot transaction below. If it were
+        // nested inside DB::transaction() and that transaction rolled back
+        // (e.g. because the Card write fails), the in-memory $syncedSets
+        // cache would still reference a Set row that no longer exists in the
+        // database, causing a foreign-key violation on the next card synced
+        // from the same set.
+        $set = $this->syncSet($cardDetail->setTcgdexId);
 
+        return DB::transaction(function () use ($cardDetail, $set): Card {
             $card = Card::updateOrCreate(
                 ['tcgdex_id' => $cardDetail->tcgdexId],
                 [
