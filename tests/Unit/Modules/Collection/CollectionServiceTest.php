@@ -93,6 +93,42 @@ test('adding an identical printing again increments quantity instead of creating
     expect(CollectionItem::where('collection_id', $collection->id)->count())->toBe(1);
 });
 
+test('a quantity merge does not overwrite notes or photo_path from the original item', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->twice()->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
+    ));
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $service = app(CollectionService::class);
+    $first = $service->addItem($collection, 'me05-116', [
+        'condition' => 'NM',
+        'quantity' => 1,
+        'notes' => 'Original notes',
+        'photo_path' => null,
+    ]);
+    $second = $service->addItem($collection, 'me05-116', [
+        'condition' => 'NM',
+        'quantity' => 1,
+        'notes' => 'Different notes from the second call',
+        'photo_path' => 'second-call-photo.jpg',
+    ]);
+
+    expect($second->id)->toBe($first->id);
+    expect($first->fresh()->quantity)->toBe(2);
+    expect($first->fresh()->notes)->toBe('Original notes');
+    expect($first->fresh()->photo_path)->toBeNull();
+});
+
 test('a different variant or condition of the same card creates a separate row, not a merge', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
