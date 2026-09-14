@@ -20,6 +20,8 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     public function findCard(string $tcgdexId): CardDetailData
     {
+        $this->assertValidTcgdexId($tcgdexId);
+
         $response = Http::baseUrl($this->baseUrl)->get("cards/{$tcgdexId}");
 
         if ($response->status() === 404) {
@@ -45,6 +47,8 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     public function findSet(string $tcgdexId): SetSummaryData
     {
+        $this->assertValidTcgdexId($tcgdexId);
+
         $response = Http::baseUrl($this->baseUrl)->get("sets/{$tcgdexId}");
 
         if ($response->status() === 404) {
@@ -67,6 +71,8 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     public function listSetCardIds(string $setTcgdexId): array
     {
+        $this->assertValidTcgdexId($setTcgdexId);
+
         $response = Http::baseUrl($this->baseUrl)->get("sets/{$setTcgdexId}");
 
         if ($response->status() === 404) {
@@ -146,5 +152,12 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     private function toMinorUnits(?float $amount): ?int
     {
         return $amount === null ? null : (int) round($amount * 100);
+    }
+
+    private function assertValidTcgdexId(string $id): void
+    {
+        if (! preg_match('/^[a-zA-Z0-9.\-]+$/', $id)) {
+            throw new \InvalidArgumentException("Invalid tcgdex ID format: [{$id}]");
+        }
     }
 }

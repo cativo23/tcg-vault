@@ -112,6 +112,39 @@ test('findSet throws SetNotFoundException on a 404', function () {
         ->toThrow(SetNotFoundException::class);
 });
 
+test('findCard rejects an ID shaped like an absolute URL without making any HTTP call', function () {
+    Http::fake();
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+
+    expect(fn () => $provider->findCard('https://evil.example/x'))
+        ->toThrow(InvalidArgumentException::class);
+
+    Http::assertNothingSent();
+});
+
+test('findSet rejects an ID shaped like an absolute URL without making any HTTP call', function () {
+    Http::fake();
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+
+    expect(fn () => $provider->findSet('https://evil.example/x'))
+        ->toThrow(InvalidArgumentException::class);
+
+    Http::assertNothingSent();
+});
+
+test('listSetCardIds rejects an ID shaped like an absolute URL without making any HTTP call', function () {
+    Http::fake();
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+
+    expect(fn () => $provider->listSetCardIds('https://evil.example/x'))
+        ->toThrow(InvalidArgumentException::class);
+
+    Http::assertNothingSent();
+});
+
 test('listSetCardIds returns the zero-padded local card IDs prefixed with the set ID', function () {
     Http::fake([
         'api.tcgdex.net/v2/en/sets/me05' => Http::response([

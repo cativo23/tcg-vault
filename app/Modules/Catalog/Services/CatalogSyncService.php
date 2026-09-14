@@ -18,6 +18,15 @@ final class CatalogSyncService
     public function syncCard(string $tcgdexCardId): Card
     {
         $cardDetail = $this->provider->findCard($tcgdexCardId);
+
+        if ($cardDetail->tcgdexId !== $tcgdexCardId) {
+            throw new \RuntimeException(sprintf(
+                'Catalog provider returned card [%s] when [%s] was requested.',
+                $cardDetail->tcgdexId,
+                $tcgdexCardId,
+            ));
+        }
+
         $set = $this->syncSet($cardDetail->setTcgdexId);
 
         $card = Card::updateOrCreate(
@@ -42,6 +51,14 @@ final class CatalogSyncService
     private function syncSet(string $setTcgdexId): Set
     {
         $setSummary = $this->provider->findSet($setTcgdexId);
+
+        if ($setSummary->tcgdexId !== $setTcgdexId) {
+            throw new \RuntimeException(sprintf(
+                'Catalog provider returned set [%s] when [%s] was requested.',
+                $setSummary->tcgdexId,
+                $setTcgdexId,
+            ));
+        }
 
         return Set::updateOrCreate(
             ['tcgdex_id' => $setSummary->tcgdexId],

@@ -58,6 +58,26 @@ test('syncCard creates the set, the card, and its price snapshots on first sync'
     expect($snapshot->captured_on->toDateString())->toBe(CarbonImmutable::today()->toDateString());
 });
 
+test('syncCard throws when the provider returns a card whose ID does not match what was requested', function () {
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-999', // mismatched — provider claims a different card than requested
+        setTcgdexId: 'me05',
+        localId: '999',
+        name: 'Some Other Card',
+        rarity: null,
+        variants: [],
+        officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []),
+        raw: [],
+    ));
+
+    $service = new CatalogSyncService($provider);
+
+    expect(fn () => $service->syncCard('me05-116'))
+        ->toThrow(RuntimeException::class);
+});
+
 test('syncing the same card twice on the same day updates the card but does not duplicate the snapshot', function () {
     $provider = Mockery::mock(CardCatalogProvider::class);
     $provider->shouldReceive('findCard')->with('me05-116')->twice()->andReturn(fakeCardDetail());
