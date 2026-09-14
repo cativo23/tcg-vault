@@ -202,3 +202,31 @@ body {
     animation: none;
   }
 }
+
+.imgwrap {
+  aspect-ratio: 245 / 342; /* standard card art ratio */
+  border-radius: 6px;
+  overflow: hidden;
+}
+.imgwrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.imgwrap.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--bone-2),
+    var(--bone-2) 6px,
+    var(--bone-3) 6px,
+    var(--bone-3) 12px
+  );
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: center;
+  padding: 1rem;
+}
