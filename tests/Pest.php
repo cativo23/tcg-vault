@@ -11,6 +11,10 @@
 
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Feature');
 
+// Unit tests get the Laravel container (needed for Http::fake()/config() in
+// e.g. TcgdexCardCatalogProviderTest) but not RefreshDatabase — no DB access here.
+uses(Tests\TestCase::class)->in('Unit');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations
