@@ -59,6 +59,87 @@ body {
   box-shadow: 0 0 0 1px var(--ink);
 }
 
+.nw-btn-secondary {
+  background: var(--bone-2);
+  color: var(--ink);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 0.6rem 1.1rem;
+  font-weight: 600;
+  transition: background 160ms var(--ease);
+}
+.nw-btn-secondary:hover {
+  background: var(--bone-3);
+}
+
+.nw-btn-danger {
+  background: var(--danger);
+  color: var(--bone);
+  border-radius: 8px;
+  padding: 0.6rem 1.1rem;
+  font-weight: 600;
+  transition: opacity 160ms var(--ease);
+}
+.nw-btn-danger:hover {
+  opacity: 0.85;
+}
+
+.nw-input {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  transition: border-color 160ms var(--ease);
+}
+.nw-input:focus {
+  border-color: var(--signal);
+  outline: none;
+  /* @tailwindcss/forms' base reset ties this rule's specificity and adds
+     its own blue --tw-ring box-shadow on focus; neutralize it so the
+     signal-green border is the only focus cue, per design.md's focus
+     rule (no competing blue ring). */
+  box-shadow: none;
+}
+
+.nw-link {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  transition: color 160ms var(--ease), border-color 160ms var(--ease);
+}
+.nw-link:hover {
+  color: var(--ink);
+}
+.nw-link.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
+}
+
+.nw-dropdown-link:hover {
+  background: var(--bone-2);
+}
+
+/* design.md CTA/interactive voice: "Focus state · outline 2px solid
+   var(--color-accent) offset 3px — same visual treatment as hover, so
+   keyboard users get full parity." Applied globally so every interactive
+   element gets it, not just the ones this task happens to touch.
+
+   The doubled selector (:focus-visible:focus) is not redundant: it matches
+   @tailwindcss/forms' base reset's specificity (e.g. `[type='checkbox']:focus`
+   is 2 selectors deep, same as ours) exactly, so on the resulting tie this
+   rule wins by coming later in the file — a single `:focus-visible` was
+   silently losing that tie and letting the plugin's own transparent-outline/
+   blue-ring reset show through on every native input/checkbox/select.
+   box-shadow: none clears that same plugin's stray --tw-ring box-shadow so
+   the green outline is the only focus cue, not a second blue ring under it. */
+:focus-visible,
+:focus-visible:focus {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
 /* Modal entrance — short eased transition per design.md's Motion stance,
    collapsing to no animation under reduced motion like the card entrance. */
 .modal-in {
@@ -70,8 +151,3 @@ body {
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .modal-in {
-    animation: none;
-  }
-}

@@ -63,7 +63,7 @@ new #[Layout('layouts.guest')] class extends Component
 
         <div class="flex items-center justify-end mt-4">
             @if (Route::has('password.request'))
-                <a class="underline text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2" style="color: var(--muted)" href="{{ route('password.request') }}" wire:navigate>
+                <a class="nw-link underline text-sm rounded-md" href="{{ route('password.request') }}" wire:navigate>
                     {{ __('Forgot your password?') }}
                 </a>
             @endif
