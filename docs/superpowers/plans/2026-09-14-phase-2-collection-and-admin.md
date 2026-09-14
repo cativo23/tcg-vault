@@ -2501,6 +2501,233 @@ whole task is an acceptable fallback, but try the split first.)
 
 ---
 
+### Task 11: Clean up the deferred minor findings before they're forgotten
+
+> Added at Carlos's explicit request ("resuelve los pendientes ya por que
+> si no se nos olvidan") — a batch of small, independently-reviewed minor
+> findings accumulated across Tasks 8, 9, and 10. None were blocking on
+> their own; this task closes them out in one pass.
+
+**Files:**
+- Modify: `app/Modules/Catalog/Exceptions/CardNotFoundException.php`
+- Modify: `app/Modules/Catalog/Exceptions/SetNotFoundException.php`
+- Modify: `app/Modules/Catalog/Exceptions/InvalidTcgdexIdException.php`
+- Modify: `app/Modules/Catalog/Exceptions/CatalogIdentityMismatchException.php`
+- Modify: `app/Modules/Catalog/Exceptions/MalformedCatalogResponseException.php`
+- Create: `app/Modules/Catalog/Exceptions/Concerns/SanitizesLogMessages.php`
+- Modify: `resources/css/app.css`
+- Modify: `resources/views/livewire/layout/navigation.blade.php`
+- Modify: `app/Livewire/Admin/AddCollectionItem.php`
+- Modify: `app/Modules/Collection/Services/CollectionService.php` (test only, no logic change)
+- Test: `tests/Unit/Modules/Catalog/*ExceptionTest.php` (new or existing,
+  check what exists first), `tests/Unit/Modules/Collection/CollectionServiceTest.php`,
+  `tests/Feature/Livewire/Admin/AddCollectionItemTest.php`
+
+## Item 1 — Hoist the log-injection sanitizer to every catalog exception factory
+
+The final review's fix round sanitized `MalformedCatalogResponseException::forSearch()`
+against CRLF log injection, but the same pattern (raw, potentially
+attacker-influenced string interpolated into a message that reaches the
+log via `report($e)`) exists unfixed in every OTHER catalog exception
+factory that takes a string argument. The most reachable path:
+`AddCollectionItem::$selectedTcgdexId` is a public Livewire property with
+no `#[Validate]` rule → `save()` → `CollectionService::addItem()` →
+`CatalogSyncService::syncCard()` → `TcgdexCardCatalogProvider::assertValidTcgdexId()`
+throws `InvalidTcgdexIdException::forId()` precisely because the ID
+contains illegal characters (which could include CRLF) → `save()`'s
+`catch (Throwable) { report($e); ... }` logs it.
+
+- [ ] **Step 1: Create a shared sanitizer trait**
+
+`app/Modules/Catalog/Exceptions/Concerns/SanitizesLogMessages.php`:
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Catalog\Exceptions\Concerns;
+
+trait SanitizesLogMessages
+{
+    /**
+     * Strips control characters (CR/LF and other C0/DEL bytes) from a
+     * string before it's embedded in an exception message that may reach
+     * the application log via report(). Prevents log injection from any
+     * value that ultimately traces back to external/user input (a
+     * tcgdex response field, a Livewire property, a search query).
+     */
+    private static function sanitizeForLog(string $value): string
+    {
+        return preg_replace('/[\r\n\x00-\x1F\x7F]/', ' ', $value) ?? '';
+    }
+}
+```
+
+- [ ] **Step 2: Apply it to every factory method that embeds a string argument**
+
+In each of these 4 files, add `use Concerns\SanitizesLogMessages;` (adjust
+the `use` statement to the trait's real namespace) inside the class, remove
+the now-duplicate private `sanitizeForLog()` from
+`MalformedCatalogResponseException` (it moves into the shared trait — keep
+the class using the trait instead of its own copy), and wrap every
+interpolated string argument with `self::sanitizeForLog(...)`:
+
+`CardNotFoundException.php`:
+```php
+public static function forTcgdexId(string $tcgdexId): self
+{
+    return new self('No card found on tcgdex for ID ['.self::sanitizeForLog($tcgdexId).'].');
+}
+```
+
+`SetNotFoundException.php` — identical pattern, same method name.
+
+`InvalidTcgdexIdException.php`:
+```php
+public static function forId(string $id): self
+{
+    return new self('Invalid tcgdex ID format: ['.self::sanitizeForLog($id).'].');
+}
+```
+
+`CatalogIdentityMismatchException.php` — both `$requested` and `$actual`
+get sanitized in both factory methods:
+```php
+public static function forCardMismatch(string $requested, string $actual): self
+{
+    return new self(sprintf(
+        'Catalog provider returned card [%s] when [%s] was requested.',
+        self::sanitizeForLog($actual),
+        self::sanitizeForLog($requested),
+    ));
+}
+
+public static function forSetMismatch(string $requested, string $actual): self
+{
+    return new self(sprintf(
+        'Catalog provider returned set [%s] when [%s] was requested.',
+        self::sanitizeForLog($actual),
+        self::sanitizeForLog($requested),
+    ));
+}
+```
+
+`MalformedCatalogResponseException.php` — replace its private
+`sanitizeForLog()` method with `use Concerns\SanitizesLogMessages;`; its 3
+existing factory methods' calls to `self::sanitizeForLog(...)` need no
+other change.
+
+- [ ] **Step 3: Test it**
+
+Add a test (new file or appended to an existing exception test file —
+check `tests/Unit/Modules/Catalog/` for what already exists and match its
+style) proving at least `InvalidTcgdexIdException::forId()` and
+`CardNotFoundException::forTcgdexId()` strip `\r`/`\n` from their message,
+matching the existing pattern already proven for
+`MalformedCatalogResponseException::forSearch()`.
+
+## Item 2 — `.nw-input`'s hardcoded white + the sub-floor press-scale duration
+
+- [ ] **Step 4: Fix `resources/css/app.css`**
+
+Change `.nw-input`'s `background: #fff;` to `background: var(--bone-2);`
+— `design.md` has no literal white token; `--bone-2` (`#e9e5d8`) is the
+closest existing token that still reads as "input surface, one step
+lighter than the page" without inventing a new value. Change the
+`:active` press-scale transition duration from `80ms` to `120ms`
+(the brief's own 120–480ms motion floor) — find the rule
+`.nw-btn-primary:active, .nw-btn-secondary:active, .nw-btn-danger:active { transform: scale(0.97); transition: transform 80ms var(--ease); }`
+and change `80ms` to `120ms`.
+
+## Item 3 — `.nw-dropdown-link:hover` misapplied to the hamburger button
+
+- [ ] **Step 5: Rename for clarity**
+
+In `resources/css/app.css`, add a small alias/rename so the hamburger
+button in `resources/views/livewire/layout/navigation.blade.php` isn't
+using a class literally named for dropdown links. Simplest fix: add a
+second class `.nw-hover-tint:hover { background: var(--bone-2); }` reusing
+the identical rule, then in `navigation.blade.php` change the hamburger
+`<button>`'s class from `nw-dropdown-link` to `nw-hover-tint` (keep
+`.nw-dropdown-link` itself unchanged — it's still correctly used by the
+real dropdown links). This is purely a naming clarity fix, no visual
+change.
+
+## Item 4 — `AddCollectionItem::runSearch()`'s error never clears
+
+- [ ] **Step 6: Fix the stale search error**
+
+In `app/Livewire/Admin/AddCollectionItem.php`'s `runSearch()` method, add
+`$this->resetErrorBag('search');` as the first line of the method (before
+the try block), so a search error from an earlier failed attempt doesn't
+stay visible once a later search succeeds. Add a test to
+`tests/Feature/Livewire/Admin/AddCollectionItemTest.php`: mock the
+provider to throw once (triggering the error), then mock it to succeed on
+a second `runSearch()` call, and assert the component no longer has the
+`search` error after the second, successful call.
+
+## Item 5 — Task 9: prove notes/photo_path survive a quantity merge
+
+- [ ] **Step 7: Add the missing regression test**
+
+In `tests/Unit/Modules/Collection/CollectionServiceTest.php`, add a test
+matching the existing file's established mocking pattern (mock
+`CardCatalogProvider`, per Task 9's own precedent — `CatalogSyncService`
+is `final` and can't be mocked directly): add an item with `notes` set to
+a specific string and no `photo_path`, then add the identical printing
+again (same card/variant/condition/grade) with different `notes` and a
+`photo_path` in the second call's `$itemData`. Assert the merged row's
+`notes` is STILL the original string (not overwritten) and `photo_path`
+is still `null` (not set from the second call) — proving the merge path
+truly only touches `quantity`.
+
+- [ ] **Step 8: Run everything**
+
+```bash
+./vendor/bin/sail artisan test
+```
+Expected: all passing, including the new tests from Steps 3, 6, and 7.
+No regressions elsewhere.
+
+```bash
+./vendor/bin/sail npm run build
+```
+Confirm a new asset hash (Item 2's CSS changes need this to take effect —
+this environment has no Vite watcher, a stale build has caused a real bug
+before).
+
+- [ ] **Step 9: Commit**
+
+One commit per item (5 commits, one concern each):
+```bash
+git add app/Modules/Catalog/Exceptions/Concerns/SanitizesLogMessages.php app/Modules/Catalog/Exceptions/CardNotFoundException.php app/Modules/Catalog/Exceptions/SetNotFoundException.php app/Modules/Catalog/Exceptions/InvalidTcgdexIdException.php app/Modules/Catalog/Exceptions/CatalogIdentityMismatchException.php app/Modules/Catalog/Exceptions/MalformedCatalogResponseException.php tests/Unit/Modules/Catalog/
+git commit -m "fix(catalog): sanitize every catalog exception factory against log injection, not just forSearch()
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+
+git add resources/css/app.css
+git commit -m "style(admin): use a real token for .nw-input's background, fix press-scale duration floor
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+
+git add resources/css/app.css resources/views/livewire/layout/navigation.blade.php
+git commit -m "style(admin): stop reusing the dropdown-link hover class on the hamburger button
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+
+git add app/Livewire/Admin/AddCollectionItem.php tests/Feature/Livewire/Admin/AddCollectionItemTest.php
+git commit -m "fix(admin): clear the stale search error once a later search succeeds
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+
+git add tests/Unit/Modules/Collection/CollectionServiceTest.php
+git commit -m "test(collection): prove notes and photo_path survive a quantity merge
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+```
+
+---
+
 ## What Phase 2 deliberately does NOT include
 
 - No public gallery — that's Phase 3.
