@@ -120,6 +120,10 @@ body {
   background: var(--bone-2);
 }
 
+.nw-hover-tint:hover {
+  background: var(--bone-2);
+}
+
 /* design.md CTA/interactive voice: "Focus state · outline 2px solid
    var(--color-accent) offset 3px — same visual treatment as hover, so
    keyboard users get full parity." Applied globally so every interactive
