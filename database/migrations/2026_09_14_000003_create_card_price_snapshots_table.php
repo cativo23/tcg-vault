@@ -21,7 +21,7 @@ return new class extends Migration
             $table->bigInteger('low_minor')->nullable();
             $table->bigInteger('trend_minor')->nullable();
             $table->jsonb('raw')->nullable();
-            $table->timestamp('source_updated_at')->nullable();
+            $table->timestampTz('source_updated_at')->nullable();
             $table->timestamps();
 
             $table->unique(['card_id', 'source', 'variant', 'captured_on'], 'card_price_snapshots_unique_capture');

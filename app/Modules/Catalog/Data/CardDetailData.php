@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Data;
 
+use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\DataCollection;
 
@@ -18,6 +19,7 @@ final class CardDetailData extends Data
         /** @var array<string, mixed> */
         public array $variants,
         public ?string $officialImageUrl,
+        #[DataCollectionOf(PriceEntryData::class)]
         /** @var DataCollection<int, PriceEntryData> */
         public DataCollection $prices,
         /** @var array<string, mixed> */
