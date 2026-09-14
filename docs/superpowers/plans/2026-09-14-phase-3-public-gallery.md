@@ -1152,6 +1152,198 @@ Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
 
 ---
 
+### Task 6: Let the username be changed from the profile page
+
+> Added at Carlos's request — since `username` now doubles as a public
+> URL segment (`/{username}/gallery`), it needs the same kind of
+> constraints other platforms put on a public handle: a length range, a
+> restricted character set, and a reserved-word list so a username can
+> never collide with one of this app's own top-level routes.
+
+**Files:**
+- Modify: `resources/views/livewire/profile/update-profile-information-form.blade.php`
+- Test: `tests/Feature/ProfileTest.php` (existing — add cases here; check
+  the file first, don't duplicate its existing `update-profile-information-form`
+  coverage)
+
+**Interfaces:**
+- No new interfaces — this changes the existing `updateProfileInformation()`
+  Volt action's validation/save logic and its view, nothing downstream
+  consumes anything new.
+
+- [ ] **Step 1: Write the failing tests**
+
+Add to `tests/Feature/ProfileTest.php` (a `Volt::test('profile.update-profile-information-form')`
+pattern already exists in this file for the name/email fields — match
+that exact style rather than introducing a different testing approach):
+
+```php
+test('username can be updated within length and character limits', function () {
+    $user = User::factory()->create(['username' => 'oldname']);
+    $this->actingAs($user);
+
+    Volt::test('profile.update-profile-information-form')
+        ->set('username', 'new-handle')
+        ->call('updateProfileInformation');
+
+    expect($user->refresh()->username)->toBe('new-handle');
+});
+
+test('a username shorter than 3 characters is rejected', function () {
+    $user = User::factory()->create(['username' => 'oldname']);
+    $this->actingAs($user);
+
+    Volt::test('profile.update-profile-information-form')
+        ->set('username', 'ab')
+        ->call('updateProfileInformation')
+        ->assertHasErrors('username');
+
+    expect($user->refresh()->username)->toBe('oldname');
+});
+
+test('a username with an illegal character is rejected', function () {
+    $user = User::factory()->create(['username' => 'oldname']);
+    $this->actingAs($user);
+
+    Volt::test('profile.update-profile-information-form')
+        ->set('username', 'not_valid!')
+        ->call('updateProfileInformation')
+        ->assertHasErrors('username');
+
+    expect($user->refresh()->username)->toBe('oldname');
+});
+
+test('a username matching one of the apps own route segments is rejected', function () {
+    $user = User::factory()->create(['username' => 'oldname']);
+    $this->actingAs($user);
+
+    Volt::test('profile.update-profile-information-form')
+        ->set('username', 'admin')
+        ->call('updateProfileInformation')
+        ->assertHasErrors('username');
+
+    expect($user->refresh()->username)->toBe('oldname');
+});
+
+test('a username already taken by another user is rejected', function () {
+    User::factory()->create(['username' => 'taken']);
+    $user = User::factory()->create(['username' => 'oldname']);
+    $this->actingAs($user);
+
+    Volt::test('profile.update-profile-information-form')
+        ->set('username', 'taken')
+        ->call('updateProfileInformation')
+        ->assertHasErrors('username');
+
+    expect($user->refresh()->username)->toBe('oldname');
+});
+```
+
+- [ ] **Step 2: Run to see it fail**
+
+```bash
+./vendor/bin/sail artisan test --filter=ProfileTest
+```
+Expected: FAIL — `username` isn't a public property on the component yet.
+
+- [ ] **Step 3: Implement**
+
+In `resources/views/livewire/profile/update-profile-information-form.blade.php`'s
+`<?php ... ?>` block:
+
+```php
+public string $name = '';
+public string $email = '';
+public string $username = '';
+
+public function mount(): void
+{
+    $this->name = Auth::user()->name;
+    $this->email = Auth::user()->email;
+    $this->username = Auth::user()->username;
+}
+
+public function updateProfileInformation(): void
+{
+    $user = Auth::user();
+
+    $reserved = ['login', 'logout', 'register', 'admin', 'profile', 'gallery', 'forgot-password', 'reset-password', 'verify-email', 'confirm-password'];
+
+    $validated = $this->validate([
+        'name' => ['required', 'string', 'max:255'],
+        'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)->ignore($user->id)],
+        'username' => [
+            'required',
+            'string',
+            'lowercase',
+            'min:3',
+            'max:30',
+            'regex:/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/',
+            Rule::unique(User::class)->ignore($user->id),
+            Rule::notIn($reserved),
+        ],
+    ]);
+
+    $user->fill($validated);
+
+    if ($user->isDirty('email')) {
+        $user->email_verified_at = null;
+    }
+
+    $user->save();
+
+    $this->dispatch('profile-updated', name: $user->name);
+}
+```
+(`Rule::notIn()` needs `use Illuminate\Validation\Rule;`, already imported
+in this file for the email uniqueness rule — no new import needed. The
+regex requires the value start and end with an alphanumeric character,
+allowing hyphens only in the middle — matches the constraint most
+platforms put on a public handle, and guarantees the value is always a
+clean single URL path segment.)
+
+- [ ] **Step 4: Add the field to the view**
+
+In the same file's Blade section, add a username field between the
+existing `name` and `email` fields (or wherever fits the current layout
+best — check the file's current structure first):
+```blade
+<div>
+    <x-input-label for="username" :value="__('Username')" />
+    <x-text-input wire:model="username" id="username" name="username" type="text" class="mt-1 block w-full" required autocomplete="username" />
+    <x-input-error class="mt-2" :messages="$errors->get('username')" />
+    <p class="mt-1 text-xs" style="color: var(--muted)">{{ __('This is your public gallery URL: ') }}{{ url('/'.$username.'/gallery') }}</p>
+</div>
+```
+
+- [ ] **Step 5: Run the tests again**
+
+```bash
+./vendor/bin/sail artisan test --filter=ProfileTest
+```
+Expected: 5 new passing (plus existing ProfileTest cases unaffected).
+Then the full suite.
+
+- [ ] **Step 6: Rebuild assets, verify manually**
+
+```bash
+./vendor/bin/sail npm run build
+```
+With Sail on port 8090, log in, visit `/profile`, change your username,
+save, confirm the gallery link under the field updates and that visiting
+`/{new-username}/gallery` works while the old username 404s.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add resources/views/livewire/profile/update-profile-information-form.blade.php tests/Feature/ProfileTest.php
+git commit -m "feat(profile): allow changing the username, with platform-typical limits
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+```
+
+---
+
 ## What Phase 3 deliberately does NOT include
 
 - Browsing sets the target user has never added a card from (needs a
