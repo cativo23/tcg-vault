@@ -18,6 +18,7 @@
   --hair: rgba(20, 20, 18, 0.14);
   --signal: #37d17f;
   --flat: #9a988c;
+  --danger: #c23b2e; /* error/destructive UI only — never price semantics, never decorative */
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 

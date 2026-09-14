@@ -28,6 +28,7 @@ rainbow-holo rings, per-type accent colors, and ~6 rejected font pairings).
   --color-rule:       rgba(20,20,18,.14);    /* --hair — hairline dividers only */
   --color-accent:     oklch(70% 0.16 155);   /* --signal #37d17f — the ONE accent, means "price up" */
   --color-focus:      var(--color-accent);
+  --color-danger:     oklch(52% 0.18 25);    /* --danger #c23b2e — error/destructive UI only, see rule below */
 
   --font-display: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif; /* wdth axis: 62 (masthead h1) / 66 (brand, card names) / 70 (card head) / 100 (body) */
   --font-body:    "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -43,7 +44,8 @@ rainbow-holo rings, per-type accent colors, and ~6 rejected font pairings).
 **Non-negotiable rules that came out of the brainstorm, not just taste:**
 - **One family does display + body**, using Archivo's variable *width* axis (`font-variation-settings: 'wdth' N`) to get condensed-vs-normal voices instead of pairing a second typeface. `font-stretch` does **not** map this axis in Chrome — always set width via `font-variation-settings`, never `font-stretch`.
 - **Martian Mono is reserved for numerals only** (prices, card IDs, dates) — never body text, never headings. That's the entire "outlier" budget.
-- **One accent color, period.** `--color-accent` (green) means exactly one thing: "price trending up." Falling/flat prices render in `--color-flat` (neutral), never a second accent (e.g. red). Don't introduce holo/rainbow treatments or per-card-type accent colors — both were explicitly tried and rejected.
+- **One accent color, period — for price semantics.** `--color-accent` (green) means exactly one thing: "price trending up." Falling/flat prices render in `--color-flat` (neutral), never a second color standing in for price direction. Don't introduce holo/rainbow treatments or per-card-type accent colors — both were explicitly tried and rejected.
+- **`--color-danger` (red) is a separate, narrow exception**, added after Carlos flagged the original rule as ambiguous when Phase 2 needed a delete/error color: reserved *exclusively* for destructive actions (delete buttons) and validation errors — never for price direction, never decorative, never introduced as a second "accent" competing with green. If a screen needs to show "this failed" or "this is irreversible," `--color-danger` is correct; if it needs to show "this number went down," that's still `--color-flat`, not red.
 - **Card images are the content.** Chrome (masthead, stat band, ticker) carries the visual weight so the grid itself can stay plain — bone background, one hairline border, no ornament competing with the artwork.
 - **Card hover/interaction cascade split**: the outer wrapper (`.slot`) owns the entrance animation (`opacity`/`transform`, `animation-fill-mode: forwards`); the inner `.card` owns the hover/focus transform (`translateY(-9px) scale(1.05)`, `z-index: 30`). Never put both on the same element — a finished `forwards` animation permanently pins `transform` at higher cascade priority than `:hover`, silently killing the hover effect. This bit us once; don't reintroduce it.
 - Every card must render **name/set/price with no image** (`.imgwrap.empty` diagonal-hatch + icon + "Sin imagen") — image is optional, data is not.
