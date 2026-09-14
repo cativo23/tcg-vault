@@ -8,6 +8,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Validate;
 use Livewire\Component;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -17,6 +18,23 @@ final class CollectionItems extends Component
     public ?int $editingItemId = null;
 
     public string $editingNotes = '';
+
+    public ?int $editingFullItemId = null;
+
+    #[Validate('required|in:NM,LP,MP,HP,DMG')]
+    public string $editingCondition = 'NM';
+
+    #[Validate('required|integer|min:1')]
+    public int $editingQuantity = 1;
+
+    #[Validate('nullable|string|max:64')]
+    public ?string $editingVariant = null;
+
+    #[Validate('nullable|string|max:32')]
+    public ?string $editingGradeCompany = null;
+
+    #[Validate('nullable|string|max:16')]
+    public ?string $editingGradeValue = null;
 
     /**
      * `CollectionItem` has no `user_id` column, so it can never carry
@@ -73,6 +91,41 @@ final class CollectionItems extends Component
     public function delete(int $itemId): void
     {
         $this->ownedItemOrFail($itemId)->delete();
+    }
+
+    public function startEditingItem(int $itemId): void
+    {
+        $item = $this->ownedItemOrFail($itemId);
+        $this->editingFullItemId = $itemId;
+        $this->editingCondition = $item->condition;
+        $this->editingQuantity = $item->quantity;
+        $this->editingVariant = $item->variant;
+        $this->editingGradeCompany = $item->grade_company;
+        $this->editingGradeValue = $item->grade_value;
+    }
+
+    public function cancelEditingItem(): void
+    {
+        $this->editingFullItemId = null;
+        $this->resetValidation();
+    }
+
+    public function saveItem(): void
+    {
+        if ($this->editingFullItemId === null) {
+            return;
+        }
+
+        $this->validate();
+
+        $this->ownedItemOrFail($this->editingFullItemId)->update([
+            'condition' => $this->editingCondition,
+            'quantity' => $this->editingQuantity,
+            'variant' => $this->editingVariant,
+            'grade_company' => $this->editingGradeCompany,
+            'grade_value' => $this->editingGradeValue,
+        ]);
+        $this->editingFullItemId = null;
     }
 
     public function render()

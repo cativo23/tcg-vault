@@ -120,3 +120,73 @@ test('a user cannot edit another users item notes by guessing its ID (IDOR)', fu
 
     expect($otherItem->fresh()->notes)->toBe('original');
 });
+
+test('an admin can edit an items full details', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->set('editingCondition', 'LP')
+        ->set('editingQuantity', 3)
+        ->set('editingVariant', 'Reverse Holo')
+        ->set('editingGradeCompany', 'PSA')
+        ->set('editingGradeValue', '9')
+        ->call('saveItem');
+
+    $fresh = $item->fresh();
+    expect($fresh->condition)->toBe('LP');
+    expect($fresh->quantity)->toBe(3);
+    expect($fresh->variant)->toBe('Reverse Holo');
+    expect($fresh->grade_company)->toBe('PSA');
+    expect($fresh->grade_value)->toBe('9');
+});
+
+test('editing an items condition rejects a value outside the allowed set', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->set('editingCondition', 'NOT_A_REAL_CONDITION')
+        ->call('saveItem')
+        ->assertHasErrors('editingCondition');
+
+    expect($item->fresh()->condition)->toBe('NM');
+});
+
+test('a user cannot edit another users item full details by guessing its ID (IDOR)', function () {
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
+    $otherItem = CollectionItem::create([
+        'collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $otherItem->id)
+        ->assertStatus(404);
+
+    expect($otherItem->fresh()->condition)->toBe('NM');
+});
