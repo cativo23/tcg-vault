@@ -27,6 +27,22 @@ test('users can authenticate using the login screen', function () {
     $this->assertAuthenticated();
 });
 
+test('users can authenticate using their username instead of email', function () {
+    $user = User::factory()->create(['username' => 'testuser']);
+
+    $component = Volt::test('pages.auth.login')
+        ->set('form.email', 'testuser') // same field, no @ present
+        ->set('form.password', 'password');
+
+    $component->call('login');
+
+    $component
+        ->assertHasNoErrors()
+        ->assertRedirect(route('dashboard', absolute: false));
+
+    $this->assertAuthenticated();
+});
+
 test('users can not authenticate with invalid password', function () {
     $user = User::factory()->create();
 

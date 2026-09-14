@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Scopes\TenantScope;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
 {
@@ -27,6 +28,10 @@ class DatabaseSeeder extends Seeder
             ['email' => $email],
             [
                 'name' => 'Carlos',
+                'username' => Str::of(explode('@', $email)[0])
+                    ->lower()
+                    ->replaceMatches('/[^a-z0-9]/', '')
+                    ->toString(),
                 'password' => bcrypt($password),
                 'email_verified_at' => now(),
             ],
@@ -40,7 +45,7 @@ class DatabaseSeeder extends Seeder
         // the explicit, auditable opt-out this exact situation exists for.
         Collection::withoutGlobalScope(TenantScope::class)->firstOrCreate(
             ['user_id' => $user->id, 'slug' => 'my-collection'],
-            ['name' => 'My Collection', 'is_public' => false],
+            ['name' => 'My Collection', 'is_public' => true],
         );
     }
 }
