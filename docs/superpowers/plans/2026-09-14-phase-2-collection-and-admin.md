@@ -1284,6 +1284,7 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use App\Modules\Collection\Models\Collection;
+use App\Modules\Collection\Scopes\TenantScope;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -1299,7 +1300,13 @@ class DatabaseSeeder extends Seeder
             ],
         );
 
-        Collection::firstOrCreate(
+        // Console context has no authenticated user, so TenantScope's
+        // fail-closed default (see app/Modules/Collection/Scopes/TenantScope.php)
+        // would filter this query to `where user_id is null` and never find
+        // the row on a re-seed — hitting the unique [user_id, slug]
+        // constraint on every run after the first. withoutGlobalScope() is
+        // the explicit, auditable opt-out this exact situation exists for.
+        Collection::withoutGlobalScope(TenantScope::class)->firstOrCreate(
             ['user_id' => $user->id, 'slug' => 'my-collection'],
             ['name' => 'My Collection', 'is_public' => false],
         );
@@ -1392,6 +1399,46 @@ test('a user only sees their own items, never another users', function () {
     Livewire::test(\App\Livewire\Admin\CollectionItems::class)
         ->assertDontSee('Mega Darkrai ex');
 });
+
+test('a user cannot delete another users item by guessing its ID (IDOR)', function () {
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
+    $otherItem = CollectionItem::create([
+        'collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('delete', $otherItem->id)
+        ->assertStatus(404);
+
+    expect(CollectionItem::find($otherItem->id))->not->toBeNull();
+});
+
+test('a user cannot edit another users item notes by guessing its ID (IDOR)', function () {
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
+    $otherItem = CollectionItem::create([
+        'collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'notes' => 'original',
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingNotes', $otherItem->id)
+        ->assertStatus(404);
+
+    expect($otherItem->fresh()->notes)->toBe('original');
+});
 ```
 
 - [ ] **Step 3: Run to see it fail**
@@ -1421,9 +1468,30 @@ final class CollectionItems extends Component
 
     public string $editingNotes = '';
 
-    public function startEditingNotes(int $itemId): void
+    /**
+     * `CollectionItem` has no `user_id` column, so it can never carry
+     * `TenantScope` directly (Task 2's design). That means
+     * `CollectionItem::findOrFail($itemId)` alone is an IDOR: any logged-in
+     * user could pass any item ID, including another tenant's, and read or
+     * mutate it. This helper closes that — it walks through `Collection`
+     * (which DOES carry the scope) so an item belonging to a collection
+     * that isn't the authenticated user's throws a 404 `ModelNotFoundException`
+     * exactly like a real not-found, not a 403 that would confirm the ID
+     * exists. Every lookup by raw item ID in this class MUST go through
+     * this method — never call `CollectionItem::find()`/`findOrFail()`
+     * directly.
+     */
+    private function ownedItemOrFail(int $itemId): CollectionItem
     {
         $item = CollectionItem::findOrFail($itemId);
+        Collection::findOrFail($item->collection_id); // throws if not the caller's collection
+
+        return $item;
+    }
+
+    public function startEditingNotes(int $itemId): void
+    {
+        $item = $this->ownedItemOrFail($itemId);
         $this->editingItemId = $itemId;
         $this->editingNotes = (string) $item->notes;
     }
@@ -1434,13 +1502,13 @@ final class CollectionItems extends Component
             return;
         }
 
-        CollectionItem::findOrFail($this->editingItemId)->update(['notes' => $this->editingNotes]);
+        $this->ownedItemOrFail($this->editingItemId)->update(['notes' => $this->editingNotes]);
         $this->editingItemId = null;
     }
 
     public function delete(int $itemId): void
     {
-        CollectionItem::findOrFail($itemId)->delete();
+        $this->ownedItemOrFail($itemId)->delete();
     }
 
     public function render()
@@ -1536,7 +1604,7 @@ place (this one line) to change later if the redirect target ever moves.
 ./vendor/bin/sail artisan test --filter=CollectionItemsTest
 ```
 
-Expected: 4 passed. Then run the full suite:
+Expected: 6 passed (the original 4 plus the two IDOR regression tests). Then run the full suite:
 
 ```bash
 ./vendor/bin/sail artisan test
