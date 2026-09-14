@@ -27,7 +27,15 @@ class UserFactory extends Factory
         return [
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
-            'username' => Str::slug(fake()->unique()->userName()),
+            // Str::slug() strips punctuation instead of substituting it, so
+            // two distinct Faker values (e.g. "O'Brien.Tom" and
+            // "obrien.tom") can collapse to the same slug even though
+            // fake()->unique() only guarantees uniqueness on the raw,
+            // pre-slug value — demonstrated collision, not theoretical.
+            // Appending fake()->unique()'s own numeric suffix keeps the
+            // slug readable while guaranteeing no two factory users ever
+            // collide on username, independent of how lossy the slug is.
+            'username' => Str::slug(fake()->userName()).'-'.fake()->unique()->numerify('####'),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
