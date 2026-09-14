@@ -13,7 +13,7 @@ uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class
 
 // Unit tests under Modules/Catalog need the Laravel container for Http::fake()/config(),
 // but this binding does not apply to other Unit tests.
-uses(Tests\TestCase::class)->in('Unit/Modules/Catalog');
+uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Catalog');
 
 /*
 |--------------------------------------------------------------------------
