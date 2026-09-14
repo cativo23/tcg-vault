@@ -25,4 +25,15 @@ Route::get('/admin', \App\Livewire\Admin\CollectionItems::class)
     ->middleware(['auth'])
     ->name('admin.collection.index');
 
+Route::get('/{username}/gallery', \App\Livewire\Gallery\Index::class)
+    ->name('gallery.index');
+
+// Placeholder for Task 5, which owns the real set-detail screen — kept here
+// only so Task 4's gallery links resolve. Same name/URI Task 5 will
+// register, so its route definition can replace this line cleanly with no
+// duplicate-name error (mirrors Phase 2's Task 5→6 admin.collection.index
+// pattern).
+Route::get('/{username}/gallery/{setTcgdexId}', fn () => abort(404))
+    ->name('gallery.show');
+
 require __DIR__.'/auth.php';

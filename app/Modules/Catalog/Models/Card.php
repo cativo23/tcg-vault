@@ -6,6 +6,7 @@ namespace App\Modules\Catalog\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -42,5 +43,10 @@ final class Card extends Model
     public function priceSnapshots(): HasMany
     {
         return $this->hasMany(CardPriceSnapshot::class);
+    }
+
+    public function collectionItems(): HasMany
+    {
+        return $this->hasMany(CollectionItem::class);
     }
 }
