@@ -2052,6 +2052,127 @@ Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
 
 ---
 
+### Task 9: Adding an identical printing increments quantity instead of duplicating the row
+
+> Added at Carlos's explicit request, and matches a non-blocking finding the
+> final whole-branch review already surfaced: `collection_items` has no
+> uniqueness constraint on `(collection_id, card_id, variant, condition,
+> grade_company, grade_value)`, so adding the same printing twice today
+> creates two separate rows instead of bumping `quantity` on the existing
+> one. This task makes `CollectionService::addItem()` an upsert.
+
+**Files:**
+- Modify: `app/Modules/Collection/Services/CollectionService.php`
+- Test: `tests/Unit/Modules/Collection/CollectionServiceTest.php`
+
+**Interfaces:**
+- No change to `addItem()`'s public signature
+  (`addItem(Collection $collection, string $tcgdexCardId, array $itemData): CollectionItem`)
+  or its `$itemData` shape — only its internal behavior changes. Callers
+  (`AddCollectionItem::save()`, Task 5) need no changes.
+
+- [ ] **Step 1: Write the failing test**
+
+```php
+test('adding an identical printing again increments quantity instead of creating a new row', function () {
+    $user = User::factory()->create();
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    $catalogSync = Mockery::mock(CatalogSyncService::class);
+    $catalogSync->shouldReceive('syncCard')->twice()->with('me05-116')->andReturn($card);
+    $service = new CollectionService($catalogSync);
+
+    $first = $service->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
+    $second = $service->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 2]);
+
+    expect($second->id)->toBe($first->id);
+    expect($first->fresh()->quantity)->toBe(3);
+    expect(CollectionItem::where('collection_id', $collection->id)->count())->toBe(1);
+});
+
+test('a different variant or condition of the same card creates a separate row, not a merge', function () {
+    $user = User::factory()->create();
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    $catalogSync = Mockery::mock(CatalogSyncService::class);
+    $catalogSync->shouldReceive('syncCard')->twice()->with('me05-116')->andReturn($card);
+    $service = new CollectionService($catalogSync);
+
+    $service->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
+    $service->addItem($collection, 'me05-116', ['condition' => 'LP', 'quantity' => 1]); // different condition
+
+    expect(CollectionItem::where('collection_id', $collection->id)->count())->toBe(2);
+});
+```
+(Check the existing `CollectionServiceTest.php` for how it currently mocks
+`CatalogSyncService` and imports its test doubles — match that exact
+pattern rather than introducing a different mocking style in the same
+file.)
+
+- [ ] **Step 2: Run to see it fail**
+
+```bash
+./vendor/bin/sail artisan test --filter=CollectionServiceTest
+```
+Expected: FAIL on the "increments quantity" test (creates 2 rows, not 1).
+
+- [ ] **Step 3: Implement the upsert**
+
+In `app/Modules/Collection/Services/CollectionService.php`, before creating
+a new row, look for an existing one matching every identity column
+(`card_id`, `variant`, `condition`, `grade_company`, `grade_value` — NOT
+`notes`/`photo_path`, those aren't part of the printing's identity). Treat
+`null` and `null` as equal (a card added with no variant/grade specified,
+added again with no variant/grade specified, is the same printing) — Eloquent's
+`where('column', null)` does NOT match SQL `IS NULL` correctly for a
+plain `where()`, so use `whereNull()` for any `$itemData` field that's
+null rather than a bare `where('grade_value', null)`. If a match is found,
+increment its `quantity` by the incoming `quantity` (default 1) and leave
+`notes`/`photo_path` untouched (don't overwrite existing notes with null,
+don't overwrite an existing photo). If no match, create a new row exactly
+as today.
+
+- [ ] **Step 4: Run the tests again**
+
+```bash
+./vendor/bin/sail artisan test --filter=CollectionServiceTest
+```
+Expected: passing. Then the full suite — this touches a Task 4 file
+consumed by Task 5's `AddCollectionItem::save()`, so re-run the Livewire
+tests too:
+
+```bash
+./vendor/bin/sail artisan test
+```
+Expected: all passing, no regressions (check `AddCollectionItemTest`
+specifically — if any existing test there asserts "a second identical add
+creates a second row," that assertion is now intentionally wrong and needs
+updating to match the new behavior, not treated as a regression to
+preserve).
+
+- [ ] **Step 5: Verify manually in the browser**
+
+With Sail running on port 8090: add a card via `/admin/add`, then add the
+exact same card again with the same condition (and same variant, once Task
+8 lands). Confirm `/admin` shows ONE row with quantity 2, not two rows.
+Then add it again with a DIFFERENT condition and confirm that DOES create
+a second row.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add app/Modules/Collection/Services/CollectionService.php tests/Unit/Modules/Collection/CollectionServiceTest.php
+git commit -m "feat(collection): merge quantity into an existing row instead of duplicating identical printings
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+```
+
+---
+
 ## What Phase 2 deliberately does NOT include
 
 - No public gallery — that's Phase 3.
