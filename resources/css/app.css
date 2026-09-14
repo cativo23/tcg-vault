@@ -85,7 +85,7 @@ body {
 }
 
 .nw-input {
-  background: #fff;
+  background: var(--bone-2);
   color: var(--ink);
   border: 1px solid var(--hair);
   border-radius: 6px;
@@ -169,7 +169,7 @@ body {
 
 .nw-btn-primary:active, .nw-btn-secondary:active, .nw-btn-danger:active {
   transform: scale(0.97);
-  transition: transform 80ms var(--ease);
+  transition: transform 120ms var(--ease);
 }
 
 @media (prefers-reduced-motion: reduce) {
