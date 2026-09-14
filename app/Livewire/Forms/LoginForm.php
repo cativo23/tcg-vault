@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Forms;
 
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -66,9 +67,22 @@ class LoginForm extends Form
 
     /**
      * Get the authentication rate limiting throttle key.
+     *
+     * Login now accepts either email or username for the same account
+     * (Phase 3, Task 1) — throttling on the raw submitted string would let
+     * an attacker locked out on one identifier immediately switch to the
+     * other and get a fresh bucket of attempts against the same account.
+     * Resolve to the account's canonical email first (checking both
+     * columns) so both identifiers share one throttle bucket; a string
+     * that matches no account at all still throttles on the raw input,
+     * so bogus attempts remain rate-limited too.
      */
     protected function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->email).'|'.request()->ip());
+        $identifier = User::where('email', $this->email)
+            ->orWhere('username', $this->email)
+            ->value('email') ?? $this->email;
+
+        return Str::transliterate(Str::lower($identifier).'|'.request()->ip());
     }
 }

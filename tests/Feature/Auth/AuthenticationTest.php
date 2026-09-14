@@ -43,6 +43,31 @@ test('users can authenticate using their username instead of email', function ()
     $this->assertAuthenticated();
 });
 
+test('rate limiting a login by email also throttles the same account by username', function () {
+    $user = User::factory()->create(['username' => 'testuser']);
+
+    // 5 failed attempts using the EMAIL identifier trips the limiter.
+    for ($i = 0; $i < 5; $i++) {
+        Volt::test('pages.auth.login')
+            ->set('form.email', $user->email)
+            ->set('form.password', 'wrong-password')
+            ->call('login');
+    }
+
+    // Switching to the USERNAME identifier for the same account must
+    // still be throttled — a bypass here would let an attacker locked
+    // out on one identifier immediately get a fresh attempt bucket by
+    // switching to the other.
+    $component = Volt::test('pages.auth.login')
+        ->set('form.email', 'testuser')
+        ->set('form.password', 'password'); // the account's real password — must still be rejected while throttled
+
+    $component->call('login');
+
+    $component->assertHasErrors();
+    $this->assertGuest();
+});
+
 test('users can not authenticate with invalid password', function () {
     $user = User::factory()->create();
 
