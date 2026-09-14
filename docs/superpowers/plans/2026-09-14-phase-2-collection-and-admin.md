@@ -1637,6 +1637,229 @@ Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
 
 ---
 
+### Task 7: Admin Livewire — full item edit (condition, quantity, variant, grade)
+
+> Added after Task 6 shipped, at Carlos's explicit request ("si deberia poder
+> editar los demas, por que si me equivoque") — Task 6 only let notes be
+> edited inline; everything else set at add-time (condition, quantity,
+> variant, grade company/value) was otherwise permanent. This task closes
+> that gap using the exact same `ownedItemOrFail()` IDOR guard Task 6
+> already built and proved with regression tests — no new tenant-scope
+> pattern, just reusing the load-bearing one that exists.
+
+**Files:**
+- Modify: `app/Livewire/Admin/CollectionItems.php`
+- Modify: `resources/views/livewire/admin/collection-items.blade.php`
+- Test: `tests/Feature/Livewire/Admin/CollectionItemsTest.php`
+
+**Interfaces:**
+- Consumes: `ownedItemOrFail()` (Task 6, already in `CollectionItems.php` —
+  do not duplicate or re-derive it; every lookup below must go through it).
+- `collection_items` columns available to edit (from
+  `database/migrations/2026_09_15_000002_create_collection_items_table.php`):
+  `variant` (nullable string), `condition` (required string), `grade_company`
+  (nullable string), `grade_value` (nullable string), `quantity` (unsigned
+  int, default 1). `card_id`/`card_tcgdex_id`/`photo_path` are NOT editable
+  here — changing which card an item points to is a delete-and-re-add, not
+  an edit; photo replacement is out of scope for this task.
+
+- [ ] **Step 1: Write the failing test**
+
+```php
+test('an admin can edit an items full details', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->set('editingCondition', 'LP')
+        ->set('editingQuantity', 3)
+        ->set('editingVariant', 'Reverse Holo')
+        ->set('editingGradeCompany', 'PSA')
+        ->set('editingGradeValue', '9')
+        ->call('saveItem');
+
+    $fresh = $item->fresh();
+    expect($fresh->condition)->toBe('LP');
+    expect($fresh->quantity)->toBe(3);
+    expect($fresh->variant)->toBe('Reverse Holo');
+    expect($fresh->grade_company)->toBe('PSA');
+    expect($fresh->grade_value)->toBe('9');
+});
+
+test('editing an items condition rejects a value outside the allowed set', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->set('editingCondition', 'NOT_A_REAL_CONDITION')
+        ->call('saveItem')
+        ->assertHasErrors('editingCondition');
+
+    expect($item->fresh()->condition)->toBe('NM');
+});
+
+test('a user cannot edit another users item full details by guessing its ID (IDOR)', function () {
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
+    $otherItem = CollectionItem::create([
+        'collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $otherItem->id)
+        ->assertStatus(404);
+
+    expect($otherItem->fresh()->condition)->toBe('NM');
+});
+```
+
+- [ ] **Step 2: Run to see it fail**
+
+```bash
+./vendor/bin/sail artisan test --filter=CollectionItemsTest
+```
+
+Expected: FAIL — `startEditingItem`/`saveItem` methods don't exist yet.
+
+- [ ] **Step 3: Add the editing state and methods to `CollectionItems.php`**
+
+Add alongside the existing `editingItemId`/`editingNotes` properties (do not
+remove or rename those — the notes-only inline edit from Task 6 stays):
+
+```php
+    public ?int $editingFullItemId = null;
+
+    #[Validate('required|in:NM,LP,MP,HP,DMG')]
+    public string $editingCondition = 'NM';
+
+    #[Validate('required|integer|min:1')]
+    public int $editingQuantity = 1;
+
+    #[Validate('nullable|string|max:64')]
+    public ?string $editingVariant = null;
+
+    #[Validate('nullable|string|max:32')]
+    public ?string $editingGradeCompany = null;
+
+    #[Validate('nullable|string|max:16')]
+    public ?string $editingGradeValue = null;
+
+    public function startEditingItem(int $itemId): void
+    {
+        $item = $this->ownedItemOrFail($itemId);
+        $this->editingFullItemId = $itemId;
+        $this->editingCondition = $item->condition;
+        $this->editingQuantity = $item->quantity;
+        $this->editingVariant = $item->variant;
+        $this->editingGradeCompany = $item->grade_company;
+        $this->editingGradeValue = $item->grade_value;
+    }
+
+    public function cancelEditingItem(): void
+    {
+        $this->editingFullItemId = null;
+        $this->resetValidation();
+    }
+
+    public function saveItem(): void
+    {
+        if ($this->editingFullItemId === null) {
+            return;
+        }
+
+        $this->validate();
+
+        $this->ownedItemOrFail($this->editingFullItemId)->update([
+            'condition' => $this->editingCondition,
+            'quantity' => $this->editingQuantity,
+            'variant' => $this->editingVariant,
+            'grade_company' => $this->editingGradeCompany,
+            'grade_value' => $this->editingGradeValue,
+        ]);
+        $this->editingFullItemId = null;
+    }
+```
+
+Add the `use Livewire\Attributes\Validate;` import.
+
+Note: `startEditingItem()` must go through `ownedItemOrFail()` exactly like
+`startEditingNotes()` does — this is the same IDOR guard, reused, not a new
+one. The `editingCondition` validation (`in:NM,LP,MP,HP,DMG`) also closes a
+minor gap Task 5's review flagged on the add-card form (no enum constraint
+on condition) — apply the same fix here since this task touches the same
+field.
+
+- [ ] **Step 4: Add an edit control to the view**
+
+In `resources/views/livewire/admin/collection-items.blade.php`, add an
+"Edit" button/link next to the existing "Delete" button in the actions
+column, and a small inline edit panel (shown when
+`$editingFullItemId === $item->id`) with `wire:model` bindings for
+`editingCondition` (a `<select>` matching the add-card form's 5 options),
+`editingQuantity`, `editingVariant`, `editingGradeCompany`,
+`editingGradeValue`, a "Save" button (`wire:click="saveItem"`) and a
+"Cancel" button (`wire:click="cancelEditingItem"`). Follow the same
+`.nw-card`/token-variable styling as the rest of this view and Task 5's
+add-card form — no new colors/fonts outside `design.md`.
+
+- [ ] **Step 5: Run the tests again**
+
+```bash
+./vendor/bin/sail artisan test --filter=CollectionItemsTest
+```
+
+Expected: 9 passed (Task 6's original 6 plus this task's 3).
+
+```bash
+./vendor/bin/sail artisan test
+```
+
+Expected: everything passes, no regressions.
+
+- [ ] **Step 6: Verify manually in the browser**
+
+With Sail running on port 8090, log in, go to `/admin`, click "Edit" on an
+existing item, change its condition/quantity/grade, save, and confirm the
+table reflects the change. Try saving an invalid condition (if reachable
+through the UI, e.g. by temporarily editing the `<select>` options in
+devtools) and confirm the validation error shows instead of persisting bad
+data.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add app/Livewire/Admin/CollectionItems.php resources/views/livewire/admin/collection-items.blade.php tests/Feature/Livewire/Admin/CollectionItemsTest.php
+git commit -m "feat(admin): allow editing an item's full details, not just notes
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+```
+
+---
+
 ## What Phase 2 deliberately does NOT include
 
 - No public gallery — that's Phase 3.
