@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Models\User;
+use App\Modules\Collection\Models\Collection;
+use App\Modules\Collection\Scopes\TenantScope;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -21,13 +23,24 @@ class DatabaseSeeder extends Seeder
             );
         }
 
-        User::firstOrCreate(
+        $user = User::firstOrCreate(
             ['email' => $email],
             [
                 'name' => 'Carlos',
                 'password' => bcrypt($password),
                 'email_verified_at' => now(),
             ],
+        );
+
+        // Console context has no authenticated user, so TenantScope's
+        // fail-closed default (see app/Modules/Collection/Scopes/TenantScope.php)
+        // would filter this query to `where user_id is null` and never find
+        // the row on a re-seed — hitting the unique [user_id, slug]
+        // constraint on every run after the first. withoutGlobalScope() is
+        // the explicit, auditable opt-out this exact situation exists for.
+        Collection::withoutGlobalScope(TenantScope::class)->firstOrCreate(
+            ['user_id' => $user->id, 'slug' => 'my-collection'],
+            ['name' => 'My Collection', 'is_public' => false],
         );
     }
 }

@@ -48,7 +48,9 @@ test('navigation menu can be rendered', function () {
 
     $this->actingAs($user);
 
-    $response = $this->get('/dashboard');
+    // Task 6 made '/dashboard' forward to '/admin' (the real landing page);
+    // exercise the actual rendered page directly rather than following the redirect.
+    $response = $this->get('/admin');
 
     $response
         ->assertOk()
