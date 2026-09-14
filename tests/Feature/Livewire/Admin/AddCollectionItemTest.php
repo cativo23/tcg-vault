@@ -148,6 +148,30 @@ test('a malformed catalog search response shows a friendly error instead of cras
         ->assertSet('results', []);
 });
 
+test('a stale search error clears once a later search succeeds', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Darkrai')->once()->andThrow(
+        new \App\Modules\Catalog\Exceptions\MalformedCatalogResponseException('Malformed tcgdex search response for query [Darkrai]: response body is not a JSON array.'),
+    );
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu')->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: null),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $component = Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Darkrai')
+        ->call('runSearch')
+        ->assertHasErrors('search');
+
+    $component->set('search', 'Pikachu')
+        ->call('runSearch')
+        ->assertHasNoErrors('search');
+});
+
 test('a brand-new user with no Collection row can save a card, which creates one on demand', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

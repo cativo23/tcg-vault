@@ -66,6 +66,8 @@ final class AddCollectionItem extends Component
 
     public function runSearch(CardCatalogProvider $provider): void
     {
+        $this->resetErrorBag('search');
+
         if ($this->search === '') {
             $this->results = [];
 
