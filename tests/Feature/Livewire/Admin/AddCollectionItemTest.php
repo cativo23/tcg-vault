@@ -1,0 +1,91 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\User;
+use App\Modules\Catalog\Contracts\CardCatalogProvider;
+use App\Modules\Catalog\Data\CardDetailData;
+use App\Modules\Catalog\Data\CardSummaryData;
+use App\Modules\Catalog\Data\PriceEntryData;
+use App\Modules\Collection\Models\Collection;
+use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Livewire;
+use Spatie\LaravelData\DataCollection;
+
+test('a logged-in admin can search tcgdex and see results', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Darkrai')->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: 'https://assets.tcgdex.net/en/me/me05/116/high.webp'),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Darkrai')
+        ->call('runSearch')
+        ->assertSet('results.0.name', 'Mega Darkrai ex');
+});
+
+test('a logged-in admin can select a result and save it to the collection', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: null),
+    ]);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->with('me05')->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->set('search', 'Darkrai')
+        ->call('runSearch')
+        ->call('selectCard', 'me05-116')
+        ->set('condition', 'NM')
+        ->set('quantity', 1)
+        ->call('save')
+        ->assertRedirect();
+
+    expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeTrue();
+});
+
+test('an uploaded photo is stored and its path saved on the item', function () {
+    Storage::fake('collection-photos');
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'me05-116')
+        ->set('condition', 'NM')
+        ->set('photo', UploadedFile::fake()->image('card.jpg'))
+        ->call('save');
+
+    $item = CollectionItem::where('card_tcgdex_id', 'me05-116')->firstOrFail();
+    expect($item->photo_path)->not->toBeNull();
+    Storage::disk('collection-photos')->assertExists(basename($item->photo_path));
+});
