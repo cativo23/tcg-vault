@@ -13,12 +13,17 @@ final class MalformedCatalogResponseException extends RuntimeException
 
     public static function forCard(string $tcgdexId, string $reason): self
     {
-        return new self("Malformed tcgdex card response for [{$tcgdexId}]: {$reason}");
+        // $tcgdexId reaches here only after assertValidTcgdexId()'s
+        // charset guard (findCard()/findSet() callers), so it can't
+        // actually carry CR/LF today — sanitized anyway for defense in
+        // depth and consistency with every other factory in this file,
+        // in case a future caller ever reaches this without that guard.
+        return new self('Malformed tcgdex card response for ['.self::sanitizeForLog($tcgdexId)."]: {$reason}");
     }
 
     public static function forSet(string $tcgdexId, string $reason): self
     {
-        return new self("Malformed tcgdex set response for [{$tcgdexId}]: {$reason}");
+        return new self('Malformed tcgdex set response for ['.self::sanitizeForLog($tcgdexId)."]: {$reason}");
     }
 
     public static function forSearch(string $query, string $reason): self
