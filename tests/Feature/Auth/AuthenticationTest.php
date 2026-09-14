@@ -68,6 +68,29 @@ test('rate limiting a login by email also throttles the same account by username
     $this->assertGuest();
 });
 
+test('rate limiting cannot be bypassed with a case variant of the username', function () {
+    $user = User::factory()->create(['username' => 'testuser']);
+
+    for ($i = 0; $i < 5; $i++) {
+        Volt::test('pages.auth.login')
+            ->set('form.email', $user->email)
+            ->set('form.password', 'wrong-password')
+            ->call('login');
+    }
+
+    // Postgres `=` is case-sensitive — submitting an UPPERCASE variant of
+    // the stored username must still resolve to the same account/bucket,
+    // not silently fail to match and fall back to a fresh throttle key.
+    $component = Volt::test('pages.auth.login')
+        ->set('form.email', 'TESTUSER')
+        ->set('form.password', 'password');
+
+    $component->call('login');
+
+    $component->assertHasErrors();
+    $this->assertGuest();
+});
+
 test('users can not authenticate with invalid password', function () {
     $user = User::factory()->create();
 

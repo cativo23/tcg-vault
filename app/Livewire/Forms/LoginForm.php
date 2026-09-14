@@ -76,11 +76,22 @@ class LoginForm extends Form
      * columns) so both identifiers share one throttle bucket; a string
      * that matches no account at all still throttles on the raw input,
      * so bogus attempts remain rate-limited too.
+     *
+     * The lookup is case-insensitive on purpose: Postgres `=` is
+     * case-sensitive by default, and lowering the submitted value only
+     * AFTER resolution (rather than during the lookup) would let an
+     * attacker locked out on 'testuser' bypass it by submitting
+     * 'TESTUSER' — a case variant that fails to resolve, falls back to
+     * the raw input, and lands in a fresh bucket once lowered. Comparing
+     * `LOWER(column) = LOWER(input)` closes that without needing a
+     * citext column or a case-insensitive collation on the schema.
      */
     protected function throttleKey(): string
     {
-        $identifier = User::where('email', $this->email)
-            ->orWhere('username', $this->email)
+        $lowered = Str::lower($this->email);
+
+        $identifier = User::whereRaw('LOWER(email) = ?', [$lowered])
+            ->orWhereRaw('LOWER(username) = ?', [$lowered])
             ->value('email') ?? $this->email;
 
         return Str::transliterate(Str::lower($identifier).'|'.request()->ip());
