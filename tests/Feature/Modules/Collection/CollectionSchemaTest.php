@@ -20,11 +20,18 @@ test('a collection belongs to a user and the tenant scope filters by the authent
     expect(Collection::first()->name)->toBe("Owner's");
 });
 
-test('an unauthenticated context sees no tenant filtering applied (used only by console/seeders)', function () {
+test('an unauthenticated context sees zero rows — the scope fails closed, never open', function () {
     $owner = User::factory()->create();
     Collection::factory()->for($owner)->create(['name' => 'Any', 'slug' => 'any']);
 
-    expect(Collection::count())->toBe(1);
+    expect(Collection::count())->toBe(0);
+});
+
+test('console/seeder code can still reach every tenant by explicitly opting out of the scope', function () {
+    $owner = User::factory()->create();
+    Collection::factory()->for($owner)->create(['name' => 'Any', 'slug' => 'any']);
+
+    expect(Collection::withoutGlobalScope(\App\Modules\Collection\Scopes\TenantScope::class)->count())->toBe(1);
 });
 
 test('a collection has many items, and an item belongs to a card', function () {
