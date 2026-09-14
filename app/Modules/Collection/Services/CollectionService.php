@@ -19,14 +19,46 @@ final class CollectionService
     {
         $card = $this->catalogSyncService->syncCard($tcgdexCardId);
 
+        $variant = $itemData['variant'] ?? null;
+        $condition = $itemData['condition'];
+        $gradeCompany = $itemData['grade_company'] ?? null;
+        $gradeValue = $itemData['grade_value'] ?? null;
+        $quantity = $itemData['quantity'] ?? 1;
+
+        $identityColumns = [
+            'variant' => $variant,
+            'condition' => $condition,
+            'grade_company' => $gradeCompany,
+            'grade_value' => $gradeValue,
+        ];
+
+        $existingItem = $collection->items()
+            ->where('card_id', $card->id)
+            ->where(function ($query) use ($identityColumns): void {
+                foreach ($identityColumns as $column => $value) {
+                    if ($value === null) {
+                        $query->whereNull($column);
+                    } else {
+                        $query->where($column, $value);
+                    }
+                }
+            })
+            ->first();
+
+        if ($existingItem !== null) {
+            $existingItem->increment('quantity', $quantity);
+
+            return $existingItem;
+        }
+
         return $collection->items()->create([
             'card_id' => $card->id,
             'card_tcgdex_id' => $tcgdexCardId,
-            'variant' => $itemData['variant'] ?? null,
-            'condition' => $itemData['condition'],
-            'grade_company' => $itemData['grade_company'] ?? null,
-            'grade_value' => $itemData['grade_value'] ?? null,
-            'quantity' => $itemData['quantity'] ?? 1,
+            'variant' => $variant,
+            'condition' => $condition,
+            'grade_company' => $gradeCompany,
+            'grade_value' => $gradeValue,
+            'quantity' => $quantity,
             'notes' => $itemData['notes'] ?? null,
             'photo_path' => $itemData['photo_path'] ?? null,
         ]);
