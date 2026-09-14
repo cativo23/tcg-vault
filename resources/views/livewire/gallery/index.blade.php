@@ -4,7 +4,7 @@
     <div class="grid gap-4" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))">
         @foreach ($sets as $set)
             @php
-                $total = $set->card_count ?? $set->cards()->count();
+                $total = $set->card_count ?? $set->real_card_count;
                 $owned = $set->owned_card_count;
                 $pct = $total > 0 ? (int) round(($owned / $total) * 100) : 0;
             @endphp

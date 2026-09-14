@@ -53,6 +53,14 @@ final class Index extends Component
                         $q->whereIn('collection_id', $publicCollectionIds);
                     });
                 },
+                // Some sets never got `card_count` populated during
+                // Catalog sync (Phase 1). Computing the real card total
+                // here, in the same query, avoids the view falling back
+                // to `$set->cards()->count()` per row in a loop — that
+                // fallback is correct in isolation but is a real N+1 the
+                // moment more than one under-synced set shows up on a
+                // gallery page.
+                'cards as real_card_count',
             ])
             ->get();
 
