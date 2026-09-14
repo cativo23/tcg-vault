@@ -2173,6 +2173,334 @@ Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
 
 ---
 
+### Task 10: Finish `design.md` on the stock Breeze chrome + a tasteful motion pass
+
+> Added at Carlos's explicit request ("TODO la UI debe estar animada con
+> buen gusto, con animaciones sutiles pero le den ese plus") plus a
+> connected gap the final whole-branch review already surfaced: Task 1
+> only restyled the two layout wrappers (`layouts/app.blade.php`,
+> `layouts/guest.blade.php`) — every Breeze-generated component
+> (buttons, inputs, nav, dropdown) is still stock Tailwind
+> gray/indigo/red-600, never touched by `design.md`. Animating unfinished
+> gray chrome would look bolted-on, so this task finishes the token
+> migration AND adds the motion layer in one pass, per Carlos's own call
+> when asked which order to do it in.
+
+**Files:**
+- Modify: `resources/css/app.css` (new reusable primitives + motion rules)
+- Modify: `resources/views/components/primary-button.blade.php`
+- Modify: `resources/views/components/secondary-button.blade.php`
+- Modify: `resources/views/components/danger-button.blade.php`
+- Modify: `resources/views/components/text-input.blade.php`
+- Modify: `resources/views/components/input-label.blade.php`
+- Modify: `resources/views/components/input-error.blade.php`
+- Modify: `resources/views/components/dropdown.blade.php`
+- Modify: `resources/views/components/dropdown-link.blade.php`
+- Modify: `resources/views/components/nav-link.blade.php`
+- Modify: `resources/views/components/responsive-nav-link.blade.php`
+- Modify: `resources/views/livewire/layout/navigation.blade.php`
+- Modify: `resources/views/livewire/welcome/navigation.blade.php` (apply
+  the same token substitutions Step 1 defines — read the file first, it
+  wasn't reproduced here since it wasn't read this session, but it's the
+  same Breeze gray/indigo pattern as the other nav)
+- Modify: `resources/views/livewire/admin/collection-items.blade.php`
+  (motion only — table rows)
+- Modify: `resources/views/livewire/admin/add-collection-item.blade.php`
+  (motion only — search result grid)
+- No test file — this is a pure presentation change with no new behavior
+  to unit-test; verification is the existing full suite (nothing should
+  break) plus manual browser confirmation.
+
+**Interfaces:**
+- Consumes: existing tokens in `resources/css/app.css`'s `:root` block
+  (`--bone`, `--bone-2`, `--bone-3`, `--ink`, `--ink-2`, `--muted`,
+  `--hair`, `--signal`, `--flat`, `--danger`, `--ease`) — do not add new
+  color tokens, everything needed already exists.
+- Produces: 3 new reusable CSS classes (`.nw-btn-secondary`, `.nw-input`,
+  `.nw-link`) alongside the existing `.nw-btn-primary`/`.nw-card` for any
+  future screen to reuse, plus a global focus-visible rule and a reusable
+  stagger-entrance pattern.
+
+## Part A — Token migration (no motion yet)
+
+- [ ] **Step 1: Add the missing reusable primitives to `resources/css/app.css`**
+
+Add after the existing `.nw-card` rule, before the `.modal-in` block:
+
+```css
+.nw-btn-secondary {
+  background: var(--bone-2);
+  color: var(--ink);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 0.6rem 1.1rem;
+  font-weight: 600;
+  transition: background 160ms var(--ease);
+}
+.nw-btn-secondary:hover {
+  background: var(--bone-3);
+}
+
+.nw-btn-danger {
+  background: var(--danger);
+  color: var(--bone);
+  border-radius: 8px;
+  padding: 0.6rem 1.1rem;
+  font-weight: 600;
+  transition: opacity 160ms var(--ease);
+}
+.nw-btn-danger:hover {
+  opacity: 0.85;
+}
+
+.nw-input {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  transition: border-color 160ms var(--ease);
+}
+.nw-input:focus {
+  border-color: var(--signal);
+  outline: none;
+}
+
+.nw-link {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  transition: color 160ms var(--ease), border-color 160ms var(--ease);
+}
+.nw-link:hover {
+  color: var(--ink);
+}
+.nw-link.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
+}
+
+/* design.md CTA/interactive voice: "Focus state · outline 2px solid
+   var(--color-accent) offset 3px — same visual treatment as hover, so
+   keyboard users get full parity." Applied globally so every interactive
+   element gets it, not just the ones this task happens to touch. */
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+}
+```
+
+- [ ] **Step 2: Rewrite the button components**
+
+`resources/views/components/primary-button.blade.php` — replace the
+existing `<button>` classes with `.nw-btn-primary`:
+```blade
+<button {{ $attributes->merge(['type' => 'submit', 'class' => 'nw-btn-primary text-sm']) }}>
+    {{ $slot }}
+</button>
+```
+
+`resources/views/components/secondary-button.blade.php`:
+```blade
+<button {{ $attributes->merge(['type' => 'button', 'class' => 'nw-btn-secondary text-sm']) }}>
+    {{ $slot }}
+</button>
+```
+
+`resources/views/components/danger-button.blade.php`:
+```blade
+<button {{ $attributes->merge(['type' => 'submit', 'class' => 'nw-btn-danger text-sm']) }}>
+    {{ $slot }}
+</button>
+```
+
+- [ ] **Step 3: Rewrite the form components**
+
+`resources/views/components/text-input.blade.php`:
+```blade
+@props(['disabled' => false])
+
+<input @disabled($disabled) {{ $attributes->merge(['class' => 'nw-input w-full']) }}>
+```
+
+`resources/views/components/input-label.blade.php`:
+```blade
+@props(['value'])
+
+<label {{ $attributes->merge(['class' => 'block font-medium text-sm mb-1']) }} style="color: var(--muted)">
+    {{ $value ?? $slot }}
+</label>
+```
+
+`resources/views/components/input-error.blade.php`:
+```blade
+@props(['messages'])
+
+@if ($messages)
+    <ul {{ $attributes->merge(['class' => 'text-sm space-y-1']) }} style="color: var(--danger)">
+        @foreach ((array) $messages as $message)
+            <li>{{ $message }}</li>
+        @endforeach
+    </ul>
+@endif
+```
+
+- [ ] **Step 4: Rewrite the dropdown and nav-link components**
+
+`resources/views/components/dropdown-link.blade.php`:
+```blade
+<a {{ $attributes->merge(['class' => 'block w-full px-4 py-2 text-start text-sm leading-5 transition duration-150 ease-in-out']) }} style="color: var(--ink)" onmouseover="this.style.background='var(--bone-2)'" onmouseout="this.style.background=''">{{ $slot }}</a>
+```
+(If inline `onmouseover`/`onmouseout` feels wrong for this codebase's
+conventions once you're looking at the real file, a plain CSS hover rule
+added to `app.css` — e.g. `.nw-dropdown-link:hover { background: var(--bone-2); }`
+— is equally acceptable and probably cleaner; use your judgment, the
+requirement is "hover state uses `--bone-2`, not Tailwind gray-100", not
+this exact mechanism.)
+
+`resources/views/components/dropdown.blade.php` — only the color classes
+need to change, keep the Alpine `x-transition` structure exactly as-is (it
+already animates correctly): change `bg-white` → inline
+`style="background: var(--bone)"`, and `ring-black ring-opacity-5` → a
+plain `style="box-shadow: 0 0 0 1px var(--hair)"` on the same element.
+
+`resources/views/components/nav-link.blade.php` and
+`resources/views/components/responsive-nav-link.blade.php` — replace the
+`$active` ternary's Tailwind indigo/gray classes with `.nw-link`/`.nw-link.is-active`
+(defined in Step 1), keeping the layout-relevant classes (`inline-flex`,
+`px-1`, `pt-1`, etc.) and only swapping the color/border utility classes.
+
+- [ ] **Step 5: Rewrite the navigation bars**
+
+In `resources/views/livewire/layout/navigation.blade.php`: change
+`<nav ... class="bg-white border-b border-gray-100">` to
+`<nav ... class="border-b" style="background: var(--bone); border-color: var(--hair)">`.
+Change every `text-gray-500`/`text-gray-700`/`text-gray-800`/`hover:bg-gray-100`
+occurrence in this file to the equivalent `var(--muted)`/`var(--ink)`/hover-`var(--bone-2)`
+treatment (inline `style` or a small new utility class, your call — stay
+consistent within the file). Apply the identical substitution pattern to
+`resources/views/livewire/welcome/navigation.blade.php` (read it first —
+it wasn't read this session, but Breeze generates the same gray/indigo
+pattern there).
+
+## Part B — Motion pass
+
+- [ ] **Step 6: Global reduced-motion floor**
+
+Add to `resources/css/app.css`, replacing the `.modal-in`-specific
+`@media (prefers-reduced-motion: reduce)` block with a global one that
+also still explicitly collapses `.modal-in` (belt-and-suspenders — a
+global catch-all plus the specific one already there is fine, keep both):
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+```
+
+- [ ] **Step 7: Staggered entrance for list/grid content**
+
+`design.md`'s Motion stance already specifies this exact pattern
+("Staggered entrance (8 cards, ~55ms stagger, 480ms ease each)"). Add to
+`app.css`:
+
+```css
+@keyframes nw-rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.nw-stagger-item {
+  animation: nw-rise-in 480ms var(--ease) both;
+  animation-delay: calc(var(--nw-stagger-index, 0) * 55ms);
+}
+```
+
+Apply `.nw-stagger-item` plus an inline `style="--nw-stagger-index: {{ $loop->index }}"`
+to: each `<tr>` in `collection-items.blade.php`'s `@forelse` loop, and each
+result `<button>` in `add-collection-item.blade.php`'s search results
+`@foreach`. Cap the delay so a long list doesn't take forever to finish
+animating — clamp `$loop->index` to a max of ~10 in the inline style (e.g.
+`style="--nw-stagger-index: {{ min($loop->index, 10) }}"`), so item 40 in
+a long collection doesn't wait 2+ seconds to appear.
+
+- [ ] **Step 8: Subtle hover/press micro-interactions**
+
+Add to `app.css`:
+```css
+.nw-row-hover {
+  transition: background 120ms var(--ease);
+}
+.nw-row-hover:hover {
+  background: var(--bone-2);
+}
+
+.nw-btn-primary:active, .nw-btn-secondary:active, .nw-btn-danger:active {
+  transform: scale(0.97);
+  transition: transform 80ms var(--ease);
+}
+```
+Apply `.nw-row-hover` to each `<tr>` in `collection-items.blade.php`. The
+button `:active` press-scale applies automatically everywhere those
+classes are already used (Step 2), no per-usage change needed.
+
+- [ ] **Step 9: Run the full suite and rebuild assets**
+
+```bash
+./vendor/bin/sail artisan test
+```
+Expected: no regressions (this task changes no PHP logic, only Blade
+markup/classes and CSS — if anything fails, it's almost certainly a test
+asserting a specific CSS class name that changed, e.g. `assertSee('bg-gray-800')`;
+fix the test's expectation to match the new class, don't revert the
+styling to make an old assertion pass).
+
+```bash
+./vendor/bin/sail npm run build
+```
+This environment has no Vite dev-server — confirm the build actually ran
+and produced a new asset hash (a stale build caused a real bug earlier
+this session; don't skip this or trust a cached result).
+
+- [ ] **Step 10: Verify manually in the browser**
+
+With Sail running on port 8090: view the login page (buttons/inputs no
+longer gray/indigo), the nav bar (bone background, ink/muted text), the
+`/admin` collection list (rows fade/rise in on load, staggered; hovering a
+row tints it), the `/admin/add` search results (same staggered entrance),
+the settings dropdown (bone background, hairline border, no black ring),
+and tab through a form with the keyboard to confirm the green focus ring
+appears and is visible. Then, in Chrome DevTools, enable "Emulate CSS
+prefers-reduced-motion: reduce" (Rendering tab) and reload — confirm
+everything still works but nothing animates. Describe what you see at
+each step.
+
+- [ ] **Step 11: Commit**
+
+Split into two commits matching this task's two parts (one concern each):
+```bash
+git add resources/css/app.css resources/views/components/primary-button.blade.php resources/views/components/secondary-button.blade.php resources/views/components/danger-button.blade.php resources/views/components/text-input.blade.php resources/views/components/input-label.blade.php resources/views/components/input-error.blade.php resources/views/components/dropdown.blade.php resources/views/components/dropdown-link.blade.php resources/views/components/nav-link.blade.php resources/views/components/responsive-nav-link.blade.php resources/views/livewire/layout/navigation.blade.php resources/views/livewire/welcome/navigation.blade.php
+git commit -m "style(admin): finish design.md token migration on stock Breeze chrome
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+
+git add resources/css/app.css resources/views/livewire/admin/collection-items.blade.php resources/views/livewire/admin/add-collection-item.blade.php
+git commit -m "feat(admin): add a subtle staggered-entrance and hover motion pass
+
+Claude-Session: https://claude.ai/code/session_012LsNYkxAqmMouQegf42JTd"
+```
+(The `app.css` changes from Part A and Part B are interleaved in one
+file — it's fine for the file to appear in both commits since each commit
+only stages that part's actual additions; if `git add` on the same file
+twice in a row is confusing to sequence, one combined commit for the
+whole task is an acceptable fallback, but try the split first.)
+
+---
+
 ## What Phase 2 deliberately does NOT include
 
 - No public gallery — that's Phase 3.
