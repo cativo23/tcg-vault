@@ -66,3 +66,28 @@ test('catalog:import-set reports a failed card without aborting the whole run', 
 
     expect(Card::count())->toBe(1); // the broken card is skipped, not fatal
 });
+
+test('catalog:import-set reports a transient HTTP failure without aborting the whole run', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/sets/me05' => Http::response([
+            'id' => 'me05', 'name' => 'Pitch Black',
+            'cards' => [
+                ['id' => 'me05-006', 'localId' => '006', 'name' => 'Sinistcha'],
+                ['id' => 'me05-500', 'localId' => '500', 'name' => 'Server Error'],
+            ],
+        ], 200),
+        'api.tcgdex.net/v2/en/cards/me05-006' => Http::response([
+            'id' => 'me05-006', 'localId' => '006', 'name' => 'Sinistcha',
+            'image' => 'https://assets.tcgdex.net/en/me/me05/006',
+            'set' => ['id' => 'me05'], 'variants' => [], 'pricing' => [],
+        ], 200),
+        'api.tcgdex.net/v2/en/cards/me05-500' => Http::response(null, 500),
+    ]);
+
+    $this->artisan('catalog:import-set', ['setId' => 'me05'])
+        ->expectsOutputToContain('Failed: me05-500')
+        ->expectsOutputToContain('Imported 1 / 2 cards for set [me05].')
+        ->assertExitCode(0);
+
+    expect(Card::count())->toBe(1); // the transient failure is skipped, not fatal
+});

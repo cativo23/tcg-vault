@@ -6,58 +6,62 @@ namespace App\Modules\Catalog\Services;
 
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardDetailData;
+use App\Modules\Catalog\Exceptions\CatalogIdentityMismatchException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 final class CatalogSyncService
 {
+    /** @var array<string, Set> */
+    private array $syncedSets = [];
+
     public function __construct(private readonly CardCatalogProvider $provider) {}
 
     public function syncCard(string $tcgdexCardId): Card
     {
-        $cardDetail = $this->provider->findCard($tcgdexCardId);
+        return DB::transaction(function () use ($tcgdexCardId): Card {
+            $cardDetail = $this->provider->findCard($tcgdexCardId);
 
-        if ($cardDetail->tcgdexId !== $tcgdexCardId) {
-            throw new \RuntimeException(sprintf(
-                'Catalog provider returned card [%s] when [%s] was requested.',
-                $cardDetail->tcgdexId,
-                $tcgdexCardId,
-            ));
-        }
+            if ($cardDetail->tcgdexId !== $tcgdexCardId) {
+                throw CatalogIdentityMismatchException::forCardMismatch($tcgdexCardId, $cardDetail->tcgdexId);
+            }
 
-        $set = $this->syncSet($cardDetail->setTcgdexId);
+            $set = $this->syncSet($cardDetail->setTcgdexId);
 
-        $card = Card::updateOrCreate(
-            ['tcgdex_id' => $cardDetail->tcgdexId],
-            [
-                'set_id' => $set->id,
-                'local_id' => $cardDetail->localId,
-                'name' => $cardDetail->name,
-                'rarity' => $cardDetail->rarity,
-                'variants' => $cardDetail->variants,
-                'official_image_url' => $cardDetail->officialImageUrl,
-                'raw' => $cardDetail->raw,
-                'synced_at' => CarbonImmutable::now(),
-            ],
-        );
+            $card = Card::updateOrCreate(
+                ['tcgdex_id' => $cardDetail->tcgdexId],
+                [
+                    'set_id' => $set->id,
+                    'local_id' => $cardDetail->localId,
+                    'name' => $cardDetail->name,
+                    'rarity' => $cardDetail->rarity,
+                    'variants' => $cardDetail->variants,
+                    'official_image_url' => $cardDetail->officialImageUrl,
+                    'raw' => $cardDetail->raw,
+                    'synced_at' => CarbonImmutable::now(),
+                ],
+            );
 
-        $this->storePriceSnapshots($card, $cardDetail);
+            $this->storePriceSnapshots($card, $cardDetail);
 
-        return $card->fresh(['priceSnapshots']);
+            return $card->fresh(['priceSnapshots']);
+        });
     }
 
     private function syncSet(string $setTcgdexId): Set
     {
+        return $this->syncedSets[$setTcgdexId] ??= $this->doSyncSet($setTcgdexId);
+    }
+
+    private function doSyncSet(string $setTcgdexId): Set
+    {
         $setSummary = $this->provider->findSet($setTcgdexId);
 
         if ($setSummary->tcgdexId !== $setTcgdexId) {
-            throw new \RuntimeException(sprintf(
-                'Catalog provider returned set [%s] when [%s] was requested.',
-                $setSummary->tcgdexId,
-                $setTcgdexId,
-            ));
+            throw CatalogIdentityMismatchException::forSetMismatch($setTcgdexId, $setSummary->tcgdexId);
         }
 
         return Set::updateOrCreate(

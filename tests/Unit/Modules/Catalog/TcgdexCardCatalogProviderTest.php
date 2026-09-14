@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
+use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Providers\TcgdexCardCatalogProvider;
 use Illuminate\Support\Facades\Http;
@@ -118,7 +120,7 @@ test('findCard rejects an ID shaped like an absolute URL without making any HTTP
     $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
 
     expect(fn () => $provider->findCard('https://evil.example/x'))
-        ->toThrow(InvalidArgumentException::class);
+        ->toThrow(InvalidTcgdexIdException::class);
 
     Http::assertNothingSent();
 });
@@ -129,7 +131,7 @@ test('findSet rejects an ID shaped like an absolute URL without making any HTTP 
     $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
 
     expect(fn () => $provider->findSet('https://evil.example/x'))
-        ->toThrow(InvalidArgumentException::class);
+        ->toThrow(InvalidTcgdexIdException::class);
 
     Http::assertNothingSent();
 });
@@ -140,7 +142,7 @@ test('listSetCardIds rejects an ID shaped like an absolute URL without making an
     $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
 
     expect(fn () => $provider->listSetCardIds('https://evil.example/x'))
-        ->toThrow(InvalidArgumentException::class);
+        ->toThrow(InvalidTcgdexIdException::class);
 
     Http::assertNothingSent();
 });
@@ -161,4 +163,53 @@ test('listSetCardIds returns the zero-padded local card IDs prefixed with the se
     $ids = $provider->listSetCardIds('me05');
 
     expect($ids)->toBe(['me05-006', 'me05-007']);
+});
+
+test('findCard throws MalformedCatalogResponseException when a required field is missing', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/cards/me05-116' => Http::response([
+            // 'id' is missing entirely
+            'localId' => '116',
+            'name' => 'Mega Darkrai ex',
+            'set' => ['id' => 'me05'],
+        ], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+
+    expect(fn () => $provider->findCard('me05-116'))
+        ->toThrow(MalformedCatalogResponseException::class);
+});
+
+test('findCard throws MalformedCatalogResponseException when a currency code is not 3 characters', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/cards/me05-116' => Http::response([
+            'id' => 'me05-116',
+            'localId' => '116',
+            'name' => 'Mega Darkrai ex',
+            'set' => ['id' => 'me05'],
+            'pricing' => [
+                'cardmarket' => ['unit' => 'EURO', 'avg' => 10.0],
+            ],
+        ], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+
+    expect(fn () => $provider->findCard('me05-116'))
+        ->toThrow(MalformedCatalogResponseException::class);
+});
+
+test('findSet throws MalformedCatalogResponseException when a required field is missing', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/sets/me05' => Http::response([
+            // 'name' is missing entirely
+            'id' => 'me05',
+        ], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+
+    expect(fn () => $provider->findSet('me05'))
+        ->toThrow(MalformedCatalogResponseException::class);
 });

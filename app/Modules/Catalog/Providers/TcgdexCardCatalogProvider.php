@@ -9,6 +9,8 @@ use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Data\PriceEntryData;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
+use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
@@ -31,6 +33,8 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         $response->throw();
 
         $json = $response->json();
+
+        $this->assertValidCardShape($tcgdexId, $json);
 
         return new CardDetailData(
             tcgdexId: $json['id'],
@@ -58,6 +62,8 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         $response->throw();
 
         $json = $response->json();
+
+        $this->assertValidSetShape($tcgdexId, $json);
 
         return new SetSummaryData(
             tcgdexId: $json['id'],
@@ -149,15 +155,91 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         return $entries;
     }
 
-    private function toMinorUnits(?float $amount): ?int
+    private function toMinorUnits(int|float|string|null $amount): ?int
     {
-        return $amount === null ? null : (int) round($amount * 100);
+        if ($amount === null) {
+            return null;
+        }
+
+        if (! is_numeric($amount)) {
+            return null;
+        }
+
+        return (int) round((float) $amount * 100);
     }
 
     private function assertValidTcgdexId(string $id): void
     {
-        if (! preg_match('/^[a-zA-Z0-9.\-]+$/', $id)) {
-            throw new \InvalidArgumentException("Invalid tcgdex ID format: [{$id}]");
+        if (! preg_match('/^[a-z0-9]+(-[a-z0-9]+)*$/i', $id)) {
+            throw InvalidTcgdexIdException::forId($id);
+        }
+    }
+
+    /**
+     * @param mixed $json
+     */
+    private function assertValidCardShape(string $tcgdexId, mixed $json): void
+    {
+        if (! is_array($json)) {
+            throw MalformedCatalogResponseException::forCard($tcgdexId, 'response body is not a JSON object.');
+        }
+
+        if (! isset($json['id']) || ! is_string($json['id'])) {
+            throw MalformedCatalogResponseException::forCard($tcgdexId, 'missing or non-string "id".');
+        }
+
+        if (! isset($json['name']) || ! is_string($json['name'])) {
+            throw MalformedCatalogResponseException::forCard($tcgdexId, 'missing or non-string "name".');
+        }
+
+        if (! isset($json['localId']) || ! is_string($json['localId'])) {
+            throw MalformedCatalogResponseException::forCard($tcgdexId, 'missing or non-string "localId".');
+        }
+
+        if (! isset($json['set']['id']) || ! is_string($json['set']['id'])) {
+            throw MalformedCatalogResponseException::forCard($tcgdexId, 'missing or non-string "set.id".');
+        }
+
+        $this->assertValidCurrencies($tcgdexId, $json['pricing'] ?? []);
+    }
+
+    /**
+     * @param mixed $json
+     */
+    private function assertValidSetShape(string $tcgdexId, mixed $json): void
+    {
+        if (! is_array($json)) {
+            throw MalformedCatalogResponseException::forSet($tcgdexId, 'response body is not a JSON object.');
+        }
+
+        if (! isset($json['id']) || ! is_string($json['id'])) {
+            throw MalformedCatalogResponseException::forSet($tcgdexId, 'missing or non-string "id".');
+        }
+
+        if (! isset($json['name']) || ! is_string($json['name'])) {
+            throw MalformedCatalogResponseException::forSet($tcgdexId, 'missing or non-string "name".');
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $pricing
+     */
+    private function assertValidCurrencies(string $tcgdexId, array $pricing): void
+    {
+        $currencies = [];
+
+        if (isset($pricing['cardmarket']['unit'])) {
+            $currencies[] = $pricing['cardmarket']['unit'];
+        }
+
+        if (isset($pricing['tcgplayer']['unit'])) {
+            $currencies[] = $pricing['tcgplayer']['unit'];
+        }
+
+        foreach ($currencies as $currency) {
+            if (! is_string($currency) || strlen($currency) !== 3) {
+                throw MalformedCatalogResponseException::forCard($tcgdexId, "invalid currency code [{$currency}].");
+            }
         }
     }
 }

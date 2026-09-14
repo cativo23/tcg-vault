@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Exceptions\CatalogIdentityMismatchException;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use Illuminate\Console\Command;
 
@@ -26,9 +27,12 @@ final class ImportCatalogSet extends Command
             try {
                 $syncService->syncCard($cardId);
                 $imported++;
-            } catch (CardNotFoundException) {
+            } catch (CardNotFoundException|CatalogIdentityMismatchException $e) {
                 $this->newLine();
-                $this->warn("Failed: {$cardId}");
+                $this->warn("Failed: {$cardId} ({$e->getMessage()})");
+            } catch (\Throwable $e) {
+                $this->newLine();
+                $this->warn("Failed: {$cardId} (unexpected: {$e->getMessage()})");
             }
         });
 
