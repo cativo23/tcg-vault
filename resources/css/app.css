@@ -22,6 +22,7 @@
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --gutter: clamp(16px, 4vw, 34px);
   --radius-card: 7px;
+  --radius-pill: 999px;
 }
 
 body {
@@ -854,7 +855,7 @@ body {
 .nw-home-feature .nw-home-feature-eyebrow {
   font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted);
 }
-.nw-home-feature h3 {
+.nw-home-feature h2 {
   font-variation-settings: 'wdth' 62, 'wght' 800; font-size: 24px; margin-top: 6px;
 }
 .nw-home-feature ul { list-style: none; margin: 14px 0 0; padding: 0; }
@@ -863,7 +864,7 @@ body {
   border-top: 1px solid var(--hair);
 }
 .nw-home-feature li:first-child { border-top: none; }
-.nw-home-feature li::before { content: "—"; position: absolute; left: 0; color: var(--signal-deep); }
+.nw-home-feature li::before { content: "—"; position: absolute; left: 0; color: var(--muted); }
 
 .nw-home-feature-visual {
   border-radius: var(--radius-card); overflow: hidden; border: 1px solid var(--hair); background: var(--bone-2);
@@ -878,7 +879,8 @@ body {
   display: flex; justify-content: space-between; margin-top: 14px; font-size: 11px;
   border-top: 1px solid var(--hair); padding-top: 10px;
 }
-.nw-home-fv-price .row span:last-child { font-family: 'Martian Mono', monospace; color: var(--signal-deep); font-weight: 700; }
+.nw-home-fv-price .row span:last-child { font-family: 'Martian Mono', monospace; color: var(--flat); font-weight: 700; }
+.nw-home-fv-price .row span:last-child.plain { font-family: inherit; }
 
 .nw-home-fv-photo { display: grid; grid-template-columns: 1fr 1fr; }
 .nw-home-fv-photo img { width: 100%; aspect-ratio: 2.5 / 3.5; object-fit: cover; }
@@ -894,14 +896,14 @@ body {
 .nw-home-fv-sets .set-row:first-child { border-top: none; }
 .nw-home-fv-sets .name { font-size: 12px; font-weight: 600; flex: 1; }
 .nw-home-fv-sets .bar { width: 60px; height: 6px; background: var(--bone-3); border-radius: 3px; overflow: hidden; }
-.nw-home-fv-sets .bar div { height: 100%; background: var(--signal-deep); }
+.nw-home-fv-sets .bar div { height: 100%; background: var(--ink); }
 .nw-home-fv-sets .pct { font-family: 'Martian Mono', monospace; font-size: 11px; color: var(--muted); width: 34px; text-align: right; }
 
 /* ─── home page — data coverage strip + FAQ (bone) ─── */
 .nw-home-coverage { padding: 22px 0; text-align: center; border-bottom: 1px solid var(--hair); }
 .nw-home-coverage .label { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
 .nw-home-coverage .sources { display: flex; justify-content: center; gap: 22px; margin-top: 12px; flex-wrap: wrap; }
-.nw-home-coverage .src { font-size: 13px; font-weight: 700; color: var(--muted); opacity: .8; }
+.nw-home-coverage .src { font-size: 13px; font-weight: 700; color: var(--muted); }
 
 .nw-home-faq { padding-block: 30px; }
 .nw-home-faq h2 { text-align: center; font-variation-settings: 'wdth' 62, 'wght' 800; font-size: 20px; margin-bottom: 18px; }
@@ -914,7 +916,7 @@ body {
    .nw-footer already uses everywhere — not a new dark tone invented for
    this page, so there's no visible seam between this block and the
    footer immediately below it). ─── */
-.nw-home-close { padding-block: 40px; text-align: center; background: var(--ink); color: var(--bone); }
+.nw-home-close { padding: 40px 24px; text-align: center; background: var(--ink); color: var(--bone); }
 .nw-home-close h2 { font-variation-settings: 'wdth' 62, 'wght' 800; font-size: 22px; }
 .nw-home-close h2 .accent { color: var(--signal-deep); }
 .nw-home-close p { color: rgba(242, 239, 230, .55); font-size: 12px; margin-top: 8px; }

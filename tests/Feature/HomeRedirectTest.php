@@ -62,3 +62,11 @@ test('the closing sections show data coverage, FAQ, and repeat the CTA', functio
     $response->assertSee('Does it cost anything?');
     $response->assertSeeInOrder(['Track every', 'Real-time pricing', 'Does it cost anything?', 'Notify me when it opens']);
 });
+
+test('the real photo example exists on disk and is referenced by the page', function () {
+    $response = $this->get('/');
+
+    $response->assertOk();
+    $response->assertSee('images/home/carlos-mega-darkrai.webp', escape: false);
+    expect(public_path('images/home/carlos-mega-darkrai.webp'))->toBeFile();
+});

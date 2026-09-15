@@ -1,8 +1,8 @@
 <div class="nw-home">
     <section class="nw-home-hero" data-hero-spotlight>
-        <div class="nw-wrap">
-            <div class="nw-home-spotlight" aria-hidden="true"></div>
+        <div class="nw-home-spotlight" aria-hidden="true"></div>
 
+        <div class="nw-wrap">
             <div class="nw-home-copy">
                 <p class="nw-home-eyebrow">tcg-vault</p>
                 <h1 class="nw-home-h1">Track every <span class="accent">card</span>.</h1>
@@ -11,11 +11,11 @@
             </div>
 
             <div class="nw-home-fan">
-                <img src="https://assets.tcgdex.net/en/base/base1/4/high.webp" alt="Charizard, Base Set">
-                <img src="https://assets.tcgdex.net/en/swsh/cel25/7/high.webp" alt="Flying Pikachu VMAX">
-                <img src="https://assets.tcgdex.net/en/sv/sv03.5/006/high.webp" alt="Charizard ex">
-                <img src="https://assets.tcgdex.net/en/swsh/cel25/9/high.webp" alt="Surfing Pikachu VMAX">
-                <img src="https://assets.tcgdex.net/en/sm/sm115/9/high.webp" alt="Charizard GX">
+                <img src="https://assets.tcgdex.net/en/base/base1/4/low.webp" alt="Charizard, Base Set">
+                <img src="https://assets.tcgdex.net/en/swsh/cel25/7/low.webp" alt="Flying Pikachu VMAX">
+                <img src="https://assets.tcgdex.net/en/sv/sv03.5/006/low.webp" alt="Charizard ex">
+                <img src="https://assets.tcgdex.net/en/swsh/cel25/9/low.webp" alt="Surfing Pikachu VMAX">
+                <img src="https://assets.tcgdex.net/en/sm/sm115/9/low.webp" alt="Charizard GX">
             </div>
         </div>
     </section>
@@ -24,7 +24,7 @@
         <div class="nw-home-feature">
             <div>
                 <p class="nw-home-feature-eyebrow">tcg-vault</p>
-                <h3>Real-time pricing</h3>
+                <h2>Real-time pricing</h2>
                 <ul>
                     <li>Synced with tcgdex — tcgplayer (USD) and cardmarket (EUR)</li>
                     <li>Watch how your collection's value changes over time</li>
@@ -38,7 +38,7 @@
                 <div class="chrome">Mega Darkrai ex</div>
                 <div class="nw-home-fv-price">
                     <div class="big">$193.30</div>
-                    <div class="row"><span>tcgplayer</span><span>USD</span></div>
+                    <div class="row"><span>tcgplayer</span><span class="plain">USD</span></div>
                     <div class="row"><span>cardmarket</span><span>€248.35</span></div>
                 </div>
             </div>
@@ -47,7 +47,7 @@
         <div class="nw-home-feature nw-home-feature--reverse">
             <div>
                 <p class="nw-home-feature-eyebrow">tcg-vault</p>
-                <h3>Your own photo, not a placeholder</h3>
+                <h2>Your own photo, not a placeholder</h2>
                 <ul>
                     <li>Upload the real photo of your card when you add it</li>
                     <li>tcgdex's official art is the backup, not the other way around</li>
@@ -71,7 +71,7 @@
         <div class="nw-home-feature">
             <div>
                 <p class="nw-home-feature-eyebrow">tcg-vault</p>
-                <h3>Complete sets, at a glance</h3>
+                <h2>Complete sets, at a glance</h2>
                 <ul>
                     <li>See what you're missing from every set you follow</li>
                     <li>Cards you don't own stay marked, not hidden</li>

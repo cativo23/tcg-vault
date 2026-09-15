@@ -84,6 +84,8 @@ const bindHeroSpotlight = () => {
     if (!hero || hero.dataset.spotlightBound) return;
     hero.dataset.spotlightBound = '1';
 
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
     hero.addEventListener('pointermove', (e) => {
         const r = hero.getBoundingClientRect();
         hero.style.setProperty('--mx', `${e.clientX - r.left}px`);
