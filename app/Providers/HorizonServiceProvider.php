@@ -27,12 +27,14 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
      */
     protected function gate(): void
     {
-        // Single-admin app (same philosophy as every other /admin route in
-        // this project) — no per-email allowlist to maintain. $user is
-        // nullable: Horizon's own Authorize middleware calls this gate for
-        // guests too, passing null.
+        // Single-admin app — gate on the CONFIGURED admin specifically, not
+        // just "any authenticated user". TCGVAULT_ALLOW_REGISTRATION exists
+        // (config/tcgvault.php) for a future second account; if that's ever
+        // enabled, a non-admin account must not inherit Horizon access
+        // (queue payload visibility, retry/delete controls) just by being
+        // logged in.
         Gate::define('viewHorizon', function ($user = null) {
-            return $user !== null;
+            return $user !== null && $user->username === config('tcgvault.admin_username');
         });
     }
 }
