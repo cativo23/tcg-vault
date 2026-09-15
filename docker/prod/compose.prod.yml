@@ -36,6 +36,13 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+    # The base image bakes in a default HTTP healthcheck (curl localhost:8080)
+    # — meaningless here, since this container never runs nginx/php-fpm, only
+    # `php artisan horizon`. Left enabled it never resolves, staying
+    # "starting" then flipping permanently "unhealthy" despite the queue
+    # actually working fine. Disable it explicitly rather than let it lie.
+    healthcheck:
+      disable: true
     networks: [tcgvault-internal]
     deploy:
       resources:
@@ -50,6 +57,9 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+    # Same reasoning as horizon above — no HTTP server in this container.
+    healthcheck:
+      disable: true
     networks: [tcgvault-internal]
     deploy:
       resources:
