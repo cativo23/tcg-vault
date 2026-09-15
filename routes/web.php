@@ -2,6 +2,7 @@
 
 use App\Livewire\Admin\AddCollectionItem;
 use App\Livewire\Admin\CollectionItems;
+use App\Livewire\Admin\Import;
 use App\Livewire\Gallery\Activity;
 use App\Livewire\Gallery\CardShow;
 use App\Livewire\Gallery\Index;
@@ -42,6 +43,10 @@ Route::view('profile', 'profile')
 Route::get('/admin/add', AddCollectionItem::class)
     ->middleware(['auth'])
     ->name('admin.collection.add');
+
+Route::get('/admin/import', Import::class)
+    ->middleware(['auth'])
+    ->name('admin.collection.import');
 
 Route::get('/admin', CollectionItems::class)
     ->middleware(['auth'])
