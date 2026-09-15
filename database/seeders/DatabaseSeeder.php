@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Scopes\TenantScope;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
@@ -28,6 +29,21 @@ class DatabaseSeeder extends Seeder
             ->lower()
             ->replaceMatches('/[^a-z0-9]/', '')
             ->toString();
+
+        // Validate through the SAME rules the profile form and
+        // registration use (User::usernameRules()) — found via a
+        // background review that this path bypassed every one of them,
+        // letting an unvalidated value (wrong case, illegal characters, a
+        // reserved word) become a public gallery URL segment.
+        // `$existingUser?->id` ignores this exact email's own row on a
+        // re-seed, so re-running with the same TCGVAULT_ADMIN_USERNAME
+        // doesn't reject itself as "taken".
+        $existingUser = User::where('email', $email)->first();
+
+        Validator::make(
+            ['username' => $username],
+            ['username' => User::usernameRules($existingUser?->id)],
+        )->validate();
 
         $user = User::firstOrCreate(
             ['email' => $email],
