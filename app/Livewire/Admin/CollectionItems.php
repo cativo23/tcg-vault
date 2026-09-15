@@ -15,11 +15,16 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
+use Livewire\WithPagination;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 #[Layout('layouts.app')]
 final class CollectionItems extends Component
 {
+    use WithPagination;
+
+    private const VALUE_SORT_ROW_LIMIT = 1000;
+
     #[Url(except: '')]
     public string $search = '';
 
@@ -38,6 +43,15 @@ final class CollectionItems extends Component
     private const SORTS = ['value', 'name', 'newest'];
 
     public ?int $confirmingDeleteItemId = null;
+
+    /**
+     * Snapshot of the item being deleted, captured at confirmDelete() time
+     * so the confirmation modal keeps its card name/variant/qty context
+     * even if that row isn't on whatever page happens to be rendered.
+     *
+     * @var array{name?: string, variant?: ?string, quantity?: int}
+     */
+    public array $deletingSummary = [];
 
     public ?int $editingItemId = null;
 
@@ -155,13 +169,19 @@ final class CollectionItems extends Component
         // ownedItemOrFail() throws (404) for another tenant's item before
         // the modal ever opens — same IDOR posture as every other lookup
         // in this class.
-        $this->ownedItemOrFail($itemId);
+        $item = $this->ownedItemOrFail($itemId);
         $this->confirmingDeleteItemId = $itemId;
+        $this->deletingSummary = [
+            'name' => $item->card->name,
+            'variant' => $item->variant,
+            'quantity' => $item->quantity,
+        ];
     }
 
     public function cancelDelete(): void
     {
         $this->confirmingDeleteItemId = null;
+        $this->deletingSummary = [];
     }
 
     public function delete(int $itemId): void
@@ -175,6 +195,7 @@ final class CollectionItems extends Component
         }
 
         $item->delete();
+        $this->confirmingDeleteItemId = null;
     }
 
     public function startEditingItem(int $itemId): void
@@ -239,7 +260,28 @@ final class CollectionItems extends Component
     {
         if (in_array($sort, self::SORTS, true)) {
             $this->sort = $sort;
+            $this->resetPage();
         }
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedConditionFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedVariantFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedNeedsReviewOnly(): void
+    {
+        $this->resetPage();
     }
 
     public function render()
@@ -247,13 +289,16 @@ final class CollectionItems extends Component
         // Reached only through Collection::items(), which is scoped via
         // Collection's TenantScope — never query CollectionItem::query()
         // directly here, that would bypass the tenant filter entirely.
-        $query = Collection::query()
-            ->get()
-            ->pluck('id');
+        $collectionIds = Collection::query()->pluck('id');
 
         $itemsQuery = CollectionItem::query()
-            ->whereIn('collection_id', $query)
-            ->with(['card.set']);
+            ->whereIn('collection_id', $collectionIds)
+            // card.priceSnapshots is eager-loaded here because
+            // CardPriceResolver::resolve() reads it as a property below —
+            // without this, resolving price for every row (up to
+            // VALUE_SORT_ROW_LIMIT on the default 'value' sort) triggers
+            // one query PER card instead of one query total.
+            ->with(['card.set', 'card.priceSnapshots']);
 
         if ($this->search !== '') {
             $term = '%'.trim($this->search).'%';
@@ -268,7 +313,9 @@ final class CollectionItems extends Component
             $itemsQuery->where('condition', $this->conditionFilter);
         }
 
-        if ($this->variantFilter !== '') {
+        if ($this->variantFilter === '__none__') {
+            $itemsQuery->whereNull('variant');
+        } elseif ($this->variantFilter !== '') {
             $itemsQuery->where('variant', $this->variantFilter);
         }
 
@@ -288,7 +335,7 @@ final class CollectionItems extends Component
         // and CardPriceResolver's "pick the right source" logic can't be
         // expressed as a single SQL ORDER BY.
 
-        $items = $itemsQuery->paginate($this->sort === 'value' ? 1000 : 24, page: $this->sort === 'value' ? 1 : null);
+        $items = $itemsQuery->paginate($this->sort === 'value' ? self::VALUE_SORT_ROW_LIMIT : 24, page: $this->sort === 'value' ? 1 : null);
 
         $resolver = new CardPriceResolver;
 
@@ -300,12 +347,14 @@ final class CollectionItems extends Component
             // collection's size (dozens–low hundreds), not thousands.
             $withValue = $items->getCollection()->map(function (CollectionItem $item) use ($resolver) {
                 $snapshot = $resolver->resolve($item->card);
+                // _valueMinor is a transient, in-memory-only sort key — it
+                // is never persisted, so it must never be passed to save().
                 $item->setAttribute('_valueMinor', $snapshot?->market_minor !== null ? $snapshot->market_minor * $item->quantity : -1);
 
                 return $item;
             })->sortByDesc('_valueMinor')->values();
 
-            $page = request()->integer('page', 1);
+            $page = $this->getPage();
             $perPage = 24;
             $paged = $withValue->slice(($page - 1) * $perPage, $perPage)->values();
 
@@ -314,7 +363,6 @@ final class CollectionItems extends Component
                 $withValue->count(),
                 $perPage,
                 $page,
-                ['path' => request()->url(), 'query' => request()->query()],
             );
         }
 

@@ -30,6 +30,7 @@
                 <option value="normal">Normal</option>
                 <option value="holofoil">Holofoil</option>
                 <option value="reverse-holofoil">Reverse Holofoil</option>
+                <option value="__none__">Not specified</option>
             </select>
 
             <div class="nw-seg" role="group" aria-label="Needs review">
@@ -72,7 +73,7 @@
                             ? "{$item->grade_company} {$item->grade_value}"
                             : '—';
                     @endphp
-                    <tr class="nw-stagger-item nw-row-hover border-t" style="border-color: var(--hair); --nw-stagger-index: {{ min($loop->index, 10) }}">
+                    <tr wire:key="item-{{ $item->id }}" class="nw-stagger-item nw-row-hover border-t" style="border-color: var(--hair); --nw-stagger-index: {{ min($loop->index, 10) }}">
                         <td class="p-3 font-medium">
                             @if ($item->photo_path)
                                 <img src="{{ \Illuminate\Support\Facades\Storage::disk('collection-photos')->url($item->photo_path) }}"
@@ -87,6 +88,7 @@
                         <td class="p-3 mono">
                             @if ($editingQtyItemId === $item->id)
                                 <input type="number" min="1" wire:model="editingQtyValue" wire:keydown.enter="saveQty" wire:blur="saveQty" class="border rounded px-2 py-1 w-16">
+                                @error('editingQtyValue') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                             @else
                                 <span wire:click="startEditingQty({{ $item->id }})" class="cursor-pointer">{{ $item->quantity }}</span>
                             @endif
@@ -101,7 +103,7 @@
                         </td>
                         <td class="p-3">
                             @if ($item->needs_variant_review)
-                                <span class="text-xs font-medium" style="color: var(--danger)">Revisar</span>
+                                <span class="text-xs font-medium" style="color: var(--danger)">Review</span>
                             @endif
                         </td>
                         <td class="p-3 text-right">
@@ -174,18 +176,17 @@
     @endif
 
     @if ($confirmingDeleteItemId !== null)
-        @php $deletingItem = $items->firstWhere('id', $confirmingDeleteItemId); @endphp
         <div class="fixed inset-0 z-40 flex items-center justify-center p-4"
              style="background: rgba(20,20,18,.5)"
              wire:click.self="cancelDelete"
              wire:keydown.escape.window="cancelDelete">
             <div class="nw-card modal-in w-full max-w-sm p-5">
                 <h2 class="text-lg font-semibold mb-2" style="color: var(--ink)">Remove this card?</h2>
-                @if ($deletingItem)
+                @if ($deletingSummary !== [])
                     <p class="text-sm mb-4" style="color: var(--muted)">
-                        {{ $deletingItem->card->name }}
-                        @if ($deletingItem->variant) &middot; {{ \Illuminate\Support\Str::headline($deletingItem->variant) }} @endif
-                        &middot; qty {{ $deletingItem->quantity }}
+                        {{ $deletingSummary['name'] }}
+                        @if ($deletingSummary['variant']) &middot; {{ \Illuminate\Support\Str::headline($deletingSummary['variant']) }} @endif
+                        &middot; qty {{ $deletingSummary['quantity'] }}
                     </p>
                 @endif
                 <div class="flex gap-2">

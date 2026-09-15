@@ -613,8 +613,15 @@ test('an item with no priced snapshot shows an em dash for value', function () {
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
-        ->assertSee('—');
+    $html = Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSee('—')
+        ->html();
+
+    // A plain assertDontSee('$') would false-positive on the toolbar's
+    // unrelated `wire:click="$set('needsReviewOnly', ...)"` markup — match
+    // the actual currency shape (e.g. "$40.00") instead, so this test would
+    // really fail if the Value column stopped rendering an em dash.
+    expect($html)->not->toMatch('/\$\d/');
 });
 
 test('a flagged item shows the needs-review badge', function () {
@@ -626,7 +633,7 @@ test('a flagged item shows the needs-review badge', function () {
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'needs_variant_review' => true]);
 
     Livewire::test(\App\Livewire\Admin\CollectionItems::class)
-        ->assertSee('Revisar');
+        ->assertSee('Review');
 });
 
 test('quantity can be edited inline', function () {
@@ -679,6 +686,25 @@ test('the list paginates at 24 items per page', function () {
     expect($component->viewData('items')->total())->toBe(26);
 });
 
+test('page 2 is reachable and shows the right items after a Livewire interaction', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+
+    for ($i = 1; $i <= 26; $i++) {
+        $card = Card::create(['tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card {$i}"]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "me05-{$i}", 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    $component = Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->set('conditionFilter', 'NM') // an interaction that triggers a component update, same class of bug as search/sort/edit
+        ->call('sortBy', 'name')
+        ->call('gotoPage', 2);
+
+    expect($component->viewData('items'))->toHaveCount(2); // 26 items, 24 on page 1, 2 remain on page 2
+});
+
 test('clicking delete opens a confirmation modal instead of deleting immediately', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
@@ -704,7 +730,8 @@ test('confirming delete in the modal actually deletes the item', function () {
 
     Livewire::test(\App\Livewire\Admin\CollectionItems::class)
         ->call('confirmDelete', $item->id)
-        ->call('delete', $item->id);
+        ->call('delete', $item->id)
+        ->assertSet('confirmingDeleteItemId', null);
 
     expect(CollectionItem::find($item->id))->toBeNull();
 });
