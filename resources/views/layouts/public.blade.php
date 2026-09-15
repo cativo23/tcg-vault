@@ -33,6 +33,15 @@
                    class="nw-link {{ request()->routeIs('gallery.index') ? 'is-active' : '' }}">Sets</a>
                 <span class="nw-link" style="opacity: .35; cursor: default" title="{{ __('Coming soon') }}">Movimientos</span>
             </nav>
+            @auth
+                {{-- Carlos, viewing his own public gallery while logged
+                     in, needs a quick way back to /admin — nothing in
+                     this layout otherwise links there, since every other
+                     public-gallery visitor is a guest by definition. --}}
+                <a href="{{ route('admin.collection.index') }}" class="nw-btn-secondary text-xs px-3 py-1.5 whitespace-nowrap">
+                    {{ __('Admin') }}
+                </a>
+            @endauth
         </header>
 
         {{ $slot }}
