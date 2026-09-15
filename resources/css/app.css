@@ -41,6 +41,21 @@ body {
   color: var(--bone);
 }
 
+/* Brand mark's pulsing dot — ported verbatim from the original approved
+   mockup (.superpowers/brainstorm/2045737-1789365953/content/vault-final.html). */
+.nw-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--signal);
+  flex: none;
+  animation: nw-pulse 2.4s var(--ease) infinite;
+}
+@keyframes nw-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .3; transform: scale(.8); }
+}
+
 .nw-btn-primary {
   background: var(--ink);
   color: var(--bone);
