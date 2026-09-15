@@ -30,6 +30,36 @@ test('shows every card in the set, marks owned ones, computes stats from the who
     $response->assertSee('Mega Darkrai ex'); // most expensive card in the SET, not just owned
 });
 
+test('a private (non-public) collection contributes nothing to the set-detail screen', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => false, 'slug' => 'private']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 1]);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'secret.jpg']);
+
+    $response = $this->get('/carlos/gallery/me05');
+
+    // The set only exists in this user's gallery via a public collection
+    // — with none, the same existence-gate that hides an untouched set
+    // must also hide a set touched only through a private one, and the
+    // private item's photo must never leak into the response either way.
+    $response->assertNotFound();
+    $response->assertDontSee('secret.jpg', false);
+});
+
+test('the set-detail route requires no authentication', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 1]);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    // Explicitly NOT calling $this->actingAs(...) — a guest must be able to load this.
+    $response = $this->get('/carlos/gallery/me05');
+
+    $response->assertOk();
+});
+
 test('a set that exists but the user has never touched 404s', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
