@@ -10,9 +10,16 @@ use App\Modules\Catalog\Data\PriceEntryData;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Spatie\LaravelData\DataCollection;
+
+// The test queue connection is 'sync', so a successful save() would
+// otherwise dispatch ImportSetJob inline against these tests' provider
+// mocks (which never stub listSetCardIds()) — not any of these tests'
+// concern; CollectionServiceTest and ImportSetJobTest cover that job.
+beforeEach(fn () => Queue::fake());
 
 test('a logged-in admin can search tcgdex and see results', function () {
     $user = User::factory()->create();

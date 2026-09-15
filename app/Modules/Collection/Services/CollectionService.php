@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Collection\Services;
 
+use App\Jobs\ImportSetJob;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
@@ -18,6 +19,19 @@ final class CollectionService
     public function addItem(Collection $collection, string $tcgdexCardId, array $itemData): CollectionItem
     {
         $card = $this->catalogSyncService->syncCard($tcgdexCardId);
+
+        // The Catalog is global, never tenant-scoped — a set only needs
+        // backfilling ONCE, ever, no matter which user's addItem() call
+        // triggers it. card_count is set on syncCard()'s first sync of a
+        // card from this set (via syncSet()'s findSet() call); a null
+        // card_count (tcgdex didn't report one) is treated as "unknown
+        // size," not "already complete," so it still gets queued rather
+        // than silently left partial forever.
+        $set = $card->set;
+
+        if ($set->card_count === null || $set->cards()->count() < $set->card_count) {
+            ImportSetJob::dispatch($set->tcgdex_id);
+        }
 
         $variant = $itemData['variant'] ?? null;
         $condition = $itemData['condition'];
