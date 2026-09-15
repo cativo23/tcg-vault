@@ -17,19 +17,37 @@ This page's job is to make the case for the product and set expectations
 
 ## Routing behavior
 
-- **Anonymous visitor** → sees the new home page. (Previously: redirected
-  to `/login`.)
-- **Authenticated owner** → still redirected straight to their own gallery
-  (`gallery.index`), unchanged from today. There's no reason to show a
-  logged-in visitor marketing copy for a product they already use — the
-  existing shortcut stays.
-- **No owner configured at all** (fresh install, no user has a username
-  yet) → also shows the home page rather than forcing `/login`. The page
-  doesn't depend on an existing collection to render.
+**Correction from the first draft of this spec**: the *actual* current
+`/` route redirects **any** visitor — authenticated or not — to the
+configured owner's gallery when one exists, falling back to `/login`
+only when no owner exists at all. It is not gated on `auth()`. This was
+confirmed against `tests/Feature/HomeRedirectTest.php`'s three existing
+cases, none of which use `actingAs()`.
 
-`routes/web.php`'s `/` closure changes from an unconditional redirect to:
-redirect authenticated users to their gallery as today; render the new
-home view for everyone else.
+That collides with "the home page is for the general public" — so the
+routing rule for this feature is a deliberate behavior change, confirmed
+with Carlos rather than assumed:
+
+- **Anonymous visitor** → always sees the new home page, whether or not
+  an owner is configured. (Previously: redirected straight to the
+  owner's gallery, or to `/login` if no owner existed yet.)
+- **Authenticated visitor** (`auth()->check()`) → redirected straight to
+  their own gallery (`gallery.index`), same shortcut as today, just now
+  actually gated on being logged in rather than falling out naturally
+  from "an owner exists".
+
+`routes/web.php`'s `/` closure changes from an unconditional
+owner-lookup-and-redirect to: if `auth()->check()`, redirect to
+`Auth::user()`'s gallery; otherwise render the new home view. The
+owner-lookup query this route used to run for anonymous visitors is no
+longer needed there at all.
+
+**Existing test impact**: all three cases in `tests/Feature/HomeRedirectTest.php`
+change meaning under this rule and are rewritten in the plan below — none
+of them were authenticated requests, so all three now assert the home
+view renders (200, not a redirect) instead of asserting a redirect
+target. A new fourth case covers the authenticated-redirect behavior,
+which the original file never actually tested.
 
 ## Visual system
 
@@ -181,9 +199,11 @@ Four questions, all truthfully answerable today:
 
 ## Testing
 
-- A Feature test asserting `/` renders 200 (not a redirect) for a guest,
-  and asserting `/` still redirects an authenticated user to their
-  gallery (existing behavior, must not regress).
+- `tests/Feature/HomeRedirectTest.php`'s three existing cases are
+  rewritten per the Routing behavior correction above: each now asserts
+  `/` renders 200 for the anonymous request instead of asserting a
+  redirect. A new fourth case asserts an authenticated user still gets
+  redirected to their own gallery.
 - A Feature test asserting the home view's `<title>`/meta description are
   present (the layout already provides `$pageDescription`'s fallback,
   which is appropriate for this page — no `$title` override needed since
