@@ -46,6 +46,7 @@ final class AddCollectionItem extends Component
      * dropdown, tcgdex-id keyed (e.g. "sv02"). null = "All sets", the
      * same unfiltered behavior as before this feature existed.
      */
+    #[Validate('nullable|string|max:32')]
     public ?string $setFilter = null;
 
     /**
@@ -112,7 +113,7 @@ final class AddCollectionItem extends Component
         }
 
         try {
-            $this->results = $provider->searchCardsByName($this->search, $this->setFilter);
+            $this->results = $provider->searchCardsByName($this->search, $this->setFilter ?: null);
             $this->resultSetNames = Set::whereIn(
                 'tcgdex_id',
                 array_unique(array_map(fn (CardSummaryData $r) => $r->setTcgdexId, $this->results)),
@@ -137,6 +138,8 @@ final class AddCollectionItem extends Component
         // omitting the filter entirely.
         $this->setFilter = $this->setFilter === '' ? null : $this->setFilter;
 
+        // Livewire lifecycle hooks (unlike component actions) don't support
+        // method injection, so the provider has to be resolved manually here.
         $this->runSearch(app(CardCatalogProvider::class));
     }
 

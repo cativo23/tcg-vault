@@ -223,7 +223,7 @@ test('the set dropdown lists only locally synced sets, sorted by name', function
     Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
 
     Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
-        ->assertSet('availableSets', ['me05' => 'Pitch Black', 'sv02' => 'Paldea Evolved']);
+        ->assertSetStrict('availableSets', ['sv02' => 'Paldea Evolved', 'me05' => 'Pitch Black']);
 });
 
 test('picking a set narrows the search to that set', function () {
