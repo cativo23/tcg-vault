@@ -1,7 +1,10 @@
 <div class="max-w-4xl mx-auto py-10 px-4">
     <div class="flex items-center justify-between mb-4">
         <h1 class="text-xl font-semibold" style="color: var(--ink)">My Collection</h1>
-        <a href="{{ route('admin.collection.add') }}" class="nw-btn-primary">+ Add card</a>
+        <div class="flex items-center gap-2">
+            <a href="{{ route('admin.collection.import') }}" class="nw-btn-secondary">Importar TCGplayer</a>
+            <a href="{{ route('admin.collection.add') }}" class="nw-btn-primary">+ Add card</a>
+        </div>
     </div>
 
     <div class="nw-card overflow-hidden">
