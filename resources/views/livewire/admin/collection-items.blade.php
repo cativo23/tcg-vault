@@ -106,7 +106,7 @@
                         </td>
                         <td class="p-3 text-right">
                             <button wire:click="startEditingItem({{ $item->id }})" class="text-xs mr-2" style="color: var(--ink)">Edit</button>
-                            <button wire:click="delete({{ $item->id }})" wire:confirm="Remove this card from your collection?" class="text-xs" style="color: var(--danger)">Delete</button>
+                            <button wire:click="confirmDelete({{ $item->id }})" class="text-xs" style="color: var(--danger)">Delete</button>
                         </td>
                     </tr>
                 @empty
@@ -168,6 +168,29 @@
                 <div class="mt-4 flex gap-2">
                     <button wire:click="saveItem" class="nw-btn-primary text-sm px-4 py-2">Save</button>
                     <button wire:click="cancelEditingItem" class="text-sm px-4 py-2" style="color: var(--muted)">Cancel</button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if ($confirmingDeleteItemId !== null)
+        @php $deletingItem = $items->firstWhere('id', $confirmingDeleteItemId); @endphp
+        <div class="fixed inset-0 z-40 flex items-center justify-center p-4"
+             style="background: rgba(20,20,18,.5)"
+             wire:click.self="cancelDelete"
+             wire:keydown.escape.window="cancelDelete">
+            <div class="nw-card modal-in w-full max-w-sm p-5">
+                <h2 class="text-lg font-semibold mb-2" style="color: var(--ink)">Remove this card?</h2>
+                @if ($deletingItem)
+                    <p class="text-sm mb-4" style="color: var(--muted)">
+                        {{ $deletingItem->card->name }}
+                        @if ($deletingItem->variant) &middot; {{ \Illuminate\Support\Str::headline($deletingItem->variant) }} @endif
+                        &middot; qty {{ $deletingItem->quantity }}
+                    </p>
+                @endif
+                <div class="flex gap-2">
+                    <button wire:click="delete({{ $confirmingDeleteItemId }})" class="nw-btn-danger text-sm px-4 py-2">Delete</button>
+                    <button wire:click="cancelDelete" class="text-sm px-4 py-2" style="color: var(--muted)">Cancel</button>
                 </div>
             </div>
         </div>

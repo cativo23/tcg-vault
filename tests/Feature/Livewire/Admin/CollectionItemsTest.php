@@ -678,3 +678,64 @@ test('the list paginates at 24 items per page', function () {
     expect($component->viewData('items'))->toHaveCount(24);
     expect($component->viewData('items')->total())->toBe(26);
 });
+
+test('clicking delete opens a confirmation modal instead of deleting immediately', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('confirmDelete', $item->id)
+        ->assertSet('confirmingDeleteItemId', $item->id);
+
+    expect(CollectionItem::find($item->id))->not->toBeNull();
+});
+
+test('confirming delete in the modal actually deletes the item', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('confirmDelete', $item->id)
+        ->call('delete', $item->id);
+
+    expect(CollectionItem::find($item->id))->toBeNull();
+});
+
+test('cancelling the delete modal closes it without deleting', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('confirmDelete', $item->id)
+        ->call('cancelDelete')
+        ->assertSet('confirmingDeleteItemId', null);
+
+    expect(CollectionItem::find($item->id))->not->toBeNull();
+});
+
+test('a user cannot open the delete modal for another users item by guessing its ID (IDOR)', function () {
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
+    $otherItem = CollectionItem::create(['collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('confirmDelete', $otherItem->id)
+        ->assertStatus(404);
+});

@@ -37,6 +37,8 @@ final class CollectionItems extends Component
 
     private const SORTS = ['value', 'name', 'newest'];
 
+    public ?int $confirmingDeleteItemId = null;
+
     public ?int $editingItemId = null;
 
     public string $editingNotes = '';
@@ -146,6 +148,20 @@ final class CollectionItems extends Component
 
         $this->ownedItemOrFail($this->editingQtyItemId)->update(['quantity' => $this->editingQtyValue]);
         $this->editingQtyItemId = null;
+    }
+
+    public function confirmDelete(int $itemId): void
+    {
+        // ownedItemOrFail() throws (404) for another tenant's item before
+        // the modal ever opens — same IDOR posture as every other lookup
+        // in this class.
+        $this->ownedItemOrFail($itemId);
+        $this->confirmingDeleteItemId = $itemId;
+    }
+
+    public function cancelDelete(): void
+    {
+        $this->confirmingDeleteItemId = null;
     }
 
     public function delete(int $itemId): void
