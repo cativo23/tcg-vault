@@ -835,3 +835,64 @@ body {
   .nw-home-fan img:nth-child(2) { left: 34%; top: 18%; }
   .nw-home-fan img:nth-child(3) { left: 62%; top: 24%; width: 96px; }
 }
+
+/* ─── home page — features (one full section per feature, alternating
+   sides — structural DNA studied from pkmn.gg, adapted to this app's own
+   bone/ink tokens; several compressed-3-card-grid drafts were tried and
+   rejected during brainstorming as "too compressed") ─── */
+.nw-home-feature {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: center;
+  padding-block: 40px; border-bottom: 1px solid var(--hair);
+}
+.nw-home-feature:last-child { border-bottom: none; }
+.nw-home-feature--reverse { direction: rtl; }
+.nw-home-feature--reverse > * { direction: ltr; }
+@media (max-width: 48rem) {
+  .nw-home-feature, .nw-home-feature--reverse { grid-template-columns: 1fr; direction: ltr; }
+}
+
+.nw-home-feature .nw-home-feature-eyebrow {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted);
+}
+.nw-home-feature h3 {
+  font-variation-settings: 'wdth' 62, 'wght' 800; font-size: 24px; margin-top: 6px;
+}
+.nw-home-feature ul { list-style: none; margin: 14px 0 0; padding: 0; }
+.nw-home-feature li {
+  font-size: 13px; color: var(--muted); padding: 7px 0 7px 18px; position: relative;
+  border-top: 1px solid var(--hair);
+}
+.nw-home-feature li:first-child { border-top: none; }
+.nw-home-feature li::before { content: "—"; position: absolute; left: 0; color: var(--signal-deep); }
+
+.nw-home-feature-visual {
+  border-radius: var(--radius-card); overflow: hidden; border: 1px solid var(--hair); background: var(--bone-2);
+  box-shadow: 0 16px 34px -18px rgba(20, 20, 18, .3);
+}
+.nw-home-feature-visual .chrome {
+  background: var(--bone-3); padding: 6px 10px; font-size: 9px; color: var(--muted);
+}
+.nw-home-fv-price { padding: 24px; text-align: center; }
+.nw-home-fv-price .big { font-family: 'Martian Mono', monospace; font-size: 38px; font-weight: 700; color: var(--flat); }
+.nw-home-fv-price .row {
+  display: flex; justify-content: space-between; margin-top: 14px; font-size: 11px;
+  border-top: 1px solid var(--hair); padding-top: 10px;
+}
+.nw-home-fv-price .row span:last-child { font-family: 'Martian Mono', monospace; color: var(--signal-deep); font-weight: 700; }
+
+.nw-home-fv-photo { display: grid; grid-template-columns: 1fr 1fr; }
+.nw-home-fv-photo img { width: 100%; aspect-ratio: 2.5 / 3.5; object-fit: cover; }
+.nw-home-fv-photo .label {
+  grid-column: 1 / -1; font-size: 9px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); text-align: center; padding: 6px 0;
+}
+
+.nw-home-fv-sets { padding: 18px; }
+.nw-home-fv-sets .set-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--hair);
+}
+.nw-home-fv-sets .set-row:first-child { border-top: none; }
+.nw-home-fv-sets .name { font-size: 12px; font-weight: 600; flex: 1; }
+.nw-home-fv-sets .bar { width: 60px; height: 6px; background: var(--bone-3); border-radius: 3px; overflow: hidden; }
+.nw-home-fv-sets .bar div { height: 100%; background: var(--signal-deep); }
+.nw-home-fv-sets .pct { font-family: 'Martian Mono', monospace; font-size: 11px; color: var(--muted); width: 34px; text-align: right; }

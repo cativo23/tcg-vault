@@ -44,3 +44,12 @@ test('the hero shows at least 5 real tcgdex-hosted card images', function () {
 
     expect($count)->toBeGreaterThanOrEqual(5);
 });
+
+test('the features section describes all three real features', function () {
+    $response = $this->get('/');
+
+    $response->assertOk();
+    $response->assertSee('Precio en tiempo real');
+    $response->assertSee('Tu foto, no un placeholder');
+    $response->assertSee('Sets completos, de un vistazo');
+});
