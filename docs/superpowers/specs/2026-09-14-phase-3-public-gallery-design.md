@@ -121,22 +121,34 @@ doesn't need them; revisit if that stops being true.
 - **Header/stats band**: set name, series, release date, total cards,
   most expensive card (name + price), full-set market value, completion
   bar (same treatment as the list screen, larger).
-- **Toolbar**: search-by-name input (client-side filter over the
-  already-loaded set — a set tops out at a few hundred cards, no need for
-  a server round-trip per keystroke), sort control (Number / Name /
-  Rarity / Price), rarity filter (a `<select>` populated from the
-  distinct rarities actually present in this set — never a hardcoded
-  global rarity list, sets vary).
+- **Toolbar**: search-by-name input, sort control (Number / Name / Rarity
+  / Price), rarity filter (a `<select>` populated from the distinct
+  rarities actually present in this set — never a hardcoded global
+  rarity list, sets vary). **Amended post-implementation, post-final-review:**
+  shipped as a server-side Livewire round-trip (`wire:model.live.debounce.300ms`),
+  not the client-side filter originally specced here. Accepted as a
+  deliberate deviation rather than rebuilt, given this phase's usage
+  budget — a set tops out at a few hundred cards, so the round-trip cost
+  is real but small, and Livewire's own debounce already caps request
+  frequency. Revisit if a future phase's traffic profile makes this worth
+  the client-side rewrite.
 - **Card grid**: `.nw-card`-styled tiles, image-forward per `design.md`'s
   "card images are the content" rule. Owned cards get a `--signal`
-  hairline border (NOT a checkmark badge, NOT a second accent color —
-  reuses the one sanctioned accent, consistent with `design.md`'s
-  one-accent rule). If Carlos uploaded his own photo for that card
-  (`CollectionItem.photo_path`), show a small toggle (or default to his
-  photo with a "view official art" link) to switch between his photo and
-  tcgdex's official art — this is the differentiator called out in the
-  original brainstorm: nobody else in this product category shows the
-  collector's actual physical copy.
+  border (shipped as a 2px box-shadow, not the hairline weight
+  originally specced here — cosmetic difference, not re-litigated) (NOT
+  a checkmark badge, NOT a second accent color — reuses the one
+  sanctioned accent, consistent with `design.md`'s one-accent rule).
+  **Amended post-implementation, post-final-review:** the photo-vs-official-art
+  toggle described below was never built in Task 5 and is formally
+  deferred, not shipped — Task 5 shows the owner's photo when present
+  (`CollectionItem.photo_path`) with no way for a visitor to switch back
+  to official art. The differentiator this describes (nobody else in
+  this product category shows the collector's actual physical copy)
+  still holds for the "shows the real photo at all" part; only the
+  toggle/switch mechanic is deferred:
+  ~~If Carlos uploaded his own photo for that card (`CollectionItem.photo_path`),
+  show a small toggle (or default to his photo with a "view official art"
+  link) to switch between his photo and tcgdex's official art~~
 - Cards with no image at all (Catalog sync never got `official_image_url`
   and Carlos has no photo) render `design.md`'s specified empty-image
   state (`.imgwrap.empty` — diagonal hatch + icon + "Sin imagen"/"No
@@ -148,6 +160,12 @@ doesn't need them; revisit if that stops being true.
 
 ## 7. Explicitly deferred (not this phase)
 
+- **The photo-vs-official-art toggle.** Added here post-final-review: the
+  set-detail screen shows the owner's photo when one exists, with no way
+  for a visitor to switch to tcgdex's official art instead. Building the
+  actual toggle (or a "view official art" link) is deferred to a follow-up
+  pass, a controller decision made under this phase's usage budget rather
+  than a scope call made during Task 5's own planning.
 - **Browsing sets Carlos hasn't touched.** Only sets reachable through an
   existing `Collection`/`CollectionItem` appear. Browsing the full tcgdex
   catalog (every set that exists, whether Carlos owns anything from it or
