@@ -13,8 +13,8 @@
     <body class="font-sans antialiased" style="background: var(--bone); color: var(--ink)">
         {{-- Section-switcher header, ported from the original approved
              mockup (vault-final.html) — Colección (the set you're
-             currently viewing), Sets (the list), Movimientos (Phase 4,
-             not built yet — shown but inert). --}}
+             currently viewing), Sets (the list), Movimientos (Phase 4:
+             price deltas + activity feed). --}}
         <header class="nw-topbar sticky top-0 z-50 flex items-center justify-between gap-4 px-4 sm:px-6" style="height: 52px">
             <span class="flex items-center gap-2 font-semibold uppercase text-sm tracking-wide">
                 <span class="nw-dot" aria-hidden="true"></span>
@@ -31,7 +31,8 @@
                 @endif
                 <a href="{{ request()->route('username') ? route('gallery.index', ['username' => request()->route('username')]) : '#' }}"
                    class="nw-link {{ request()->routeIs('gallery.index') ? 'is-active' : '' }}">Sets</a>
-                <span class="nw-link" style="opacity: .35; cursor: default" title="{{ __('Coming soon') }}">Movimientos</span>
+                <a href="{{ request()->route('username') ? route('gallery.movimientos', ['username' => request()->route('username')]) : '#' }}"
+                   class="nw-link {{ request()->routeIs('gallery.movimientos') ? 'is-active' : '' }}">Movimientos</a>
             </nav>
             @auth
                 {{-- Carlos, viewing his own public gallery while logged

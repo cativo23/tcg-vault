@@ -28,6 +28,9 @@ Route::get('/admin', \App\Livewire\Admin\CollectionItems::class)
 Route::get('/{username}/gallery', \App\Livewire\Gallery\Index::class)
     ->name('gallery.index');
 
+Route::get('/{username}/gallery/movimientos', \App\Livewire\Gallery\Movimientos::class)
+    ->name('gallery.movimientos');
+
 Route::get('/{username}/gallery/{setTcgdexId}', \App\Livewire\Gallery\Show::class)
     ->name('gallery.show');
 

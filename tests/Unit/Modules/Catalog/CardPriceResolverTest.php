@@ -49,3 +49,30 @@ test('returns null when the card has no snapshot at all', function () {
 
     expect((new CardPriceResolver())->resolve($card))->toBeNull();
 });
+
+test('resolveAsOf ignores snapshots captured after the given date', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 1000]);
+    $newer = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1200]);
+
+    $resolved = (new CardPriceResolver())->resolveAsOf($card, today()->subDays(2));
+
+    expect($resolved->market_minor)->toBe(1000);
+    expect($resolved->id)->not->toBe($newer->id);
+});
+
+test('distinctSnapshotDates returns one entry per day, most recent first, regardless of how many source rows exist per day', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1000]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today()->subDay(), 'currency' => 'EUR', 'market_minor' => 900]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1100]);
+
+    $dates = (new CardPriceResolver())->distinctSnapshotDates($card);
+
+    expect($dates)->toHaveCount(2);
+    expect($dates->first()->toDateString())->toBe(today()->toDateString());
+});
