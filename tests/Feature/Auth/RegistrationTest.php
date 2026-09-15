@@ -24,6 +24,7 @@ test('registration screen can be rendered', function () {
 test('new users can register', function () {
     $component = Volt::test('pages.auth.register')
         ->set('name', 'Test User')
+        ->set('username', 'testuser')
         ->set('email', 'test@example.com')
         ->set('password', 'password')
         ->set('password_confirmation', 'password');
@@ -33,6 +34,25 @@ test('new users can register', function () {
     $component->assertRedirect(route('dashboard', absolute: false));
 
     $this->assertAuthenticated();
+
+    // Registration must never create a NULL-username account — that
+    // account would 500 on its own /profile page (fixed post-final-review,
+    // this test pins it so it can't regress).
+    expect(\App\Models\User::where('email', 'test@example.com')->firstOrFail()->username)->toBe('testuser');
+});
+
+test('registration requires a valid username', function () {
+    $component = Volt::test('pages.auth.register')
+        ->set('name', 'Test User')
+        ->set('username', 'admin') // reserved word
+        ->set('email', 'test@example.com')
+        ->set('password', 'password')
+        ->set('password_confirmation', 'password');
+
+    $component->call('register');
+
+    $component->assertHasErrors('username');
+    $this->assertGuest();
 });
 
 test('registration is inaccessible when TCGVAULT_ALLOW_REGISTRATION is off', function () {
