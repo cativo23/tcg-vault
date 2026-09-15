@@ -97,9 +97,18 @@ final class Show extends Component
             default => $entries->sortBy(fn ($e) => str_pad($e['card']->local_id, 5, '0', STR_PAD_LEFT)),
         };
 
-        // Owned cards always lead within the chosen order: the collection
-        // is the subject, the gaps are context.
-        $sorted = $sorted->sortByDesc(fn ($e) => $e['owned'] ? 1 : 0, SORT_REGULAR, false)->values();
+        // Owned cards lead within the chosen order for every sort EXCEPT
+        // "number" — Carlos flagged live (2026-09-15) that the default
+        // numeric sort should be the set's true literal card order (owned
+        // and missing interleaved by their real position), not two
+        // separate owned-then-missing blocks each individually numeric.
+        // The other sort modes (name/rarity/value) keep the original
+        // "collection is the subject" grouping.
+        if ($this->sort !== 'number') {
+            $sorted = $sorted->sortByDesc(fn ($e) => $e['owned'] ? 1 : 0, SORT_REGULAR, false)->values();
+        } else {
+            $sorted = $sorted->values();
+        }
 
         // Stats come from the whole set, unfiltered — the toolbar narrows the grid, not the numbers.
         $ownedCards = $this->set->cards()
