@@ -37,6 +37,7 @@
                                     <th class="p-3">Cant.</th>
                                     <th class="p-3">Carta</th>
                                     <th class="p-3">ID tcgdex</th>
+                                    <th class="p-3"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -45,6 +46,17 @@
                                         <td class="p-3 mono">{{ $line->qty }}</td>
                                         <td class="p-3 font-medium">{{ $line->name }}</td>
                                         <td class="p-3 mono text-xs" style="color: var(--muted)">{{ $line->tcgdexId }}</td>
+                                        <td class="p-3 text-xs">
+                                            @if ($line->variantAmbiguous)
+                                                {{-- TCGplayer's export never marks which copy is holo/reverse-holo —
+                                                     found live 2026-09-15. This card has more than one known price
+                                                     variant, so every copy imports without one; edit them
+                                                     individually afterward in the collection table if needed. --}}
+                                                <span style="color: var(--danger)" title="tcgdex conoce más de una variante para esta carta, pero el export de TCGplayer no distingue cuál copia es cuál — se agregan sin variante. Editalas después si hace falta.">
+                                                    ⚠ revisar variante
+                                                </span>
+                                            @endif
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>

@@ -84,10 +84,17 @@ final class TcgplayerImportParser
             // Cards this install already synced are resolved locally, which
             // removes one tcgdex round-trip per line. On a re-import of an
             // already-synced set that's the entire preview cost gone.
-            $localName = Card::where('tcgdex_id', $tcgdexCardId)->value('name');
+            $localCard = Card::where('tcgdex_id', $tcgdexCardId)->first(['id', 'name']);
 
-            if ($localName !== null) {
-                $matched[] = new MatchedImportLine(qty: $candidate['qty'], tcgdexId: $tcgdexCardId, name: $localName);
+            if ($localCard !== null) {
+                $variantCount = $localCard->priceSnapshots()->distinct('variant')->count('variant');
+
+                $matched[] = new MatchedImportLine(
+                    qty: $candidate['qty'],
+                    tcgdexId: $tcgdexCardId,
+                    name: $localCard->name,
+                    variantAmbiguous: $variantCount > 1,
+                );
 
                 continue;
             }
@@ -110,7 +117,14 @@ final class TcgplayerImportParser
                 continue;
             }
 
-            $matched[] = new MatchedImportLine(qty: $candidate['qty'], tcgdexId: $tcgdexCardId, name: $card->name);
+            $distinctVariants = collect($card->prices)->pluck('variant')->unique()->count();
+
+            $matched[] = new MatchedImportLine(
+                qty: $candidate['qty'],
+                tcgdexId: $tcgdexCardId,
+                name: $card->name,
+                variantAmbiguous: $distinctVariants > 1,
+            );
         }
 
         return new ParsedImport(matched: Collection::make($matched), unmatched: Collection::make($unmatched));

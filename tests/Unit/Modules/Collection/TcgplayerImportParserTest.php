@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardDetailData;
+use App\Modules\Catalog\Data\PriceEntryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Services\TcgplayerImportParser;
 
-function fakeImportCard(string $tcgdexId, string $setTcgdexId, string $localId, string $name): CardDetailData
+function fakeImportCard(string $tcgdexId, string $setTcgdexId, string $localId, string $name, array $prices = []): CardDetailData
 {
     return CardDetailData::from([
         'tcgdexId' => $tcgdexId,
@@ -19,9 +21,23 @@ function fakeImportCard(string $tcgdexId, string $setTcgdexId, string $localId, 
         'rarity' => 'Common',
         'variants' => [],
         'officialImageUrl' => null,
-        'prices' => [],
+        'prices' => $prices,
         'raw' => [],
     ]);
+}
+
+function fakePriceEntry(string $variant): PriceEntryData
+{
+    return new PriceEntryData(
+        source: 'tcgplayer',
+        variant: $variant,
+        currency: 'USD',
+        marketMinor: 1000,
+        lowMinor: 900,
+        trendMinor: null,
+        sourceUpdatedAt: null,
+        raw: [],
+    );
 }
 
 test('parses a normal line and matches it against the catalog', function () {
@@ -127,6 +143,52 @@ test('resolves an already-synced card from the local catalog without calling tcg
     expect($result->matched->firstWhere('tcgdexId', 'me05-068')->name)->toBe('Toucannon');
     expect($result->matched->firstWhere('tcgdexId', 'me05-052')->name)->toBe('Malamar');
     expect($result->unmatched)->toHaveCount(0);
+});
+
+test('flags a locally-synced card as variant-ambiguous when it has more than one known price variant', function () {
+    // Real bug, found live 2026-09-15: TCGplayer's export never marks which
+    // physical copy is holofoil vs normal, so two separately-exported lines
+    // for a card with a known holofoil variant merge into one "qty 3, no
+    // variant" entry with zero signal for which copies are which.
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-037', 'set_id' => $set->id, 'local_id' => '037', 'name' => 'Lampent']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 500]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1500]);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+
+    $result = (new TcgplayerImportParser($provider))->parse(
+        "2 Lampent [PBL] 037/084\n1 Lampent [PBL] 037/084"
+    );
+
+    expect($result->matched)->toHaveCount(1);
+    expect($result->matched->first()->qty)->toBe(3);
+    expect($result->matched->first()->variantAmbiguous)->toBeTrue();
+});
+
+test('does not flag a locally-synced card with only one known price variant', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-068', 'set_id' => $set->id, 'local_id' => '068', 'name' => 'Toucannon']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 500]);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+
+    $result = (new TcgplayerImportParser($provider))->parse('1 Toucannon - 068/084 [PBL] 068/084');
+
+    expect($result->matched->first()->variantAmbiguous)->toBeFalse();
+});
+
+test('flags a card resolved via tcgdex as variant-ambiguous when it reports more than one price variant', function () {
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-068')->once()
+        ->andReturn(fakeImportCard('me05-068', 'me05', '068', 'Toucannon', [
+            fakePriceEntry('normal'),
+            fakePriceEntry('holofoil'),
+        ]));
+
+    $result = (new TcgplayerImportParser($provider))->parse('1 Toucannon - 068/084 [PBL] 068/084');
+
+    expect($result->matched->first()->variantAmbiguous)->toBeTrue();
 });
 
 test('a transient catalog failure lands the line in unmatched instead of propagating', function () {
