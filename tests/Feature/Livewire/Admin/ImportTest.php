@@ -92,17 +92,26 @@ test('unmatched lines are reported but do not block confirming the matched ones'
 test('a card the catalog rejects during confirmation does not abort the rest of the batch', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
+    $this->app->instance(CardCatalogProvider::class, fakeCatalogProviderForImport());
 
-    $provider = fakeCatalogProviderForImport();
-    $this->app->instance(CardCatalogProvider::class, $provider);
-
-    Livewire::test(Import::class)
+    // Both cards must clear preview() and land in $matched — the parser's
+    // own catch-and-continue around findCard() must NOT be what routes the
+    // second card to `unmatched`, or confirm()'s try/catch is never
+    // actually exercised.
+    $component = Livewire::test(Import::class)
         ->set('text', "1 Toucannon - 068/084 [PBL] 068/084\n1 Malamar [PBL] 052/084")
         ->call('preview')
-        ->assertSet('matched', fn (array $matched) => count($matched) === 2);
+        ->assertSet('matched', fn (array $matched) => count($matched) === 2)
+        ->assertSet('unmatched', fn (array $unmatched) => count($unmatched) === 0);
 
-    // Re-bind the provider so the second card fails only during confirm(),
-    // proving one bad card mid-batch doesn't sink the rest.
+    // Re-bind the provider so the second card fails only when
+    // CatalogSyncService::syncCard() calls findCard() again during
+    // confirm() — proving confirm()'s own try/catch around
+    // CollectionService::addItem() is what's under test, not the parser's.
+    // CollectionService (and its CatalogSyncService/CardCatalogProvider
+    // dependencies) are method-injected fresh per Livewire call, so
+    // rebinding between preview() and confirm() on the SAME component
+    // instance takes effect.
     $provider = Mockery::mock(CardCatalogProvider::class);
     $provider->shouldReceive('findCard')->with('me05-068')->andReturnUsing(fakeCatalogProviderForImport()->findCard(...));
     $provider->shouldReceive('findCard')->with('me05-052')->andThrow(CardNotFoundException::forTcgdexId('me05-052'));
@@ -114,9 +123,7 @@ test('a card the catalog rejects during confirmation does not abort the rest of 
     );
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(Import::class)
-        ->set('text', "1 Toucannon - 068/084 [PBL] 068/084\n1 Malamar [PBL] 052/084")
-        ->call('preview')
+    $component
         ->call('confirm')
         ->assertSet('summary', '1 cartas agregadas, 1 copias totales.');
 
