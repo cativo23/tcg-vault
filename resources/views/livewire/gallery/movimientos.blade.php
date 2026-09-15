@@ -1,5 +1,5 @@
 <div class="max-w-5xl mx-auto py-10 px-4">
-    <h1 class="text-xl font-semibold mb-6" style="color: var(--ink)">{{ $targetUser->name }}'s Movimientos</h1>
+    <h1 class="text-xl font-semibold mb-6" style="color: var(--ink)">{{ $targetUser->name }}'s Activity</h1>
 
     <section class="mb-10">
         <h2 class="text-sm font-semibold uppercase tracking-wide mb-3" style="color: var(--muted)">Price changes</h2>

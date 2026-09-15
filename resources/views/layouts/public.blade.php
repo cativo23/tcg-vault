@@ -12,9 +12,12 @@
     </head>
     <body class="font-sans antialiased" style="background: var(--bone); color: var(--ink)">
         {{-- Section-switcher header, ported from the original approved
-             mockup (vault-final.html) — Colección (the set you're
-             currently viewing), Sets (the list), Movimientos (Phase 4:
-             price deltas + activity feed). --}}
+             mockup (vault-final.html) — Collection (the set you're
+             currently viewing), Sets (the list), Activity (Phase 4:
+             price deltas + activity feed). Nav labels are English per
+             Carlos's explicit call — the mockup's original Spanish
+             labels (Colección/Movimientos) were carried over verbatim
+             at first but that wasn't the intent. --}}
         <header class="nw-topbar sticky top-0 z-50 flex items-center justify-between gap-4 px-4 sm:px-6" style="height: 52px">
             <span class="flex items-center gap-2 font-semibold uppercase text-sm tracking-wide">
                 <span class="nw-dot" aria-hidden="true"></span>
@@ -22,17 +25,17 @@
             </span>
             <nav class="flex gap-5 text-xs font-bold uppercase tracking-wider">
                 @if (request()->routeIs('gallery.show'))
-                    {{-- "Colección" is whichever set you're currently viewing —
+                    {{-- "Collection" is whichever set you're currently viewing —
                          it has no meaning on its own outside a set's context,
                          so it only becomes a real (self-)link there. --}}
-                    <a href="{{ url()->current() }}" class="nw-link is-active">Colección</a>
+                    <a href="{{ url()->current() }}" class="nw-link is-active">Collection</a>
                 @else
-                    <span class="nw-link" style="opacity: .35; cursor: default">Colección</span>
+                    <span class="nw-link" style="opacity: .35; cursor: default">Collection</span>
                 @endif
                 <a href="{{ request()->route('username') ? route('gallery.index', ['username' => request()->route('username')]) : '#' }}"
                    class="nw-link {{ request()->routeIs('gallery.index') ? 'is-active' : '' }}">Sets</a>
                 <a href="{{ request()->route('username') ? route('gallery.movimientos', ['username' => request()->route('username')]) : '#' }}"
-                   class="nw-link {{ request()->routeIs('gallery.movimientos') ? 'is-active' : '' }}">Movimientos</a>
+                   class="nw-link {{ request()->routeIs('gallery.movimientos') ? 'is-active' : '' }}">Activity</a>
             </nav>
             @auth
                 {{-- Carlos, viewing his own public gallery while logged
