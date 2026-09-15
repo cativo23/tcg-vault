@@ -28,6 +28,21 @@ final class CatalogSyncService
             throw CatalogIdentityMismatchException::forCardMismatch($tcgdexCardId, $cardDetail->tcgdexId);
         }
 
+        // A card already in the Catalog has a known, valid set_id — no
+        // need to re-fetch/re-upsert the Set from tcgdex just to look
+        // it up again. This matters specifically for SyncCardPricingJob
+        // (Phase 4's daily refresh): every job used to call findSet()
+        // unconditionally, doubling the daily HTTP-call count the design
+        // spec explicitly budgeted for ("refreshing N cards is N HTTP
+        // calls") to 2N. A brand-new card (catalog:import-set's actual
+        // job, Phase 1) still goes through the full syncSet() below,
+        // since its set_id isn't known yet. Trade-off: a set's OWN
+        // metadata (card_count, logo_url, etc.) no longer gets refreshed
+        // as a side effect of a pricing-only sync — acceptable, since
+        // this job's whole point is prices, not set discovery, and sets
+        // rarely change after release.
+        $existingCard = Card::where('tcgdex_id', $tcgdexCardId)->first();
+
         // The Set upsert (and its memoization cache) must complete and commit
         // independently of the card/snapshot transaction below. If it were
         // nested inside DB::transaction() and that transaction rolled back
@@ -35,7 +50,7 @@ final class CatalogSyncService
         // cache would still reference a Set row that no longer exists in the
         // database, causing a foreign-key violation on the next card synced
         // from the same set.
-        $set = $this->syncSet($cardDetail->setTcgdexId);
+        $set = $existingCard?->set ?? $this->syncSet($cardDetail->setTcgdexId);
 
         return DB::transaction(function () use ($cardDetail, $set): Card {
             $card = Card::updateOrCreate(

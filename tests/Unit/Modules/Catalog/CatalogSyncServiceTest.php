@@ -121,6 +121,37 @@ test('syncCard only fetches the set once across two cards in the same set', func
     expect(Set::where('tcgdex_id', 'me05')->count())->toBe(1);
 });
 
+test('re-syncing an already-known card from a FRESH service instance never calls findSet', function () {
+    // Regression for the final whole-branch review's finding: each
+    // SyncCardPricingJob (Phase 4's daily refresh) resolves its own
+    // fresh CatalogSyncService instance, so the existing $syncedSets
+    // in-memory memoization (proven above, within ONE instance) never
+    // applies across jobs — every refreshed card was re-fetching its
+    // set from tcgdex, doubling the daily HTTP-call count the design
+    // spec explicitly budgeted for ("refreshing N cards is N HTTP
+    // calls") to 2N. A card that's already in the Catalog has a known,
+    // valid set_id — findSet() must not be called for it at all,
+    // regardless of which service instance handles the refresh.
+    $firstInstance = new CatalogSyncService(
+        tap(Mockery::mock(CardCatalogProvider::class), function ($provider) {
+            $provider->shouldReceive('findCard')->once()->with('me05-116')->andReturn(fakeCardDetail());
+            $provider->shouldReceive('findSet')->once()->with('me05')->andReturn(new SetSummaryData(
+                tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+            ));
+        }),
+    );
+    $firstInstance->syncCard('me05-116');
+
+    $refreshProvider = Mockery::mock(CardCatalogProvider::class);
+    $refreshProvider->shouldReceive('findCard')->once()->with('me05-116')->andReturn(fakeCardDetail());
+    $refreshProvider->shouldNotReceive('findSet');
+
+    $freshInstance = new CatalogSyncService($refreshProvider);
+    $card = $freshInstance->syncCard('me05-116');
+
+    expect($card->set_id)->toBe(Set::where('tcgdex_id', 'me05')->sole()->id);
+});
+
 test('a rolled back card sync does not poison the memoized set for a later card in the same set', function () {
     // First card has a price entry that violates the `currency` column's
     // char(3) constraint, so its DB::transaction() rolls back AFTER the
