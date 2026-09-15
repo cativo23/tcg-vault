@@ -23,8 +23,9 @@ new class extends Component
             <div class="flex">
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center">
-                    <a href="{{ route('dashboard') }}" wire:navigate>
-                        <x-application-logo class="block h-9 w-auto fill-current" style="color: var(--bone)" />
+                    <a href="{{ route('dashboard') }}" class="nw-brand" wire:navigate>
+                        <span class="nw-dot" aria-hidden="true"></span>
+                        tcg-vault
                     </a>
                 </div>
 
