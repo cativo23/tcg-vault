@@ -8,7 +8,11 @@ use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
+use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
+use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -118,6 +122,25 @@ test('a preview that recognizes nothing says so instead of rendering an empty pa
         ->assertSet('unmatched', [])
         ->assertSet('hasPreviewed', true)
         ->assertSee('0 líneas reconocidas', escape: false);
+});
+
+test('a variant-ambiguous matched line sets needs_variant_review on the created item', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $this->app->instance(CardCatalogProvider::class, fakeCatalogProviderForImport());
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    Card::create(['tcgdex_id' => 'me05-037', 'set_id' => $set->id, 'local_id' => '037', 'name' => 'Lampent']);
+    CardPriceSnapshot::create(['card_id' => Card::where('tcgdex_id', 'me05-037')->value('id'), 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 100]);
+    CardPriceSnapshot::create(['card_id' => Card::where('tcgdex_id', 'me05-037')->value('id'), 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 300]);
+
+    Livewire::test(Import::class)
+        ->set('text', '3 Lampent [PBL] 037/084')
+        ->call('preview')
+        ->call('confirm');
+
+    $item = CollectionItem::where('card_tcgdex_id', 'me05-037')->first();
+    expect($item->needs_variant_review)->toBeTrue();
 });
 
 test('a card the catalog rejects during confirmation does not abort the rest of the batch', function () {

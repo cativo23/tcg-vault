@@ -158,13 +158,20 @@ final class CollectionItems extends Component
 
         $this->validate();
 
-        $this->ownedItemOrFail($this->editingFullItemId)->update([
+        $item = $this->ownedItemOrFail($this->editingFullItemId);
+
+        $item->update([
             'condition' => $this->editingCondition,
             'quantity' => $this->editingQuantity,
             'variant' => $this->editingVariant,
             'grade_company' => $this->editingGradeCompany,
             'grade_value' => $this->editingGradeValue,
+            // Assigning a real variant is exactly what resolves the
+            // ambiguity the importer flagged — never touched by editing
+            // any other field (Notes has its own separate save method).
+            'needs_variant_review' => $this->editingVariant !== null ? false : $item->needs_variant_review,
         ]);
+
         $this->editingFullItemId = null;
     }
 

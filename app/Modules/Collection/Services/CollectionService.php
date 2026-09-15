@@ -14,7 +14,7 @@ final class CollectionService
     public function __construct(private readonly CatalogSyncService $catalogSyncService) {}
 
     /**
-     * @param array{variant?: ?string, condition: string, grade_company?: ?string, grade_value?: ?string, quantity?: int, notes?: ?string, photo_path?: ?string} $itemData
+     * @param array{variant?: ?string, condition: string, grade_company?: ?string, grade_value?: ?string, quantity?: int, notes?: ?string, photo_path?: ?string, needs_variant_review?: bool} $itemData
      */
     public function addItem(Collection $collection, string $tcgdexCardId, array $itemData): CollectionItem
     {
@@ -75,6 +75,7 @@ final class CollectionService
             'quantity' => $quantity,
             'notes' => $itemData['notes'] ?? null,
             'photo_path' => $itemData['photo_path'] ?? null,
+            'needs_variant_review' => $itemData['needs_variant_review'] ?? false,
         ]);
     }
 }

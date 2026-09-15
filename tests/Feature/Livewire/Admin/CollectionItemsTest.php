@@ -380,6 +380,46 @@ test('when a card has no synced pricing data the variant dropdown falls back to 
         ->assertDontSee('value="reverse-holofoil"', false);
 });
 
+test('assigning a variant clears needs_variant_review', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'needs_variant_review' => true,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->set('editingVariant', 'holofoil')
+        ->call('saveItem');
+
+    expect($item->fresh()->needs_variant_review)->toBeFalse();
+});
+
+test('editing notes on a flagged item does not clear needs_variant_review', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'needs_variant_review' => true,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingNotes', $item->id)
+        ->set('editingNotes', 'a note')
+        ->call('saveNotes');
+
+    expect($item->fresh()->needs_variant_review)->toBeTrue();
+});
+
 test('a user cannot edit another users item full details by guessing its ID (IDOR)', function () {
     $user = User::factory()->create();
     $otherUser = User::factory()->create();

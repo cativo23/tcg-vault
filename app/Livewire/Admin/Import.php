@@ -73,6 +73,7 @@ final class Import extends Component
                 $service->addItem($collection, $line->tcgdexId, [
                     'condition' => 'NM',
                     'quantity' => $line->qty,
+                    'needs_variant_review' => $line->variantAmbiguous,
                 ]);
                 $this->addedCards++;
                 $this->addedCopies += $line->qty;

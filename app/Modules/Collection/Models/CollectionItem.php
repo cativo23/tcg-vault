@@ -24,11 +24,15 @@ final class CollectionItem extends Model
         'quantity',
         'notes',
         'photo_path',
+        'needs_variant_review',
     ];
 
     protected function casts(): array
     {
-        return ['quantity' => 'integer'];
+        return [
+            'quantity' => 'integer',
+            'needs_variant_review' => 'boolean',
+        ];
     }
 
     public function collection(): BelongsTo

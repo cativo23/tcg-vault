@@ -194,6 +194,58 @@ test('adding the first card from a brand-new set dispatches ImportSetJob to back
     Queue::assertPushed(ImportSetJob::class, fn (ImportSetJob $job) => $job->setTcgdexId === 'me05');
 });
 
+test('addItem stores needs_variant_review when passed true', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->once()->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
+    ));
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $service = app(CollectionService::class);
+    $item = $service->addItem($collection, 'me05-116', [
+        'condition' => 'NM',
+        'quantity' => 3,
+        'needs_variant_review' => true,
+    ]);
+
+    expect($item->needs_variant_review)->toBeTrue();
+});
+
+test('addItem defaults needs_variant_review to false when not passed', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->once()->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
+    ));
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $service = app(CollectionService::class);
+    $item = $service->addItem($collection, 'me05-116', ['condition' => 'NM']);
+
+    expect($item->needs_variant_review)->toBeFalse();
+});
+
 test('adding a card from a set that is already fully imported does not dispatch ImportSetJob again', function () {
     Queue::fake();
 
