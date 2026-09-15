@@ -46,8 +46,15 @@ services:
     networks: [tcgvault-internal]
     deploy:
       resources:
-        limits: { cpus: '0.5', memory: 128M }
-        reservations: { cpus: '0.1', memory: 64M }
+        # 128M was too tight: verified live post-deploy that the master
+        # process + 2 idle workers alone sit at ~127M/128M (99.5%) before
+        # processing a single real job — each PHP-FPM/CLI process with
+        # the full Laravel framework loaded has real baseline overhead
+        # regardless of Horizon's own 48MB per-worker graceful-restart
+        # threshold (config/horizon.php), which bounds growth from
+        # processing jobs, not the framework's own boot footprint.
+        limits: { cpus: '0.5', memory: 192M }
+        reservations: { cpus: '0.1', memory: 96M }
 
   scheduler:
     image: ${DOCKER_USERNAME:-cativo23}/tcg-vault:latest
