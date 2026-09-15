@@ -5,7 +5,7 @@
         <div class="nw-eyebrow">
             <span>Pokémon TCG · Collection</span>
         </div>
-        <h1 class="nw-display nw-h1">{{ $targetUser->name }}</h1>
+        <h1 class="nw-display nw-h1">{{ $targetUser->username }}</h1>
 
         <div class="nw-stats" aria-label="Collection summary">
             <div class="nw-stat accent">

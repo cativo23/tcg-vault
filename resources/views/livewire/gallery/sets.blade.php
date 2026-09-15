@@ -1,6 +1,6 @@
 <div class="nw-wrap">
     <section class="nw-masthead">
-        <div class="nw-eyebrow"><span>{{ $targetUser->name }} · by official set</span></div>
+        <div class="nw-eyebrow"><span>{{ $targetUser->username }} · by official set</span></div>
         <h1 class="nw-display nw-h1 nw-h1--md">Sets</h1>
     </section>
 

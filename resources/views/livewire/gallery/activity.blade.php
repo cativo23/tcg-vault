@@ -3,7 +3,7 @@
 
 <div class="nw-wrap">
     <section class="nw-masthead">
-        <div class="nw-eyebrow"><span>{{ $targetUser->name }} · collection history</span></div>
+        <div class="nw-eyebrow"><span>{{ $targetUser->username }} · collection history</span></div>
         <h1 class="nw-display nw-h1 nw-h1--md">Activity</h1>
     </section>
 

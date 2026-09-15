@@ -150,7 +150,7 @@
                 </div>
             @else
                 <div class="nw-section-head mt-8"><span>Collection</span></div>
-                <p class="text-sm py-2" style="color: var(--muted)">This card is in <a href="{{ $setUrl }}" class="underline underline-offset-[3px]" style="color: var(--ink)" wire:navigate>{{ $card->set->name }}</a>, but not in {{ $targetUser->name }}'s collection yet.</p>
+                <p class="text-sm py-2" style="color: var(--muted)">This card is in <a href="{{ $setUrl }}" class="underline underline-offset-[3px]" style="color: var(--ink)" wire:navigate>{{ $card->set->name }}</a>, but not in {{ $targetUser->username }}'s collection yet.</p>
             @endif
 
             {{-- Card facts --}}
