@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+vendor
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/testing/*
+storage/framework/views/*
+storage/logs/*
+storage/app/public/collection-photos/*
+.env
+.env.*
+!.env.example
+tests
+.claude
+.superpowers
+docs
