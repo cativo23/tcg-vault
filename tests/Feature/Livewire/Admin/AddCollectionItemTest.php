@@ -28,7 +28,7 @@ test('a logged-in admin can search tcgdex and see results', function () {
     Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
 
     $provider = Mockery::mock(CardCatalogProvider::class);
-    $provider->shouldReceive('searchCardsByName')->with('Darkrai')->andReturn([
+    $provider->shouldReceive('searchCardsByName')->with('Darkrai', null)->andReturn([
         new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: 'https://assets.tcgdex.net/en/me/me05/116/high.webp'),
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -46,7 +46,7 @@ test('a result whose set is already synced locally shows the real set name, not 
     Set::create(['tcgdex_id' => 'sv02', 'name' => 'Paldea Evolved']);
 
     $provider = Mockery::mock(CardCatalogProvider::class);
-    $provider->shouldReceive('searchCardsByName')->with('Pikachu')->andReturn([
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->andReturn([
         new CardSummaryData(tcgdexId: 'sv02-062', setTcgdexId: 'sv02', localId: '062', name: 'Pikachu', imageUrl: null),
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -63,7 +63,7 @@ test('a result whose set is not synced locally falls back to the raw tcgdex set 
     Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
 
     $provider = Mockery::mock(CardCatalogProvider::class);
-    $provider->shouldReceive('searchCardsByName')->with('Pikachu')->andReturn([
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->andReturn([
         new CardSummaryData(tcgdexId: 'swsh4-043', setTcgdexId: 'swsh4', localId: '043', name: 'Pikachu', imageUrl: null),
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -179,7 +179,7 @@ test('a malformed catalog search response shows a friendly error instead of cras
     Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
 
     $provider = Mockery::mock(CardCatalogProvider::class);
-    $provider->shouldReceive('searchCardsByName')->with('Darkrai')->andThrow(
+    $provider->shouldReceive('searchCardsByName')->with('Darkrai', null)->andThrow(
         new \App\Modules\Catalog\Exceptions\MalformedCatalogResponseException('Malformed tcgdex search response for query [Darkrai]: response body is not a JSON array.'),
     );
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -197,10 +197,10 @@ test('a stale search error clears once a later search succeeds', function () {
     Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
 
     $provider = Mockery::mock(CardCatalogProvider::class);
-    $provider->shouldReceive('searchCardsByName')->with('Darkrai')->once()->andThrow(
+    $provider->shouldReceive('searchCardsByName')->with('Darkrai', null)->once()->andThrow(
         new \App\Modules\Catalog\Exceptions\MalformedCatalogResponseException('Malformed tcgdex search response for query [Darkrai]: response body is not a JSON array.'),
     );
-    $provider->shouldReceive('searchCardsByName')->with('Pikachu')->once()->andReturn([
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn([
         new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: null),
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -213,6 +213,76 @@ test('a stale search error clears once a later search succeeds', function () {
     $component->set('search', 'Pikachu')
         ->call('runSearch')
         ->assertHasNoErrors('search');
+});
+
+test('the set dropdown lists only locally synced sets, sorted by name', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    Set::create(['tcgdex_id' => 'sv02', 'name' => 'Paldea Evolved']);
+    Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->assertSet('availableSets', ['me05' => 'Pitch Black', 'sv02' => 'Paldea Evolved']);
+});
+
+test('picking a set narrows the search to that set', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    Set::create(['tcgdex_id' => 'sv02', 'name' => 'Paldea Evolved']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', 'sv02')->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'sv02-062', setTcgdexId: 'sv02', localId: '062', name: 'Pikachu', imageUrl: null),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Pikachu')
+        ->set('setFilter', 'sv02')
+        ->assertSet('results.0.tcgdexId', 'sv02-062');
+});
+
+test('changing the set filter re-runs the current search immediately', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    Set::create(['tcgdex_id' => 'sv02', 'name' => 'Paldea Evolved']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-999', setTcgdexId: 'me05', localId: '999', name: 'Pikachu', imageUrl: null),
+    ]);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', 'sv02')->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'sv02-062', setTcgdexId: 'sv02', localId: '062', name: 'Pikachu', imageUrl: null),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Pikachu')
+        ->call('runSearch')
+        ->assertSet('results.0.tcgdexId', 'me05-999')
+        ->set('setFilter', 'sv02')
+        ->assertSet('results.0.tcgdexId', 'sv02-062');
+});
+
+test('leaving the set filter on "All sets" behaves exactly like today\'s unfiltered search', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-999', setTcgdexId: 'me05', localId: '999', name: 'Pikachu', imageUrl: null),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->assertSet('setFilter', null)
+        ->set('search', 'Pikachu')
+        ->call('runSearch')
+        ->assertSet('results.0.tcgdexId', 'me05-999');
 });
 
 test('a brand-new user with no Collection row can save a card, which creates one on demand', function () {

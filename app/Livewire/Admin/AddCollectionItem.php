@@ -41,6 +41,22 @@ final class AddCollectionItem extends Component
      */
     public array $resultSetNames = [];
 
+    /**
+     * Narrows runSearch() to one set when set — populated from the
+     * dropdown, tcgdex-id keyed (e.g. "sv02"). null = "All sets", the
+     * same unfiltered behavior as before this feature existed.
+     */
+    public ?string $setFilter = null;
+
+    /**
+     * Dropdown options: locally synced sets only, tcgdex_id => name.
+     * Populated once in mount() — no tcgdex round-trip, per design (a set
+     * that hasn't been synced yet simply isn't offered as a filter).
+     *
+     * @var array<string, string>
+     */
+    public array $availableSets = [];
+
     public ?string $selectedTcgdexId = null;
 
     public ?string $selectedName = null;
@@ -79,6 +95,11 @@ final class AddCollectionItem extends Component
     #[Validate('nullable|image|mimes:jpeg,png,webp|max:5120')]
     public $photo = null;
 
+    public function mount(): void
+    {
+        $this->availableSets = Set::orderBy('name')->pluck('name', 'tcgdex_id')->all();
+    }
+
     public function runSearch(CardCatalogProvider $provider): void
     {
         $this->resetErrorBag('search');
@@ -91,7 +112,7 @@ final class AddCollectionItem extends Component
         }
 
         try {
-            $this->results = $provider->searchCardsByName($this->search);
+            $this->results = $provider->searchCardsByName($this->search, $this->setFilter);
             $this->resultSetNames = Set::whereIn(
                 'tcgdex_id',
                 array_unique(array_map(fn (CardSummaryData $r) => $r->setTcgdexId, $this->results)),
@@ -104,6 +125,11 @@ final class AddCollectionItem extends Component
             $this->results = [];
             $this->resultSetNames = [];
         }
+    }
+
+    public function updatedSetFilter(): void
+    {
+        $this->runSearch(app(CardCatalogProvider::class));
     }
 
     public function selectCard(string $tcgdexId, CardCatalogProvider $provider): void

@@ -3,6 +3,16 @@
         <h1 class="text-xl font-semibold mb-4" style="color: var(--ink)">Add a card</h1>
 
         <div class="mb-4">
+            <label class="block text-sm font-medium mb-1">Set</label>
+            <select wire:model.live="setFilter" class="w-full border rounded px-3 py-2">
+                <option value="">All sets</option>
+                @foreach ($availableSets as $tcgdexId => $name)
+                    <option value="{{ $tcgdexId }}">{{ $name }}</option>
+                @endforeach
+            </select>
+        </div>
+
+        <div class="mb-4">
             <label class="block text-sm font-medium mb-1">Search tcgdex by name</label>
             <input type="text" wire:model.live.debounce.400ms="search" wire:keyup="runSearch"
                    class="w-full border rounded px-3 py-2" placeholder="e.g. Mega Darkrai ex">
