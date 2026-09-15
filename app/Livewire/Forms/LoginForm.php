@@ -90,8 +90,15 @@ class LoginForm extends Form
     {
         $lowered = Str::lower($this->email);
 
+        // orderBy('id') matters even though usernames are now validated
+        // (User::usernameRules()'s `lowercase` rule) to be unique
+        // case-insensitively going forward: it makes this lookup
+        // deterministic against any row created before that validation
+        // existed, rather than resolving to an arbitrary one of two
+        // case-variant matches.
         $identifier = User::whereRaw('LOWER(email) = ?', [$lowered])
             ->orWhereRaw('LOWER(username) = ?', [$lowered])
+            ->orderBy('id')
             ->value('email') ?? $this->email;
 
         return Str::transliterate(Str::lower($identifier).'|'.request()->ip());
