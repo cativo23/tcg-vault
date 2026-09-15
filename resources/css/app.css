@@ -741,3 +741,97 @@ body {
   .nw-tile:hover, .nw-tile:focus-visible, .nw-setcard:hover { transform: none; box-shadow: 0 0 0 2px var(--ink); }
   .modal-in { animation: none; }
 }
+
+/* ─── home page — hero ───
+   Scoped dark tokens: NOT added to the global :root. The topbar
+   (.nw-topbar, above) is already dark site-wide — this hero just
+   extends that dark band down further for this one page, it isn't a
+   new global dark mode. */
+.nw-home-hero {
+  --home-dark-bg: #0e0e0c;
+  --home-dark-muted: #8f8d80;
+  background: var(--home-dark-bg);
+  color: var(--bone);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.nw-home-hero .nw-wrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: 0.82fr 1.18fr;
+  align-items: center;
+  min-height: 320px;
+  padding-block: 32px;
+}
+@media (max-width: 48rem) {
+  .nw-home-hero .nw-wrap { grid-template-columns: 1fr; min-height: 0; }
+}
+
+.nw-home-spotlight {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(560px circle at var(--mx, 30%) var(--my, 40%), rgba(255, 255, 255, .13), transparent 62%);
+  transition: background 160ms var(--ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nw-home-spotlight { transition: none; }
+}
+
+@keyframes nw-home-rise {
+  from { opacity: 0; transform: translateY(10px) rotate(var(--rot, 0deg)); }
+  to { opacity: 1; transform: translateY(0) rotate(var(--rot, 0deg)); }
+}
+@keyframes nw-home-drift {
+  0%, 100% { transform: translateY(0) rotate(var(--rot, 0deg)); }
+  50% { transform: translateY(-7px) rotate(var(--rot, 0deg)); }
+}
+
+.nw-home-copy { padding-inline: 0 20px; }
+.nw-home-eyebrow {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--home-dark-muted);
+  opacity: 0; animation: nw-home-rise .5s var(--ease) forwards .05s;
+}
+.nw-home-h1 {
+  font-variation-settings: 'wdth' 62, 'wght' 800;
+  line-height: .96; letter-spacing: -.01em;
+  font-size: clamp(1.8rem, 5.4vw, 2.7rem); margin-top: 10px;
+  opacity: 0; animation: nw-home-rise .6s var(--ease) forwards .15s;
+}
+.nw-home-h1 .accent { color: var(--signal-deep); }
+.nw-home-sub {
+  color: var(--home-dark-muted); font-size: 13px; margin-top: 14px; max-width: 28ch;
+  opacity: 0; animation: nw-home-rise .6s var(--ease) forwards .3s;
+}
+.nw-home-cta {
+  margin-top: 20px; display: inline-block; background: var(--bone); color: var(--home-dark-bg);
+  padding: 10px 20px; border-radius: var(--radius-pill, 999px); font-size: 12px; font-weight: 700;
+  opacity: 0; animation: nw-home-rise .6s var(--ease) forwards .42s;
+}
+
+.nw-home-fan { position: relative; height: 260px; }
+@media (max-width: 48rem) { .nw-home-fan { height: 190px; margin-top: 4px; } }
+
+.nw-home-fan img {
+  position: absolute; width: 108px; aspect-ratio: 2.5 / 3.5; object-fit: cover; border-radius: 8px;
+  box-shadow: 0 18px 34px -12px rgba(0, 0, 0, .65); opacity: 0; transform-origin: 50% 115%;
+  animation: nw-home-rise .55s var(--ease) forwards, nw-home-drift 5.5s ease-in-out infinite 1.3s;
+}
+/* desktop: all 5, arced fan */
+.nw-home-fan img:nth-child(1) { --rot: -16deg; left: 8%;  top: 24%; animation-delay: .5s, 1.3s; z-index: 1; }
+.nw-home-fan img:nth-child(2) { --rot: -7deg;  left: 25%; top: 16%; animation-delay: .58s, 1.5s; z-index: 2; }
+.nw-home-fan img:nth-child(3) { --rot: 2deg;   left: 42%; top: 12%; animation-delay: .66s, 1.7s; z-index: 3; width: 122px; }
+.nw-home-fan img:nth-child(4) { --rot: 11deg;  left: 60%; top: 16%; animation-delay: .74s, 1.9s; z-index: 2; }
+.nw-home-fan img:nth-child(5) { --rot: 19deg;  left: 76%; top: 24%; animation-delay: .82s, 2.1s; z-index: 1; }
+
+/* mobile (<=768px): drop the 4th and 5th card (2nd Pikachu VMAX + the
+   Charizard GX, per the spec), keep a tighter 3-card fan so nothing is
+   shrunk illegibly small or clipped against the viewport edge. */
+@media (max-width: 48rem) {
+  .nw-home-fan img:nth-child(4), .nw-home-fan img:nth-child(5) { display: none; }
+  .nw-home-fan img { width: 84px; }
+  .nw-home-fan img:nth-child(1) { left: 6%;  top: 30%; }
+  .nw-home-fan img:nth-child(2) { left: 34%; top: 18%; }
+  .nw-home-fan img:nth-child(3) { left: 62%; top: 24%; width: 96px; }
+}

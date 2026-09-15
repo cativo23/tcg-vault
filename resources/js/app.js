@@ -75,3 +75,21 @@ const sweepBrokenImages = () => {
 };
 document.addEventListener('DOMContentLoaded', sweepBrokenImages);
 document.addEventListener('livewire:navigated', sweepBrokenImages);
+
+// Hero cursor-spotlight (design.md's HP3 pattern, scoped to the hero
+// only). A no-op on touch devices — there's no pointermove to track, so
+// the glow simply stays at its CSS default position, which is fine.
+const bindHeroSpotlight = () => {
+    const hero = document.querySelector('[data-hero-spotlight]');
+    if (!hero || hero.dataset.spotlightBound) return;
+    hero.dataset.spotlightBound = '1';
+
+    hero.addEventListener('pointermove', (e) => {
+        const r = hero.getBoundingClientRect();
+        hero.style.setProperty('--mx', `${e.clientX - r.left}px`);
+        hero.style.setProperty('--my', `${e.clientY - r.top}px`);
+    });
+};
+
+document.addEventListener('DOMContentLoaded', bindHeroSpotlight);
+document.addEventListener('livewire:navigated', bindHeroSpotlight);

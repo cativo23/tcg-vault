@@ -35,3 +35,12 @@ test('an authenticated visitor is redirected straight to their own gallery', fun
 test('the home page uses the site name as its title, with no page-specific override', function () {
     $this->get('/')->assertOk()->assertSee('<title>tcg-vault</title>', escape: false);
 });
+
+test('the hero shows at least 5 real tcgdex-hosted card images', function () {
+    $response = $this->get('/');
+
+    $response->assertOk();
+    $count = substr_count($response->getContent(), 'assets.tcgdex.net');
+
+    expect($count)->toBeGreaterThanOrEqual(5);
+});
