@@ -49,7 +49,12 @@
         <select wire:model.live="rarityFilter" class="nw-input">
             <option value="">All rarities</option>
             @foreach ($rarities as $rarity)
-                <option value="{{ $rarity }}">{{ $rarity }}</option>
+                {{-- tcgdex's raw `rarity` string is sentence-case ("Special
+                     illustration rare"), not title-case — title-case only
+                     the visible label, never the option's `value`, since
+                     that must still match the raw stored value the filter
+                     query compares against. --}}
+                <option value="{{ $rarity }}">{{ \Illuminate\Support\Str::title($rarity) }}</option>
             @endforeach
         </select>
     </div>

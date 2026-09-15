@@ -67,7 +67,11 @@ final class Show extends Component
             }]);
 
         if ($this->search !== '') {
-            $cardsQuery->where('name', 'like', '%'.$this->search.'%');
+            // Postgres' `LIKE` is case-sensitive (unlike MySQL's default
+            // collation) — a visitor typing "fomantis" would find nothing
+            // against a stored "Fomantis" without this. `ILIKE` is
+            // Postgres' case-insensitive equivalent.
+            $cardsQuery->where('name', 'ilike', '%'.$this->search.'%');
         }
 
         if ($this->rarityFilter !== '') {

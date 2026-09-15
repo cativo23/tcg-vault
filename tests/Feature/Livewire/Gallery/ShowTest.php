@@ -101,6 +101,20 @@ test('search filters the card grid by name', function () {
         ->assertDontSee('Fomantis');
 });
 
+test('search is case-insensitive', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 1]);
+    $card = Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-003', 'condition' => 'NM', 'quantity' => 1]);
+
+    // Postgres' LIKE is case-sensitive by default — a lowercase search
+    // must still find a card whose stored name is capitalized.
+    \Livewire\Livewire::test(\App\Livewire\Gallery\Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
+        ->set('search', 'fomantis')
+        ->assertSee('Fomantis');
+});
+
 test('rarity filter only shows cards of the selected rarity', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
