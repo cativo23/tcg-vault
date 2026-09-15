@@ -29,6 +29,27 @@ test('shows a price delta for a card with two snapshot days', function () {
     $response->assertSee('+2.00 USD');
 });
 
+test('a delta spanning a source/variant/currency change is not shown — comparing them would be meaningless', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    // "Previous" day only has a cardmarket/EUR snapshot; "latest" day
+    // only has a tcgplayer/USD one. resolveAsOf()'s priority chain
+    // resolves each independently, so without a same-source/variant/
+    // currency guard this would compute a nonsense "delta" of
+    // 1200 - 900 = +3.00 across two different currencies.
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today()->subDay(), 'currency' => 'EUR', 'market_minor' => 900]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1200]);
+
+    $response = $this->get('/carlos/gallery/movimientos');
+
+    $response->assertOk();
+    $response->assertSee('No price changes yet');
+});
+
 test('a card with only one snapshot day shows no delta, not a fake one', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
