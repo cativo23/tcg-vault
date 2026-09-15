@@ -45,12 +45,22 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      * curl error 6, not a connection-refused error. Forcing IPv4 on
      * every tcgdex request sidesteps the broken IPv6 route entirely
      * rather than depending on a resolver-level fix outside this app.
+     *
+     * Regression found live 2026-09-15 (same day): the first fix passed
+     * a raw CURLOPT_IPRESOLVE via the 'curl' options array, which Guzzle
+     * itself rejects — "conflicts with Guzzle-managed request handling"
+     * — because Guzzle already manages that option internally and
+     * refuses to let a caller set it directly. This broke EVERY tcgdex
+     * call in production (search, add-card, imports) with an uncaught
+     * GuzzleHttp\Exception\InvalidArgumentException. Guzzle's own
+     * request-options API has a dedicated option for exactly this case:
+     * 'force_ip_resolve', which is what must be used instead.
      */
     private function http(int $timeoutSeconds): \Illuminate\Http\Client\PendingRequest
     {
         return Http::baseUrl($this->baseUrl)
             ->timeout($timeoutSeconds)
-            ->withOptions(['curl' => [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4]]);
+            ->withOptions(['force_ip_resolve' => 'v4']);
     }
 
     public function findCard(string $tcgdexId): CardDetailData
