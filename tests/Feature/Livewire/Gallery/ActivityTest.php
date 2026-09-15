@@ -19,7 +19,7 @@ test('shows a price delta for a card with two snapshot days', function () {
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1000]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1200]);
 
-    $response = $this->get('/carlos/gallery/activity');
+    $response = $this->get('/carlos/activity');
 
     $response->assertOk();
     // The card also appears in the "recently added" feed regardless of
@@ -44,7 +44,7 @@ test('a delta spanning a source/variant/currency change is not shown — compari
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today()->subDay(), 'currency' => 'EUR', 'market_minor' => 900]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1200]);
 
-    $response = $this->get('/carlos/gallery/activity');
+    $response = $this->get('/carlos/activity');
 
     $response->assertOk();
     $response->assertSee('0 price moves');
@@ -67,7 +67,7 @@ test('a card whose newest day only has a non-priority source does not render a f
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1000]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 900]);
 
-    $response = $this->get('/carlos/gallery/activity');
+    $response = $this->get('/carlos/activity');
 
     $response->assertOk();
     $response->assertDontSee('+$0.00');
@@ -85,7 +85,7 @@ test('a snapshot with a null market_minor is never used as the previous comparis
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => null]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1200]);
 
-    $response = $this->get('/carlos/gallery/activity');
+    $response = $this->get('/carlos/activity');
 
     $response->assertOk();
     $response->assertSee('0 price moves');
@@ -99,7 +99,7 @@ test('a card with only one snapshot day shows no delta, not a fake one', functio
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1000]);
 
-    $response = $this->get('/carlos/gallery/activity');
+    $response = $this->get('/carlos/activity');
 
     $response->assertOk();
     // The card shouldn't be listed among the deltas at all (no comparison
@@ -119,7 +119,7 @@ test('shows recently added items in the activity feed', function () {
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    $response = $this->get('/carlos/gallery/activity');
+    $response = $this->get('/carlos/activity');
 
     $response->assertOk();
     $response->assertSee('Mega Darkrai ex');
@@ -132,7 +132,7 @@ test('a private (non-public) collection contributes nothing', function () {
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    $response = $this->get('/carlos/gallery/activity');
+    $response = $this->get('/carlos/activity');
 
     $response->assertOk();
     $response->assertDontSee('Mega Darkrai ex');
@@ -142,13 +142,13 @@ test('the activity route requires no authentication', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
 
-    $response = $this->get('/carlos/gallery/activity');
+    $response = $this->get('/carlos/activity');
 
     $response->assertOk();
 });
 
 test('a nonexistent username 404s', function () {
-    $response = $this->get('/nobody-here/gallery/activity');
+    $response = $this->get('/nobody-here/activity');
 
     $response->assertNotFound();
 });
@@ -156,8 +156,8 @@ test('a nonexistent username 404s', function () {
 test('the old Spanish path redirects permanently to the English one', function () {
     User::factory()->create(['username' => 'carlos']);
 
-    $response = $this->get('/carlos/gallery/movimientos');
+    $response = $this->get('/carlos/movimientos');
 
-    $response->assertRedirect('/carlos/gallery/activity');
+    $response->assertRedirect('/carlos/activity');
     expect($response->status())->toBe(301);
 });

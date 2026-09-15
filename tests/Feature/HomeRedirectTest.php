@@ -9,7 +9,7 @@ test('the root redirects to the configured admin username\'s gallery', function 
     User::factory()->create(['username' => 'someone-else']);
     User::factory()->create(['username' => 'carlos']);
 
-    $this->get('/')->assertRedirect('/carlos/gallery');
+    $this->get('/')->assertRedirect('/carlos');
 });
 
 test('without a configured admin username the root falls back to the first account with a username', function () {
@@ -17,7 +17,7 @@ test('without a configured admin username the root falls back to the first accou
     User::factory()->create(['username' => 'first']);
     User::factory()->create(['username' => 'second']);
 
-    $this->get('/')->assertRedirect('/first/gallery');
+    $this->get('/')->assertRedirect('/first');
 });
 
 test('a fresh install with no users sends the root to login', function () {

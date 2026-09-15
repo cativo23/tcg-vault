@@ -92,7 +92,7 @@ new class extends Component
             <x-input-label for="username" :value="__('Username')" />
             <x-text-input wire:model="username" id="username" name="username" type="text" class="mt-1 block w-full" required autocomplete="username" />
             <x-input-error class="mt-2" :messages="$errors->get('username')" />
-            <p class="mt-1 text-xs" style="color: var(--muted)">{{ __('This is your public gallery URL: ') }}{{ url('/'.$username.'/gallery') }}</p>
+            <p class="mt-1 text-xs" style="color: var(--muted)">{{ __('This is your public gallery URL: ') }}{{ $username !== '' ? route('gallery.index', ['username' => $username]) : '' }}</p>
         </div>
 
         <div>

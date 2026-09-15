@@ -25,7 +25,7 @@ test('shows every card in the set, marks owned ones, computes stats from the who
     CardPriceSnapshot::create(['card_id' => $owned->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5000]);
     CardPriceSnapshot::create(['card_id' => $notOwned->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1000]);
 
-    $response = $this->get('/carlos/gallery/me05');
+    $response = $this->get('/carlos/me05');
 
     $response->assertOk();
     $response->assertSee('Mega Darkrai ex'); // owned, shown
@@ -40,7 +40,7 @@ test('a private (non-public) collection contributes nothing to the set-detail sc
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'secret.jpg']);
 
-    $response = $this->get('/carlos/gallery/me05');
+    $response = $this->get('/carlos/me05');
 
     // The set only exists in this user's gallery via a public collection
     // — with none, the same existence-gate that hides an untouched set
@@ -58,7 +58,7 @@ test('the set-detail route requires no authentication', function () {
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
     // Explicitly NOT calling $this->actingAs(...) — a guest must be able to load this.
-    $response = $this->get('/carlos/gallery/me05');
+    $response = $this->get('/carlos/me05');
 
     $response->assertOk();
 });
@@ -68,7 +68,7 @@ test('a set that exists but the user has never touched 404s', function () {
     Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     Set::create(['tcgdex_id' => 'untouched', 'name' => 'Never Added']);
 
-    $response = $this->get('/carlos/gallery/untouched');
+    $response = $this->get('/carlos/untouched');
 
     $response->assertNotFound();
 });
@@ -80,7 +80,7 @@ test('uses the users own photo over official art when owned and photographed', f
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex', 'official_image_url' => 'https://official.example/card.webp']);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'my-photo.jpg']);
 
-    $response = $this->get('/carlos/gallery/me05');
+    $response = $this->get('/carlos/me05');
 
     $response->assertSee(Storage::disk('collection-photos')->url('my-photo.jpg'), false);
     $response->assertDontSee('https://official.example/card.webp', false);
@@ -149,7 +149,7 @@ test('tcgdex\'s literal "None" rarity never becomes a selectable filter option',
 
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $darkrai->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    $response = $this->get('/carlos/gallery/me05');
+    $response = $this->get('/carlos/me05');
 
     $response->assertOk();
     $response->assertSee('value="Special illustration rare"', false);

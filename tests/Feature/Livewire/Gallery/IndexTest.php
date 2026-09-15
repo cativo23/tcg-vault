@@ -35,7 +35,7 @@ function seedCollection(): array
 test('the collection home shows every owned card once, with the collector as the masthead', function () {
     seedCollection();
 
-    $response = $this->get('/carlos/gallery');
+    $response = $this->get('/carlos');
 
     $response->assertOk();
     $response->assertSee('Carlos');
@@ -48,7 +48,7 @@ test('the collection home shows every owned card once, with the collector as the
 test('the collection value never adds two currencies together', function () {
     seedCollection();
 
-    $response = $this->get('/carlos/gallery');
+    $response = $this->get('/carlos');
 
     // 2 × $194.68 in USD leads; the EUR-priced copies are a footnote, not part of the sum.
     $response->assertSee('$389.36');
@@ -59,7 +59,7 @@ test('the collection value never adds two currencies together', function () {
 test('multiple copies of one card collapse to one tile with a quantity', function () {
     seedCollection();
 
-    $response = $this->get('/carlos/gallery');
+    $response = $this->get('/carlos');
 
     $response->assertSee('×2');
     $response->assertSee('4 copies');
@@ -68,10 +68,10 @@ test('multiple copies of one card collapse to one tile with a quantity', functio
 test('every tile links to the card detail page', function () {
     seedCollection();
 
-    $response = $this->get('/carlos/gallery');
+    $response = $this->get('/carlos');
 
-    $response->assertSee('/carlos/gallery/me05/116', false);
-    $response->assertSee('/carlos/gallery/fut2020/1', false);
+    $response->assertSee('/carlos/me05/116', false);
+    $response->assertSee('/carlos/fut2020/1', false);
 });
 
 test('search, set and rarity filters narrow the grid', function () {
@@ -111,7 +111,7 @@ test('tcgdex\'s literal "None" rarity never becomes a selectable filter option',
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $fomantis->id, 'card_tcgdex_id' => 'me05-003', 'condition' => 'NM', 'quantity' => 1]);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $pikachu->id, 'card_tcgdex_id' => 'me05-200', 'condition' => 'NM', 'quantity' => 1]);
 
-    $response = $this->get('/carlos/gallery');
+    $response = $this->get('/carlos');
 
     $response->assertOk();
     // All 3 owned cards show by default — nothing pre-filtered.
@@ -137,7 +137,7 @@ test('an unknown sort is ignored rather than trusted', function () {
 test('the page carries its own title and Open Graph image', function () {
     seedCollection();
 
-    $response = $this->get('/carlos/gallery');
+    $response = $this->get('/carlos');
 
     $response->assertSee('<title>', false);
     $response->assertSee("Carlos's collection · tcg-vault"); // escaped like the view does
@@ -151,7 +151,7 @@ test('a private collection shows the empty state, never its cards', function () 
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    $response = $this->get('/carlos/gallery');
+    $response = $this->get('/carlos');
 
     $response->assertOk();
     $response->assertDontSee('Mega Darkrai ex');
@@ -159,11 +159,17 @@ test('a private collection shows the empty state, never its cards', function () 
 });
 
 test('a nonexistent username 404s', function () {
-    $this->get('/nobody-here/gallery')->assertNotFound();
+    $this->get('/nobody-here')->assertNotFound();
 });
 
 test('the collection home requires no authentication', function () {
     seedCollection();
 
-    $this->get('/carlos/gallery')->assertOk();
+    $this->get('/carlos')->assertOk();
+});
+
+test('the old /{username}/gallery URL redirects to the shorter /{username}', function () {
+    seedCollection();
+
+    $this->get('/carlos/gallery')->assertRedirect('/carlos');
 });

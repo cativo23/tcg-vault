@@ -32,7 +32,7 @@ test('shows the card with its copies, market reads and catalog facts', function 
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 19468]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 27333]);
 
-    $response = $this->get('/carlos/gallery/me05/116');
+    $response = $this->get('/carlos/me05/116');
 
     $response->assertOk();
     $response->assertSee('Mega Darkrai ex');
@@ -52,7 +52,7 @@ test('the collectors own photo leads and the official art stays available as an 
     ['collection' => $collection, 'card' => $card] = seedCardPage();
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'my-photo.jpg']);
 
-    $response = $this->get('/carlos/gallery/me05/116');
+    $response = $this->get('/carlos/me05/116');
 
     $photoUrl = Storage::disk('collection-photos')->url('my-photo.jpg');
     $response->assertSeeInOrder([$photoUrl, 'https://official.example/116/high.webp'], false);
@@ -64,7 +64,7 @@ test('a card in a touched set that is not owned renders as context, not a 404', 
     ['collection' => $collection, 'card' => $card] = seedCardPage();
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    $response = $this->get('/carlos/gallery/me05/003');
+    $response = $this->get('/carlos/me05/003');
 
     $response->assertOk();
     $response->assertSee('Fomantis');
@@ -74,21 +74,21 @@ test('a card in a touched set that is not owned renders as context, not a 404', 
 test('a card in a set the collector has never touched 404s', function () {
     seedCardPage();
 
-    $this->get('/carlos/gallery/me05/116')->assertNotFound();
+    $this->get('/carlos/me05/116')->assertNotFound();
 });
 
 test('a card number that does not exist in the set 404s', function () {
     ['collection' => $collection, 'card' => $card] = seedCardPage();
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    $this->get('/carlos/gallery/me05/999')->assertNotFound();
+    $this->get('/carlos/me05/999')->assertNotFound();
 });
 
 test('a private collection never leaks copies, notes or photos through the card page', function () {
     ['collection' => $collection, 'card' => $card] = seedCardPage(public: false);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'notes' => 'secret note', 'photo_path' => 'secret.jpg']);
 
-    $response = $this->get('/carlos/gallery/me05/116');
+    $response = $this->get('/carlos/me05/116');
 
     $response->assertNotFound();
     $response->assertDontSee('secret note');
@@ -99,5 +99,5 @@ test('the card page requires no authentication', function () {
     ['collection' => $collection, 'card' => $card] = seedCardPage();
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    $this->get('/carlos/gallery/me05/116')->assertOk();
+    $this->get('/carlos/me05/116')->assertOk();
 });

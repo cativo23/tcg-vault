@@ -47,28 +47,48 @@ Route::get('/admin', CollectionItems::class)
     ->middleware(['auth'])
     ->name('admin.collection.index');
 
+// Every auth.php route (login, register, forgot-password, the
+// reset-password/{token} and verify-email/{id}/{hash} routes) MUST be
+// registered before any /{username}/... route below. Since the gallery
+// URL structure dropped its literal "gallery" middle segment,
+// /{username}/{setTcgdexId} is now a bare two-segment dynamic/dynamic
+// pattern with nothing anchoring it — it would otherwise match a URL
+// like /reset-password/{token} just as well as auth.php's own route
+// does, and whichever was registered first would win.
+require __DIR__.'/auth.php';
+
 // Public gallery. The literal segments (sets, activity, movimientos) MUST
 // be registered before the `{setTcgdexId}` wildcard or the wildcard eats
 // them. tcgdex set ids are short alphanumerics ("me05", "swsh12pt5") so
 // none of these words can collide with a real set.
-Route::get('/{username}/gallery', Index::class)
-    ->name('gallery.index');
-
-Route::get('/{username}/gallery/sets', Sets::class)
+Route::get('/{username}/sets', Sets::class)
     ->name('gallery.sets');
 
-Route::get('/{username}/gallery/activity', Activity::class)
+Route::get('/{username}/activity', Activity::class)
     ->name('gallery.activity');
 
 // The screen shipped under its Spanish working title; the URL follows the
 // English UI now, and the old path keeps working for anyone who linked it.
-Route::get('/{username}/gallery/movimientos', fn (string $username) => redirect()->route('gallery.activity', ['username' => $username], 301))
+Route::get('/{username}/movimientos', fn (string $username) => redirect()->route('gallery.activity', ['username' => $username], 301))
     ->name('gallery.movimientos');
 
-Route::get('/{username}/gallery/{setTcgdexId}', Show::class)
+// Old URL, before the gallery moved from /{username}/gallery to
+// /{username} — keeps working for anyone who linked it. Must also be
+// registered here, before the {setTcgdexId} wildcard below, or the
+// wildcard would eat "gallery" as a fake set id instead of ever
+// reaching this redirect.
+Route::get('/{username}/gallery', fn (string $username) => redirect()->route('gallery.index', ['username' => $username], 301));
+
+Route::get('/{username}/{setTcgdexId}', Show::class)
     ->name('gallery.show');
 
-Route::get('/{username}/gallery/{setTcgdexId}/{localId}', CardShow::class)
+Route::get('/{username}/{setTcgdexId}/{localId}', CardShow::class)
     ->name('gallery.card');
 
-require __DIR__.'/auth.php';
+// The collector's whole collection, at the shortest possible URL — the
+// one meant to actually get shared. Kept as the LAST route in the file,
+// after every literal top-level path above (admin, profile, dashboard,
+// and everything auth.php just registered), for the same single-segment
+// collision reason.
+Route::get('/{username}', Index::class)
+    ->name('gallery.index');
