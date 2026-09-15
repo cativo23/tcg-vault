@@ -33,6 +33,12 @@ FROM serversideup/php:8.4-fpm-nginx AS runtime
 # bundled by serversideup images for exactly this.
 USER root
 RUN install-php-extensions intl
+# Drop back to the base image's own non-root user (www-data, uid 33) —
+# install-php-extensions needs root, but nothing after it does. Leaving
+# USER root set here would make the whole runtime stage (and therefore
+# the container nginx/php-fpm actually serves requests as) run as root,
+# a real regression caught by this repo's automated commit review.
+USER www-data
 
 COPY --chown=www-data:www-data . /var/www/html/
 COPY --from=vendor --chown=www-data:www-data /app/vendor /var/www/html/vendor
