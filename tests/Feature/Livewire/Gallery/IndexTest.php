@@ -93,6 +93,37 @@ test('search, set and rarity filters narrow the grid', function () {
         ->assertSee('Mega Darkrai ex');
 });
 
+test('tcgdex\'s literal "None" rarity never becomes a selectable filter option', function () {
+    // Regression: tcgdex emits the literal string "None" (not null) for
+    // promos/unrated prints. A plain ->filter() (no callback) only
+    // strips null/'', so "None" survived into the rarity dropdown as a
+    // real-looking-but-blank-labeled option (Rarity::label('None') is
+    // already '', which is what made the option render with no visible
+    // text) — and selecting it matched only cards literally rated
+    // "None", hiding every properly-rated card from the grid.
+    $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $darkrai = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex', 'rarity' => 'Special illustration rare']);
+    $fomantis = Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis', 'rarity' => 'Common']);
+    $pikachu = Card::create(['tcgdex_id' => 'me05-200', 'set_id' => $set->id, 'local_id' => '200', 'name' => 'Pikachu on the Ball', 'rarity' => 'None']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $darkrai->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $fomantis->id, 'card_tcgdex_id' => 'me05-003', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $pikachu->id, 'card_tcgdex_id' => 'me05-200', 'condition' => 'NM', 'quantity' => 1]);
+
+    $response = $this->get('/carlos/gallery');
+
+    $response->assertOk();
+    // All 3 owned cards show by default — nothing pre-filtered.
+    $response->assertSeeInOrder(['Showing', '3', 'of', '3']);
+    // The two real rarities are still real, selectable options...
+    $response->assertSee('value="Special illustration rare"', false);
+    $response->assertSee('value="Common"', false);
+    // ...but "None" is never an option, in any casing.
+    $response->assertDontSee('value="None"', false);
+    $response->assertDontSee('value="none"', false);
+});
+
 test('an unknown sort is ignored rather than trusted', function () {
     seedCollection();
 

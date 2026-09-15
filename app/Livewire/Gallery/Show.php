@@ -8,6 +8,7 @@ use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Services\Valuation;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
@@ -114,7 +115,15 @@ final class Show extends Component
             ->first();
 
         $totalCount = $this->set->card_count ?? $this->set->cards()->count();
-        $rarities = $this->set->cards()->whereNotNull('rarity')->distinct()->orderBy('rarity')->pluck('rarity');
+        // Same tcgdex quirk as Gallery\Index: the literal string "None"
+        // (promos/unrated prints) survives whereNotNull() since it isn't
+        // actually null — filter it with the same "is this a real
+        // rarity" definition Rarity::label() already encodes, or it
+        // shows up as a selectable-but-blank filter option that only
+        // matches cards literally rated "None".
+        $rarities = $this->set->cards()->whereNotNull('rarity')->distinct()->orderBy('rarity')->pluck('rarity')
+            ->filter(fn (?string $rarity) => Rarity::label($rarity) !== '')
+            ->values();
 
         $name = $this->collectorName();
 

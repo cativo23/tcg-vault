@@ -133,3 +133,27 @@ test('rarity filter only shows cards of the selected rarity', function () {
         ->assertSee('Mega Darkrai ex')
         ->assertDontSee('Fomantis');
 });
+
+test('tcgdex\'s literal "None" rarity never becomes a selectable filter option', function () {
+    // Regression: whereNotNull('rarity') only excludes a real NULL —
+    // tcgdex's literal string "None" (promos/unrated prints) survived
+    // as a selectable-but-blank-labeled option (Rarity::label('None')
+    // is already ''), and picking it matched only cards literally rated
+    // "None", hiding every properly-rated card in the set.
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 3]);
+    $darkrai = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex', 'rarity' => 'Special illustration rare']);
+    Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis', 'rarity' => 'Common']);
+    Card::create(['tcgdex_id' => 'me05-200', 'set_id' => $set->id, 'local_id' => '200', 'name' => 'Pikachu on the Ball', 'rarity' => 'None']);
+
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $darkrai->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $response = $this->get('/carlos/gallery/me05');
+
+    $response->assertOk();
+    $response->assertSee('value="Special illustration rare"', false);
+    $response->assertSee('value="Common"', false);
+    $response->assertDontSee('value="None"', false);
+    $response->assertDontSee('value="none"', false);
+});

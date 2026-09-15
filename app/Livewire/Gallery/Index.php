@@ -7,6 +7,7 @@ namespace App\Livewire\Gallery;
 use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Services\Valuation;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
@@ -96,7 +97,17 @@ final class Index extends Component
         $copies = (int) $allCards->sum(fn (Card $card) => $card->collectionItems->sum('quantity'));
         $updatedAt = $allCards->flatMap(fn (Card $c) => $c->priceSnapshots)->max('captured_on');
         $topEntry = $entries->sortByDesc(fn ($e) => $e['valueMinor'] ?? -1)->first();
-        $rarities = $allCards->pluck('rarity')->filter()->unique()->sort()->values();
+        // tcgdex emits the literal string "None" for promos and other
+        // unrated prints — plain ->filter() only strips null/'', so
+        // "None" survived as a selectable-but-blank-labeled filter
+        // option (Rarity::label() already renders it as '', which is
+        // what made the dropdown option look empty) and, worse, filtering
+        // by it matched only cards with that literal string, hiding
+        // every properly-rated card. Use the same "is this a real
+        // rarity" definition Rarity::label() already encodes.
+        $rarities = $allCards->pluck('rarity')->unique()
+            ->filter(fn (?string $rarity) => Rarity::label($rarity) !== '')
+            ->sort()->values();
 
         $name = $this->collectorName();
 
