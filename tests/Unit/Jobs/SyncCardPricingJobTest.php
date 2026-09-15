@@ -8,6 +8,7 @@ use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Data\PriceEntryData;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use Illuminate\Support\Facades\Log;
@@ -61,6 +62,33 @@ test('the job does not rethrow when the card sync fails — it logs and lets the
     // ->throwsNoExceptions() needed (and it conflicts with Pest treating
     // real assertions below as unexpected on a "no exceptions" test).
     expect(Card::where('tcgdex_id', 'me05-116')->exists())->toBeFalse();
+    Log::shouldHaveReceived('warning')->once()->withArgs(
+        fn (string $message, array $context) => $message === 'SyncCardPricingJob: card sync failed permanently, not retrying'
+            && $context['tcgdex_card_id'] === 'me05-116',
+    );
+});
+
+test('the job also treats a SetNotFoundException as permanent, not just CardNotFoundException', function () {
+    // Regression for the final whole-branch review's finding: the
+    // original catch list only named CardNotFoundException and
+    // CatalogIdentityMismatchException, so a card whose SET can't be
+    // found on tcgdex (the card itself resolves fine) would have burned
+    // all 3 retries with backoff before failing — pointlessly, since
+    // retrying the exact same set ID would never succeed either.
+    Log::spy();
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->once()->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
+    ));
+    $provider->shouldReceive('findSet')->once()->with('me05')->andThrow(SetNotFoundException::forTcgdexId('me05'));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $syncService = app(CatalogSyncService::class);
+    (new SyncCardPricingJob('me05-116'))->handle($syncService);
+
     Log::shouldHaveReceived('warning')->once()->withArgs(
         fn (string $message, array $context) => $message === 'SyncCardPricingJob: card sync failed permanently, not retrying'
             && $context['tcgdex_card_id'] === 'me05-116',
