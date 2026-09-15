@@ -62,9 +62,64 @@ rainbow-holo rings, per-type accent colors, and ~6 rejected font pairings).
 - Reduced-motion fallback · all durations → 0, no count-up, hover collapses to a 2px ink ring only
 
 ## Exports
-No `tokens.css` extracted yet — `vault-final.html`'s inline `:root` block is
-the source of truth until the Laravel app scaffolds and these tokens move to
-a real stylesheet. Port them verbatim; don't re-derive.
+The tokens live in `resources/css/app.css` (`:root`), ported verbatim from
+`vault-final.html`; that stylesheet is now the source of truth. Two tokens
+were added there on top of the mockup's set, both derived from it rather
+than new colors: `--paper` (#fbf9f3, the raised tile/panel surface the
+mockup hardcoded) and `--signal-deep` (#12a45f, the mockup's darker green
+for accent *text* on bone — pure `--signal` fails contrast as type; it stays
+the color for fills, dots, rings and the ticker on ink).
+
+## Primitives (2026-09-14 redesign — all `.nw-*` in `app.css`)
+The approved mockups are now real Blade, one class family, reused across
+every public screen instead of re-styled per page:
+- **Masthead** `.nw-masthead` + `.nw-eyebrow` (label · hairline) + `.nw-h1`
+  (`.nw-display`, sizes `--md`/`--sm`). The h1 is the *subject* — the
+  collector's name on the collection home, the set name on a set, the card
+  name on a card. Never a generic word like "Gallery".
+- **Stat band** `.nw-stats > .nw-stat > .k/.v` (4-up, 2-up under 720px;
+  `.accent` = the one green value; `.v.text` for a name instead of a number).
+- **Toolbar** `.nw-toolbar` = `.nw-count` + `.nw-pill-input` / `.nw-pill-select`
+  + `.nw-seg` (pill segmented control, `aria-pressed` drives the filled state).
+- **Card tile** `<x-card-tile>` = `.nw-slot` (entrance) › `.nw-tile` (hover)
+  › `.chead` (#number · rarity shorthand OR slab label) › `.imgwrap` ›
+  `.cbody` (`.cname`, `.cset` with `×qty`) › `.ticker` (price + direction).
+  `.ghost` = a card in the set the collector does NOT own: dimmed frame,
+  bone header, neutral ticker. **Ownership is the default state; absence is
+  what gets the treatment** — the old green ring on owned cards is gone.
+- **Set card** `.nw-setcard` (logo band, completion row + `.nw-bar`, owned
+  value) and the compact `.nw-chip` rail on the collection home.
+- **Panel / feed** `.nw-panel` (+ `<x-sparkline>`, inline SVG, no library),
+  `.nw-section-head`, `.nw-feed`.
+- **Detail** `.nw-detail` (5/7 grid, sticky `.nw-hero`, `.nw-thumbs` for
+  photo ↔ official art), `.nw-prices > .nw-price`, `.nw-kv`, `.nw-copy`, `.nw-badge`.
+- **Footer** `.nw-footer` — tcgdex attribution + the non-affiliation notice.
+- `<x-value-totals>` renders a currency → amount map: first entry big, the
+  rest as `<small>`. **Never sum EUR and USD into one number.**
+
+Rules that came out of building it:
+- Rarity on a tile is the collector shorthand (`Rarity::abbreviate`: SIR,
+  MHR, RR…); the full name lives on the detail page. tcgdex's literal
+  `"None"` renders nothing, not "N".
+- A graded copy replaces the rarity chip with the slab label (`PSA 10`) in
+  `--signal` on ink; on the detail page it is an ink-filled `.nw-badge.slab`.
+- The collector's own photo is always the primary image when it exists;
+  official art is the alternate view, never the other way round.
+- An image that fails to load degrades to the empty-image state (or, for a
+  decorative logo, disappears) — `app.js` handles both. Never a broken frame.
+- `--signal` in the ticker/arrow means one thing: the resolved price went
+  UP versus the previous comparable snapshot (`CardPriceResolver::resolveDelta`).
+  Down is `--flat`; no history is a neutral dot.
+- Headline numbers count up (`data-countup`, `app.js`), digits only — the
+  server-rendered value is the resting DOM, and reduced motion skips it.
+
+## Information architecture (public gallery)
+`/` → the owner's gallery. `/{u}/gallery` is **the collection** (every owned
+card, stat band, set rail, filters, sort) — the front door. `/{u}/gallery/sets`
+slices it by set; `/{u}/gallery/{set}` shows every synced card in one set with
+owned first and gaps as ghosts; `/{u}/gallery/{set}/{number}` is the card page;
+`/{u}/gallery/activity` is the history (old `/movimientos` 301s there). Nav is
+Collection · Sets · Activity, always all three linked.
 
 ## Language
 - **UI copy: English first**, Spanish is not the default (this reverses the
