@@ -10,6 +10,7 @@ use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CatalogSyncService;
+use Illuminate\Support\Facades\Log;
 use Spatie\LaravelData\DataCollection;
 
 // CatalogSyncService is `final` and this environment has no uopz/runkit
@@ -37,6 +38,8 @@ test('the job calls CatalogSyncService::syncCard with the given tcgdex id', func
 });
 
 test('the job does not rethrow when the card sync fails — it logs and lets the queue retry mechanism handle it', function () {
+    Log::spy();
+
     $provider = Mockery::mock(CardCatalogProvider::class);
     $provider->shouldReceive('findCard')
         ->with('me05-116')
@@ -52,4 +55,14 @@ test('the job does not rethrow when the card sync fails — it logs and lets the
     // mechanism (`$tries`) kicks in.
     $syncService = app(CatalogSyncService::class);
     (new SyncCardPricingJob('me05-116'))->handle($syncService);
-})->throwsNoExceptions();
+
+    // If handle() let the CardNotFoundException propagate instead of
+    // catching it, PHPUnit would fail this test right here — no separate
+    // ->throwsNoExceptions() needed (and it conflicts with Pest treating
+    // real assertions below as unexpected on a "no exceptions" test).
+    expect(Card::where('tcgdex_id', 'me05-116')->exists())->toBeFalse();
+    Log::shouldHaveReceived('warning')->once()->withArgs(
+        fn (string $message, array $context) => $message === 'SyncCardPricingJob: card sync failed permanently, not retrying'
+            && $context['tcgdex_card_id'] === 'me05-116',
+    );
+});
