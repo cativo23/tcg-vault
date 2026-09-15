@@ -7,6 +7,7 @@ use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Data\PriceEntryData;
+use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Http\UploadedFile;
@@ -36,6 +37,41 @@ test('a logged-in admin can search tcgdex and see results', function () {
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->assertSet('results.0.name', 'Mega Darkrai ex');
+});
+
+test('a result whose set is already synced locally shows the real set name, not the raw tcgdex code', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    Set::create(['tcgdex_id' => 'sv02', 'name' => 'Paldea Evolved']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu')->andReturn([
+        new CardSummaryData(tcgdexId: 'sv02-062', setTcgdexId: 'sv02', localId: '062', name: 'Pikachu', imageUrl: null),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Pikachu')
+        ->call('runSearch')
+        ->assertSee('Paldea Evolved');
+});
+
+test('a result whose set is not synced locally falls back to the raw tcgdex set code', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu')->andReturn([
+        new CardSummaryData(tcgdexId: 'swsh4-043', setTcgdexId: 'swsh4', localId: '043', name: 'Pikachu', imageUrl: null),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Pikachu')
+        ->call('runSearch')
+        ->assertSee('swsh4');
 });
 
 test('a logged-in admin can select a result and save it to the collection', function () {

@@ -6,6 +6,7 @@ namespace App\Livewire\Admin;
 
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardSummaryData;
+use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
 use Livewire\Attributes\Layout;
@@ -25,6 +26,20 @@ final class AddCollectionItem extends Component
 
     /** @var array<int, CardSummaryData> */
     public array $results = [];
+
+    /**
+     * Human set names for the current $results, keyed by setTcgdexId —
+     * searchCardsByName() only returns the raw tcgdex set id (e.g.
+     * "sv02"), which isn't enough to tell apart the many cards with the
+     * same name across different sets (Carlos, live: "por que hay varios
+     * pikachus" — several results, no readable way to tell which was
+     * "sv02-062" apart from the others). Resolved from the local Catalog
+     * only — no extra tcgdex round-trip per result — so a set that was
+     * never synced locally just falls back to showing its raw code.
+     *
+     * @var array<string, string>
+     */
+    public array $resultSetNames = [];
 
     public ?string $selectedTcgdexId = null;
 
@@ -70,18 +85,24 @@ final class AddCollectionItem extends Component
 
         if ($this->search === '') {
             $this->results = [];
+            $this->resultSetNames = [];
 
             return;
         }
 
         try {
             $this->results = $provider->searchCardsByName($this->search);
+            $this->resultSetNames = Set::whereIn(
+                'tcgdex_id',
+                array_unique(array_map(fn (CardSummaryData $r) => $r->setTcgdexId, $this->results)),
+            )->pluck('name', 'tcgdex_id')->all();
         } catch (Throwable $e) {
             report($e);
 
             $this->addError('search', 'Could not search right now. Please try again.');
 
             $this->results = [];
+            $this->resultSetNames = [];
         }
     }
 

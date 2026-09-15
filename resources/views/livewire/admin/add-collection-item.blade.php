@@ -19,6 +19,7 @@
                             <img src="{{ $result->imageUrl }}" alt="{{ $result->name }}" class="w-full rounded mb-1">
                         @endif
                         <div class="font-medium">{{ $result->name }}</div>
+                        <div class="text-xs" style="color: var(--muted)">{{ $resultSetNames[$result->setTcgdexId] ?? $result->setTcgdexId }}</div>
                         <div class="mono text-xs" style="color: var(--muted)">{{ $result->tcgdexId }}</div>
                     </button>
                 @endforeach
