@@ -285,6 +285,33 @@ test('leaving the set filter on "All sets" behaves exactly like today\'s unfilte
         ->assertSet('results.0.tcgdexId', 'me05-999');
 });
 
+test('picking "All sets" after a real set sends an empty string over the wire, which is normalized back to null', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    Set::create(['tcgdex_id' => 'sv02', 'name' => 'Paldea Evolved']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', 'sv02')->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'sv02-062', setTcgdexId: 'sv02', localId: '062', name: 'Pikachu', imageUrl: null),
+    ]);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-999', setTcgdexId: 'me05', localId: '999', name: 'Pikachu', imageUrl: null),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Pikachu')
+        ->set('setFilter', 'sv02')
+        ->assertSet('results.0.tcgdexId', 'sv02-062')
+        // A real <select>'s "All sets" option (value="") round-trips as ''
+        // over the wire, not null — this is the exact value Livewire sends,
+        // not the null a test could set directly and accidentally pass.
+        ->set('setFilter', '')
+        ->assertSet('setFilter', null)
+        ->assertSet('results.0.tcgdexId', 'me05-999');
+});
+
 test('a brand-new user with no Collection row can save a card, which creates one on demand', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

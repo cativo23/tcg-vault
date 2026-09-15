@@ -129,6 +129,14 @@ final class AddCollectionItem extends Component
 
     public function updatedSetFilter(): void
     {
+        // Livewire only coerces a submitted '' to null when the raw
+        // assignment throws a TypeError — '' is itself a valid ?string,
+        // so it never throws. The <select>'s "All sets" option round-trips
+        // as '' over the wire, not null, so without this normalization
+        // runSearch() would forward set.id='' to tcgdex instead of
+        // omitting the filter entirely.
+        $this->setFilter = $this->setFilter === '' ? null : $this->setFilter;
+
         $this->runSearch(app(CardCatalogProvider::class));
     }
 
