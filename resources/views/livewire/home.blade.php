@@ -39,7 +39,7 @@
                 <div class="nw-home-fv-price">
                     <div class="big">$193.30</div>
                     <div class="row"><span>tcgplayer</span><span class="plain">USD</span></div>
-                    <div class="row"><span>cardmarket</span><span>€248.35</span></div>
+                    <div class="row"><span>cardmarket</span><span class="plain">€248.35</span></div>
                 </div>
             </div>
         </div>
