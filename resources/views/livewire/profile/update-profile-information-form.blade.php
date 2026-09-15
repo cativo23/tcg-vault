@@ -19,7 +19,12 @@ new class extends Component
     {
         $this->name = Auth::user()->name;
         $this->email = Auth::user()->email;
-        $this->username = Auth::user()->username;
+        // ?? '' guards a pre-existing NULL username (the column is
+        // nullable at the DB level; this typed string property would
+        // otherwise fatal on assignment) — an empty starting value still
+        // fails User::usernameRules()'s `required`, so the user must
+        // pick a real one to save, rather than silently keeping NULL.
+        $this->username = Auth::user()->username ?? '';
     }
 
     /**
@@ -29,21 +34,10 @@ new class extends Component
     {
         $user = Auth::user();
 
-        $reserved = ['login', 'logout', 'register', 'admin', 'profile', 'gallery', 'forgot-password', 'reset-password', 'verify-email', 'confirm-password'];
-
         $validated = $this->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)->ignore($user->id)],
-            'username' => [
-                'required',
-                'string',
-                'lowercase',
-                'min:3',
-                'max:30',
-                'regex:/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/',
-                Rule::unique(User::class)->ignore($user->id),
-                Rule::notIn($reserved),
-            ],
+            'username' => User::usernameRules($user->id),
         ]);
 
         $user->fill($validated);

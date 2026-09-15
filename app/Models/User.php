@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Validation\Rule;
 
 #[Fillable(['name', 'username', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
@@ -27,6 +28,52 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+        ];
+    }
+
+    /**
+     * Reserved words `username` may never equal — every one is a
+     * top-level route segment this app itself registers. A collision
+     * wouldn't necessarily break routing (`/{username}/gallery` needs a
+     * literal second segment `route()` already disambiguates), but
+     * letting an account claim the literal string "admin" or "storage"
+     * as its own public identity is a footgun not worth the risk.
+     *
+     * @return array<int, string>
+     */
+    public static function reservedUsernames(): array
+    {
+        return [
+            'login', 'logout', 'register', 'admin', 'profile', 'gallery',
+            'forgot-password', 'reset-password', 'verify-email', 'confirm-password',
+            'dashboard', 'storage', 'livewire', 'up', 'api',
+        ];
+    }
+
+    /**
+     * The single source of truth for what a valid `username` looks like.
+     * Every write path — the profile form, registration, and the
+     * seeder's `TCGVAULT_ADMIN_USERNAME` override — MUST validate
+     * through this, not a hand-copied rule list. A username that skips
+     * these rules (wrong case, illegal characters, a reserved word) can
+     * still end up as a public gallery URL segment and can destabilize
+     * the login rate-limiter's case-insensitive lookup (see
+     * LoginForm::throttleKey()) if two differently-cased usernames both
+     * pass some other, laxer check.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function usernameRules(?int $ignoreUserId = null): array
+    {
+        return [
+            'required',
+            'string',
+            'lowercase',
+            'min:3',
+            'max:30',
+            'regex:/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/',
+            Rule::unique(self::class)->ignore($ignoreUserId),
+            Rule::notIn(self::reservedUsernames()),
         ];
     }
 }
