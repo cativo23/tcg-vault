@@ -896,3 +896,29 @@ body {
 .nw-home-fv-sets .bar { width: 60px; height: 6px; background: var(--bone-3); border-radius: 3px; overflow: hidden; }
 .nw-home-fv-sets .bar div { height: 100%; background: var(--signal-deep); }
 .nw-home-fv-sets .pct { font-family: 'Martian Mono', monospace; font-size: 11px; color: var(--muted); width: 34px; text-align: right; }
+
+/* ─── home page — data coverage strip + FAQ (bone) ─── */
+.nw-home-coverage { padding: 22px 0; text-align: center; border-bottom: 1px solid var(--hair); }
+.nw-home-coverage .label { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.nw-home-coverage .sources { display: flex; justify-content: center; gap: 22px; margin-top: 12px; flex-wrap: wrap; }
+.nw-home-coverage .src { font-size: 13px; font-weight: 700; color: var(--muted); opacity: .8; }
+
+.nw-home-faq { padding-block: 30px; }
+.nw-home-faq h2 { text-align: center; font-variation-settings: 'wdth' 62, 'wght' 800; font-size: 20px; margin-bottom: 18px; }
+.nw-home-faq .item { border-top: 1px solid var(--hair); padding: 14px 0; }
+.nw-home-faq .item:last-child { border-bottom: 1px solid var(--hair); }
+.nw-home-faq .q { font-size: 13px; font-weight: 700; }
+.nw-home-faq .a { font-size: 12px; color: var(--muted); margin-top: 5px; max-width: 60ch; }
+
+/* ─── home page — closing CTA (dark, the SAME --ink the site's real
+   .nw-footer already uses everywhere — not a new dark tone invented for
+   this page, so there's no visible seam between this block and the
+   footer immediately below it). ─── */
+.nw-home-close { padding-block: 40px; text-align: center; background: var(--ink); color: var(--bone); }
+.nw-home-close h2 { font-variation-settings: 'wdth' 62, 'wght' 800; font-size: 22px; }
+.nw-home-close h2 .accent { color: var(--signal-deep); }
+.nw-home-close p { color: rgba(242, 239, 230, .55); font-size: 12px; margin-top: 8px; }
+.nw-home-close .cta {
+  display: inline-block; margin-top: 16px; background: var(--bone); color: var(--ink);
+  padding: 10px 20px; border-radius: var(--radius-pill, 999px); font-size: 12px; font-weight: 700;
+}

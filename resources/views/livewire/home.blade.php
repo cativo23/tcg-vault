@@ -81,4 +81,43 @@
             </div>
         </div>
     </section>
+
+    <section class="nw-home-coverage">
+        <div class="nw-wrap">
+            <p class="label">Precios sincronizados con</p>
+            <div class="sources">
+                <span class="src">tcgdex.dev</span>
+                <span class="src">tcgplayer</span>
+                <span class="src">cardmarket</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="nw-home-faq">
+        <div class="nw-wrap">
+            <h2>Preguntas frecuentes</h2>
+            <div class="item">
+                <p class="q">¿Mis datos son privados?</p>
+                <p class="a">Sí — tu colección es tuya. Veés exactamente qué es público y qué no desde tu perfil.</p>
+            </div>
+            <div class="item">
+                <p class="q">¿Cuándo abre el registro?</p>
+                <p class="a">Muy pronto. Hoy tcg-vault funciona con una cuenta única — el registro abierto está en camino.</p>
+            </div>
+            <div class="item">
+                <p class="q">¿De dónde salen los precios?</p>
+                <p class="a">De tcgdex.dev, que a su vez agrega tcgplayer (USD) y cardmarket (EUR).</p>
+            </div>
+            <div class="item">
+                <p class="q">¿Tiene costo?</p>
+                <p class="a">No.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="nw-home-close">
+        <h2>Track every <span class="accent">card</span>.</h2>
+        <p>Crear tu cuenta — muy pronto.</p>
+        <span class="cta">Avisame cuando abra</span>
+    </section>
 </div>

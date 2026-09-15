@@ -53,3 +53,12 @@ test('the features section describes all three real features', function () {
     $response->assertSee('Tu foto, no un placeholder');
     $response->assertSee('Sets completos, de un vistazo');
 });
+
+test('the closing sections show data coverage, FAQ, and repeat the CTA', function () {
+    $response = $this->get('/');
+
+    $response->assertOk();
+    $response->assertSee('tcgdex.dev');
+    $response->assertSee('¿Tiene costo?');
+    $response->assertSeeInOrder(['Track every', 'Precio en tiempo real', '¿Tiene costo?', 'Avisame cuando abra']);
+});
