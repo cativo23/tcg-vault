@@ -6,8 +6,8 @@
             <div class="nw-home-copy">
                 <p class="nw-home-eyebrow">tcg-vault</p>
                 <h1 class="nw-home-h1">Track every <span class="accent">card</span>.</h1>
-                <p class="nw-home-sub">Precio en tiempo real, historial de valor, cada carta con su foto. No un spreadsheet.</p>
-                <span class="nw-home-cta">Crear tu cuenta — muy pronto</span>
+                <p class="nw-home-sub">Real-time pricing, value history, every card with its own photo. Not a spreadsheet.</p>
+                <span class="nw-home-cta">Create your account — coming soon</span>
             </div>
 
             <div class="nw-home-fan">
@@ -24,15 +24,15 @@
         <div class="nw-home-feature">
             <div>
                 <p class="nw-home-feature-eyebrow">tcg-vault</p>
-                <h3>Precio en tiempo real</h3>
+                <h3>Real-time pricing</h3>
                 <ul>
-                    <li>Sincronizado con tcgdex — tcgplayer (USD) y cardmarket (EUR)</li>
-                    <li>Veé cómo cambia el valor de tu colección con el tiempo</li>
-                    <li>Sin actualizar nada a mano, nunca</li>
+                    <li>Synced with tcgdex — tcgplayer (USD) and cardmarket (EUR)</li>
+                    <li>Watch how your collection's value changes over time</li>
+                    <li>Never update anything by hand</li>
                 </ul>
             </div>
             <div class="nw-home-feature-visual">
-                <div class="chrome">precio</div>
+                <div class="chrome">price</div>
                 <div class="nw-home-fv-price">
                     <div class="big">$--.--</div>
                     <div class="row"><span>tcgplayer</span><span>USD</span></div>
@@ -44,19 +44,19 @@
         <div class="nw-home-feature nw-home-feature--reverse">
             <div>
                 <p class="nw-home-feature-eyebrow">tcg-vault</p>
-                <h3>Tu foto, no un placeholder</h3>
+                <h3>Your own photo, not a placeholder</h3>
                 <ul>
-                    <li>Subí la foto real de tu carta al agregarla</li>
-                    <li>El arte oficial de tcgdex queda como respaldo, no al revés</li>
-                    <li>Funciona igual con o sin foto — la data nunca falta</li>
+                    <li>Upload the real photo of your card when you add it</li>
+                    <li>tcgdex's official art is the backup, not the other way around</li>
+                    <li>Works the same with or without a photo — the data is never missing</li>
                 </ul>
             </div>
             <div class="nw-home-feature-visual">
-                <div class="chrome">tu carta</div>
+                <div class="chrome">your card</div>
                 <div class="nw-home-fv-photo">
                     <img src="https://assets.tcgdex.net/en/base/base1/4/high.webp" alt="">
                     <img src="https://assets.tcgdex.net/en/sv/sv03.5/006/high.webp" alt="">
-                    <div class="label">foto propia · arte oficial</div>
+                    <div class="label">your photo · official art</div>
                 </div>
             </div>
         </div>
@@ -64,11 +64,11 @@
         <div class="nw-home-feature">
             <div>
                 <p class="nw-home-feature-eyebrow">tcg-vault</p>
-                <h3>Sets completos, de un vistazo</h3>
+                <h3>Complete sets, at a glance</h3>
                 <ul>
-                    <li>Mirá qué te falta de cada set que seguís</li>
-                    <li>Las cartas que no tenés quedan marcadas, no desaparecen</li>
-                    <li>Progreso por set, no solo un número total</li>
+                    <li>See what you're missing from every set you follow</li>
+                    <li>Cards you don't own stay marked, not hidden</li>
+                    <li>Progress per set, not just one total number</li>
                 </ul>
             </div>
             <div class="nw-home-feature-visual">
@@ -84,7 +84,7 @@
 
     <section class="nw-home-coverage">
         <div class="nw-wrap">
-            <p class="label">Precios sincronizados con</p>
+            <p class="label">Prices synced with</p>
             <div class="sources">
                 <span class="src">tcgdex.dev</span>
                 <span class="src">tcgplayer</span>
@@ -95,21 +95,21 @@
 
     <section class="nw-home-faq">
         <div class="nw-wrap">
-            <h2>Preguntas frecuentes</h2>
+            <h2>Frequently asked questions</h2>
             <div class="item">
-                <p class="q">¿Mis datos son privados?</p>
-                <p class="a">Sí — tu colección es tuya. Veés exactamente qué es público y qué no desde tu perfil.</p>
+                <p class="q">Is my data private?</p>
+                <p class="a">Yes — your collection is yours. You control exactly what's public and what isn't from your profile.</p>
             </div>
             <div class="item">
-                <p class="q">¿Cuándo abre el registro?</p>
-                <p class="a">Muy pronto. Hoy tcg-vault funciona con una cuenta única — el registro abierto está en camino.</p>
+                <p class="q">When does registration open?</p>
+                <p class="a">Coming soon. Right now tcg-vault runs on a single account — open registration is on the way.</p>
             </div>
             <div class="item">
-                <p class="q">¿De dónde salen los precios?</p>
-                <p class="a">De tcgdex.dev, que a su vez agrega tcgplayer (USD) y cardmarket (EUR).</p>
+                <p class="q">Where do the prices come from?</p>
+                <p class="a">From tcgdex.dev, which aggregates tcgplayer (USD) and cardmarket (EUR).</p>
             </div>
             <div class="item">
-                <p class="q">¿Tiene costo?</p>
+                <p class="q">Does it cost anything?</p>
                 <p class="a">No.</p>
             </div>
         </div>
@@ -117,7 +117,7 @@
 
     <section class="nw-home-close">
         <h2>Track every <span class="accent">card</span>.</h2>
-        <p>Crear tu cuenta — muy pronto.</p>
-        <span class="cta">Avisame cuando abra</span>
+        <p>Create your account — coming soon.</p>
+        <span class="cta">Notify me when it opens</span>
     </section>
 </div>

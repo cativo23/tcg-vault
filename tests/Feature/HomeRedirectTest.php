@@ -49,9 +49,9 @@ test('the features section describes all three real features', function () {
     $response = $this->get('/');
 
     $response->assertOk();
-    $response->assertSee('Precio en tiempo real');
-    $response->assertSee('Tu foto, no un placeholder');
-    $response->assertSee('Sets completos, de un vistazo');
+    $response->assertSee('Real-time pricing');
+    $response->assertSee('Your own photo, not a placeholder');
+    $response->assertSee('Complete sets, at a glance');
 });
 
 test('the closing sections show data coverage, FAQ, and repeat the CTA', function () {
@@ -59,6 +59,6 @@ test('the closing sections show data coverage, FAQ, and repeat the CTA', functio
 
     $response->assertOk();
     $response->assertSee('tcgdex.dev');
-    $response->assertSee('¿Tiene costo?');
-    $response->assertSeeInOrder(['Track every', 'Precio en tiempo real', '¿Tiene costo?', 'Avisame cuando abra']);
+    $response->assertSee('Does it cost anything?');
+    $response->assertSeeInOrder(['Track every', 'Real-time pricing', 'Does it cost anything?', 'Notify me when it opens']);
 });
