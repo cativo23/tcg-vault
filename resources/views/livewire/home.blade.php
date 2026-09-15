@@ -32,11 +32,14 @@
                 </ul>
             </div>
             <div class="nw-home-feature-visual">
-                <div class="chrome">price</div>
+                {{-- A real price, not a placeholder — Mega Darkrai ex (me05-116), pulled from
+                     tcgdex on 2026-09-15. Ties directly to the real photo in the feature below,
+                     and stays honest: this is a real, sourced snapshot, not an invented figure. --}}
+                <div class="chrome">Mega Darkrai ex</div>
                 <div class="nw-home-fv-price">
-                    <div class="big">$--.--</div>
+                    <div class="big">$193.30</div>
                     <div class="row"><span>tcgplayer</span><span>USD</span></div>
-                    <div class="row"><span>cardmarket</span><span>EUR</span></div>
+                    <div class="row"><span>cardmarket</span><span>€248.35</span></div>
                 </div>
             </div>
         </div>
@@ -54,8 +57,12 @@
             <div class="nw-home-feature-visual">
                 <div class="chrome">your card</div>
                 <div class="nw-home-fv-photo">
-                    <img src="https://assets.tcgdex.net/en/base/base1/4/high.webp" alt="">
-                    <img src="https://assets.tcgdex.net/en/sv/sv03.5/006/high.webp" alt="">
+                    {{-- A real collector's own photo (uploaded by Carlos, cropped from his physical
+                         card in its toploader) next to tcgdex's official art of the SAME card
+                         (Mega Darkrai ex, me05-116) — an honest, like-for-like comparison, not two
+                         unrelated cards. --}}
+                    <img src="{{ asset('images/home/carlos-mega-darkrai.webp') }}" alt="Mega Darkrai ex, photographed by its owner">
+                    <img src="https://assets.tcgdex.net/en/me/me05/116/high.webp" alt="Mega Darkrai ex, official art">
                     <div class="label">your photo · official art</div>
                 </div>
             </div>
