@@ -12,6 +12,7 @@ use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -32,7 +33,7 @@ use Illuminate\Support\Facades\Log;
  * a set that's already complete (or partially re-run after a prior
  * failure) just re-affirms/refreshes existing rows, never duplicates.
  */
-final class ImportSetJob implements ShouldQueue
+final class ImportSetJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -46,12 +47,30 @@ final class ImportSetJob implements ShouldQueue
      */
     public int $tries = 2;
 
+    /**
+     * A 200+ card set at realistic per-card HTTP latency needs more than
+     * Horizon's 60s default — without this the job is killed mid-import
+     * and never completes a large set.
+     */
+    public int $timeout = 600;
+
     public function backoff(): array
     {
         return [30]; // seconds
     }
 
     public function __construct(public readonly string $setTcgdexId) {}
+
+    /**
+     * Redis-backed uniqueness: while an import for this set is still
+     * queued/running, a duplicate dispatch (e.g. two users adding cards
+     * from the same not-yet-imported set close together) is a no-op
+     * instead of a second full run of the same set.
+     */
+    public function uniqueId(): string
+    {
+        return $this->setTcgdexId;
+    }
 
     public function handle(CardCatalogProvider $provider, CatalogSyncService $syncService): void
     {
