@@ -59,6 +59,35 @@ final class CardPriceResolver
     }
 
     /**
+     * The comparison point for a price delta against $latest: the most
+     * recent snapshot strictly BEFORE $latest's captured_on, matching
+     * $latest's exact source/variant/currency, with a real (non-null)
+     * market_minor. Two things this deliberately guards against:
+     *
+     * 1. Self-comparison — resolveAsOf() reapplies the whole priority
+     *    chain per date, so asking "what's the price as of today" and
+     *    "as of yesterday" can independently land on the SAME row (e.g.
+     *    today only has a cardmarket snapshot, yesterday had tcgplayer —
+     *    both calls fall back to yesterday's tcgplayer row). Requiring
+     *    captured_on strictly before $latest's makes that impossible.
+     * 2. Mixed-basis deltas — subtracting across a different source,
+     *    variant, or currency (or a null market_minor tcgdex sometimes
+     *    omits) produces a number that looks like a real price move but
+     *    isn't one. No eligible predecessor means no delta, not zero.
+     */
+    public function previousComparable(Card $card, CardPriceSnapshot $latest): ?CardPriceSnapshot
+    {
+        return $card->priceSnapshots
+            ->filter(fn (CardPriceSnapshot $s) => $s->captured_on->lt($latest->captured_on)
+                && $s->source === $latest->source
+                && $s->variant === $latest->variant
+                && $s->currency === $latest->currency
+                && $s->market_minor !== null)
+            ->sortByDesc('captured_on')
+            ->first();
+    }
+
+    /**
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
      */
     private function resolveFrom(Collection $snapshots): ?CardPriceSnapshot

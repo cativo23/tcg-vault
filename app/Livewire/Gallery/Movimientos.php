@@ -39,43 +39,31 @@ final class Movimientos extends Component
 
         $resolver = new CardPriceResolver();
 
-        // Capped: this is a public, unauthenticated route, and an
-        // ever-growing collection would otherwise mean an unbounded
-        // per-card query + snapshot load on every render(). 500 is far
-        // beyond any real collection size today but keeps a single
-        // request bounded regardless of how large a collection grows.
+        // Cards capped at 500: this is a public, unauthenticated route,
+        // and an ever-growing collection would otherwise mean an
+        // unbounded per-card query on every render(). Snapshots capped
+        // to the last 14 days: a delta only ever needs "today vs. the
+        // most recent prior day," so eager-loading a card's ENTIRE price
+        // history here (which could be a year of daily rows) would still
+        // leave the request's memory footprint unbounded even with the
+        // card cap in place.
         $cards = Card::whereHas('collectionItems', function ($query) use ($publicCollectionIds) {
             $query->whereIn('collection_id', $publicCollectionIds);
-        })->with('priceSnapshots')->take(500)->get();
+        })->with(['priceSnapshots' => fn ($q) => $q->where('captured_on', '>=', now()->subDays(14))])
+            ->take(500)
+            ->get();
 
         $deltas = $cards
             ->map(function (Card $card) use ($resolver) {
-                $dates = $resolver->distinctSnapshotDates($card);
+                $latest = $resolver->resolve($card);
 
-                if ($dates->count() < 2) {
+                if ($latest === null || $latest->market_minor === null) {
                     return null;
                 }
 
-                $latest = $resolver->resolveAsOf($card, $dates[0]);
-                $previous = $resolver->resolveAsOf($card, $dates[1]);
+                $previous = $resolver->previousComparable($card, $latest);
 
-                if ($latest === null || $previous === null) {
-                    return null;
-                }
-
-                // resolveAsOf() walks the same source-priority chain
-                // independently for each date, so it can legitimately
-                // return prices from two DIFFERENT sources/variants/
-                // currencies (e.g. "latest" happens to resolve to a
-                // tcgplayer/normal/USD snapshot while "previous" only had
-                // a cardmarket/default/EUR one available as of that
-                // date). Subtracting minor units across a mismatched
-                // source, variant, or currency produces a number that
-                // looks like a real price delta but isn't one — skip it,
-                // same "no fake delta" rule as the single-snapshot case.
-                if ($latest->source !== $previous->source
-                    || $latest->variant !== $previous->variant
-                    || $latest->currency !== $previous->currency) {
+                if ($previous === null) {
                     return null;
                 }
 

@@ -50,6 +50,46 @@ test('a delta spanning a source/variant/currency change is not shown — compari
     $response->assertSee('No price changes yet');
 });
 
+test('a card whose newest day only has a non-priority source does not render a fabricated zero delta', function () {
+    // Regression for the final whole-branch review's Critical finding:
+    // resolve() always prefers tcgplayer when ANY exists, so when today
+    // only has cardmarket, it falls back to yesterday's tcgplayer row —
+    // the SAME row a naive "compare today vs yesterday" would also land
+    // on for "yesterday", producing a fake 0.00 delta that hides the
+    // real move and would have slipped past the source/variant/currency
+    // guard (a row trivially matches itself).
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1000]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 900]);
+
+    $response = $this->get('/carlos/gallery/movimientos');
+
+    $response->assertOk();
+    $response->assertDontSee('0.00');
+    $response->assertSee('No price changes yet');
+});
+
+test('a snapshot with a null market_minor is never used as the previous comparison point', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => null]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1200]);
+
+    $response = $this->get('/carlos/gallery/movimientos');
+
+    $response->assertOk();
+    $response->assertSee('No price changes yet');
+});
+
 test('a card with only one snapshot day shows no delta, not a fake one', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);

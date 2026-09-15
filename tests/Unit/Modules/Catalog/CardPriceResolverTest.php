@@ -63,6 +63,57 @@ test('resolveAsOf ignores snapshots captured after the given date', function () 
     expect($resolved->id)->not->toBe($newer->id);
 });
 
+test('previousComparable returns null rather than the same row when there is no earlier same-source snapshot', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    // Day 1: only tcgplayer. Day 2 (today): only cardmarket — so
+    // resolve() on "today" falls back to yesterday's tcgplayer row (the
+    // priority chain always prefers tcgplayer when any exists). Without
+    // requiring captured_on strictly-before $latest, asking "what's the
+    // previous comparable price" would return that SAME tcgplayer row,
+    // producing a fabricated zero delta instead of "no comparable point".
+    $day1Tcgplayer = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1000]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 900]);
+
+    $resolver = new CardPriceResolver();
+    $latest = $resolver->resolve($card);
+
+    expect($latest->id)->toBe($day1Tcgplayer->id);
+    expect($resolver->previousComparable($card, $latest))->toBeNull();
+});
+
+test('previousComparable finds a real same-source predecessor across a 3-day history with a mixed-source middle day', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    $day1 = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 1000]);
+    $day2 = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1200]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 850]);
+
+    $resolver = new CardPriceResolver();
+    // resolve() on "today" still falls back to day2's tcgplayer row
+    // (today only has cardmarket) — previousComparable must then find
+    // day1's tcgplayer row (not day2 itself, not null), the real
+    // +2.00 move this phase's spec asks for.
+    $latest = $resolver->resolve($card);
+    expect($latest->id)->toBe($day2->id);
+
+    $previous = $resolver->previousComparable($card, $latest);
+    expect($previous->id)->toBe($day1->id);
+});
+
+test('previousComparable ignores a same-day/source predecessor with a null market_minor', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => null]);
+    $latestRow = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1200]);
+
+    $resolver = new CardPriceResolver();
+    expect($resolver->previousComparable($card, $latestRow))->toBeNull();
+});
+
 test('distinctSnapshotDates returns one entry per day, most recent first, regardless of how many source rows exist per day', function () {
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
