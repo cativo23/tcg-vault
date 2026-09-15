@@ -24,6 +24,10 @@ uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class
 // so they need the container and a real database too.
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Jobs');
 
+// Unit/Providers tests boot a real service provider instance against the
+// container (config(), URL facade), no database needed.
+uses(Tests\TestCase::class)->in('Unit/Providers');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations
