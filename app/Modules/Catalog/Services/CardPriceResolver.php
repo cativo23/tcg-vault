@@ -88,6 +88,63 @@ final class CardPriceResolver
     }
 
     /**
+     * The price movement between this card's two most recent snapshot
+     * days, or null when there is nothing honest to compare: fewer than
+     * two days, or the two days resolve to different sources/variants/
+     * currencies (each day walks the priority chain independently, so
+     * "latest" can be tcgplayer/USD while "previous" only had a
+     * cardmarket/EUR row).
+     */
+    public function resolveDelta(Card $card): ?PriceDelta
+    {
+        $dates = $this->distinctSnapshotDates($card);
+
+        if ($dates->count() < 2) {
+            return null;
+        }
+
+        $latest = $this->resolveAsOf($card, $dates[0]);
+        $previous = $this->resolveAsOf($card, $dates[1]);
+
+        if ($latest === null || $previous === null) {
+            return null;
+        }
+
+        if ($latest->source !== $previous->source
+            || $latest->variant !== $previous->variant
+            || $latest->currency !== $previous->currency
+            || $latest->market_minor === null
+            || $previous->market_minor === null) {
+            return null;
+        }
+
+        return new PriceDelta($latest, $previous, $latest->market_minor - $previous->market_minor);
+    }
+
+    /**
+     * The full daily series for the source/variant that resolve() picks
+     * today, oldest first — the input for a price-history sparkline.
+     * Empty when the card has never been priced.
+     *
+     * @return Collection<int, CardPriceSnapshot>
+     */
+    public function history(Card $card): Collection
+    {
+        $resolved = $this->resolve($card);
+
+        if ($resolved === null) {
+            return collect();
+        }
+
+        return $card->priceSnapshots
+            ->filter(fn (CardPriceSnapshot $s) => $s->source === $resolved->source
+                && $s->variant === $resolved->variant
+                && $s->market_minor !== null)
+            ->sortBy(fn (CardPriceSnapshot $s) => $s->captured_on->toDateString())
+            ->values();
+    }
+
+    /**
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
      */
     private function resolveFrom(Collection $snapshots): ?CardPriceSnapshot
