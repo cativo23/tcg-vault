@@ -147,6 +147,37 @@ test('listSetCardIds rejects an ID shaped like an absolute URL without making an
     Http::assertNothingSent();
 });
 
+test('findCard accepts a real dotted tcgdex set ID (e.g. a "half set" like sv08.5)', function () {
+    $payload = fakeTcgdexCardPayload();
+    $payload['id'] = 'sv08.5-048';
+    $payload['localId'] = '048';
+    $payload['name'] = 'Pupitar';
+    $payload['set'] = ['id' => 'sv08.5', 'name' => 'Prismatic Evolutions'];
+
+    Http::fake([
+        'api.tcgdex.net/v2/en/cards/sv08.5-048' => Http::response($payload, 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $card = $provider->findCard('sv08.5-048');
+
+    expect($card->tcgdexId)->toBe('sv08.5-048');
+    expect($card->setTcgdexId)->toBe('sv08.5');
+});
+
+test('findCard still rejects a path-traversal-shaped ID (consecutive dots) without making any HTTP call', function () {
+    Http::fake();
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+
+    expect(fn () => $provider->findCard('..-..'))
+        ->toThrow(InvalidTcgdexIdException::class);
+    expect(fn () => $provider->findCard('me05-116/../secret'))
+        ->toThrow(InvalidTcgdexIdException::class);
+
+    Http::assertNothingSent();
+});
+
 test('listSetCardIds returns the zero-padded local card IDs prefixed with the set ID', function () {
     Http::fake([
         'api.tcgdex.net/v2/en/sets/me05' => Http::response([

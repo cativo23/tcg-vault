@@ -206,7 +206,15 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     private function assertValidTcgdexId(string $id): void
     {
-        if (! preg_match('/^[a-z0-9]+(-[a-z0-9]+)*$/i', $id)) {
+        // tcgdex genuinely uses dotted set IDs for "half sets"/special
+        // releases (e.g. "sv08.5" Prismatic Evolutions, "me02.5" Ascended
+        // Heroes) — a card ID from one of those is e.g. "sv08.5-048".
+        // Found live 2026-09-15: the original hyphen-only pattern rejected
+        // these as InvalidTcgdexIdException, even though they're real
+        // tcgdex IDs, not attacker input. Still SSRF-safe: no "/", ":",
+        // or consecutive/leading/trailing "." or "-" can ever match, so
+        // path traversal and protocol/host injection stay impossible.
+        if (! preg_match('/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/i', $id)) {
             throw InvalidTcgdexIdException::forId($id);
         }
     }
