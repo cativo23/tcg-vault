@@ -8,24 +8,10 @@ use App\Livewire\Gallery\CardShow;
 use App\Livewire\Gallery\Index;
 use App\Livewire\Gallery\Sets;
 use App\Livewire\Gallery\Show;
-use App\Models\User;
+use App\Livewire\Home;
 use Illuminate\Support\Facades\Route;
 
-// The front door is the collector's public gallery. A single-owner vault
-// has exactly one gallery worth landing on: the configured admin username
-// when set, otherwise the first account that has a username at all.
-// Nothing to show yet (fresh install) → the login screen.
-Route::get('/', function () {
-    $owner = User::query()
-        ->when(config('tcgvault.admin_username'), fn ($q, $username) => $q->where('username', $username))
-        ->whereNotNull('username')
-        ->orderBy('id')
-        ->first();
-
-    return $owner
-        ? redirect()->route('gallery.index', ['username' => $owner->username])
-        : redirect()->route('login');
-})->name('home');
+Route::get('/', Home::class)->name('home');
 
 // Breeze's installer wired 'dashboard' as the post-login landing route
 // name (see resources/views/livewire/pages/auth/login.blade.php's
