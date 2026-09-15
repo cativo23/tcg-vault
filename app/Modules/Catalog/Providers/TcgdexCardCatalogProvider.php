@@ -34,11 +34,30 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     public function __construct(private readonly string $baseUrl) {}
 
+    /**
+     * Found live in production 2026-09-15: api.tcgdex.net's DNS record
+     * resolves to an IPv6 address, and the production container's IPv6
+     * egress route to it is dead (100% failure in repeated `curl -6`
+     * tests), while IPv4 succeeds 100% of the time. The system `curl`
+     * binary hides this via its own Happy-Eyeballs fallback, but
+     * Guzzle/cURL inside PHP does not fall back the same way here — jobs
+     * failed intermittently with "Could not resolve host", which is
+     * curl error 6, not a connection-refused error. Forcing IPv4 on
+     * every tcgdex request sidesteps the broken IPv6 route entirely
+     * rather than depending on a resolver-level fix outside this app.
+     */
+    private function http(int $timeoutSeconds): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::baseUrl($this->baseUrl)
+            ->timeout($timeoutSeconds)
+            ->withOptions(['curl' => [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4]]);
+    }
+
     public function findCard(string $tcgdexId): CardDetailData
     {
         $this->assertValidTcgdexId($tcgdexId);
 
-        $response = Http::baseUrl($this->baseUrl)->timeout(self::REQUEST_TIMEOUT)->get("cards/{$tcgdexId}");
+        $response = $this->http(self::REQUEST_TIMEOUT)->get("cards/{$tcgdexId}");
 
         if ($response->status() === 404) {
             throw CardNotFoundException::forTcgdexId($tcgdexId);
@@ -67,7 +86,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     {
         $this->assertValidTcgdexId($tcgdexId);
 
-        $response = Http::baseUrl($this->baseUrl)->timeout(self::REQUEST_TIMEOUT)->get("sets/{$tcgdexId}");
+        $response = $this->http(self::REQUEST_TIMEOUT)->get("sets/{$tcgdexId}");
 
         if ($response->status() === 404) {
             throw SetNotFoundException::forTcgdexId($tcgdexId);
@@ -93,7 +112,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     {
         $this->assertValidTcgdexId($setTcgdexId);
 
-        $response = Http::baseUrl($this->baseUrl)->timeout(self::SET_LISTING_TIMEOUT)->get("sets/{$setTcgdexId}");
+        $response = $this->http(self::SET_LISTING_TIMEOUT)->get("sets/{$setTcgdexId}");
 
         if ($response->status() === 404) {
             throw SetNotFoundException::forTcgdexId($setTcgdexId);
@@ -108,7 +127,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     public function searchCardsByName(string $query): array
     {
-        $response = Http::baseUrl($this->baseUrl)->timeout(self::REQUEST_TIMEOUT)->get('cards', ['name' => $query]);
+        $response = $this->http(self::REQUEST_TIMEOUT)->get('cards', ['name' => $query]);
 
         $response->throw();
 
