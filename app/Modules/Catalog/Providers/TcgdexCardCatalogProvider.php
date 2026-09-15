@@ -135,9 +135,19 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         return array_map(static fn (array $card): string => $card['id'], $cards);
     }
 
-    public function searchCardsByName(string $query): array
+    public function searchCardsByName(string $query, ?string $setTcgdexId = null): array
     {
-        $response = $this->http(self::REQUEST_TIMEOUT)->get('cards', ['name' => $query]);
+        $params = ['name' => $query];
+
+        // Verified live against api.tcgdex.net 2026-09-15: 'set.id' narrows
+        // results server-side (dot notation for nested-field filters, per
+        // tcgdex's own filtering docs), so a name search doesn't need to
+        // fetch every cross-set printing and filter in PHP.
+        if ($setTcgdexId !== null) {
+            $params['set.id'] = $setTcgdexId;
+        }
+
+        $response = $this->http(self::REQUEST_TIMEOUT)->get('cards', $params);
 
         $response->throw();
 

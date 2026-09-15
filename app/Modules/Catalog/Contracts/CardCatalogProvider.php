@@ -36,8 +36,10 @@ interface CardCatalogProvider
     /**
      * Search tcgdex by card name (brief results only — no pricing; call
      * findCard() on a chosen result for full detail + current price).
+     * Optionally narrowed to one set via $setTcgdexId — passed straight
+     * through to tcgdex's own server-side filter, not applied client-side.
      *
      * @return array<int, CardSummaryData>
      */
-    public function searchCardsByName(string $query): array;
+    public function searchCardsByName(string $query, ?string $setTcgdexId = null): array;
 }

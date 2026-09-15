@@ -269,6 +269,28 @@ test('searchCardsByName maps tcgdex brief results into CardSummaryData', functio
     });
 });
 
+test('searchCardsByName includes set.id in the request when a set filter is given', function () {
+    Http::fake(['api.tcgdex.net/v2/en/cards*' => Http::response([], 200)]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $provider->searchCardsByName('Pikachu', 'sv02');
+
+    Http::assertSent(function ($request) {
+        return $request->url() === 'https://api.tcgdex.net/v2/en/cards?name=Pikachu&set.id=sv02';
+    });
+});
+
+test('searchCardsByName omits set.id from the request when no set filter is given', function () {
+    Http::fake(['api.tcgdex.net/v2/en/cards*' => Http::response([], 200)]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $provider->searchCardsByName('Pikachu');
+
+    Http::assertSent(function ($request) {
+        return $request->url() === 'https://api.tcgdex.net/v2/en/cards?name=Pikachu';
+    });
+});
+
 test('MalformedCatalogResponseException::forSearch strips control characters from the query to prevent log injection', function () {
     $exception = MalformedCatalogResponseException::forSearch("Darkrai\r\n[2026-09-14 12:00:00] production.CRITICAL: forged log entry", 'response body is not a JSON array.');
 
