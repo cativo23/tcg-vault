@@ -1,7 +1,7 @@
 <?php
 
-it('returns a successful response', function () {
+it('sends the root somewhere useful instead of a placeholder page', function () {
     $response = $this->get('/');
 
-    $response->assertStatus(200);
+    $response->assertRedirect();
 });

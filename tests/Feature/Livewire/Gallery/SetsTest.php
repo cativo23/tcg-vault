@@ -21,7 +21,7 @@ test('lists sets the user has at least one card from, with correct completion co
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'LP', 'quantity' => 1]);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card2->id, 'card_tcgdex_id' => 'me05-003', 'condition' => 'NM', 'quantity' => 1]);
 
-    $response = $this->get("/carlos/gallery");
+    $response = $this->get('/carlos/gallery/sets');
 
     $response->assertOk();
     $response->assertSee('Pitch Black');
@@ -34,14 +34,14 @@ test('a set the user has no cards from does not appear', function () {
 
     Set::create(['tcgdex_id' => 'untouched', 'name' => 'Never Added']);
 
-    $response = $this->get('/carlos/gallery');
+    $response = $this->get('/carlos/gallery/sets');
 
     $response->assertOk();
     $response->assertDontSee('Never Added');
 });
 
 test('a nonexistent username 404s, not an empty page', function () {
-    $response = $this->get('/nobody-here/gallery');
+    $response = $this->get('/nobody-here/gallery/sets');
 
     $response->assertNotFound();
 });
@@ -53,18 +53,18 @@ test('a private (non-public) collection contributes nothing to the gallery', fun
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    $response = $this->get('/carlos/gallery');
+    $response = $this->get('/carlos/gallery/sets');
 
     $response->assertOk();
     $response->assertDontSee('Pitch Black');
 });
 
-test('the gallery route requires no authentication', function () {
+test('the sets route requires no authentication', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
 
     // Explicitly NOT calling $this->actingAs(...) — a guest must be able to load this.
-    $response = $this->get('/carlos/gallery');
+    $response = $this->get('/carlos/gallery/sets');
 
     $response->assertOk();
 });
