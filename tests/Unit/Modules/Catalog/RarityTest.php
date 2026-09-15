@@ -26,6 +26,8 @@ test('falls back to initials for an unknown rarity instead of failing', function
     expect(Rarity::abbreviate('Amazing Rare'))->toBe('AR');
 });
 
-test('a missing rarity yields an empty abbreviation', function () {
-    expect(Rarity::abbreviate(null))->toBe('');
+test('a missing rarity yields an empty abbreviation, and so does tcgdex\'s literal "None"', function () {
+    expect(Rarity::abbreviate(null))->toBe('')
+        ->and(Rarity::abbreviate('None'))->toBe('')
+        ->and(Rarity::label('None'))->toBe('');
 });

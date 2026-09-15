@@ -36,11 +36,13 @@ final class Rarity
 
     public static function abbreviate(?string $rarity): string
     {
-        if ($rarity === null || trim($rarity) === '') {
+        $key = Str::lower(trim((string) $rarity));
+
+        // tcgdex emits the literal string "None" for promos and other
+        // unrated prints — that is "no rarity", not a rarity called N.
+        if ($key === '' || $key === 'none') {
             return '';
         }
-
-        $key = Str::lower(trim($rarity));
 
         if (isset(self::KNOWN[$key])) {
             return self::KNOWN[$key];
@@ -57,6 +59,10 @@ final class Rarity
 
     public static function label(?string $rarity): string
     {
-        return $rarity === null ? '' : Str::title($rarity);
+        if ($rarity === null || Str::lower(trim($rarity)) === 'none') {
+            return '';
+        }
+
+        return Str::title($rarity);
     }
 }
