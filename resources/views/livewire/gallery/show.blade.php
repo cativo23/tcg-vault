@@ -68,6 +68,10 @@
                 <button type="button" wire:click="sortBy('name')" aria-pressed="{{ $sort === 'name' ? 'true' : 'false' }}">Name</button>
                 <button type="button" wire:click="sortBy('rarity')" aria-pressed="{{ $sort === 'rarity' ? 'true' : 'false' }}">Rarity</button>
             </div>
+
+            <div class="nw-seg" role="group" aria-label="Missing cards">
+                <button type="button" wire:click="toggleMissing" aria-pressed="{{ $showMissing ? 'true' : 'false' }}">Show missing</button>
+            </div>
         </div>
     </div>
 

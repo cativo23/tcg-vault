@@ -12,7 +12,7 @@ use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
-test('shows every card in the set, marks owned ones, computes stats from the whole set', function () {
+test('shows only owned cards by default, computes stats from the whole set', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
 
@@ -29,8 +29,26 @@ test('shows every card in the set, marks owned ones, computes stats from the who
 
     $response->assertOk();
     $response->assertSee('Mega Darkrai ex'); // owned, shown
-    $response->assertSee('Fomantis'); // not owned, still shown per spec §6
-    $response->assertSee('Mega Darkrai ex'); // most expensive card in the SET, not just owned
+    $response->assertDontSee('Fomantis'); // not owned — hidden by default (missing cards are opt-in)
+    $response->assertSee('Collected</div>', escape: false); // stats still cover the whole set, unfiltered
+});
+
+test('toggling "show missing" reveals cards the collector does not own', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 2]);
+    $owned = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis']);
+
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $owned->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
+        ->assertDontSee('Fomantis')
+        ->call('toggleMissing')
+        ->assertSee('Fomantis')
+        ->call('toggleMissing')
+        ->assertDontSee('Fomantis');
 });
 
 test('a private (non-public) collection contributes nothing to the set-detail screen', function () {

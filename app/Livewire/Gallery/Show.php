@@ -38,6 +38,17 @@ final class Show extends Component
     #[Url(as: 'rarity', except: '')]
     public string $rarityFilter = '';
 
+    // Ghosts (cards the collector doesn't own) are opt-in, off by default —
+    // Carlos flagged live (2026-09-15) that a set page should open on just
+    // the collector's own cards, not the whole official checklist.
+    #[Url(as: 'missing', except: false)]
+    public bool $showMissing = false;
+
+    public function toggleMissing(): void
+    {
+        $this->showMissing = ! $this->showMissing;
+    }
+
     public function mount(string $username, string $setTcgdexId): void
     {
         $this->resolveTargetUser($username);
@@ -89,6 +100,10 @@ final class Show extends Component
             'items' => $card->collectionItems,
             'owned' => $card->collectionItems->isNotEmpty(),
         ]);
+
+        if (! $this->showMissing) {
+            $entries = $entries->filter(fn ($e) => $e['owned']);
+        }
 
         $sorted = match ($this->sort) {
             'name' => $entries->sortBy(fn ($e) => $e['card']->name),
