@@ -30,11 +30,30 @@ return [
      * matching tcgdex set id. tcgdex has no TCGplayer-code field on its Set
      * object, so this cannot be derived automatically — add an entry here
      * whenever a new set is exported and the code isn't recognized yet.
-     * Verified 2026-09-15 against real tcgdex data: PBL -> me05 ("Pitch
-     * Black"), MEE -> mee ("Mega Evolution Energy", basic energy reprints).
+     * Each entry verified against real tcgdex data (card-count match, then
+     * a specific card's real name cross-checked to rule out a same-count
+     * collision — e.g. CRI/JTG/PRE all had 2-3 same-count candidates).
+     * Verified 2026-09-15: PBL -> me05 ("Pitch Black"), MEE -> mee ("Mega
+     * Evolution Energy", basic energy reprints). Verified 2026-09-15
+     * (second batch): POR -> me03 ("Perfect Order"), CRI -> me04 ("Chaos
+     * Rising"), ASC -> me02.5 ("Ascended Heroes"), PFL -> me02 ("Phantasmal
+     * Flames"), MEG -> me01 ("Mega Evolution"), DRI -> sv10 ("Destined
+     * Rivals"), JTG -> sv09 ("Journey Together"), PRE -> sv08.5
+     * ("Prismatic Evolutions"), SSP -> sv08 ("Surging Sparks"), SWSH12 ->
+     * swsh12 ("Silver Tempest").
      */
     'tcgplayer_set_map' => [
         'PBL' => 'me05',
         'MEE' => 'mee',
+        'POR' => 'me03',
+        'CRI' => 'me04',
+        'ASC' => 'me02.5',
+        'PFL' => 'me02',
+        'MEG' => 'me01',
+        'DRI' => 'sv10',
+        'JTG' => 'sv09',
+        'PRE' => 'sv08.5',
+        'SSP' => 'sv08',
+        'SWSH12' => 'swsh12',
     ],
 ];
