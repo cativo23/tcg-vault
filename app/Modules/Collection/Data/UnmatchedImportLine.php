@@ -10,7 +10,7 @@ final class UnmatchedImportLine extends Data
 {
     public function __construct(
         public readonly string $rawLine,
-        /** One of: 'unparsed', 'unknown_set', 'card_not_found'. */
+        /** One of: 'unparsed', 'unknown_set', 'card_not_found', 'lookup_failed'. */
         public readonly string $reason,
     ) {}
 }

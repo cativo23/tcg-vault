@@ -19,13 +19,26 @@ use Spatie\LaravelData\DataCollection;
 
 final class TcgdexCardCatalogProvider implements CardCatalogProvider
 {
+    /**
+     * Single-resource lookups run inline in web requests (card page, search,
+     * bulk import), so a hung tcgdex connection must not be allowed to hold a
+     * php-fpm worker open until nginx gives up on it.
+     */
+    private const REQUEST_TIMEOUT = 8;
+
+    /**
+     * A whole-set payload is an order of magnitude larger and is only ever
+     * fetched from a queued job, where a longer ceiling is safe.
+     */
+    private const SET_LISTING_TIMEOUT = 20;
+
     public function __construct(private readonly string $baseUrl) {}
 
     public function findCard(string $tcgdexId): CardDetailData
     {
         $this->assertValidTcgdexId($tcgdexId);
 
-        $response = Http::baseUrl($this->baseUrl)->get("cards/{$tcgdexId}");
+        $response = Http::baseUrl($this->baseUrl)->timeout(self::REQUEST_TIMEOUT)->get("cards/{$tcgdexId}");
 
         if ($response->status() === 404) {
             throw CardNotFoundException::forTcgdexId($tcgdexId);
@@ -54,7 +67,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     {
         $this->assertValidTcgdexId($tcgdexId);
 
-        $response = Http::baseUrl($this->baseUrl)->get("sets/{$tcgdexId}");
+        $response = Http::baseUrl($this->baseUrl)->timeout(self::REQUEST_TIMEOUT)->get("sets/{$tcgdexId}");
 
         if ($response->status() === 404) {
             throw SetNotFoundException::forTcgdexId($tcgdexId);
@@ -80,7 +93,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     {
         $this->assertValidTcgdexId($setTcgdexId);
 
-        $response = Http::baseUrl($this->baseUrl)->get("sets/{$setTcgdexId}");
+        $response = Http::baseUrl($this->baseUrl)->timeout(self::SET_LISTING_TIMEOUT)->get("sets/{$setTcgdexId}");
 
         if ($response->status() === 404) {
             throw SetNotFoundException::forTcgdexId($setTcgdexId);
@@ -95,7 +108,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     public function searchCardsByName(string $query): array
     {
-        $response = Http::baseUrl($this->baseUrl)->get('cards', ['name' => $query]);
+        $response = Http::baseUrl($this->baseUrl)->timeout(self::REQUEST_TIMEOUT)->get('cards', ['name' => $query]);
 
         $response->throw();
 
@@ -116,7 +129,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     }
 
     /**
-     * @param array<string, mixed> $pricing
+     * @param  array<string, mixed>  $pricing
      * @return array<int, PriceEntryData>
      */
     private function extractPrices(array $pricing): array
@@ -198,9 +211,6 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         }
     }
 
-    /**
-     * @param mixed $json
-     */
     private function assertValidCardShape(string $tcgdexId, mixed $json): void
     {
         if (! is_array($json)) {
@@ -226,9 +236,6 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         $this->assertValidCurrencies($tcgdexId, $json['pricing'] ?? []);
     }
 
-    /**
-     * @param mixed $json
-     */
     private function assertValidSetShape(string $tcgdexId, mixed $json): void
     {
         if (! is_array($json)) {
@@ -244,9 +251,6 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         }
     }
 
-    /**
-     * @param mixed $json
-     */
     private function assertValidSearchShape(string $query, mixed $json): void
     {
         if (! is_array($json) || ! array_is_list($json)) {
@@ -277,7 +281,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     }
 
     /**
-     * @param array<string, mixed> $pricing
+     * @param  array<string, mixed>  $pricing
      */
     private function assertValidCurrencies(string $tcgdexId, array $pricing): void
     {

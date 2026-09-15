@@ -6,27 +6,35 @@ namespace App\Modules\Collection\Services;
 
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Models\Card;
 use App\Modules\Collection\Data\MatchedImportLine;
 use App\Modules\Collection\Data\ParsedImport;
 use App\Modules\Collection\Data\UnmatchedImportLine;
 use Illuminate\Support\Collection;
+use Throwable;
 
 /**
  * Parses TCGplayer's Android-app collection/decklist export format (one
  * card per line: qty, name, optional " - <disambiguator>", bracketed set
  * code, local number) into matched tcgdex cards and unrecognized lines.
- * Pure — never touches the database, only reads from the Catalog via
- * CardCatalogProvider to validate each candidate card actually exists.
+ * Read-only — never writes. It resolves each candidate card against the
+ * local Catalog first and only falls back to the remote CardCatalogProvider
+ * for cards this install has never synced.
  */
 final class TcgplayerImportParser
 {
-    private const LINE_PATTERN = '/^(?P<qty>\d+)\s+(?P<name>.+?)(?:\s+-\s+\S+)?\s+\[(?P<set>\w+)\]\s+(?P<local>\S+)$/';
+    // The `name` group is intentionally decorative: it only exists so the
+    // pattern can consume the card name (and its optional " - <disambiguator>"
+    // suffix) before the bracketed set code. The name we display always comes
+    // from tcgdex/the local Catalog, never from the export text — don't
+    // "fix" this by reading $m['name'].
+    private const LINE_PATTERN = '/^(?P<qty>[1-9]\d*)\s+(?P<name>.+?)(?:\s+-\s+\S+)?\s+\[(?P<set>\w+)\]\s+(?P<local>\S+)$/';
 
     public function __construct(private readonly CardCatalogProvider $provider) {}
 
     public function parse(string $text): ParsedImport
     {
-        $setMap = config('tcgvault.tcgplayer_set_map');
+        $setMap = config('tcgvault.tcgplayer_set_map', []);
 
         /** @var array<string, array{qty: int, rawLine: string}> $candidates keyed by "{tcgdexSetId}-{localId}" */
         $candidates = [];
@@ -73,10 +81,31 @@ final class TcgplayerImportParser
         $matched = [];
 
         foreach ($candidates as $tcgdexCardId => $candidate) {
+            // Cards this install already synced are resolved locally, which
+            // removes one tcgdex round-trip per line. On a re-import of an
+            // already-synced set that's the entire preview cost gone.
+            $localName = Card::where('tcgdex_id', $tcgdexCardId)->value('name');
+
+            if ($localName !== null) {
+                $matched[] = new MatchedImportLine(qty: $candidate['qty'], tcgdexId: $tcgdexCardId, name: $localName);
+
+                continue;
+            }
+
             try {
                 $card = $this->provider->findCard($tcgdexCardId);
             } catch (CardNotFoundException) {
                 $unmatched[] = new UnmatchedImportLine(rawLine: $candidate['rawLine'], reason: 'card_not_found');
+
+                continue;
+            } catch (Throwable $e) {
+                // A transient catalog failure (timeout, 5xx, malformed body)
+                // must degrade to "this one line didn't resolve" instead of
+                // 500-ing the whole preview — same posture as
+                // AddCollectionItem::runSearch().
+                report($e);
+
+                $unmatched[] = new UnmatchedImportLine(rawLine: $candidate['rawLine'], reason: 'lookup_failed');
 
                 continue;
             }

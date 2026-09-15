@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Services\TcgplayerImportParser;
 
 function fakeImportCard(string $tcgdexId, string $setTcgdexId, string $localId, string $name): CardDetailData
@@ -106,6 +108,49 @@ test('merges quantities for two lines resolving to the same card and looks it up
 
     expect($result->matched)->toHaveCount(1);
     expect($result->matched->first()->qty)->toBe(3);
+});
+
+test('resolves an already-synced card from the local catalog without calling tcgdex', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    Card::create(['tcgdex_id' => 'me05-068', 'set_id' => $set->id, 'local_id' => '068', 'name' => 'Toucannon']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldNotReceive('findCard')->with('me05-068');
+    $provider->shouldReceive('findCard')->with('me05-052')->once()
+        ->andReturn(fakeImportCard('me05-052', 'me05', '052', 'Malamar'));
+
+    $result = (new TcgplayerImportParser($provider))->parse(
+        "1 Toucannon - 068/084 [PBL] 068/084\n1 Malamar [PBL] 052/084"
+    );
+
+    expect($result->matched)->toHaveCount(2);
+    expect($result->matched->firstWhere('tcgdexId', 'me05-068')->name)->toBe('Toucannon');
+    expect($result->matched->firstWhere('tcgdexId', 'me05-052')->name)->toBe('Malamar');
+    expect($result->unmatched)->toHaveCount(0);
+});
+
+test('a transient catalog failure lands the line in unmatched instead of propagating', function () {
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-068')->once()
+        ->andThrow(new RuntimeException('connection timed out'));
+
+    $result = (new TcgplayerImportParser($provider))->parse('1 Toucannon - 068/084 [PBL] 068/084');
+
+    expect($result->matched)->toHaveCount(0);
+    expect($result->unmatched)->toHaveCount(1);
+    expect($result->unmatched->first()->reason)->toBe('lookup_failed');
+    expect($result->unmatched->first()->rawLine)->toBe('1 Toucannon - 068/084 [PBL] 068/084');
+});
+
+test('rejects a zero-quantity line instead of importing a card nobody owns', function () {
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldNotReceive('findCard');
+
+    $result = (new TcgplayerImportParser($provider))->parse('0 Toucannon - 068/084 [PBL] 068/084');
+
+    expect($result->matched)->toHaveCount(0);
+    expect($result->unmatched)->toHaveCount(1);
+    expect($result->unmatched->first()->reason)->toBe('unparsed');
 });
 
 test('ignores blank lines between real lines', function () {

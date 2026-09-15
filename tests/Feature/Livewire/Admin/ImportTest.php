@@ -57,12 +57,29 @@ test('previewing and confirming the real TCGplayer export adds the expected card
 
     $export = file_get_contents(base_path('tests/Fixtures/tcgplayer-export.txt'));
 
-    Livewire::test(Import::class)
+    $component = Livewire::test(Import::class)
         ->set('text', $export)
         ->call('preview')
         ->assertSet('matched', fn (array $matched) => count($matched) === 52)
-        ->assertSet('unmatched', fn (array $unmatched) => count($unmatched) === 0)
-        ->call('confirm')
+        ->assertSet('unmatched', fn (array $unmatched) => count($unmatched) === 0);
+
+    // confirm() only drains one chunk per click, so the 52-card export takes
+    // six of them. The intermediate summary has to report progress, not
+    // completion — an admin who reads "52 cartas agregadas" and clicks again
+    // would double the import.
+    $component->call('confirm')
+        ->assertSet('matched', fn (array $matched) => count($matched) === 42)
+        ->assertSet('summary', '10 cartas agregadas hasta ahora, 42 pendientes.');
+
+    $clicks = 1;
+    while ($component->get('matched') !== [] && $clicks < 10) {
+        $component->call('confirm');
+        $clicks++;
+    }
+
+    expect($clicks)->toBe(6);
+
+    $component
         ->assertSet('summary', '52 cartas agregadas, 66 copias totales.')
         ->assertSet('matched', [])
         ->assertSet('text', '');
@@ -87,6 +104,20 @@ test('unmatched lines are reported but do not block confirming the matched ones'
 
     $collection = Collection::where('user_id', $user->id)->firstOrFail();
     expect($collection->items()->count())->toBe(1);
+});
+
+test('a preview that recognizes nothing says so instead of rendering an empty page', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $this->app->instance(CardCatalogProvider::class, fakeCatalogProviderForImport());
+
+    Livewire::test(Import::class)
+        ->set('text', "   \n\n")
+        ->call('preview')
+        ->assertSet('matched', [])
+        ->assertSet('unmatched', [])
+        ->assertSet('hasPreviewed', true)
+        ->assertSee('0 líneas reconocidas', escape: false);
 });
 
 test('a card the catalog rejects during confirmation does not abort the rest of the batch', function () {
