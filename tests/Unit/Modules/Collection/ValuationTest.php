@@ -31,7 +31,7 @@ test('totals are kept per currency and multiplied by owned quantity, USD listed 
 
     $cards = PublicCollection::for($user)->cardsQuery()->get();
 
-    $totals = (new Valuation())->totalsByCurrency($cards);
+    $totals = (new Valuation)->totalsByCurrency($cards);
 
     expect($totals)->toBe(['USD' => 3000, 'EUR' => 900]);
 });

@@ -1,5 +1,12 @@
 <?php
 
+use App\Livewire\Admin\AddCollectionItem;
+use App\Livewire\Admin\CollectionItems;
+use App\Livewire\Gallery\Activity;
+use App\Livewire\Gallery\CardShow;
+use App\Livewire\Gallery\Index;
+use App\Livewire\Gallery\Sets;
+use App\Livewire\Gallery\Show;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
 
@@ -32,11 +39,11 @@ Route::view('profile', 'profile')
     ->middleware(['auth'])
     ->name('profile');
 
-Route::get('/admin/add', \App\Livewire\Admin\AddCollectionItem::class)
+Route::get('/admin/add', AddCollectionItem::class)
     ->middleware(['auth'])
     ->name('admin.collection.add');
 
-Route::get('/admin', \App\Livewire\Admin\CollectionItems::class)
+Route::get('/admin', CollectionItems::class)
     ->middleware(['auth'])
     ->name('admin.collection.index');
 
@@ -44,13 +51,13 @@ Route::get('/admin', \App\Livewire\Admin\CollectionItems::class)
 // be registered before the `{setTcgdexId}` wildcard or the wildcard eats
 // them. tcgdex set ids are short alphanumerics ("me05", "swsh12pt5") so
 // none of these words can collide with a real set.
-Route::get('/{username}/gallery', \App\Livewire\Gallery\Index::class)
+Route::get('/{username}/gallery', Index::class)
     ->name('gallery.index');
 
-Route::get('/{username}/gallery/sets', \App\Livewire\Gallery\Sets::class)
+Route::get('/{username}/gallery/sets', Sets::class)
     ->name('gallery.sets');
 
-Route::get('/{username}/gallery/activity', \App\Livewire\Gallery\Activity::class)
+Route::get('/{username}/gallery/activity', Activity::class)
     ->name('gallery.activity');
 
 // The screen shipped under its Spanish working title; the URL follows the
@@ -58,10 +65,10 @@ Route::get('/{username}/gallery/activity', \App\Livewire\Gallery\Activity::class
 Route::get('/{username}/gallery/movimientos', fn (string $username) => redirect()->route('gallery.activity', ['username' => $username], 301))
     ->name('gallery.movimientos');
 
-Route::get('/{username}/gallery/{setTcgdexId}', \App\Livewire\Gallery\Show::class)
+Route::get('/{username}/gallery/{setTcgdexId}', Show::class)
     ->name('gallery.show');
 
-Route::get('/{username}/gallery/{setTcgdexId}/{localId}', \App\Livewire\Gallery\CardShow::class)
+Route::get('/{username}/gallery/{setTcgdexId}/{localId}', CardShow::class)
     ->name('gallery.card');
 
 require __DIR__.'/auth.php';

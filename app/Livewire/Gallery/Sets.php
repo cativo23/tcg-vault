@@ -24,7 +24,7 @@ final class Sets extends Component
     public function render()
     {
         $public = $this->publicCollection();
-        $valuation = new Valuation();
+        $valuation = new Valuation;
 
         $sets = $public->setsQuery()->orderByDesc('released_on')->get();
 

@@ -6,6 +6,7 @@ namespace App\Modules\Catalog\Services;
 
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
@@ -47,7 +48,7 @@ final class CardPriceResolver
      * days has one entry per day regardless of how many source/variant
      * rows exist on each day.
      *
-     * @return Collection<int, \Carbon\CarbonImmutable>
+     * @return Collection<int, CarbonImmutable>
      */
     public function distinctSnapshotDates(Card $card): Collection
     {
@@ -97,24 +98,19 @@ final class CardPriceResolver
      */
     public function resolveDelta(Card $card): ?PriceDelta
     {
-        $dates = $this->distinctSnapshotDates($card);
+        $latest = $this->resolve($card);
 
-        if ($dates->count() < 2) {
+        if ($latest === null || $latest->market_minor === null) {
             return null;
         }
 
-        $latest = $this->resolveAsOf($card, $dates[0]);
-        $previous = $this->resolveAsOf($card, $dates[1]);
+        // previousComparable() owns every guard (strictly earlier day, same
+        // source/variant/currency, non-null price) — including the
+        // self-comparison trap where two resolveAsOf() calls land on the
+        // same row and would fabricate a 0.00 move.
+        $previous = $this->previousComparable($card, $latest);
 
-        if ($latest === null || $previous === null) {
-            return null;
-        }
-
-        if ($latest->source !== $previous->source
-            || $latest->variant !== $previous->variant
-            || $latest->currency !== $previous->currency
-            || $latest->market_minor === null
-            || $previous->market_minor === null) {
+        if ($previous === null) {
             return null;
         }
 

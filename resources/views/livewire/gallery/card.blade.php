@@ -52,7 +52,7 @@
                 @else
                     <span class="nw-badge soft">Not in the collection</span>
                 @endif
-                @if ($card->rarity)
+                @if (Rarity::label($card->rarity) !== '')
                     <span class="nw-badge soft">{{ Rarity::label($card->rarity) }}</span>
                 @endif
             </div>
@@ -60,7 +60,7 @@
             <h1 class="nw-display nw-h1 nw-h1--sm">{{ $card->name }}</h1>
             <p class="mt-3 text-sm" style="color: var(--muted)">
                 <a href="{{ $setUrl }}" class="underline decoration-[var(--hair)] hover:decoration-[var(--signal)] underline-offset-[3px]" style="color: var(--ink)" wire:navigate>{{ $card->set->name }}</a>
-                · <span class="mono">#{{ $card->local_id }}</span>@if ($card->set->card_count) <span class="mono">/ {{ $card->set->card_count }}</span>@endif
+                · <span class="mono">#{{ $card->local_id }}@if ($card->set->card_count)/{{ $card->set->card_count }}@endif</span>
                 @if ($card->set->series) · {{ $card->set->series }}@endif
             </p>
 
@@ -86,7 +86,7 @@
                             <div class="amt {{ $isResolved && $delta?->isUp() ? 'up' : '' }}">{{ Money::format($read->market_minor, $read->currency) }}</div>
                             <div class="sub">
                                 @if ($isResolved && $delta)
-                                    {{ Money::signed($delta->deltaMinor, $delta->currency ?? $read->currency) }}@if ($delta->percent() !== null) · {{ $delta->percent() > 0 ? '+' : '' }}{{ $delta->percent() }}%@endif since {{ $delta->previous->captured_on->format('j M') }}
+                                    {{ Money::signed($delta->deltaMinor, $read->currency) }}@if ($delta->percent() !== null) · {{ $delta->percent() > 0 ? '+' : '' }}{{ $delta->percent() }}%@endif since {{ $delta->previous->captured_on->format('j M') }}
                                 @elseif ($read->low_minor !== null)
                                     low {{ Money::format($read->low_minor, $read->currency) }}@if ($read->trend_minor) · trend {{ Money::format($read->trend_minor, $read->currency) }}@endif
                                 @else

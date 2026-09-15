@@ -24,7 +24,7 @@ trait ResolvesPublicCollection
         $user = User::where('username', $username)->first();
 
         if ($user === null) {
-            throw new NotFoundHttpException();
+            throw new NotFoundHttpException;
         }
 
         $this->targetUser = $user;

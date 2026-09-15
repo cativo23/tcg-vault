@@ -19,13 +19,9 @@
                     @endif
                 </div>
             </div>
-            <div class="k pb-1">
-                @if ($series->count() >= 2)
-                    {{ $series->first()['date']->format('j M') }} – {{ $series->last()['date']->format('j M') }}
-                @else
-                    History builds up one daily snapshot at a time
-                @endif
-            </div>
+            @if ($series->count() >= 2)
+                <div class="k pb-1">{{ $series->first()['date']->format('j M') }} – {{ $series->last()['date']->format('j M') }}</div>
+            @endif
         </div>
         <div class="nw-chart">
             @if ($series->count() >= 2)
@@ -71,10 +67,9 @@
                     @else
                         <div class="ico">
                             @if ($card?->official_image_url)
-                                <img src="{{ $card->official_image_url }}" alt="" loading="lazy" decoding="async">
-                            @else
-                                +
+                                <img src="{{ $card->official_image_url }}" alt="" loading="lazy" decoding="async" data-optional>
                             @endif
+                            <span class="fallback" aria-hidden="true">+</span>
                         </div>
                         <div class="fbody">
                             <div class="title">

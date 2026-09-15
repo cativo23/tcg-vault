@@ -38,13 +38,13 @@ final class CardShow extends Component
         $set = Set::where('tcgdex_id', $setTcgdexId)->first();
 
         if ($set === null || ! $this->publicCollection()->ownsSet($set)) {
-            throw new NotFoundHttpException();
+            throw new NotFoundHttpException;
         }
 
         $card = $set->cards()->where('local_id', $localId)->first();
 
         if ($card === null) {
-            throw new NotFoundHttpException();
+            throw new NotFoundHttpException;
         }
 
         $this->card = $card;
@@ -53,7 +53,7 @@ final class CardShow extends Component
     public function render()
     {
         $public = $this->publicCollection();
-        $resolver = new CardPriceResolver();
+        $resolver = new CardPriceResolver;
         $valuation = new Valuation($resolver);
 
         $card = $this->card->load([

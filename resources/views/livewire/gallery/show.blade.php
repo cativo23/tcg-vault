@@ -12,7 +12,7 @@
         <div class="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
             <h1 class="nw-display nw-h1 nw-h1--md">{{ $set->name }}</h1>
             @if ($set->logo_url)
-                <img src="{{ $set->logo_url }}" alt="" class="h-12 sm:h-16 max-w-[220px] object-contain mb-1" decoding="async">
+                <img src="{{ $set->logo_url }}" alt="" class="h-12 sm:h-16 max-w-[220px] object-contain mb-1" decoding="async" data-optional>
             @endif
         </div>
 

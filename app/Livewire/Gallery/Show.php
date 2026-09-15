@@ -46,7 +46,7 @@ final class Show extends Component
         // A set the collector has no public card from does not exist in
         // this gallery — 404, not an empty page (spec §7).
         if ($set === null || ! $this->publicCollection()->ownsSet($set)) {
-            throw new NotFoundHttpException();
+            throw new NotFoundHttpException;
         }
 
         $this->set = $set;
@@ -62,7 +62,7 @@ final class Show extends Component
     public function render()
     {
         $public = $this->publicCollection();
-        $resolver = new CardPriceResolver();
+        $resolver = new CardPriceResolver;
         $valuation = new Valuation($resolver);
 
         $cardsQuery = $this->set->cards()

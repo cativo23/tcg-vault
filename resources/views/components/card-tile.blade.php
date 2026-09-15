@@ -30,7 +30,7 @@
             <span class="num">#{{ $card->local_id }}</span>
             @if ($graded)
                 <span class="rar slab" title="Graded {{ $graded->grade_company }} {{ $graded->grade_value }}">{{ $graded->grade_company }} {{ $graded->grade_value }}</span>
-            @elseif ($card->rarity)
+            @elseif (Rarity::abbreviate($card->rarity) !== '')
                 <span class="rar" title="{{ Rarity::label($card->rarity) }}">{{ Rarity::abbreviate($card->rarity) }}</span>
             @endif
         </div>

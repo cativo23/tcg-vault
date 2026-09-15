@@ -255,6 +255,13 @@ body {
 .nw-pill-input:focus,
 .nw-pill-select:focus { border-color: var(--ink); background-color: var(--paper); outline: none; box-shadow: none; }
 
+@media (max-width: 640px) {
+  .nw-toolbar > .nw-toolbar-group:last-child { width: 100%; }
+  .nw-toolbar .nw-pill-input { flex: 1 1 100%; width: 100%; }
+  .nw-toolbar .nw-pill-select { flex: 1 1 40%; }
+  .nw-toolbar .nw-seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+}
+
 /* ─── card tile — the one grid primitive ───
    Outer .nw-slot owns the entrance animation; inner .nw-tile owns hover.
    Never merge them: a finished `forwards` animation pins `transform` above
@@ -383,7 +390,8 @@ body {
 /* A card in the set that is NOT in the collection: still browsable, but
    visibly the gap rather than the piece. Ownership is the default state
    here; absence is the exception that gets the treatment. */
-.nw-tile.ghost .imgwrap img { filter: grayscale(1) contrast(.9); opacity: .55; }
+.nw-tile.ghost .imgwrap { opacity: .6; }
+.nw-tile.ghost .imgwrap img { filter: grayscale(1) contrast(.9); }
 .nw-tile.ghost .chead { background: var(--bone-3); color: var(--muted); }
 .nw-tile.ghost .num { color: var(--muted); }
 .nw-tile.ghost .rar { border-color: var(--hair); }
@@ -454,6 +462,7 @@ body {
 .nw-setcard:focus-visible { transform: translateY(-4px); box-shadow: 0 0 0 1px var(--ink), 0 18px 30px -14px rgba(20, 20, 18, .35); }
 .nw-setcard .band { background: var(--bone-3); padding: 22px 20px 18px; display: flex; align-items: center; gap: 16px; min-height: 84px; }
 .nw-setcard .band img { height: 44px; max-width: 160px; object-fit: contain; }
+.nw-setcard .band:has(img) .placeholder { display: none; }
 .nw-setcard .band .placeholder { font-variation-settings: 'wdth' 66, 'wght' 900; text-transform: uppercase; font-size: 22px; color: var(--muted); letter-spacing: .04em; }
 .nw-setcard .body { padding: 14px 18px 16px; }
 .nw-setcard .name { font-variation-settings: 'wdth' 66, 'wght' 800; text-transform: uppercase; font-size: 19px; line-height: 1.05; }
@@ -471,6 +480,7 @@ body {
 
 /* ─── set rail (compact set chips on the collection home) ─── */
 .nw-rail {
+  margin-top: 14px;
   display: flex;
   gap: 10px;
   overflow-x: auto;
@@ -534,6 +544,7 @@ body {
 .nw-feed .ico.up { background: rgba(55, 209, 127, .14); color: var(--signal-deep); }
 .nw-feed .ico.down { color: var(--muted); }
 .nw-feed .ico img { width: 100%; height: 100%; object-fit: cover; }
+.nw-feed .ico:has(img) .fallback { display: none; }
 .nw-feed .fbody { flex: 1; min-width: 0; }
 .nw-feed .title { font-weight: 700; font-size: 13px; }
 .nw-feed .title a { color: inherit; text-decoration: none; }

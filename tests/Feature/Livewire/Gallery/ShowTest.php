@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
+use App\Livewire\Gallery\Show;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Livewire;
 
 test('shows every card in the set, marks owned ones, computes stats from the whole set', function () {
     $user = User::factory()->create(['username' => 'carlos']);
@@ -79,7 +82,7 @@ test('uses the users own photo over official art when owned and photographed', f
 
     $response = $this->get('/carlos/gallery/me05');
 
-    $response->assertSee(\Illuminate\Support\Facades\Storage::disk('collection-photos')->url('my-photo.jpg'), false);
+    $response->assertSee(Storage::disk('collection-photos')->url('my-photo.jpg'), false);
     $response->assertDontSee('https://official.example/card.webp', false);
 });
 
@@ -95,7 +98,7 @@ test('search filters the card grid by name', function () {
     // exercised.
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card1->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    \Livewire\Livewire::test(\App\Livewire\Gallery\Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
+    Livewire::test(Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
         ->set('search', 'Darkrai')
         ->assertSee('Mega Darkrai ex')
         ->assertDontSee('Fomantis');
@@ -110,7 +113,7 @@ test('search is case-insensitive', function () {
 
     // Postgres' LIKE is case-sensitive by default — a lowercase search
     // must still find a card whose stored name is capitalized.
-    \Livewire\Livewire::test(\App\Livewire\Gallery\Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
+    Livewire::test(Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
         ->set('search', 'fomantis')
         ->assertSee('Fomantis');
 });
@@ -125,7 +128,7 @@ test('rarity filter only shows cards of the selected rarity', function () {
     // Same existence-gate note as the search test above.
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card1->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    \Livewire\Livewire::test(\App\Livewire\Gallery\Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
+    Livewire::test(Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
         ->set('rarityFilter', 'SIR')
         ->assertSee('Mega Darkrai ex')
         ->assertDontSee('Fomantis');

@@ -59,7 +59,7 @@ final class Index extends Component
     public function render()
     {
         $public = $this->publicCollection();
-        $resolver = new CardPriceResolver();
+        $resolver = new CardPriceResolver;
         $valuation = new Valuation($resolver);
 
         $allCards = $public->cardsQuery()->take(self::MAX_CARDS)->get();

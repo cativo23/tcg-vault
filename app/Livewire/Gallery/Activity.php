@@ -10,6 +10,7 @@ use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -37,7 +38,7 @@ final class Activity extends Component
     public function render()
     {
         $public = $this->publicCollection();
-        $resolver = new CardPriceResolver();
+        $resolver = new CardPriceResolver;
         $valuation = new Valuation($resolver);
 
         $cards = $public->cardsQuery()->take(self::MAX_CARDS)->get();
@@ -101,8 +102,8 @@ final class Activity extends Component
      * Days come from the union of every card's snapshot dates, capped to
      * the most recent MAX_SERIES_DAYS.
      *
-     * @param  \Illuminate\Support\Collection<int, Card>  $cards
-     * @return \Illuminate\Support\Collection<int, array{date: CarbonImmutable, minor: int}>
+     * @param  Collection<int, Card>  $cards
+     * @return Collection<int, array{date: CarbonImmutable, minor: int}>
      */
     private function valueSeries($cards, string $currency, CardPriceResolver $resolver)
     {

@@ -21,10 +21,10 @@
                    class="nw-setcard nw-slot" style="--i: {{ $loop->index }}" wire:navigate>
                     <div class="band">
                         @if ($set->logo_url)
-                            <img src="{{ $set->logo_url }}" alt="{{ $set->name }} logo" loading="lazy" decoding="async">
-                        @else
-                            <span class="placeholder">{{ $set->tcgdex_id }}</span>
+                            <img src="{{ $set->logo_url }}" alt="{{ $set->name }} logo" loading="lazy" decoding="async" data-optional>
                         @endif
+                        {{-- shown when there is no logo, or when the logo failed to load and was removed --}}
+                        <span class="placeholder">{{ $set->tcgdex_id }}</span>
                     </div>
                     <div class="body">
                         <div class="name">{{ $set->name }}</div>

@@ -30,9 +30,14 @@ new class extends Component
 
                 <!-- Navigation Links -->
                 <div class="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                    <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
-                        {{ __('Dashboard') }}
+                    <x-nav-link :href="route('admin.collection.index')" :active="request()->routeIs('admin.collection.*')" wire:navigate>
+                        {{ __('Collection') }}
                     </x-nav-link>
+                    @if (auth()->user()->username)
+                        <x-nav-link :href="route('gallery.index', ['username' => auth()->user()->username])">
+                            {{ __('View gallery') }}
+                        </x-nav-link>
+                    @endif
                 </div>
             </div>
 
@@ -81,9 +86,14 @@ new class extends Component
     <!-- Responsive Navigation Menu -->
     <div :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden">
         <div class="pt-2 pb-3 space-y-1">
-            <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
-                {{ __('Dashboard') }}
+            <x-responsive-nav-link :href="route('admin.collection.index')" :active="request()->routeIs('admin.collection.*')" wire:navigate>
+                {{ __('Collection') }}
             </x-responsive-nav-link>
+            @if (auth()->user()->username)
+                <x-responsive-nav-link :href="route('gallery.index', ['username' => auth()->user()->username])">
+                    {{ __('View gallery') }}
+                </x-responsive-nav-link>
+            @endif
         </div>
 
         <!-- Responsive Settings Options -->

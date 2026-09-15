@@ -35,27 +35,43 @@ document.addEventListener('DOMContentLoaded', run);
 document.addEventListener('livewire:navigated', run);
 
 // A card image that fails to load (tcgdex outage, a deleted photo) falls
-// back to design.md's empty-image state instead of a blank frame. Capture
-// phase, because `error` events on <img> do not bubble.
-document.addEventListener(
-    'error',
-    (event) => {
-        const img = event.target;
-        if (!(img instanceof HTMLImageElement)) return;
-        const wrap = img.closest('.imgwrap');
-        if (!wrap || wrap.classList.contains('empty')) return;
+// back to design.md's empty-image state instead of a blank frame; a
+// decorative image (set logo) marked data-optional simply disappears.
+const EMPTY_STATE_MARKUP =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<rect x="3.5" y="2.5" width="17" height="19" rx="2.5"></rect><path d="M3.5 16l4.5-4.5 3.5 3.5"></path>'
+    + '<circle cx="15" cy="8" r="1.6"></circle><path d="M2 22L22 2"></path></svg><span>Image unavailable</span>';
 
-        wrap.classList.add('empty');
-        wrap.setAttribute('role', 'img');
-        wrap.setAttribute('aria-label', `Image unavailable for ${img.alt || 'this card'}`);
+const degradeImage = (img) => {
+    if (img.dataset.degraded) return;
+    img.dataset.degraded = '1';
+
+    if ('optional' in img.dataset) {
         img.remove();
+        return;
+    }
 
-        wrap.insertAdjacentHTML(
-            'beforeend',
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-                + '<rect x="3.5" y="2.5" width="17" height="19" rx="2.5"></rect><path d="M3.5 16l4.5-4.5 3.5 3.5"></path>'
-                + '<circle cx="15" cy="8" r="1.6"></circle><path d="M2 22L22 2"></path></svg><span>Image unavailable</span>',
-        );
-    },
-    true,
-);
+    const wrap = img.closest('.imgwrap');
+    if (!wrap || wrap.classList.contains('empty')) return;
+
+    wrap.classList.add('empty');
+    wrap.setAttribute('role', 'img');
+    wrap.setAttribute('aria-label', `Image unavailable for ${img.alt || 'this card'}`);
+    img.remove();
+    // Static markup only — nothing from the page or the image goes in here.
+    wrap.insertAdjacentHTML('beforeend', EMPTY_STATE_MARKUP);
+};
+
+// Capture phase, because `error` events on <img> do not bubble.
+document.addEventListener('error', (event) => {
+    if (event.target instanceof HTMLImageElement) degradeImage(event.target);
+}, true);
+
+// Images that already failed before this module ran (it is deferred).
+const sweepBrokenImages = () => {
+    document.querySelectorAll('img').forEach((img) => {
+        if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) degradeImage(img);
+    });
+};
+document.addEventListener('DOMContentLoaded', sweepBrokenImages);
+document.addEventListener('livewire:navigated', sweepBrokenImages);

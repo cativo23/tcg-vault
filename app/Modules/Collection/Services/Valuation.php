@@ -20,11 +20,11 @@ use Illuminate\Support\Collection;
  */
 final class Valuation
 {
-    public function __construct(private readonly CardPriceResolver $resolver = new CardPriceResolver()) {}
+    public function __construct(private readonly CardPriceResolver $resolver = new CardPriceResolver) {}
 
     /**
      * @param  iterable<int, Card>  $cards  each with `collectionItems` (owned copies) and `priceSnapshots` loaded
-     * @return array<string, int>  currency → total minor units, ordered USD first
+     * @return array<string, int> currency → total minor units, ordered USD first
      */
     public function totalsByCurrency(iterable $cards): array
     {
