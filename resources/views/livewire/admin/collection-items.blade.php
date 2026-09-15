@@ -1,9 +1,47 @@
-<div class="max-w-4xl mx-auto py-10 px-4">
+<div class="nw-wrap py-10">
     <div class="flex items-center justify-between mb-4">
-        <h1 class="text-xl font-semibold" style="color: var(--ink)">My Collection</h1>
+        <h1 class="nw-display nw-h1 nw-h1--sm">My Collection</h1>
         <div class="flex items-center gap-2">
             <a href="{{ route('admin.collection.import') }}" class="nw-btn-secondary">Importar TCGplayer</a>
             <a href="{{ route('admin.collection.add') }}" class="nw-btn-primary">+ Add card</a>
+        </div>
+    </div>
+
+    <div class="nw-toolbar mb-4">
+        <div class="nw-count">Showing <b>{{ $items->total() }}</b> {{ Str::plural('card', $items->total()) }}</div>
+
+        <div class="nw-toolbar-group">
+            <label class="sr-only" for="collection-search">Search your collection</label>
+            <input id="collection-search" type="search" wire:model.live.debounce.300ms="search" placeholder="Search name, set, notes…" class="nw-pill-input w-40 sm:w-52" autocomplete="off">
+
+            <label class="sr-only" for="collection-condition">Filter by condition</label>
+            <select id="collection-condition" wire:model.live="conditionFilter" class="nw-pill-select">
+                <option value="">All conditions</option>
+                <option value="NM">Near Mint</option>
+                <option value="LP">Lightly Played</option>
+                <option value="MP">Moderately Played</option>
+                <option value="HP">Heavily Played</option>
+                <option value="DMG">Damaged</option>
+            </select>
+
+            <label class="sr-only" for="collection-variant">Filter by variant</label>
+            <select id="collection-variant" wire:model.live="variantFilter" class="nw-pill-select">
+                <option value="">All variants</option>
+                <option value="normal">Normal</option>
+                <option value="holofoil">Holofoil</option>
+                <option value="reverse-holofoil">Reverse Holofoil</option>
+            </select>
+
+            <div class="nw-seg" role="group" aria-label="Needs review">
+                <button type="button" wire:click="$set('needsReviewOnly', {{ $needsReviewOnly ? 'false' : 'true' }})" aria-pressed="{{ $needsReviewOnly ? 'true' : 'false' }}">Needs review</button>
+            </div>
+
+            <div class="nw-seg" role="group" aria-label="Sort">
+                <span class="lbl">Sort</span>
+                <button type="button" wire:click="sortBy('value')" aria-pressed="{{ $sort === 'value' ? 'true' : 'false' }}">Value</button>
+                <button type="button" wire:click="sortBy('name')" aria-pressed="{{ $sort === 'name' ? 'true' : 'false' }}">Name</button>
+                <button type="button" wire:click="sortBy('newest')" aria-pressed="{{ $sort === 'newest' ? 'true' : 'false' }}">Added</button>
+            </div>
         </div>
     </div>
 
@@ -49,6 +87,10 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    <div class="mt-4">
+        {{ $items->links() }}
     </div>
 
     @if ($editingFullItemId !== null)

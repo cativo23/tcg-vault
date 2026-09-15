@@ -307,11 +307,20 @@ test('the variant dropdown only offers the variants that actually occur for that
         ]);
     }
 
-    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+    $html = Livewire::test(\App\Livewire\Admin\CollectionItems::class)
         ->call('startEditingItem', $item->id)
-        ->assertSee('value="holofoil"', false)
-        ->assertSee('value="reverse-holofoil"', false)
-        ->assertDontSee('value="normal"', false);
+        ->html();
+
+    // Scoped to the modal's own <select> — the toolbar's variant FILTER
+    // dropdown (added in Task 2) statically lists all three variant
+    // values on every render, so an unscoped assertDontSee would false-
+    // positive on that unrelated markup.
+    preg_match('/<select wire:model="editingVariant".*?<\/select>/s', $html, $matches);
+    $modalSelect = $matches[0] ?? '';
+
+    expect($modalSelect)->toContain('value="holofoil"')
+        ->toContain('value="reverse-holofoil"')
+        ->not->toContain('value="normal"');
 });
 
 test('when a card has exactly one real variant it is pre-selected instead of left blank', function () {
@@ -373,11 +382,17 @@ test('when a card has no synced pricing data the variant dropdown falls back to 
         'condition' => 'NM', 'quantity' => 1, 'variant' => 'normal',
     ]);
 
-    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+    $html = Livewire::test(\App\Livewire\Admin\CollectionItems::class)
         ->call('startEditingItem', $item->id)
-        ->assertSee('value="normal"', false)
-        ->assertDontSee('value="holofoil"', false)
-        ->assertDontSee('value="reverse-holofoil"', false);
+        ->html();
+
+    // Scoped to the modal's own <select> — see the identical note above.
+    preg_match('/<select wire:model="editingVariant".*?<\/select>/s', $html, $matches);
+    $modalSelect = $matches[0] ?? '';
+
+    expect($modalSelect)->toContain('value="normal"')
+        ->not->toContain('value="holofoil"')
+        ->not->toContain('value="reverse-holofoil"');
 });
 
 test('assigning a variant clears needs_variant_review', function () {
@@ -438,4 +453,152 @@ test('a user cannot edit another users item full details by guessing its ID (IDO
         ->assertStatus(404);
 
     expect($otherItem->fresh()->condition)->toBe('NM');
+});
+
+test('search matches by card name', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $darkrai = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $toucannon = Card::create(['tcgdex_id' => 'me05-068', 'set_id' => $set->id, 'local_id' => '068', 'name' => 'Toucannon']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $darkrai->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $toucannon->id, 'card_tcgdex_id' => 'me05-068', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->set('search', 'darkrai')
+        ->assertSee('Mega Darkrai ex')
+        ->assertDontSee('Toucannon');
+});
+
+test('search matches by set name', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $pitchBlack = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $surging = Set::create(['tcgdex_id' => 'sv08', 'name' => 'Surging Sparks']);
+    $darkrai = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $pitchBlack->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $other = Card::create(['tcgdex_id' => 'sv08-1', 'set_id' => $surging->id, 'local_id' => '1', 'name' => 'Something Else']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $darkrai->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $other->id, 'card_tcgdex_id' => 'sv08-1', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->set('search', 'pitch black')
+        ->assertSee('Mega Darkrai ex')
+        ->assertDontSee('Something Else');
+});
+
+test('search matches by notes', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $darkrai = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $other = Card::create(['tcgdex_id' => 'me05-068', 'set_id' => $set->id, 'local_id' => '068', 'name' => 'Toucannon']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $darkrai->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'notes' => 'bought at a con']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $other->id, 'card_tcgdex_id' => 'me05-068', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->set('search', 'con')
+        ->assertSee('Mega Darkrai ex')
+        ->assertDontSee('Toucannon');
+});
+
+test('condition filter narrows the list', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $darkrai = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $other = Card::create(['tcgdex_id' => 'me05-068', 'set_id' => $set->id, 'local_id' => '068', 'name' => 'Toucannon']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $darkrai->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $other->id, 'card_tcgdex_id' => 'me05-068', 'condition' => 'LP', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->set('conditionFilter', 'LP')
+        ->assertSee('Toucannon')
+        ->assertDontSee('Mega Darkrai ex');
+});
+
+test('variant filter narrows the list', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $darkrai = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $other = Card::create(['tcgdex_id' => 'me05-068', 'set_id' => $set->id, 'local_id' => '068', 'name' => 'Toucannon']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $darkrai->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $other->id, 'card_tcgdex_id' => 'me05-068', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'normal']);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->set('variantFilter', 'holofoil')
+        ->assertSee('Mega Darkrai ex')
+        ->assertDontSee('Toucannon');
+});
+
+test('needs-review filter shows only flagged items', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $darkrai = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $other = Card::create(['tcgdex_id' => 'me05-068', 'set_id' => $set->id, 'local_id' => '068', 'name' => 'Toucannon']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $darkrai->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'needs_variant_review' => true]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $other->id, 'card_tcgdex_id' => 'me05-068', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->set('needsReviewOnly', true)
+        ->assertSee('Mega Darkrai ex')
+        ->assertDontSee('Toucannon');
+});
+
+test('sorting by name orders alphabetically', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $zebra = Card::create(['tcgdex_id' => 'me05-1', 'set_id' => $set->id, 'local_id' => '1', 'name' => 'Zebstrika']);
+    $abra = Card::create(['tcgdex_id' => 'me05-2', 'set_id' => $set->id, 'local_id' => '2', 'name' => 'Abra']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $zebra->id, 'card_tcgdex_id' => 'me05-1', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $abra->id, 'card_tcgdex_id' => 'me05-2', 'condition' => 'NM', 'quantity' => 1]);
+
+    $component = Livewire::test(\App\Livewire\Admin\CollectionItems::class)->call('sortBy', 'name');
+
+    $names = $component->viewData('items')->pluck('card.name')->all();
+    expect($names)->toBe(['Abra', 'Zebstrika']);
+});
+
+test('default sort is value descending', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $cheap = Card::create(['tcgdex_id' => 'me05-1', 'set_id' => $set->id, 'local_id' => '1', 'name' => 'Cheap Card']);
+    $pricey = Card::create(['tcgdex_id' => 'me05-2', 'set_id' => $set->id, 'local_id' => '2', 'name' => 'Pricey Card']);
+    CardPriceSnapshot::create(['card_id' => $cheap->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 100]);
+    CardPriceSnapshot::create(['card_id' => $pricey->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 10000]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $cheap->id, 'card_tcgdex_id' => 'me05-1', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $pricey->id, 'card_tcgdex_id' => 'me05-2', 'condition' => 'NM', 'quantity' => 1]);
+
+    $component = Livewire::test(\App\Livewire\Admin\CollectionItems::class);
+
+    $names = $component->viewData('items')->pluck('card.name')->all();
+    expect($names)->toBe(['Pricey Card', 'Cheap Card']);
+});
+
+test('the list paginates at 24 items per page', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+
+    for ($i = 1; $i <= 26; $i++) {
+        $card = Card::create(['tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card {$i}"]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "me05-{$i}", 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    $component = Livewire::test(\App\Livewire\Admin\CollectionItems::class);
+
+    expect($component->viewData('items'))->toHaveCount(24);
+    expect($component->viewData('items')->total())->toBe(26);
 });

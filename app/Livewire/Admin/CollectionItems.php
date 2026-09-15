@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Livewire\Admin;
 
 use App\Modules\Catalog\Models\CardPriceSnapshot;
+use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Url;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -17,6 +20,23 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 #[Layout('layouts.app')]
 final class CollectionItems extends Component
 {
+    #[Url(except: '')]
+    public string $search = '';
+
+    #[Url(as: 'condition', except: '')]
+    public string $conditionFilter = '';
+
+    #[Url(as: 'variant', except: '')]
+    public string $variantFilter = '';
+
+    #[Url(as: 'review', except: false)]
+    public bool $needsReviewOnly = false;
+
+    #[Url(except: 'value')]
+    public string $sort = 'value';
+
+    private const SORTS = ['value', 'name', 'newest'];
+
     public ?int $editingItemId = null;
 
     public string $editingNotes = '';
@@ -175,15 +195,89 @@ final class CollectionItems extends Component
         $this->editingFullItemId = null;
     }
 
+    public function sortBy(string $sort): void
+    {
+        if (in_array($sort, self::SORTS, true)) {
+            $this->sort = $sort;
+        }
+    }
+
     public function render()
     {
         // Reached only through Collection::items(), which is scoped via
         // Collection's TenantScope — never query CollectionItem::query()
         // directly here, that would bypass the tenant filter entirely.
-        $items = Collection::with(['items.card.set'])
+        $query = Collection::query()
             ->get()
-            ->flatMap(fn (Collection $c) => $c->items);
+            ->pluck('id');
 
-        return view('livewire.admin.collection-items', ['items' => $items]);
+        $itemsQuery = CollectionItem::query()
+            ->whereIn('collection_id', $query)
+            ->with(['card.set']);
+
+        if ($this->search !== '') {
+            $term = '%'.trim($this->search).'%';
+            $itemsQuery->where(function ($q) use ($term) {
+                $q->whereHas('card', fn ($cq) => $cq->where('name', 'ilike', $term))
+                    ->orWhereHas('card.set', fn ($sq) => $sq->where('name', 'ilike', $term))
+                    ->orWhere('notes', 'ilike', $term);
+            });
+        }
+
+        if ($this->conditionFilter !== '') {
+            $itemsQuery->where('condition', $this->conditionFilter);
+        }
+
+        if ($this->variantFilter !== '') {
+            $itemsQuery->where('variant', $this->variantFilter);
+        }
+
+        if ($this->needsReviewOnly) {
+            $itemsQuery->where('needs_variant_review', true);
+        }
+
+        if ($this->sort === 'name') {
+            $itemsQuery->join('cards', 'cards.id', '=', 'collection_items.card_id')
+                ->orderBy('cards.name')
+                ->select('collection_items.*');
+        } elseif ($this->sort === 'newest') {
+            $itemsQuery->orderByDesc('collection_items.created_at');
+        }
+        // 'value' (default) is resolved in PHP below — market_minor lives on
+        // a separate priceSnapshots relation, not a joinable flat column,
+        // and CardPriceResolver's "pick the right source" logic can't be
+        // expressed as a single SQL ORDER BY.
+
+        $items = $itemsQuery->paginate($this->sort === 'value' ? 1000 : 24, page: $this->sort === 'value' ? 1 : null);
+
+        $resolver = new CardPriceResolver;
+
+        if ($this->sort === 'value') {
+            // Resolve value once per item, sort in memory, then slice the
+            // requested page — CardPriceResolver's resolve() can't be
+            // expressed as a SQL ORDER BY (it walks a source-priority
+            // chain across a separate table). Bounded by a real personal
+            // collection's size (dozens–low hundreds), not thousands.
+            $withValue = $items->getCollection()->map(function (CollectionItem $item) use ($resolver) {
+                $snapshot = $resolver->resolve($item->card);
+                $item->setAttribute('_valueMinor', $snapshot?->market_minor !== null ? $snapshot->market_minor * $item->quantity : -1);
+
+                return $item;
+            })->sortByDesc('_valueMinor')->values();
+
+            $page = request()->integer('page', 1);
+            $perPage = 24;
+            $paged = $withValue->slice(($page - 1) * $perPage, $perPage)->values();
+
+            $items = new LengthAwarePaginator(
+                $paged,
+                $withValue->count(),
+                $perPage,
+                $page,
+                ['path' => request()->url(), 'query' => request()->query()],
+            );
+        }
+
+        return view('livewire.admin.collection-items', ['items' => $items, 'resolver' => $resolver]);
     }
 }
