@@ -22,7 +22,11 @@ test('shows a price delta for a card with two snapshot days', function () {
     $response = $this->get('/carlos/gallery/movimientos');
 
     $response->assertOk();
-    $response->assertSee('Mega Darkrai ex');
+    // The card also appears in the "recently added" feed regardless of
+    // pricing, so asserting on its name alone would pass even if the
+    // delta computation were completely broken — assert the actual
+    // computed delta text ($12.00 - $10.00 = +2.00 USD) instead.
+    $response->assertSee('+2.00 USD');
 });
 
 test('a card with only one snapshot day shows no delta, not a fake one', function () {
@@ -36,9 +40,14 @@ test('a card with only one snapshot day shows no delta, not a fake one', functio
     $response = $this->get('/carlos/gallery/movimientos');
 
     $response->assertOk();
-    // The card shouldn't be listed among the deltas at all (no comparison possible).
-    $response->assertDontSee('+$', false);
-    $response->assertDontSee('-$', false);
+    // The card shouldn't be listed among the deltas at all (no comparison
+    // possible with only one snapshot day) — the price-deltas section
+    // must fall back to its empty state, not render a delta for it.
+    // (The previous assertion here checked for a literal "+$"/"-$"
+    // substring that the view never actually renders — a currency-code
+    // suffix like "2.50 USD" contains no "$" — so it passed regardless
+    // of whether this behavior actually worked.)
+    $response->assertSee('No price changes yet');
 });
 
 test('shows recently added items in the activity feed', function () {
