@@ -69,6 +69,7 @@ services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    command: ["postgres", "-c", "shared_buffers=48MB", "-c", "max_connections=20"]
     environment:
       POSTGRES_DB: ${DB_DATABASE}
       POSTGRES_USER: ${DB_USERNAME}
