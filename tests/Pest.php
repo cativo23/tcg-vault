@@ -19,6 +19,11 @@ uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class
 // (CollectionService writes CollectionItem rows via Eloquent), same rationale as Catalog above.
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Collection');
 
+// Unit/Jobs tests let a real CatalogSyncService run against a mocked
+// CardCatalogProvider (CatalogSyncService is final, can't be mocked directly),
+// so they need the container and a real database too.
+uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Jobs');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations
