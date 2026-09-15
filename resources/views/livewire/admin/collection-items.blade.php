@@ -51,14 +51,27 @@
                 <tr class="nw-topbar text-left">
                     <th class="p-3">Card</th>
                     <th class="p-3">Set</th>
+                    <th class="p-3">Variant</th>
                     <th class="p-3">Condition</th>
+                    <th class="p-3">Grading</th>
                     <th class="p-3">Qty</th>
+                    <th class="p-3">Value</th>
                     <th class="p-3">Notes</th>
+                    <th class="p-3">Status</th>
                     <th class="p-3"></th>
                 </tr>
             </thead>
             <tbody>
                 @forelse ($items as $item)
+                    @php
+                        $snapshot = $resolver->resolve($item->card);
+                        $valueLabel = $snapshot?->market_minor !== null
+                            ? \App\Support\Money::format($snapshot->market_minor * $item->quantity, $snapshot->currency)
+                            : '—';
+                        $gradingLabel = $item->grade_company && $item->grade_value
+                            ? "{$item->grade_company} {$item->grade_value}"
+                            : '—';
+                    @endphp
                     <tr class="nw-stagger-item nw-row-hover border-t" style="border-color: var(--hair); --nw-stagger-index: {{ min($loop->index, 10) }}">
                         <td class="p-3 font-medium">
                             @if ($item->photo_path)
@@ -68,13 +81,27 @@
                             {{ $item->card->name }}
                         </td>
                         <td class="p-3" style="color: var(--muted)">{{ $item->card->set->name }}</td>
+                        <td class="p-3">{{ $item->variant ? \Illuminate\Support\Str::headline($item->variant) : '—' }}</td>
                         <td class="p-3 mono">{{ $item->condition }}</td>
-                        <td class="p-3 mono">{{ $item->quantity }}</td>
+                        <td class="p-3">{{ $gradingLabel }}</td>
+                        <td class="p-3 mono">
+                            @if ($editingQtyItemId === $item->id)
+                                <input type="number" min="1" wire:model="editingQtyValue" wire:keydown.enter="saveQty" wire:blur="saveQty" class="border rounded px-2 py-1 w-16">
+                            @else
+                                <span wire:click="startEditingQty({{ $item->id }})" class="cursor-pointer">{{ $item->quantity }}</span>
+                            @endif
+                        </td>
+                        <td class="p-3 mono">{{ $valueLabel }}</td>
                         <td class="p-3">
                             @if ($editingItemId === $item->id)
                                 <input type="text" wire:model="editingNotes" wire:keydown.enter="saveNotes" class="border rounded px-2 py-1 w-full">
                             @else
                                 <span wire:click="startEditingNotes({{ $item->id }})" class="cursor-pointer">{{ $item->notes ?: '—' }}</span>
+                            @endif
+                        </td>
+                        <td class="p-3">
+                            @if ($item->needs_variant_review)
+                                <span class="text-xs font-medium" style="color: var(--danger)">Revisar</span>
                             @endif
                         </td>
                         <td class="p-3 text-right">
@@ -83,7 +110,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="p-6 text-center" style="color: var(--muted)">No cards yet — add your first one.</td></tr>
+                    <tr><td colspan="10" class="p-6 text-center" style="color: var(--muted)">No cards yet — add your first one.</td></tr>
                 @endforelse
             </tbody>
         </table>

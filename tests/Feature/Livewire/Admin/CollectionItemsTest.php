@@ -586,6 +586,82 @@ test('default sort is value descending', function () {
     expect($names)->toBe(['Pricey Card', 'Cheap Card']);
 });
 
+test('the table shows variant, grading, value, and status columns', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 2000]);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 2, 'variant' => 'holofoil',
+        'grade_company' => 'PSA', 'grade_value' => '10',
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSee('Holofoil')
+        ->assertSee('PSA 10')
+        ->assertSee('$40.00'); // 2000 minor * qty 2 = 4000 minor = $40.00
+});
+
+test('an item with no priced snapshot shows an em dash for value', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSee('—');
+});
+
+test('a flagged item shows the needs-review badge', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'needs_variant_review' => true]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSee('Revisar');
+});
+
+test('quantity can be edited inline', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingQty', $item->id)
+        ->set('editingQtyValue', 5)
+        ->call('saveQty');
+
+    expect($item->fresh()->quantity)->toBe(5);
+});
+
+test('a user cannot inline-edit quantity on another users item by guessing its ID (IDOR)', function () {
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
+    $otherItem = CollectionItem::create(['collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingQty', $otherItem->id)
+        ->assertStatus(404);
+
+    expect($otherItem->fresh()->quantity)->toBe(1);
+});
+
 test('the list paginates at 24 items per page', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

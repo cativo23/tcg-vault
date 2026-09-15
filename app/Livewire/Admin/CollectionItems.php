@@ -41,6 +41,11 @@ final class CollectionItems extends Component
 
     public string $editingNotes = '';
 
+    public ?int $editingQtyItemId = null;
+
+    #[Validate('required|integer|min:1')]
+    public int $editingQtyValue = 1;
+
     public ?int $editingFullItemId = null;
 
     #[Validate('required|in:NM,LP,MP,HP,DMG')]
@@ -122,6 +127,25 @@ final class CollectionItems extends Component
 
         $this->ownedItemOrFail($this->editingItemId)->update(['notes' => $this->editingNotes]);
         $this->editingItemId = null;
+    }
+
+    public function startEditingQty(int $itemId): void
+    {
+        $item = $this->ownedItemOrFail($itemId);
+        $this->editingQtyItemId = $itemId;
+        $this->editingQtyValue = $item->quantity;
+    }
+
+    public function saveQty(): void
+    {
+        if ($this->editingQtyItemId === null) {
+            return;
+        }
+
+        $this->validate(['editingQtyValue' => 'required|integer|min:1']);
+
+        $this->ownedItemOrFail($this->editingQtyItemId)->update(['quantity' => $this->editingQtyValue]);
+        $this->editingQtyItemId = null;
     }
 
     public function delete(int $itemId): void
