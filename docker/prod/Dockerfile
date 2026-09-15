@@ -24,6 +24,16 @@ RUN composer install --no-interaction --prefer-dist --no-dev --optimize-autoload
 # ---- Stage 3: runtime ----
 FROM serversideup/php:8.4-fpm-nginx AS runtime
 # serversideup defaults: user www-data, docroot /var/www/html/public, HTTP on :8080
+
+# intl isn't in the base image's default extension set. App\Support\Money
+# (used on the public gallery/set/card views to render prices) calls
+# Illuminate\Support\Number::currency(), which throws a RuntimeException
+# without it — found live in production 2026-09-15 as a 500 on /{username}
+# once real priced cards existed to render. install-php-extensions is
+# bundled by serversideup images for exactly this.
+USER root
+RUN install-php-extensions intl
+
 COPY --chown=www-data:www-data . /var/www/html/
 COPY --from=vendor --chown=www-data:www-data /app/vendor /var/www/html/vendor
 COPY --from=assets --chown=www-data:www-data /app/public/build /var/www/html/public/build
