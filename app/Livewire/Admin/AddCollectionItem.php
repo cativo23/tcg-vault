@@ -25,8 +25,22 @@ final class AddCollectionItem extends Component
 
     public string $search = '';
 
+    /**
+     * Must match TcgdexCardCatalogProvider::SEARCH_PAGE_SIZE — used only to
+     * infer whether a page might have more results (a full page means
+     * "maybe more", not a guarantee; tcgdex's search has no total-count
+     * field to check against).
+     */
+    private const RESULTS_PER_PAGE = 24;
+
     /** @var array<int, CardSummaryData> */
     public array $results = [];
+
+    /** Which page of the current search $results currently covers. */
+    public int $searchPage = 1;
+
+    /** True when the last page fetched was full, so there might be more. */
+    public bool $hasMoreResults = false;
 
     /**
      * Human set names for the current $results, keyed by setTcgdexId —
@@ -104,20 +118,20 @@ final class AddCollectionItem extends Component
     public function runSearch(CardCatalogProvider $provider): void
     {
         $this->resetErrorBag('search');
+        $this->searchPage = 1;
 
         if ($this->search === '') {
             $this->results = [];
             $this->resultSetNames = [];
+            $this->hasMoreResults = false;
 
             return;
         }
 
         try {
             $this->results = $provider->searchCardsByName($this->search, $this->setFilter ?: null);
-            $this->resultSetNames = Set::whereIn(
-                'tcgdex_id',
-                array_unique(array_map(fn (CardSummaryData $r) => $r->setTcgdexId, $this->results)),
-            )->pluck('name', 'tcgdex_id')->all();
+            $this->resultSetNames = $this->setNamesFor($this->results);
+            $this->hasMoreResults = count($this->results) >= self::RESULTS_PER_PAGE;
         } catch (Throwable $e) {
             report($e);
 
@@ -125,7 +139,42 @@ final class AddCollectionItem extends Component
 
             $this->results = [];
             $this->resultSetNames = [];
+            $this->hasMoreResults = false;
         }
+    }
+
+    /**
+     * Fetches the next page and appends it — never replaces $results, so a
+     * card from an earlier page stays visible and selectable (selectCard()
+     * matches against the full accumulated list).
+     */
+    public function loadMoreResults(CardCatalogProvider $provider): void
+    {
+        $this->searchPage++;
+
+        try {
+            $nextPage = $provider->searchCardsByName($this->search, $this->setFilter ?: null, $this->searchPage);
+            $this->results = [...$this->results, ...$nextPage];
+            $this->resultSetNames = [...$this->resultSetNames, ...$this->setNamesFor($nextPage)];
+            $this->hasMoreResults = count($nextPage) >= self::RESULTS_PER_PAGE;
+        } catch (Throwable $e) {
+            report($e);
+
+            $this->addError('search', 'Could not load more results right now. Please try again.');
+            $this->hasMoreResults = false;
+        }
+    }
+
+    /**
+     * @param  array<int, CardSummaryData>  $cards
+     * @return array<string, string>
+     */
+    private function setNamesFor(array $cards): array
+    {
+        return Set::whereIn(
+            'tcgdex_id',
+            array_unique(array_map(fn (CardSummaryData $r) => $r->setTcgdexId, $cards)),
+        )->pluck('name', 'tcgdex_id')->all();
     }
 
     public function updatedSetFilter(): void

@@ -20,7 +20,13 @@
         </div>
 
         @if (count($results) > 0)
-            <div class="grid grid-cols-3 gap-3 mb-6">
+            @if ($hasMoreResults && $setFilter === null)
+                <p class="text-xs mb-2" style="color: var(--muted)">
+                    Showing the first {{ count($results) }} matches across every set — pick a set above to narrow this down.
+                </p>
+            @endif
+
+            <div class="grid grid-cols-3 gap-3 mb-3">
                 @foreach ($results as $result)
                     <button type="button" wire:click="selectCard(@js($result->tcgdexId))"
                             class="nw-stagger-item border rounded p-2 text-left text-sm {{ $selectedTcgdexId === $result->tcgdexId ? 'ring-2' : '' }}"
@@ -34,6 +40,14 @@
                     </button>
                 @endforeach
             </div>
+
+            @if ($hasMoreResults)
+                <div wire:key="load-more-{{ $search }}-{{ $setFilter }}-{{ $searchPage }}" wire:intersect="loadMoreResults" wire:loading.class="opacity-50" class="flex justify-center mb-6">
+                    <button type="button" wire:click="loadMoreResults" class="nw-btn-secondary">Load more</button>
+                </div>
+            @else
+                <div class="mb-6"></div>
+            @endif
         @endif
 
         @error('selectedTcgdexId') <p class="text-sm mb-3" style="color: var(--danger)">{{ $message }}</p> @enderror

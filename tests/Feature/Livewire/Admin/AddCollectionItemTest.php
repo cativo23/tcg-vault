@@ -218,6 +218,135 @@ test('a malformed catalog search response shows a friendly error instead of cras
         ->assertSet('results', []);
 });
 
+test('a full page of results signals there might be more, without fetching them yet', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $firstPage = array_map(
+        fn (int $i) => new CardSummaryData(tcgdexId: "sv02-{$i}", setTcgdexId: 'sv02', localId: (string) $i, name: 'Pikachu', imageUrl: null),
+        range(1, 24),
+    );
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn($firstPage);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Pikachu')
+        ->call('runSearch')
+        ->assertCount('results', 24)
+        ->assertSet('hasMoreResults', true);
+});
+
+test('a partial page of results means there is nothing more to load', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Darkrai', null)->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: null),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Darkrai')
+        ->call('runSearch')
+        ->assertSet('hasMoreResults', false);
+});
+
+test('loading more appends the next page instead of replacing what is already shown', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $firstPage = array_map(
+        fn (int $i) => new CardSummaryData(tcgdexId: "sv02-{$i}", setTcgdexId: 'sv02', localId: (string) $i, name: 'Pikachu', imageUrl: null),
+        range(1, 24),
+    );
+    $secondPage = [
+        new CardSummaryData(tcgdexId: 'swsh4-043', setTcgdexId: 'swsh4', localId: '043', name: 'Pikachu', imageUrl: null),
+    ];
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn($firstPage);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null, 2)->once()->andReturn($secondPage);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Pikachu')
+        ->call('runSearch')
+        ->assertCount('results', 24)
+        ->call('loadMoreResults')
+        ->assertCount('results', 25)
+        ->assertSet('results.24.tcgdexId', 'swsh4-043')
+        ->assertSet('hasMoreResults', false);
+});
+
+test('a card only visible after loading more can still be selected', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $firstPage = array_map(
+        fn (int $i) => new CardSummaryData(tcgdexId: "sv02-{$i}", setTcgdexId: 'sv02', localId: (string) $i, name: 'Pikachu', imageUrl: null),
+        range(1, 24),
+    );
+    $secondPage = [
+        new CardSummaryData(tcgdexId: 'swsh4-043', setTcgdexId: 'swsh4', localId: '043', name: 'Pikachu', imageUrl: null),
+    ];
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn($firstPage);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null, 2)->once()->andReturn($secondPage);
+    $provider->shouldReceive('findCard')->with('swsh4-043')->andThrow(
+        \App\Modules\Catalog\Exceptions\CardNotFoundException::forTcgdexId('swsh4-043'),
+    );
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Pikachu')
+        ->call('runSearch')
+        ->call('loadMoreResults')
+        ->call('selectCard', 'swsh4-043')
+        ->assertSet('selectedTcgdexId', 'swsh4-043')
+        ->assertSet('selectedName', 'Pikachu');
+});
+
+test('starting a new search resets back to the first page', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $firstPage = array_map(
+        fn (int $i) => new CardSummaryData(tcgdexId: "sv02-{$i}", setTcgdexId: 'sv02', localId: (string) $i, name: 'Pikachu', imageUrl: null),
+        range(1, 24),
+    );
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn($firstPage);
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null, 2)->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'swsh4-043', setTcgdexId: 'swsh4', localId: '043', name: 'Pikachu', imageUrl: null),
+    ]);
+    // A brand-new search for a different name must re-query page 1, not
+    // resume from whatever page the previous search's "load more" reached.
+    $provider->shouldReceive('searchCardsByName')->with('Raichu', null)->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'sv02-100', setTcgdexId: 'sv02', localId: '100', name: 'Raichu', imageUrl: null),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Pikachu')
+        ->call('runSearch')
+        ->call('loadMoreResults')
+        ->assertSet('searchPage', 2)
+        ->set('search', 'Raichu')
+        ->call('runSearch')
+        ->assertSet('searchPage', 1)
+        ->assertCount('results', 1);
+});
+
 test('a stale search error clears once a later search succeeds', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
