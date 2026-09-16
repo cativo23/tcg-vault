@@ -687,6 +687,32 @@ test('a flagged item shows the needs-review badge', function () {
         ->assertSee('Review');
 });
 
+test('the needs-review badge explains what clears it and opens the edit modal when clicked', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'needs_variant_review' => true]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSeeHtml('Assign a Variant')
+        ->call('startEditingItem', $item->id)
+        ->assertSet('editingFullItemId', $item->id);
+});
+
+test('the notes cell hints that it is clickable even when empty', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSeeHtml('Click to add a note');
+});
+
 test('quantity can be edited inline', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

@@ -102,12 +102,22 @@
                             @if ($editingItemId === $item->id)
                                 <input type="text" wire:model="editingNotes" wire:keydown.enter="saveNotes" class="border rounded px-2 py-1 w-full">
                             @else
-                                <span wire:click="startEditingNotes({{ $item->id }})" class="cursor-pointer">{{ $item->notes ?: '—' }}</span>
+                                {{-- The dashed underline is the only visual cue this cell is
+                                     clickable at all — cursor:pointer alone isn't visible until
+                                     a mouse is already over it, and there's nothing else here
+                                     to suggest "—" isn't just a static placeholder. --}}
+                                <span wire:click="startEditingNotes({{ $item->id }})" class="cursor-pointer" style="border-bottom: 1px dashed var(--muted)" title="Click to {{ $item->notes ? 'edit' : 'add' }} a note">{{ $item->notes ?: '—' }}</span>
                             @endif
                         </td>
                         <td class="p-3">
                             @if ($item->needs_variant_review)
-                                <span class="text-xs font-medium" style="color: var(--danger)">Review</span>
+                                {{-- Clicking straight into the same "Edit item" modal the Edit
+                                     button opens is what actually resolves this — a plain
+                                     colored label gave no indication a variant assignment (not
+                                     e.g. Notes or Qty) is what clears the flag. --}}
+                                <button type="button" wire:click="startEditingItem({{ $item->id }})" class="text-xs font-medium" style="color: var(--danger)" title="Assign a Variant in Edit item to clear this">
+                                    Review
+                                </button>
                             @endif
                         </td>
                         <td class="p-3 text-right">
