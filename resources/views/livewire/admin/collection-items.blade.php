@@ -101,7 +101,7 @@
                         <td class="p-3">{{ $gradingLabel }}</td>
                         <td class="p-3 mono">
                             @if ($editingQtyItemId === $item->id)
-                                <input type="number" min="1" wire:model="editingQtyValue" wire:keydown.enter="saveQty" wire:blur="saveQty" class="border rounded px-2 py-1 w-16">
+                                <input type="number" min="1" wire:model="editingQtyValue" wire:keydown.enter="saveQty" wire:blur="saveQty" class="nw-input w-16">
                                 @error('editingQtyValue') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                             @else
                                 <span wire:click="startEditingQty({{ $item->id }})" class="cursor-pointer">{{ $item->quantity }}</span>
@@ -119,7 +119,7 @@
                         </td>
                         <td class="p-3">
                             @if ($editingItemId === $item->id)
-                                <input type="text" wire:model="editingNotes" wire:keydown.enter="saveNotes" class="border rounded px-2 py-1 w-full">
+                                <input type="text" wire:model="editingNotes" wire:keydown.enter="saveNotes" class="nw-input w-full">
                             @else
                                 {{-- The dashed underline is the only visual cue this cell is
                                      clickable at all — cursor:pointer alone isn't visible until
@@ -168,7 +168,7 @@
                 <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr))">
                     <div>
                         <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Condition</label>
-                        <select wire:model="editingCondition" class="w-full border rounded px-2 py-1">
+                        <select wire:model="editingCondition" class="nw-input w-full">
                             <option value="NM">Near Mint</option>
                             <option value="LP">Lightly Played</option>
                             <option value="MP">Moderately Played</option>
@@ -179,12 +179,12 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Quantity</label>
-                        <input type="number" min="1" wire:model="editingQuantity" class="w-full border rounded px-2 py-1">
+                        <input type="number" min="1" wire:model="editingQuantity" class="nw-input w-full">
                         @error('editingQuantity') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                     </div>
                     <div>
                         <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Variant</label>
-                        <select wire:model="editingVariant" class="w-full border rounded px-2 py-1">
+                        <select wire:model="editingVariant" class="nw-input w-full">
                             <option value="">— not specified —</option>
                             @foreach ($editingAvailableVariants as $v)
                                 <option value="{{ $v }}">{{ \Illuminate\Support\Str::headline($v) }}</option>
@@ -194,19 +194,19 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Grading company</label>
-                        <input type="text" wire:model="editingGradeCompany" class="w-full border rounded px-2 py-1" placeholder="PSA, BGS...">
+                        <input type="text" wire:model="editingGradeCompany" class="nw-input w-full" placeholder="PSA, BGS...">
                         @error('editingGradeCompany') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                     </div>
                     <div>
                         <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Grade</label>
-                        <input type="text" wire:model="editingGradeValue" class="w-full border rounded px-2 py-1">
+                        <input type="text" wire:model="editingGradeValue" class="nw-input w-full">
                         @error('editingGradeValue') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                     </div>
                 </div>
 
                 <div class="mt-3">
                     <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Notes</label>
-                    <textarea wire:model="editingNotes" rows="2" class="w-full border rounded px-2 py-1"></textarea>
+                    <textarea wire:model="editingNotes" rows="2" class="nw-input w-full"></textarea>
                     @error('editingNotes') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                 </div>
 

@@ -4,7 +4,7 @@
 
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1">Set</label>
-            <select wire:model.live="setFilter" class="w-full border rounded px-3 py-2">
+            <select wire:model.live="setFilter" class="nw-input w-full">
                 <option value="">All sets</option>
                 @foreach ($availableSets as $tcgdexId => $name)
                     <option value="{{ $tcgdexId }}">{{ $name }}</option>
@@ -16,7 +16,7 @@
             <label class="block text-sm font-medium mb-1">Search tcgdex by name</label>
             <span class="nw-search-wrap w-full">
                 <input type="text" wire:model.live.debounce.400ms="search" wire:keyup="runSearch"
-                       class="w-full border rounded px-3 py-2" placeholder="e.g. Mega Darkrai ex">
+                       class="nw-input w-full" placeholder="e.g. Mega Darkrai ex">
                 <span wire:loading wire:target="search,runSearch" class="nw-search-loading" aria-hidden="true"></span>
             </span>
             @error('search') <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
@@ -70,7 +70,7 @@
         <div class="grid grid-cols-2 gap-4 mb-4">
             <div>
                 <label class="block text-sm font-medium mb-1">Condition</label>
-                <select wire:model="condition" class="w-full border rounded px-3 py-2">
+                <select wire:model="condition" class="nw-input w-full">
                     <option value="NM">Near Mint</option>
                     <option value="LP">Lightly Played</option>
                     <option value="MP">Moderately Played</option>
@@ -81,12 +81,12 @@
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Quantity</label>
-                <input type="number" min="1" wire:model="quantity" class="w-full border rounded px-3 py-2">
+                <input type="number" min="1" wire:model="quantity" class="nw-input w-full">
                 @error('quantity') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Variant</label>
-                <select wire:model="variant" class="w-full border rounded px-3 py-2">
+                <select wire:model="variant" class="nw-input w-full">
                     <option value="">— not specified —</option>
                     @foreach ($availableVariants as $v)
                         <option value="{{ $v }}">{{ \Illuminate\Support\Str::headline($v) }}</option>
@@ -96,17 +96,17 @@
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Grading company (optional)</label>
-                <input type="text" wire:model="gradeCompany" class="w-full border rounded px-3 py-2" placeholder="PSA, BGS...">
+                <input type="text" wire:model="gradeCompany" class="nw-input w-full" placeholder="PSA, BGS...">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Grade (optional)</label>
-                <input type="text" wire:model="gradeValue" class="w-full border rounded px-3 py-2" placeholder="9, 10...">
+                <input type="text" wire:model="gradeValue" class="nw-input w-full" placeholder="9, 10...">
             </div>
         </div>
 
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1">Notes (optional)</label>
-            <textarea wire:model="notes" rows="3" class="w-full border rounded px-3 py-2"></textarea>
+            <textarea wire:model="notes" rows="3" class="nw-input w-full"></textarea>
         </div>
 
         <div class="mb-6">

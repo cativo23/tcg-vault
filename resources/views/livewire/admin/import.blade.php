@@ -16,7 +16,7 @@
         @endif
 
         <div class="mb-4">
-            <textarea wire:model="text" rows="10" class="w-full border rounded px-3 py-2 mono text-sm"
+            <textarea wire:model="text" rows="10" class="nw-input w-full mono text-sm"
                       placeholder="1 Toucannon - 068/084 [PBL] 068/084"></textarea>
         </div>
 
