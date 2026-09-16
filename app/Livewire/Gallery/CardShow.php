@@ -63,9 +63,12 @@ final class CardShow extends Component
         ]);
 
         $items = $card->collectionItems;
-        $snapshot = $resolver->resolve($card);
-        $delta = $resolver->resolveDelta($card);
-        $history = $resolver->history($card);
+        // The collector's own copy, at the price of the variant it
+        // actually is — not resolve()'s card-level priority chain, which
+        // would never even consider e.g. a reverse-holofoil copy.
+        $snapshot = $valuation->headlineSnapshot($card);
+        $delta = $resolver->deltaFor($card, $snapshot);
+        $history = $resolver->historyFor($card, $snapshot);
         $ownedTotal = $items->isNotEmpty() ? $valuation->cardTotal($card) : null;
 
         // Latest reading per source+variant — the full market picture the

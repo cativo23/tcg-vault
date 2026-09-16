@@ -36,6 +36,74 @@ test('totals are kept per currency and multiplied by owned quantity, USD listed 
     expect($totals)->toBe(['USD' => 3000, 'EUR' => 900]);
 });
 
+test('cardTotal values each owned copy at its OWN variant\'s price, not one blanket card price times total quantity', function () {
+    // The exact shape Carlos flagged live: 2 normal Inkay + 1
+    // reverse-holofoil Inkay. The old behaviour resolved ONE snapshot
+    // for the whole card (the card-level priority chain, which would
+    // never even look at reverse-holofoil) and multiplied it by all 3
+    // copies — either undervaluing or overvaluing the holo copy.
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $inkay = Card::create(['tcgdex_id' => 'me05-051', 'set_id' => $set->id, 'local_id' => '051', 'name' => 'Inkay']);
+
+    CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 11]);
+    CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 45]);
+
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 2]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'reverse-holofoil', 'condition' => 'NM', 'quantity' => 1]);
+
+    $inkay->load('priceSnapshots', 'collectionItems');
+
+    $total = (new Valuation)->cardTotal($inkay);
+
+    // 2 × $0.11 (normal) + 1 × $0.45 (reverse-holofoil) = $0.67, never 3 × either single price.
+    expect($total)->toBe(['USD' => 67]);
+});
+
+test('cardTotal falls back to the default priority chain for items with no assigned variant', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1000]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 2]);
+
+    $card->load('priceSnapshots', 'collectionItems');
+
+    expect((new Valuation)->cardTotal($card))->toBe(['USD' => 2000]);
+});
+
+test('headlineSnapshot shows the priciest owned variant, not whichever the default chain would pick', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $inkay = Card::create(['tcgdex_id' => 'me05-051', 'set_id' => $set->id, 'local_id' => '051', 'name' => 'Inkay']);
+
+    CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 11]);
+    $reverseHolo = CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 45]);
+
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 2]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'reverse-holofoil', 'condition' => 'NM', 'quantity' => 1]);
+
+    $inkay->load('priceSnapshots', 'collectionItems');
+
+    $headline = (new Valuation)->headlineSnapshot($inkay);
+
+    expect($headline->id)->toBe($reverseHolo->id);
+});
+
+test('headlineSnapshot falls back to the default priority chain for a ghost card (nothing owned)', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $tcgplayer = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1000]);
+
+    $card->load('priceSnapshots', 'collectionItems');
+
+    expect((new Valuation)->headlineSnapshot($card)->id)->toBe($tcgplayer->id);
+});
+
 test('a private collection contributes nothing to the public read model', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     $private = Collection::factory()->for($user)->create(['is_public' => false, 'slug' => 'private']);

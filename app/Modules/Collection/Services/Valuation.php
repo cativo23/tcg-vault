@@ -7,6 +7,7 @@ namespace App\Modules\Collection\Services;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Support\Collection;
 
 /**
@@ -31,36 +32,66 @@ final class Valuation
         $totals = [];
 
         foreach ($cards as $card) {
-            $snapshot = $this->resolver->resolve($card);
-
-            if ($snapshot === null || $snapshot->market_minor === null) {
-                continue;
+            foreach ($this->itemTotals($card) as $currency => $minor) {
+                $totals[$currency] = ($totals[$currency] ?? 0) + $minor;
             }
-
-            $quantity = (int) $card->collectionItems->sum('quantity');
-
-            $totals[$snapshot->currency] = ($totals[$snapshot->currency] ?? 0) + $snapshot->market_minor * max($quantity, 1);
         }
 
         return self::order($totals);
     }
 
     /**
-     * Total of one card's owned copies at its resolved price.
+     * Total of one card's owned copies, each copy valued at the price of
+     * the variant it ACTUALLY is — not one resolved snapshot times the
+     * total quantity. A collector's normal and reverse-holofoil copies
+     * of the same card can be worth very different amounts.
      *
-     * @return array{snapshot: CardPriceSnapshot, minor: int}|null
+     * @return array<string, int>|null currency => minor units, ordered USD first; null if nothing priced
      */
     public function cardTotal(Card $card): ?array
     {
-        $snapshot = $this->resolver->resolve($card);
+        $totals = $this->itemTotals($card);
 
-        if ($snapshot === null || $snapshot->market_minor === null) {
-            return null;
+        return $totals === [] ? null : self::order($totals);
+    }
+
+    /**
+     * The single "headline" price for a card tile: the priciest owned
+     * variant's resolved snapshot (what the collector's best copy is
+     * actually worth), falling back to the card-level priority chain
+     * for a ghost card (nothing owned) or when no owned item resolves
+     * to a real price.
+     */
+    public function headlineSnapshot(Card $card): ?CardPriceSnapshot
+    {
+        $best = $card->collectionItems
+            ->map(fn (CollectionItem $item) => $this->resolver->resolveForVariant($card, $item->variant))
+            ->filter(fn (?CardPriceSnapshot $s) => $s !== null && $s->market_minor !== null)
+            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->market_minor)
+            ->first();
+
+        return $best ?? $this->resolver->resolve($card);
+    }
+
+    /**
+     * @return array<string, int> currency => minor units, unordered (caller orders)
+     */
+    private function itemTotals(Card $card): array
+    {
+        $totals = [];
+
+        foreach ($card->collectionItems as $item) {
+            $snapshot = $this->resolver->resolveForVariant($card, $item->variant);
+
+            if ($snapshot === null || $snapshot->market_minor === null) {
+                continue;
+            }
+
+            $quantity = max((int) $item->quantity, 1);
+            $totals[$snapshot->currency] = ($totals[$snapshot->currency] ?? 0) + $snapshot->market_minor * $quantity;
         }
 
-        $quantity = max((int) $card->collectionItems->sum('quantity'), 1);
-
-        return ['snapshot' => $snapshot, 'minor' => $snapshot->market_minor * $quantity];
+        return $totals;
     }
 
     /**

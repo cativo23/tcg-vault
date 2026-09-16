@@ -27,6 +27,41 @@ test('delta is the change between the two most recent snapshot days of the same 
         ->and($delta->isUp())->toBeTrue();
 });
 
+test('deltaFor computes the move for a SPECIFIC snapshot (e.g. the headline variant), not whatever resolve() would pick', function () {
+    $card = deltaCard();
+    // The card-level chain would resolve to 'normal' (tcgplayer's
+    // preferred variant) — but the collector's copy is reverse-holofoil,
+    // and that's the trend that should show next to its own price.
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 11]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 4000]);
+    $reverseHoloToday = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 4500]);
+
+    $card->load('priceSnapshots');
+    $resolver = new CardPriceResolver;
+
+    $delta = $resolver->deltaFor($card, $reverseHoloToday);
+
+    expect($delta)->not->toBeNull()
+        ->and($delta->deltaMinor)->toBe(500)
+        ->and($delta->isUp())->toBeTrue();
+});
+
+test('deltaFor returns null for a null snapshot (nothing to compare)', function () {
+    $card = deltaCard();
+
+    expect((new CardPriceResolver)->deltaFor($card, null))->toBeNull();
+});
+
+test('resolveDelta is deltaFor applied to resolve()\'s own pick, unchanged', function () {
+    $card = deltaCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1000]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1240]);
+    $card->load('priceSnapshots');
+    $resolver = new CardPriceResolver;
+
+    expect($resolver->resolveDelta($card)->deltaMinor)->toBe($resolver->deltaFor($card, $resolver->resolve($card))->deltaMinor);
+});
+
 test('delta is null with a single snapshot day', function () {
     $card = deltaCard();
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1240]);

@@ -28,6 +28,38 @@ final class CardPriceResolver
     }
 
     /**
+     * The price for the SPECIFIC variant a collector's copy actually is
+     * (normal / holofoil / reverse-holofoil), not resolve()'s card-level
+     * priority chain — which prefers tcgplayer normal/holofoil first and
+     * would never even consider a reverse-holofoil row, no matter how
+     * much more it's worth. A $variant of null (item not yet assigned
+     * one — `needs_variant_review`) falls back to resolve() since there
+     * is nothing more specific to match against.
+     */
+    public function resolveForVariant(Card $card, ?string $variant): ?CardPriceSnapshot
+    {
+        if ($variant === null) {
+            return $this->resolve($card);
+        }
+
+        $matching = $card->priceSnapshots
+            ->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant)
+            ->sortByDesc('captured_on')
+            ->values();
+
+        if ($matching->isEmpty()) {
+            return null;
+        }
+
+        // Same source preference as resolve(): tcgplayer over cardmarket
+        // when both cover this exact variant. $matching is already
+        // latest-first, so the first tcgplayer row is also the most
+        // recent one.
+        return $matching->first(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer')
+            ?? $matching->first();
+    }
+
+    /**
      * Same priority-order resolution as resolve(), but only considering
      * snapshots captured on or before $asOf — lets a caller ask "what
      * was the price as of THIS date," not just "the latest."
@@ -98,8 +130,19 @@ final class CardPriceResolver
      */
     public function resolveDelta(Card $card): ?PriceDelta
     {
-        $latest = $this->resolve($card);
+        return $this->deltaFor($card, $this->resolve($card));
+    }
 
+    /**
+     * The price movement for a SPECIFIC snapshot — e.g. the headline
+     * variant a collector's copy resolves to (`Valuation::headlineSnapshot()`),
+     * which resolve()'s own card-level chain might not have picked. Showing
+     * the trend for a different variant than the one priced on screen would
+     * be a lie, so any caller with its own resolved snapshot should go
+     * through here instead of resolveDelta().
+     */
+    public function deltaFor(Card $card, ?CardPriceSnapshot $latest): ?PriceDelta
+    {
         if ($latest === null || $latest->market_minor === null) {
             return null;
         }
@@ -126,8 +169,20 @@ final class CardPriceResolver
      */
     public function history(Card $card): Collection
     {
-        $resolved = $this->resolve($card);
+        return $this->historyFor($card, $this->resolve($card));
+    }
 
+    /**
+     * The daily series for a SPECIFIC snapshot's own source+variant —
+     * e.g. the headline variant a collector's copy resolves to
+     * (`Valuation::headlineSnapshot()`), which resolve()'s card-level
+     * chain might not have picked. A sparkline for one variant next to a
+     * headline price from another would be showing the wrong history.
+     *
+     * @return Collection<int, CardPriceSnapshot>
+     */
+    public function historyFor(Card $card, ?CardPriceSnapshot $resolved): Collection
+    {
         if ($resolved === null) {
             return collect();
         }

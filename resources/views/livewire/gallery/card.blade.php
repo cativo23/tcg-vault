@@ -120,7 +120,7 @@
                 <div class="nw-section-head mt-8">
                     <span>In the collection · {{ $quantity }} {{ Str::plural('copy', $quantity) }}</span>
                     @if ($ownedTotal)
-                        <span class="mono" style="color: var(--ink); letter-spacing: -.03em">{{ Money::format($ownedTotal['minor'], $ownedTotal['snapshot']->currency) }} total</span>
+                        <span class="mono" style="color: var(--ink); letter-spacing: -.03em"><x-value-totals :totals="$ownedTotal" /> total</span>
                     @endif
                 </div>
                 <div style="border-top: 1px solid var(--hair)">
