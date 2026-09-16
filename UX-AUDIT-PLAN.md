@@ -23,10 +23,10 @@ effect of an unrelated fix.
 ## Status legend
 🔲 not started · 🟡 in progress · ✅ done locally · 🚀 deployed to prod
 
-**All 5 items are ✅ done locally.** All 5 verified live on
-`localhost:8090`. Nothing deployed to production yet — see status note
-at the bottom of this file for what's pending before that single
-deploy.
+**All 5 items are 🚀 deployed to production** (single combined deploy).
+Verified post-deploy: all containers healthy, `horizon` still has
+internet egress after the redeploy, `https://tcgvault.cativo.dev/up`
+→ 200.
 
 ---
 
