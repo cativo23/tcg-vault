@@ -17,7 +17,7 @@ final class Invite extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['email', 'created_by', 'accepted_by', 'expires_at', 'used_at', 'revoked_at'];
+    protected $fillable = ['email', 'created_by', 'accepted_by', 'expires_at', 'used_at', 'revoked_at', 'revoked_by'];
 
     protected function casts(): array
     {
@@ -43,6 +43,11 @@ final class Invite extends Model
         return $this->belongsTo(User::class, 'accepted_by');
     }
 
+    public function revokedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'revoked_by');
+    }
+
     /**
      * The signed URL that carries this invite stays cryptographically
      * valid until its own internal expiration even if this row is later
@@ -63,13 +68,23 @@ final class Invite extends Model
      * already exists and revoking the invite row after the fact would
      * do nothing useful (and could read as "the account was undone",
      * which it isn't).
+     *
+     * The `used_at is null` guard lives in the UPDATE's WHERE clause,
+     * not a check against this in-memory instance's attributes — a
+     * single UPDATE is atomic at the database, so a request that
+     * accepts this invite between this object being loaded and revoke()
+     * being called can never be raced: whichever write actually sets
+     * used_at first wins, and this revoke() then correctly no-ops.
      */
-    public function revoke(): void
+    public function revoke(?int $revokedBy = null): void
     {
-        if ($this->used_at !== null) {
-            return;
-        }
+        $updated = self::query()
+            ->whereKey($this->id)
+            ->whereNull('used_at')
+            ->update(['revoked_at' => now(), 'revoked_by' => $revokedBy]);
 
-        $this->update(['revoked_at' => now()]);
+        if ($updated > 0) {
+            $this->refresh();
+        }
     }
 }

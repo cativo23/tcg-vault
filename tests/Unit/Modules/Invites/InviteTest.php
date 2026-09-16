@@ -45,3 +45,25 @@ test('revoking an already-used invite is a no-op', function () {
 
     expect($invite->revoked_at)->toBeNull();
 });
+
+test('revoke is atomic against a concurrent accept — a stale in-memory copy cannot revoke a just-used invite', function () {
+    $invite = Invite::factory()->create();
+
+    // Simulate another request accepting the invite between this
+    // in-memory instance being loaded and revoke() being called —
+    // the DB row is now used, but $invite's own attributes are stale.
+    Invite::whereKey($invite->id)->update(['used_at' => now()]);
+
+    $invite->revoke();
+
+    expect($invite->fresh()->revoked_at)->toBeNull();
+});
+
+test('revoking an invite records who revoked it', function () {
+    $admin = \App\Models\User::factory()->create();
+    $invite = Invite::factory()->create();
+
+    $invite->revoke($admin->id);
+
+    expect($invite->revoked_by)->toBe($admin->id);
+});

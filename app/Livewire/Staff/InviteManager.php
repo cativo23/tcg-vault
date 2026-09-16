@@ -4,16 +4,15 @@ declare(strict_types=1);
 
 namespace App\Livewire\Staff;
 
+use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
-use Livewire\Attributes\Validate;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
 final class InviteManager extends Component
 {
-    #[Validate('required|email')]
     public string $email = '';
 
     public function mount(): void
@@ -25,7 +24,21 @@ final class InviteManager extends Component
     {
         Gate::authorize('manage-invites');
 
-        $this->validate();
+        $this->validate([
+            'email' => [
+                'required',
+                'email',
+                // Fail fast rather than issue a signed link that will
+                // always dead-end at "email already taken" on submit.
+                function (string $attribute, mixed $value, callable $fail) {
+                    if (User::where('email', $value)->exists()) {
+                        $fail('An account with this email already exists.');
+                    } elseif (Invite::where('email', $value)->get()->contains(fn (Invite $invite) => $invite->isUsable())) {
+                        $fail('This email already has a pending invite.');
+                    }
+                },
+            ],
+        ]);
 
         Invite::create([
             'email' => $this->email,
@@ -40,7 +53,7 @@ final class InviteManager extends Component
     {
         Gate::authorize('manage-invites');
 
-        Invite::findOrFail($inviteId)->revoke();
+        Invite::findOrFail($inviteId)->revoke(auth()->id());
     }
 
     public function render()

@@ -56,6 +56,36 @@ test('an admin can revoke an unused invite', function () {
     expect($invite->refresh()->revoked_at)->not->toBeNull();
 });
 
+test('an admin cannot invite an email that already has an account', function () {
+    Permission::create(['name' => 'manage-invites']);
+    $admin = \App\Models\User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+    $existing = \App\Models\User::factory()->create(['email' => 'taken@example.com']);
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->set('email', 'taken@example.com')
+        ->call('createInvite')
+        ->assertHasErrors('email');
+
+    expect(Invite::count())->toBe(0);
+});
+
+test('an admin cannot double-invite an email with an existing usable invite', function () {
+    Permission::create(['name' => 'manage-invites']);
+    $admin = \App\Models\User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+    Invite::factory()->create(['email' => 'pending@example.com']);
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->set('email', 'pending@example.com')
+        ->call('createInvite')
+        ->assertHasErrors('email');
+
+    expect(Invite::count())->toBe(1);
+});
+
 test('a regular user cannot revoke an invite', function () {
     $user = \App\Models\User::factory()->create();
     $invite = Invite::factory()->create();
