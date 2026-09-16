@@ -23,8 +23,10 @@ effect of an unrelated fix.
 ## Status legend
 🔲 not started · 🟡 in progress · ✅ done locally · 🚀 deployed to prod
 
-**Items #1-#4 are ✅ done locally** (see below). **Resume at #5**
-(Notes editing / "Needs review" hint).
+**All 5 items are ✅ done locally.** All 5 verified live on
+`localhost:8090`. Nothing deployed to production yet — see status note
+at the bottom of this file for what's pending before that single
+deploy.
 
 ---
 
@@ -145,16 +147,26 @@ updated to English, 1 new regression test pins the rephrased message
 and asserts it never contains "tcgvault.php" or "tcgplayer_set_map".
 Full suite 314/314.
 
-## 5. 🔲 Notes not editable after creation; "Needs review" has no visible fix
+## 5. ✅ Notes not editable after creation; "Needs review" has no visible fix
 
-**Problem**: Admin table's Notes column shows "—" and isn't clickable for
-existing items (Notes can only be set once, at creation). Separately, rows
-flagged "Needs review" (red badge) give no indication that assigning a
-Variant is what clears the flag.
-**Likely area**: `App\Livewire\Admin\CollectionItems` (`startEditingNotes`
-exists already for the table-cell inline edit — check why it's not wired
-into the "Edit item" modal too) + the modal's Blade view for a "why does
-this need review" hint.
+**Neither was actually broken — both were a pure discoverability gap.**
+`startEditingNotes()` was already wired to the same `—` span regardless of
+whether an item has notes yet (confirmed by an existing passing test), and
+assigning a Variant in the "Edit item" modal already clears
+`needs_variant_review` (also already tested). Nothing to fix
+functionally — the problem was that neither affordance gave any visual
+signal it was interactive or what it would do.
+
+**Fixes applied**:
+- Notes cell: added a dashed underline + `title="Click to add/edit a
+  note"` so the `—` (or existing note) reads as clickable, not as a
+  static placeholder.
+- "Review" badge: turned into a button that opens the same "Edit item"
+  modal the Edit link opens, with `title="Assign a Variant in Edit item
+  to clear this"` explaining what it takes to resolve.
+
+Verified live: clicking "Review" opens "Edit item" straight to the
+Variant field. 2 new tests, full suite 316/316.
 **Severity**: Friction.
 
 ---
