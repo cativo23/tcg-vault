@@ -25,7 +25,7 @@ new #[Layout('layouts.guest')] class extends Component
         // whether the route exists — see routes/auth.php. Falls back to
         // the env-configured default when no admin has ever touched the
         // toggle from /staff/settings.
-        $this->registrationOpen = Setting::get('registration.open', config('tcgvault.allow_registration'));
+        $this->registrationOpen = (bool) Setting::get('registration.open', config('tcgvault.allow_registration'));
     }
 
     /**
@@ -33,7 +33,15 @@ new #[Layout('layouts.guest')] class extends Component
      */
     public function register(): void
     {
-        abort_unless($this->registrationOpen, 403);
+        // $this->registrationOpen is a public Livewire property — the
+        // client can set it to any value via the ordinary component
+        // update mechanism regardless of whether a wire:model in the
+        // blade binds to it, so it is display-only. The actual gate
+        // re-reads the real setting server-side, every time.
+        abort_unless(
+            (bool) \App\Modules\Settings\Models\Setting::get('registration.open', config('tcgvault.allow_registration')),
+            403,
+        );
 
         $validated = $this->validate([
             'name' => ['required', 'string', 'max:255'],

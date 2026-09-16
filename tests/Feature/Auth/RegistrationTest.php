@@ -85,6 +85,29 @@ test('the invite-only notice has no request-access form or CTA — invites are h
     $response->assertDontSee('<input', false);
 });
 
+test('tampering the client-side registrationOpen property cannot bypass a closed registration setting', function () {
+    config(['tcgvault.allow_registration' => false]);
+    $this->seed(\Database\Seeders\PermissionSeeder::class);
+
+    $component = Volt::test('pages.auth.register')
+        // The real client-side attack: setting a public Livewire
+        // property directly, exactly as the wire protocol allows for
+        // ANY public property regardless of whether a wire:model binds
+        // to it in the blade — never trust this for authorization.
+        ->set('registrationOpen', true)
+        ->set('name', 'Attacker')
+        ->set('username', 'attacker')
+        ->set('email', 'attacker@example.com')
+        ->set('password', 'password')
+        ->set('password_confirmation', 'password');
+
+    $component->call('register');
+
+    $component->assertForbidden();
+    $this->assertGuest();
+    expect(\App\Models\User::where('email', 'attacker@example.com')->exists())->toBeFalse();
+});
+
 test('registration is reachable when the runtime setting overrides a closed config default', function () {
     config(['tcgvault.allow_registration' => false]);
     \App\Modules\Settings\Models\Setting::set('registration.open', true);
