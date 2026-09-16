@@ -57,6 +57,10 @@ class DatabaseSeeder extends Seeder
             ],
         );
 
+        // Idempotent by Spatie's own design — assignRole() no-ops if the
+        // user already has the role, so re-seeding never duplicates it.
+        $user->assignRole('super-admin');
+
         // Console context has no authenticated user, so TenantScope's
         // fail-closed default (see app/Modules/Collection/Scopes/TenantScope.php)
         // would filter this query to `where user_id is null` and never find
