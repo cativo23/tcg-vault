@@ -35,6 +35,26 @@ test('the job dispatches one SyncCardPricingJob per card id the provider lists f
     Queue::assertPushed(fn (SyncCardPricingJob $job) => $job->tcgdexCardId === 'me05-003');
 });
 
+test('the per-card jobs it dispatches go on the lower-priority "imports" queue, never "default"', function () {
+    // Found by an automated security review of the previous fix
+    // (2026-09-16): dispatching up to 200+ SyncCardPricingJobs at once
+    // onto the shared 'tcgdex'-rate-limited queue — from an ordinary,
+    // unprivileged user action (adding a card from a not-yet-imported
+    // set) — could crowd out the scheduled daily refresh (or another
+    // user's own work) behind the same 3-req/sec budget. Horizon's
+    // 'default' queue is checked before 'imports' (config/horizon.php),
+    // so these dispatches must never land on 'default'.
+    Queue::fake();
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('listSetCardIds')->once()->with('me05')->andReturn(['me05-001', 'me05-002']);
+
+    (new ImportSetJob('me05'))->handle($provider);
+
+    Queue::assertPushedOn('imports', SyncCardPricingJob::class);
+    Queue::assertPushed(fn (SyncCardPricingJob $job) => $job->queue !== 'default');
+});
+
 test('the job never makes a per-card tcgdex call itself — only the one listing call', function () {
     // The whole point of the fix: no HTTP call other than listSetCardIds()
     // happens inside THIS job, so it can never hold a worker for the

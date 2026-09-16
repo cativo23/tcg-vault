@@ -199,7 +199,21 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['default'],
+            // Listed in PRIORITY order — a worker only pulls from
+            // 'imports' once 'default' is empty. Found by an automated
+            // security review (2026-09-16): ImportSetJob dispatches one
+            // SyncCardPricingJob per card (up to 200+ at once) onto the
+            // same shared 'tcgdex'-rate-limited queue an ordinary user
+            // triggers just by adding a card from a not-yet-imported
+            // set. Without this priority split, that fan-out could
+            // crowd out the scheduled daily pricing refresh (or another
+            // user's own pending work) behind a 3-req/sec shared budget
+            // for a long time. SyncCardPricingJob dispatched FROM
+            // ImportSetJob goes on 'imports' specifically for this
+            // (see App\Jobs\ImportSetJob); every other dispatch (the
+            // scheduled refresh, this app's normal path) stays on
+            // 'default' and always wins the race.
+            'queue' => ['default', 'imports'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,

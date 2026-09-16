@@ -69,7 +69,12 @@ final class ImportSetJob implements ShouldBeUnique, ShouldQueue
         $cardIds = $provider->listSetCardIds($this->setTcgdexId);
 
         foreach ($cardIds as $cardId) {
-            SyncCardPricingJob::dispatch($cardId);
+            // Deliberately NOT 'default' — see config/horizon.php's
+            // queue-priority comment. This fan-out (up to 200+ jobs at
+            // once, from one unprivileged user action) must never
+            // compete ahead of the scheduled daily refresh or another
+            // user's own pending work for the shared 'tcgdex' budget.
+            SyncCardPricingJob::dispatch($cardId)->onQueue('imports');
         }
     }
 }
