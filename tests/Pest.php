@@ -28,6 +28,10 @@ uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class
 // container (config(), URL facade), no database needed.
 uses(Tests\TestCase::class)->in('Unit/Providers');
 
+// Unit/Modules/Invites tests exercise a real Invite model against the
+// database (factory + Eloquent), same rationale as Catalog/Collection above.
+uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Invites');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations

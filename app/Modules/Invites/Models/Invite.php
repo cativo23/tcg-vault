@@ -1,0 +1,59 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Invites\Models;
+
+use App\Models\User;
+use Database\Factories\InviteFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/**
+ * @use HasFactory<InviteFactory>
+ */
+final class Invite extends Model
+{
+    use HasFactory;
+
+    protected $fillable = ['email', 'created_by', 'accepted_by', 'expires_at', 'used_at', 'revoked_at'];
+
+    protected function casts(): array
+    {
+        return [
+            'expires_at' => 'datetime',
+            'used_at' => 'datetime',
+            'revoked_at' => 'datetime',
+        ];
+    }
+
+    protected static function newFactory(): InviteFactory
+    {
+        return InviteFactory::new();
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function acceptedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'accepted_by');
+    }
+
+    /**
+     * The signed URL that carries this invite stays cryptographically
+     * valid until its own internal expiration even if this row is later
+     * revoked or used — so accepting an invite must ALWAYS re-check
+     * used_at/revoked_at/expires_at against this row, never trust the
+     * signature alone as proof the invite is still good.
+     */
+    public function isUsable(): bool
+    {
+        return $this->used_at === null
+            && $this->revoked_at === null
+            && $this->expires_at->isFuture();
+    }
+}
