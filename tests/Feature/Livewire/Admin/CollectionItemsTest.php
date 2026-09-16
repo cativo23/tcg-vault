@@ -701,6 +701,24 @@ test('the needs-review badge explains what clears it and opens the edit modal wh
         ->assertSet('editingFullItemId', $item->id);
 });
 
+test('the needs-review badge does not share a color with the destructive Delete action', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'needs_variant_review' => true]);
+
+    $html = Livewire::test(\App\Livewire\Admin\CollectionItems::class)->html();
+
+    // "Review" means "needs a look," not "this failed" or "this is
+    // irreversible" — those stay --danger (Delete, validation errors).
+    // A dedicated --warning token keeps that distinction real instead of
+    // reusing the same red for both meanings.
+    expect($html)->toContain('color: var(--warning)');
+    expect(substr_count($html, 'color: var(--danger)'))->toBe(1); // Delete only
+});
+
 test('the notes cell hints that it is clickable even when empty', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

@@ -114,8 +114,11 @@
                                 {{-- Clicking straight into the same "Edit item" modal the Edit
                                      button opens is what actually resolves this — a plain
                                      colored label gave no indication a variant assignment (not
-                                     e.g. Notes or Qty) is what clears the flag. --}}
-                                <button type="button" wire:click="startEditingItem({{ $item->id }})" class="text-xs font-medium" style="color: var(--danger)" title="Assign a Variant in Edit item to clear this">
+                                     e.g. Notes or Qty) is what clears the flag. --danger red is
+                                     reserved for destructive/error UI (Delete, validation) —
+                                     "needs a look" isn't "this failed," so it gets its own
+                                     --warning token instead of colliding with Delete. --}}
+                                <button type="button" wire:click="startEditingItem({{ $item->id }})" class="text-xs font-medium" style="color: var(--warning)" title="Assign a Variant in Edit item to clear this">
                                     Review
                                 </button>
                             @endif

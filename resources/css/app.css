@@ -19,6 +19,7 @@
   --signal-deep: #12a45f; /* the same green, darkened for TEXT on bone (the pure --signal fails contrast as type) */
   --flat: #9a988c;
   --danger: #c23b2e; /* error/destructive UI only — never price semantics, never decorative */
+  --warning: #df911a; /* "needs attention" UI only — never destructive, never price semantics, never per-category */
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --gutter: clamp(16px, 4vw, 34px);
   --radius-card: 7px;
