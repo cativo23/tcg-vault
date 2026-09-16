@@ -44,11 +44,14 @@ services:
     healthcheck:
       disable: true
     # Queued jobs (SyncCardPricingJob, ImportSetJob) call tcgdex's API from
-    # inside this container — needs space-server_web for actual internet
-    # egress, not just tcgvault-internal (which Docker blocks from routing
-    # out). Without it, every queued tcgdex call fails DNS resolution and
-    # the daily price-refresh schedule silently never completes.
-    networks: [space-server_web, tcgvault-internal]
+    # inside this container — needs real internet egress, not just
+    # tcgvault-internal (which Docker blocks from routing out). Uses its
+    # own tcgvault-egress bridge for that, not space-server_web: horizon
+    # exposes no port or service, so it has nothing to gain from sitting
+    # on the same shared network as every other app on this VPS — a
+    # dedicated egress-only network gets the same outbound route without
+    # that exposure.
+    networks: [tcgvault-egress, tcgvault-internal]
     deploy:
       resources:
         # 128M was too tight: verified live post-deploy that the master
@@ -122,6 +125,11 @@ networks:
   tcgvault-internal:
     driver: bridge
     internal: true
+  # Not internal: true, so it gets Docker's normal NAT'd outbound route —
+  # egress only, no other container on the host shares this network and
+  # nothing on it accepts inbound connections.
+  tcgvault-egress:
+    driver: bridge
 
 volumes:
   pgdata:
