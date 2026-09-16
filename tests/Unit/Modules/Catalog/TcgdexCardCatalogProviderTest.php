@@ -71,6 +71,70 @@ test('findCard maps a tcgdex payload into a CardDetailData with normalized price
     expect($tcgplayer->trendMinor)->toBeNull(); // tcgplayer payload has no trend field
 });
 
+test('a cardmarket-only card with no straight holo print labels its prices normal/reverse-holofoil, never a misnamed holofoil', function () {
+    // Reproduces exactly what Carlos flagged live (2026-09-15): Antique
+    // Jaw Fossil (me03-068, Perfect Order) is a normal + reverse-holofoil
+    // print with NO straight holo — but the importer used to
+    // unconditionally label cardmarket's 'avg' as 'default' and
+    // 'avg-holo' as 'holofoil', regardless of what the card's own
+    // `variants` flags say. tcgdex's real payload for this card (verified
+    // live against api.tcgdex.net):
+    Http::fake([
+        'api.tcgdex.net/v2/en/cards/me03-068' => Http::response([
+            'id' => 'me03-068',
+            'localId' => '068',
+            'name' => 'Antique Jaw Fossil',
+            'rarity' => 'Common',
+            'set' => ['id' => 'me03', 'name' => 'Perfect Order'],
+            'variants' => ['holo' => false, 'normal' => true, 'wPromo' => false, 'reverse' => true, 'firstEdition' => false],
+            'pricing' => [
+                'cardmarket' => [
+                    'updated' => '2026-09-15T00:00:00.000Z',
+                    'unit' => 'EUR',
+                    'avg' => 0.04, 'low' => 0.02, 'trend' => 0.03,
+                    'avg-holo' => 0.09, 'low-holo' => 0.02, 'trend-holo' => 0.13,
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $card = $provider->findCard('me03-068');
+
+    expect($card->prices)->toHaveCount(2);
+
+    $base = $card->prices->first(fn ($p) => $p->marketMinor === 4);
+    expect($base->variant)->toBe('normal');
+
+    $foil = $card->prices->first(fn ($p) => $p->marketMinor === 9);
+    expect($foil->variant)->toBe('reverse-holofoil');
+});
+
+test('a straight-holo-only card still labels its foil-tier price holofoil', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/cards/me05-999' => Http::response([
+            'id' => 'me05-999',
+            'localId' => '999',
+            'name' => 'Some Holo Rare',
+            'set' => ['id' => 'me05', 'name' => 'Pitch Black'],
+            'variants' => ['holo' => true, 'normal' => false, 'reverse' => false],
+            'pricing' => [
+                'cardmarket' => [
+                    'unit' => 'EUR',
+                    'avg' => 10.0,
+                    'avg-holo' => 12.0,
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $card = $provider->findCard('me05-999');
+
+    $foil = $card->prices->first(fn ($p) => $p->marketMinor === 1200);
+    expect($foil->variant)->toBe('holofoil');
+});
+
 test('findCard throws CardNotFoundException on a 404', function () {
     Http::fake([
         'api.tcgdex.net/v2/en/cards/does-not-exist' => Http::response(null, 404),
@@ -99,7 +163,14 @@ test('findSet maps a tcgdex set payload into SetSummaryData', function () {
     expect($set->tcgdexId)->toBe('me05');
     expect($set->name)->toBe('Pitch Black');
     expect($set->series)->toBe('Mega Evolution');
-    expect($set->cardCount)->toBe(84);
+    // Carlos flagged live (2026-09-16): 'official' (84) is the set's
+    // PRINTED checklist number — every card, secrets included, still
+    // prints e.g. "116/084" on itself — but it undercounts what's
+    // actually collectible. 'total' (120) includes secret rares (which
+    // this app already imports in full via ImportSetJob/listSetCardIds),
+    // so completion % must be measured against it, matching how other
+    // TCG trackers (Pokellector, TCGCollector) represent completion.
+    expect($set->cardCount)->toBe(120);
     expect($set->logoUrl)->toBe('https://assets.tcgdex.net/en/me/me05/logo.png');
 });
 

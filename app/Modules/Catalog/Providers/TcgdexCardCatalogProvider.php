@@ -87,7 +87,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             rarity: $json['rarity'] ?? null,
             variants: $json['variants'] ?? [],
             officialImageUrl: isset($json['image']) ? "{$json['image']}/high.webp" : null,
-            prices: new DataCollection(PriceEntryData::class, $this->extractPrices($json['pricing'] ?? [])),
+            prices: new DataCollection(PriceEntryData::class, $this->extractPrices($json['pricing'] ?? [], $json['variants'] ?? [])),
             raw: $json,
         );
     }
@@ -113,7 +113,13 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             name: $json['name'],
             series: $json['serie']['name'] ?? null,
             releasedOn: isset($json['releaseDate']) ? CarbonImmutable::parse($json['releaseDate']) : null,
-            cardCount: $json['cardCount']['official'] ?? null,
+            // 'total' includes secret rares (this app already imports
+            // them in full via ImportSetJob) — 'official' is only the
+            // set's PRINTED checklist number (every card, secrets
+            // included, still prints e.g. "116/084" on itself), which
+            // undercounts what's actually collectible and would let a
+            // collector hit "100%" while missing every secret rare.
+            cardCount: $json['cardCount']['total'] ?? $json['cardCount']['official'] ?? null,
             logoUrl: isset($json['logo']) ? "{$json['logo']}.png" : null,
         );
     }
@@ -169,9 +175,10 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     /**
      * @param  array<string, mixed>  $pricing
+     * @param  array<string, mixed>  $variants  the card's own tcgdex `variants` flags
      * @return array<int, PriceEntryData>
      */
-    private function extractPrices(array $pricing): array
+    private function extractPrices(array $pricing, array $variants = []): array
     {
         $entries = [];
 
@@ -181,7 +188,14 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
             $entries[] = new PriceEntryData(
                 source: 'cardmarket',
-                variant: 'default',
+                // cardmarket's 'avg'/'low'/'trend' price the card's
+                // PRIMARY product listing. That's 'normal' whenever the
+                // card genuinely has a normal print; 'default' otherwise
+                // (e.g. a straight-holo-only card, where this same figure
+                // IS the holo price and 'avg-holo' is simply absent —
+                // CardPriceResolver's priority chain already treats
+                // cardmarket 'default' as a valid card-level price).
+                variant: ($variants['normal'] ?? false) === true ? 'normal' : 'default',
                 currency: $cm['unit'] ?? 'EUR',
                 marketMinor: $this->toMinorUnits($cm['avg'] ?? null),
                 lowMinor: $this->toMinorUnits($cm['low'] ?? null),
@@ -191,9 +205,30 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             );
 
             if (isset($cm['avg-holo'])) {
+                // cardmarket's 'avg-holo'/'low-holo'/'trend-holo' price
+                // whatever the card's OTHER foil-tier print is — tcgdex
+                // does not disambiguate straight-holo from reverse-holo
+                // in the field name itself. Found live 2026-09-15:
+                // Antique Jaw Fossil is normal+reverse with no straight
+                // holo print at all, so its 'avg-holo' figure is really
+                // its reverse-holo price, but this always got labeled
+                // 'holofoil' — silently wrong for every normal+reverse
+                // card with no straight holo print (the common case for
+                // non-holo-rarity cards). Cross-reference the card's own
+                // `variants` flags instead of guessing from the field name.
+                $foilVariant = match (true) {
+                    ($variants['holo'] ?? false) === true => 'holofoil',
+                    ($variants['reverse'] ?? false) === true => 'reverse-holofoil',
+                    // No usable flags (older/incomplete sync, or a card
+                    // with both holo AND reverse prints — tcgdex's single
+                    // aggregated figure can't tell those apart): keep the
+                    // prior fallback rather than guess wrong with silence.
+                    default => 'holofoil',
+                };
+
                 $entries[] = new PriceEntryData(
                     source: 'cardmarket',
-                    variant: 'holofoil',
+                    variant: $foilVariant,
                     currency: $cm['unit'] ?? 'EUR',
                     marketMinor: $this->toMinorUnits($cm['avg-holo'] ?? null),
                     lowMinor: $this->toMinorUnits($cm['low-holo'] ?? null),
