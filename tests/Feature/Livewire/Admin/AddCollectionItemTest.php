@@ -156,6 +156,34 @@ test('selecting a card narrows the variant dropdown to what that card actually h
         ->assertSet('variant', 'holofoil');
 });
 
+test('selecting a card uses its own print flags, not just synced pricing coverage', function () {
+    // Same real bug as the admin table edit modal (2026-09-15): Antique
+    // Jaw Fossil is a normal + reverse-holofoil print with no straight
+    // holo, but its only synced price is cardmarket's mislabeled
+    // 'holofoil' row.
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me03-068')->andReturn(new CardDetailData(
+        tcgdexId: 'me03-068', setTcgdexId: 'me03', localId: '068', name: 'Antique Jaw Fossil',
+        rarity: 'Common',
+        variants: ['holo' => false, 'normal' => true, 'wPromo' => false, 'reverse' => true, 'firstEdition' => false],
+        officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, [
+            new PriceEntryData(source: 'cardmarket', variant: 'default', currency: 'EUR', marketMinor: 4, lowMinor: 2, trendMinor: 3, sourceUpdatedAt: null, raw: []),
+            new PriceEntryData(source: 'cardmarket', variant: 'holofoil', currency: 'EUR', marketMinor: 9, lowMinor: 2, trendMinor: 13, sourceUpdatedAt: null, raw: []),
+        ]),
+        raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->call('selectCard', 'me03-068')
+        ->assertSet('availableVariants', ['normal', 'reverse-holofoil']);
+});
+
 test('selecting a card falls back to the full known variant list when the catalog lookup fails', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

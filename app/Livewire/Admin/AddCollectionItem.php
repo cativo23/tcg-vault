@@ -7,6 +7,7 @@ namespace App\Livewire\Admin;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
 use Livewire\Attributes\Layout;
@@ -154,8 +155,19 @@ final class AddCollectionItem extends Component
         // failure we fall back to the full known list rather than an empty
         // or broken select.
         try {
-            $prices = collect($provider->findCard($tcgdexId)->prices->items())->pluck('variant');
-            $this->availableVariants = array_values(array_intersect(self::KNOWN_VARIANTS, $prices->unique()->all()));
+            $card = $provider->findCard($tcgdexId);
+
+            // The card's OWN print flags are the real source of truth —
+            // not which prices tcgdex happens to have synced (the
+            // cardmarket importer names its only foil-tier price
+            // 'holofoil' regardless of whether the card actually has a
+            // straight holo print or only a reverse-holo one).
+            $this->availableVariants = CardVariants::available($card->variants);
+
+            if ($this->availableVariants === []) {
+                $prices = collect($card->prices->items())->pluck('variant');
+                $this->availableVariants = array_values(array_intersect(self::KNOWN_VARIANTS, $prices->unique()->all()));
+            }
 
             if ($this->availableVariants === []) {
                 $this->availableVariants = self::KNOWN_VARIANTS;
