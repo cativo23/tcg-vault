@@ -1,5 +1,8 @@
 <p align="center">
-  <img src=".github/logo.svg" alt="tcg-vault" width="420">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
+    <img src=".github/logo-light.svg" alt="tcg-vault" width="420">
+  </picture>
 </p>
 
 <p align="center">
