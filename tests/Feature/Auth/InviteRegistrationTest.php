@@ -75,6 +75,32 @@ test('completing an invite creates the user with the user role, marks the invite
     expect($invite->accepted_by)->toBe($user->id);
 });
 
+test('a client cannot swap invite to hijack a different invite — the property is locked', function () {
+    $myInvite = Invite::factory()->create(['email' => 'me@example.com']);
+    $othersInvite = Invite::factory()->create(['email' => 'victim@example.com']);
+
+    // Mounted with MY own legitimately signed invite. The real
+    // client-side attack this guards against: Livewire's update
+    // protocol otherwise lets a client set ANY public property
+    // directly, regardless of what wire:model binds to in the blade —
+    // which would let a live session swap which invite a later
+    // register() call redeems, without ever needing a fresh signed URL
+    // for that other invite. #[Locked] rejects this outright.
+    \Livewire\Livewire::test(\App\Livewire\Auth\InviteRegistration::class, [
+        'invite' => $myInvite,
+        'hash' => sha1($myInvite->email),
+    ])->set('invite', $othersInvite);
+})->throws(\Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException::class);
+
+test('a client cannot overwrite the locked hash either', function () {
+    $invite = Invite::factory()->create();
+
+    \Livewire\Livewire::test(\App\Livewire\Auth\InviteRegistration::class, [
+        'invite' => $invite,
+        'hash' => sha1($invite->email),
+    ])->set('hash', 'anything');
+})->throws(\Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException::class);
+
 test('an invite already used cannot be used again', function () {
     Role::create(['name' => 'user']);
     $invite = Invite::factory()->create(['used_at' => now(), 'accepted_by' => User::factory()->create()->id]);

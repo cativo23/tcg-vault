@@ -12,14 +12,29 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 #[Layout('layouts.guest')]
 final class InviteRegistration extends Component
 {
+    /**
+     * #[Locked], not plain protected: a plain protected/private property
+     * doesn't survive Livewire's hydrate/dehydrate cycle at all between
+     * requests (only public properties round-trip), but a public
+     * property is otherwise settable by the client to any value via
+     * Livewire's update protocol regardless of whether a wire:model in
+     * the blade binds to it — the exact mechanism a tampered request
+     * could use to swap which invite a later register() call redeems,
+     * without ever needing a fresh signed URL for that other invite.
+     * #[Locked] keeps it public (so it persists normally) while making
+     * the server reject any client-sent update targeting it.
+     */
+    #[Locked]
     public Invite $invite;
 
+    #[Locked]
     public string $hash;
 
     public string $name = '';
