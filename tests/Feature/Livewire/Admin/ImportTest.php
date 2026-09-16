@@ -69,11 +69,11 @@ test('previewing and confirming the real TCGplayer export adds the expected card
 
     // confirm() only drains one chunk per click, so the 52-card export takes
     // six of them. The intermediate summary has to report progress, not
-    // completion — an admin who reads "52 cartas agregadas" and clicks again
+    // completion — an admin who reads "52 cards added" and clicks again
     // would double the import.
     $component->call('confirm')
         ->assertSet('matched', fn (array $matched) => count($matched) === 42)
-        ->assertSet('summary', '10 cartas agregadas hasta ahora, 42 pendientes.');
+        ->assertSet('summary', '10 cards added so far, 42 pending.');
 
     $clicks = 1;
     while ($component->get('matched') !== [] && $clicks < 10) {
@@ -84,7 +84,7 @@ test('previewing and confirming the real TCGplayer export adds the expected card
     expect($clicks)->toBe(6);
 
     $component
-        ->assertSet('summary', '52 cartas agregadas, 66 copias totales.')
+        ->assertSet('summary', '52 cards added, 66 copies total.')
         ->assertSet('matched', [])
         ->assertSet('text', '');
 
@@ -104,10 +104,23 @@ test('unmatched lines are reported but do not block confirming the matched ones'
         ->assertSet('matched', fn (array $matched) => count($matched) === 1)
         ->assertSet('unmatched', fn (array $unmatched) => count($unmatched) === 1 && $unmatched[0]->reason === 'unknown_set')
         ->call('confirm')
-        ->assertSet('summary', '1 cartas agregadas, 1 copias totales.');
+        ->assertSet('summary', '1 cards added, 1 copies total.');
 
     $collection = Collection::where('user_id', $user->id)->firstOrFail();
     expect($collection->items()->count())->toBe(1);
+});
+
+test('an unrecognized set code shows an admin-facing message, not a hint to edit a config file', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $this->app->instance(CardCatalogProvider::class, fakeCatalogProviderForImport());
+
+    Livewire::test(Import::class)
+        ->set('text', '1 Something Weird [ZZZ] 001/100')
+        ->call('preview')
+        ->assertSee('unrecognized set — not yet supported for import', escape: false)
+        ->assertDontSee('tcgvault.php', escape: false)
+        ->assertDontSee('tcgplayer_set_map', escape: false);
 });
 
 test('a preview that recognizes nothing says so instead of rendering an empty page', function () {
@@ -121,7 +134,7 @@ test('a preview that recognizes nothing says so instead of rendering an empty pa
         ->assertSet('matched', [])
         ->assertSet('unmatched', [])
         ->assertSet('hasPreviewed', true)
-        ->assertSee('0 líneas reconocidas', escape: false);
+        ->assertSee('0 lines recognized', escape: false);
 });
 
 test('a variant-ambiguous matched line sets needs_variant_review on the created item', function () {
@@ -179,7 +192,7 @@ test('a card the catalog rejects during confirmation does not abort the rest of 
 
     $component
         ->call('confirm')
-        ->assertSet('summary', '1 cartas agregadas, 1 copias totales.');
+        ->assertSet('summary', '1 cards added, 1 copies total.');
 
     $collection = Collection::where('user_id', $user->id)->firstOrFail();
     expect($collection->items()->count())->toBe(1);

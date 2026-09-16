@@ -87,16 +87,16 @@ final class Import extends Component
 
         if ($this->matched !== []) {
             $pending = count($this->matched);
-            $this->summary = "{$this->addedCards} cartas agregadas hasta ahora, {$pending} pendientes.";
+            $this->summary = "{$this->addedCards} cards added so far, {$pending} pending.";
 
             return;
         }
 
-        $this->summary = "{$this->addedCards} cartas agregadas, {$this->addedCopies} copias totales.";
+        $this->summary = "{$this->addedCards} cards added, {$this->addedCopies} copies total.";
         $this->text = '';
         $this->unmatched = [];
         // The import is over, so the empty result set below isn't a preview
-        // outcome any more — don't let it render "0 líneas reconocidas"
+        // outcome any more — don't let it render "0 lines recognized"
         // underneath the success summary.
         $this->hasPreviewed = false;
     }
@@ -107,8 +107,8 @@ final class Import extends Component
         $pending = count($this->matched);
 
         return $this->addedCards > 0
-            ? "Continuar importando ({$pending} restantes)"
-            : 'Confirmar import';
+            ? "Continue importing ({$pending} remaining)"
+            : 'Confirm import';
     }
 
     public function render()

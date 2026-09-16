@@ -2,7 +2,7 @@
     <div class="flex items-center justify-between mb-4">
         <h1 class="nw-display nw-h1 nw-h1--sm">My Collection</h1>
         <div class="flex items-center gap-2">
-            <a href="{{ route('admin.collection.import') }}" class="nw-btn-secondary">Importar TCGplayer</a>
+            <a href="{{ route('admin.collection.import') }}" class="nw-btn-secondary">Import TCGplayer</a>
             <a href="{{ route('admin.collection.add') }}" class="nw-btn-primary">+ Add card</a>
         </div>
     </div>
