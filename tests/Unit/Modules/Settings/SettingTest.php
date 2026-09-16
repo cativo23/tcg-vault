@@ -35,3 +35,19 @@ test('set stores non-boolean JSON-serializable values', function () {
 
     expect(Setting::get('some.list'))->toBe(['a', 'b', 'c']);
 });
+
+test('a stale cached value self-heals within a bounded TTL instead of staying wrong forever', function () {
+    Setting::set('registration.open', true);
+    expect(Setting::get('registration.open'))->toBeTrue();
+
+    // Simulate the cache/DB drift a concurrent set() race could leave
+    // behind — the DB changes without going through set()'s own cache
+    // write, standing in for "the cache still holds the pre-race value".
+    // Through a model instance, not the query builder, so the `value`
+    // json cast actually applies on write.
+    Setting::where('key', 'registration.open')->first()->update(['value' => false]);
+
+    $this->travel(10)->minutes();
+
+    expect(Setting::get('registration.open'))->toBeFalse();
+});
