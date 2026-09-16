@@ -59,3 +59,13 @@ test('a super-admin can reach the admin collection routes without the use-collec
 
     $this->actingAs($user)->get('/admin')->assertOk();
 });
+
+test('a user with manage-platform-settings passes the gate, a plain user does not', function () {
+    \Spatie\Permission\Models\Permission::create(['name' => 'manage-platform-settings']);
+    $admin = User::factory()->create();
+    $admin->givePermissionTo('manage-platform-settings');
+    $plainUser = User::factory()->create();
+
+    expect(Gate::forUser($admin)->allows('manage-platform-settings'))->toBeTrue();
+    expect(Gate::forUser($plainUser)->allows('manage-platform-settings'))->toBeFalse();
+});
