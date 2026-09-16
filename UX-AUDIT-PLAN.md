@@ -23,6 +23,11 @@ effect of an unrelated fix.
 ## Status legend
 🔲 not started · 🟡 in progress · ✅ done locally · 🚀 deployed to prod
 
+**All 5 items below are still 🔲 not started** — the session got pulled into
+a separate thread (security-review fixes on the earlier rate-limiting work,
+a price-drift question, and the sync-cadence/landing-copy question) before
+reaching any of these. All deployed and closed; not blocking. Resume at #1.
+
 ---
 
 ## 1. 🔲 "Show missing" (ghost cards) renders almost nothing
