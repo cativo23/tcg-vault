@@ -56,4 +56,20 @@ final class Invite extends Model
             && $this->revoked_at === null
             && $this->expires_at->isFuture();
     }
+
+    /**
+     * No-ops on an already-used invite — revoking is only meaningful
+     * for one nobody has accepted yet; an accepted invite's account
+     * already exists and revoking the invite row after the fact would
+     * do nothing useful (and could read as "the account was undone",
+     * which it isn't).
+     */
+    public function revoke(): void
+    {
+        if ($this->used_at !== null) {
+            return;
+        }
+
+        $this->update(['revoked_at' => now()]);
+    }
 }

@@ -17,6 +17,7 @@
                 <th class="pb-2">{{ __('Email') }}</th>
                 <th class="pb-2">{{ __('Status') }}</th>
                 <th class="pb-2">{{ __('Expires') }}</th>
+                <th class="pb-2"></th>
             </tr>
         </thead>
         <tbody>
@@ -35,6 +36,13 @@
                         @endif
                     </td>
                     <td class="py-1">{{ $invite->expires_at->diffForHumans() }}</td>
+                    <td class="py-1">
+                        @if ($invite->isUsable())
+                            <button type="button" wire:click="revokeInvite({{ $invite->id }})" class="nw-link underline text-sm">
+                                {{ __('Revoke') }}
+                            </button>
+                        @endif
+                    </td>
                 </tr>
             @endforeach
         </tbody>

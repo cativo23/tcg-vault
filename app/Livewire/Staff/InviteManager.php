@@ -36,6 +36,13 @@ final class InviteManager extends Component
         $this->reset('email');
     }
 
+    public function revokeInvite(int $inviteId): void
+    {
+        Gate::authorize('manage-invites');
+
+        Invite::findOrFail($inviteId)->revoke();
+    }
+
     public function render()
     {
         return view('livewire.staff.invite-manager', [

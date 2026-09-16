@@ -42,3 +42,27 @@ test('a regular user cannot even mount the invite manager component directly', f
 
     expect(Invite::count())->toBe(0);
 });
+
+test('an admin can revoke an unused invite', function () {
+    Permission::create(['name' => 'manage-invites']);
+    $admin = \App\Models\User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+    $invite = Invite::factory()->create();
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->call('revokeInvite', $invite->id);
+
+    expect($invite->refresh()->revoked_at)->not->toBeNull();
+});
+
+test('a regular user cannot revoke an invite', function () {
+    $user = \App\Models\User::factory()->create();
+    $invite = Invite::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('staff.invite-manager')
+        ->assertForbidden();
+
+    expect($invite->refresh()->revoked_at)->toBeNull();
+});
