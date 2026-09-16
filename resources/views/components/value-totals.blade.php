@@ -17,7 +17,11 @@
         @if ($loop->first)
             <span @if ($countup) data-countup="{{ number_format($minor / 100, 2, '.', '') }}" @endif>{{ Money::format($minor, $currency) }}</span>
         @else
-            <small title="Priced in {{ $currency }} — not added to the {{ array_key_first($totals) }} total">+ {{ Money::format($minor, $currency) }}</small>
+            {{-- "+" visually reads as "add this to the total above" no matter
+                 what the tooltip says — a tooltip isn't visible at a glance
+                 and isn't reachable at all on touch. "·" is a plain
+                 separator with no arithmetic meaning of its own. --}}
+            <small title="Priced in {{ $currency }} — not added to the {{ array_key_first($totals) }} total">· {{ Money::format($minor, $currency) }}</small>
         @endif
     @endforeach
 @endif
