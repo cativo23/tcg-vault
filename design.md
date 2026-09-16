@@ -144,6 +144,44 @@ Rules that came out of building it:
 - Headline numbers count up (`data-countup`, `app.js`), digits only — the
   server-rendered value is the resting DOM, and reduced motion skips it.
 
+## Theming — dark mode (2026-09-16)
+Three-state precedence, same as every browser-native dark mode: no
+stored preference → the OS's `prefers-color-scheme` decides; a stored
+preference (the toggle, top-right of both topbars) → it wins outright,
+regardless of the OS. `app.js` writes the choice to `localStorage` and
+sets `data-theme` on `<html>`; an inline `<head>` script (before
+`@vite`) applies a stored value before first paint, so there's no flash
+of the wrong theme.
+
+**Themed tokens** — these flip between the light values in the Tokens
+table above and their dark counterparts in `app.css`'s
+`prefers-color-scheme`/`[data-theme]` blocks, and every existing rule
+that already referenced them re-themes with no rule-level changes:
+`--bone`/`-2`/`-3`, `--paper`, `--ink`, `--muted`, `--flat`, `--hair`,
+`--danger`, `--warning`, `--signal-deep`.
+
+**Frozen tokens — `--chrome-bg` / `--chrome-fg`** — the literal
+always-dark values, identical in both themes. The topbar, footer, and
+the card tile's `.chead`/`.ticker` are what design.md's own Primitives
+section already calls "chrome": a fixed dark band that carries visual
+weight regardless of what surrounds it. If `.chead`/`.ticker` rode
+`--ink`/`--bone` like the rest of the page, dark mode would make them
+the same near-black as the (now dark) tile body behind them, erasing
+the accent stripe the design depends on — so those four element
+families, plus `.nw-home-hero`/`.nw-home-close` (already documented
+above as a permanently-dark band, not a new global dark mode), use the
+frozen tokens instead. `--ink-2` and `--rarity-silver` stay defined
+once, outside the dark override block, for the same reason: their only
+consumers already live inside this frozen set.
+
+**Theme-switch transition** — a short `background-color`/`color`/
+`border-color`/`box-shadow` transition merged into each themed
+element's own existing `transition` (never a blanket `*` selector,
+which would fight the card hover/entrance cascade above and force a
+property-diff across every tile in a full grid on every toggle).
+Frozen-chrome elements carry no such transition — their colors never
+change, so there's nothing to animate.
+
 ## Information architecture (public gallery)
 `/` → the owner's gallery. `/{u}/gallery` is **the collection** (every owned
 card, stat band, set rail, filters, sort) — the front door. `/{u}/gallery/sets`
