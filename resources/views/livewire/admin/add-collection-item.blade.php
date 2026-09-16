@@ -14,8 +14,11 @@
 
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1">Search tcgdex by name</label>
-            <input type="text" wire:model.live.debounce.400ms="search" wire:keyup="runSearch"
-                   class="w-full border rounded px-3 py-2" placeholder="e.g. Mega Darkrai ex">
+            <span class="nw-search-wrap w-full">
+                <input type="text" wire:model.live.debounce.400ms="search" wire:keyup="runSearch"
+                       class="w-full border rounded px-3 py-2" placeholder="e.g. Mega Darkrai ex">
+                <span wire:loading wire:target="search,runSearch" class="nw-search-loading" aria-hidden="true"></span>
+            </span>
             @error('search') <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
         </div>
 
@@ -26,7 +29,13 @@
                 </p>
             @endif
 
-            <div class="grid grid-cols-3 gap-3 mb-3">
+            {{-- A visible spinner next to the input isn't enough on its own —
+                 the tiles below it still show the PREVIOUS query's results
+                 unchanged while the new one is in flight, which reads as
+                 "nothing happened yet" or worse, as the actual answer.
+                 Dimming them ties the stale content to the same loading
+                 state instead of leaving it looking current. --}}
+            <div wire:loading.class="opacity-40" wire:target="search,runSearch" class="grid grid-cols-3 gap-3 mb-3">
                 @foreach ($results as $result)
                     <button type="button" wire:click="selectCard(@js($result->tcgdexId))"
                             class="nw-stagger-item border rounded p-2 text-left text-sm {{ $selectedTcgdexId === $result->tcgdexId ? 'ring-2' : '' }}"

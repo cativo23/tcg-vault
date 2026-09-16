@@ -39,6 +39,41 @@ test('a logged-in admin can search tcgdex and see results', function () {
         ->assertSet('results.0.name', 'Mega Darkrai ex');
 });
 
+test('the search box shows a loading indicator while a debounced search is in flight', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $html = Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)->html();
+
+    expect($html)->toContain('wire:loading')
+        ->toContain('wire:target="search,runSearch"');
+});
+
+test('previous results dim instead of sitting unchanged while a new search is in flight', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Darkrai', null)->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: null),
+    ]);
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $html = Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Darkrai')
+        ->call('runSearch')
+        ->html();
+
+    // Without this, retyping/pasting a new query leaves the previous
+    // query's tiles looking identical to a fresh, current answer for as
+    // long as the request takes — a visible spinner elsewhere on the
+    // page isn't enough to connect the two.
+    expect($html)->toContain('wire:loading.class="opacity-40"');
+    expect($html)->toContain('Mega Darkrai ex');
+});
+
 test('a result whose set is already synced locally shows the real set name, not the raw tcgdex code', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
