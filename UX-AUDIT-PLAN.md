@@ -23,8 +23,8 @@ effect of an unrelated fix.
 ## Status legend
 🔲 not started · 🟡 in progress · ✅ done locally · 🚀 deployed to prod
 
-**Item #1 is ✅ done locally** (see below) — Carlos paused before starting #2
-for the night. **Resume at #2.**
+**Items #1 and #2 are ✅ done locally** (see below). **Resume at #3**
+(mobile nav + set-pill row overflow).
 
 ---
 
@@ -59,14 +59,32 @@ backfill completed with 0 failures once the network fix landed.
 health check or alert on `failed_jobs` growth — this class of failure
 produces no user-facing error and no alert, only a silently stale set.
 
-## 2. 🔲 Add-card search returns an unpaginated wall of 100+ results
+## 2. ✅ Add-card search returns an unpaginated wall of 100+ results
 
-**Problem**: Searching a common name (e.g. "Pikachu") with no set filter
-returns 100+ inline tiles (many with no image), burying the actual
-Condition/Quantity/Notes/Save form far below the fold.
-**Likely area**: `App\Livewire\Admin\AddCollectionItem::runSearch()` /
-`CardCatalogProvider::searchCardsByName()`.
-**Severity**: Blocker.
+**Root cause confirmed against tcgdex's real API**: `searchCardsByName()`
+never sent pagination params, and tcgdex's `/cards?name=` returns every
+match in one response unless told otherwise (verified live: unfiltered
+"Pikachu" → 207 results; with `pagination:page`/`pagination:itemsPerPage`
+→ exactly the requested page size). See
+https://tcgdex.dev/rest/filtering-sorting-pagination#pagination.
+
+**Fix applied**: `TcgdexCardCatalogProvider::searchCardsByName()` now
+always sends `pagination:itemsPerPage=24` and `pagination:page`, real
+server-side pagination (not a client-side slice of an unbounded fetch —
+cheaper and faster). `AddCollectionItem` shows the first page, infers
+"might be more" heuristically from a full page (tcgdex's search has no
+total-count field), and offers `loadMoreResults()` — same
+infinite-scroll (`wire:intersect`) + manual button pattern as
+`Gallery\Index`, appending pages rather than replacing so a card from an
+earlier page stays selectable. When there's more and no set filter is
+active, a hint nudges toward the existing set dropdown to narrow further.
+
+Verified live on `localhost:8090`: "Pikachu" now shows "Showing the
+first 24 matches..." with the Condition/Quantity/Notes/Save form
+reachable right below, `Load more` appends without losing the earlier
+page, and selecting a card still works normally.
+
+7 new tests (2 provider, 5 component); full suite 310/310 passing.
 
 ## 3. 🔲 Mobile nav + set-pill row overflow the viewport
 
