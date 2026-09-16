@@ -108,6 +108,19 @@ test('tampering the client-side registrationOpen property cannot bypass a closed
     expect(\App\Models\User::where('email', 'attacker@example.com')->exists())->toBeFalse();
 });
 
+test('with no settings row ever created, registration.open falls back to the env-configured default on a fresh install', function () {
+    // No Setting::set() call anywhere in this test — proves the
+    // fallback chain works with zero seeding required on day one.
+    config(['tcgvault.allow_registration' => true]);
+    $this->seed(\Database\Seeders\PermissionSeeder::class);
+
+    $this->get('/register')
+        ->assertOk()
+        ->assertSee('wire:submit="register"', false);
+
+    expect(\App\Modules\Settings\Models\Setting::query()->where('key', 'registration.open')->exists())->toBeFalse();
+});
+
 test('registration is reachable when the runtime setting overrides a closed config default', function () {
     config(['tcgvault.allow_registration' => false]);
     \App\Modules\Settings\Models\Setting::set('registration.open', true);
