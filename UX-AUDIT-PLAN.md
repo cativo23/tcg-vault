@@ -200,13 +200,16 @@ a rough page.
   rest of the app's `--ink` — unified to one token; Carlos reviewed a
   screenshot and approved keeping the dark bookends, not going fully
   light.
-- 🔲 **Rarity badges/tile headers with no rarity-tied accent** —
-  **NOT approved**, still open. Carlos's color sign-off above was
-  specifically for the Review/Delete collision (red was already taken,
-  amber wasn't) — a per-rarity accent is a different, bigger reversal:
-  `design.md`'s brainstorm history explicitly rejected "per-type accent
-  colors" once already. Needs its own explicit go-ahead, not assumed
-  bundled into the warning-token approval.
+- ✅ **Rarity badges/tile headers with no rarity-tied accent** —
+  Carlos reconsidered explicitly (separate decision from the
+  Review/Delete warning-token approval) after a real point: an
+  undifferentiated grid isn't just a stylistic gap, it's a genuine
+  usability problem for anyone who doesn't already read rarity
+  abbreviations fluently. Researched how MTG/Hearthstone/Pokémon TCG
+  Pocket solve this (all tie the accent to fixed printed rarity, never
+  price) before proposing a 3-tier standard/silver/chase system;
+  reviewed a live mockup before implementing. `design.md` amended with
+  the exception's exact boundaries.
 
 Also found and fixed along the way (not originally on this list):
 searching `?search=<no matches>` on the public gallery collapsed into
