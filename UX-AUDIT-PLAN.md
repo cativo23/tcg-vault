@@ -23,9 +23,8 @@ effect of an unrelated fix.
 ## Status legend
 🔲 not started · 🟡 in progress · ✅ done locally · 🚀 deployed to prod
 
-**Items #1, #2 and #3 are ✅ done locally** (see below). **Resume at #4**
-(TCGPlayer import error + language — needs one decision from Carlos
-before implementing).
+**Items #1-#4 are ✅ done locally** (see below). **Resume at #5**
+(Notes editing / "Needs review" hint).
 
 ---
 
@@ -117,20 +116,34 @@ the page (`scrollWidth === clientWidth`), and scrolling the nav strip
 reveals "ACTIVITY" fully legible. Full suite still 313/313 (CSS-only
 change, no new test coverage needed).
 
-## 4. 🔲 TCGPlayer import: dev-facing error + untranslated page
+## 4. ✅ TCGPlayer import: dev-facing error + untranslated page
 
-**Problem**: An unrecognized set code surfaces `"set desconocido — agregá
-el código a config/tcgvault.php → tcgplayer_set_map"` directly in the admin
-UI — actionable only by someone editing PHP. Separately, the entire
-`/admin/import` page is in Spanish inside an otherwise-English app.
-**Likely area**: whatever import service reads `config/tcgvault.php`'s
-`tcgplayer_set_map` (needs `investigation-agent` first — not touched this
-session) + `resources/views/livewire/admin/*import*.blade.php`.
-**Decision needed before implementing**: rephrase the error only, or also
-make the set map self-updating from tcgdex data? Ask Carlos. Language: pick
-one (English, matching the rest of the app) and translate the page, or
-confirm Spanish is intentional for this one screen.
-**Severity**: Blocker (unrecognized-set case) / Friction (language).
+**Self-updating set map: ruled out, not a real decision.** `config/tcgvault.php`'s
+own comment already documents why: tcgdex's Set object has no
+TCGplayer-code field, so there's no API-driven way to resolve one — the
+manually-maintained map is the only option. Rephrasing the error was the
+only implementable path.
+
+**Language: Carlos chose to translate to English**, matching the rest of
+the admin (there's no i18n mechanism in this app at all — no
+`resources/lang/`, `__()` calls elsewhere are unused Breeze/Jetstream
+scaffolding — so this was a manual string pass either direction, not a
+locale-file flip).
+
+**Fixes applied**:
+- `unknown_set`'s reason label no longer names `config/tcgvault.php` or
+  `tcgplayer_set_map` — an admin can't act on either. It now reads
+  "unrecognized set — not yet supported for import."
+- Translated `import.blade.php`, `Import.php`'s summary/button strings,
+  and the "Import TCGplayer" nav link in `collection-items.blade.php`
+  (was "Importar TCGplayer") to English.
+
+Verified live: previewing an unknown set code shows "1 not recognized" /
+"unrecognized set — not yet supported for import" — no config path or
+internal variable name leaks into the UI. 4 existing test assertions
+updated to English, 1 new regression test pins the rephrased message
+and asserts it never contains "tcgvault.php" or "tcgplayer_set_map".
+Full suite 314/314.
 
 ## 5. 🔲 Notes not editable after creation; "Needs review" has no visible fix
 
