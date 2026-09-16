@@ -216,26 +216,38 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
                 // card with no straight holo print (the common case for
                 // non-holo-rarity cards). Cross-reference the card's own
                 // `variants` flags instead of guessing from the field name.
-                $foilVariant = match (true) {
-                    ($variants['holo'] ?? false) === true => 'holofoil',
-                    ($variants['reverse'] ?? false) === true => 'reverse-holofoil',
-                    // No usable flags (older/incomplete sync, or a card
-                    // with both holo AND reverse prints — tcgdex's single
-                    // aggregated figure can't tell those apart): keep the
+                $foilVariants = match (true) {
+                    // Found by an automated security review (2026-09-16):
+                    // ~10% of this catalog (197/1986 cards checked live)
+                    // has BOTH holo and reverse true — a real, common
+                    // case, not an edge case. cardmarket's single
+                    // aggregated figure can't tell those two prints
+                    // apart, so the OLD code attributed it entirely to
+                    // 'holofoil' and silently never priced the
+                    // reverse-holo print at all for these cards, even
+                    // though real market data existed. Surface the same
+                    // figure under BOTH labels instead of dropping one —
+                    // a shared estimate beats total silence.
+                    ($variants['holo'] ?? false) === true && ($variants['reverse'] ?? false) === true => ['holofoil', 'reverse-holofoil'],
+                    ($variants['holo'] ?? false) === true => ['holofoil'],
+                    ($variants['reverse'] ?? false) === true => ['reverse-holofoil'],
+                    // No usable flags (older/incomplete sync): keep the
                     // prior fallback rather than guess wrong with silence.
-                    default => 'holofoil',
+                    default => ['holofoil'],
                 };
 
-                $entries[] = new PriceEntryData(
-                    source: 'cardmarket',
-                    variant: $foilVariant,
-                    currency: $cm['unit'] ?? 'EUR',
-                    marketMinor: $this->toMinorUnits($cm['avg-holo'] ?? null),
-                    lowMinor: $this->toMinorUnits($cm['low-holo'] ?? null),
-                    trendMinor: $this->toMinorUnits($cm['trend-holo'] ?? null),
-                    sourceUpdatedAt: $updated,
-                    raw: $cm,
-                );
+                foreach ($foilVariants as $foilVariant) {
+                    $entries[] = new PriceEntryData(
+                        source: 'cardmarket',
+                        variant: $foilVariant,
+                        currency: $cm['unit'] ?? 'EUR',
+                        marketMinor: $this->toMinorUnits($cm['avg-holo'] ?? null),
+                        lowMinor: $this->toMinorUnits($cm['low-holo'] ?? null),
+                        trendMinor: $this->toMinorUnits($cm['trend-holo'] ?? null),
+                        sourceUpdatedAt: $updated,
+                        raw: $cm,
+                    );
+                }
             }
         }
 

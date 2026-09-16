@@ -110,6 +110,44 @@ test('a cardmarket-only card with no straight holo print labels its prices norma
     expect($foil->variant)->toBe('reverse-holofoil');
 });
 
+test('a card with BOTH a straight holo and a reverse-holo print gets cardmarket coverage for both, not just one', function () {
+    // Found by an automated security review (2026-09-16): for a card
+    // with normal+holo+reverse all true (real for ~10% of this app's
+    // catalog — 197/1986 cards checked live), cardmarket's payload only
+    // ever has ONE aggregated foil-tier figure ('avg-holo'), and the
+    // old match(true) logic attributed it entirely to 'holofoil' — no
+    // PriceEntryData for 'reverse-holofoil' was ever constructed, so a
+    // collector who owns the reverse-holo print got null/no price at
+    // all despite real market data existing. cardmarket can't actually
+    // disambiguate which foil tier its one figure represents, so the
+    // same figure is now surfaced under BOTH labels rather than
+    // silently dropping one.
+    Http::fake([
+        'api.tcgdex.net/v2/en/cards/me05-777' => Http::response([
+            'id' => 'me05-777',
+            'localId' => '777',
+            'name' => 'Ambiguous Foil',
+            'set' => ['id' => 'me05', 'name' => 'Pitch Black'],
+            'variants' => ['holo' => true, 'normal' => true, 'reverse' => true],
+            'pricing' => [
+                'cardmarket' => ['unit' => 'EUR', 'avg' => 1.0, 'avg-holo' => 5.0],
+            ],
+        ], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $card = $provider->findCard('me05-777');
+
+    $foilVariants = $card->prices->toCollection()
+        ->filter(fn ($p) => $p->marketMinor === 500)
+        ->pluck('variant')
+        ->sort()
+        ->values()
+        ->all();
+
+    expect($foilVariants)->toBe(['holofoil', 'reverse-holofoil']);
+});
+
 test('a straight-holo-only card still labels its foil-tier price holofoil', function () {
     Http::fake([
         'api.tcgdex.net/v2/en/cards/me05-999' => Http::response([
