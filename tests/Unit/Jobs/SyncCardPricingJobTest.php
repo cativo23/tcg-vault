@@ -16,33 +16,38 @@ use Illuminate\Support\Facades\Log;
 use Spatie\LaravelData\DataCollection;
 
 test('a rate-limit release cannot exhaust the job\'s retries before it ever actually runs', function () {
-    // Found by an automated security review of the rate-limiter commit
-    // (2026-09-16): Laravel's RateLimited middleware releases a job back
-    // onto the queue when the shared bucket is full, and that release
-    // DOES consume one of $tries (attempts are incremented at pop time,
-    // before the middleware even runs) — confirmed against
-    // vendor/laravel/framework's queue source. With only $tries=3 and a
-    // shared 3/sec budget serving ~1986+ jobs, a job popped early but
-    // unlucky in scheduling could be released more than 3 times and get
-    // marked permanently failed WITHOUT handle() ever running once —
-    // the safety control defeating itself. retryUntil() (a wall-clock
-    // deadline) supersedes $tries-based exhaustion in Laravel, so
-    // rate-limit releases can no longer starve out a job that never
-    // actually failed.
+    // Laravel's RateLimited middleware releases a job back onto the
+    // queue when the shared bucket is full, and that release consumes
+    // one of $tries (attempts are incremented at pop time, before the
+    // middleware even runs). With only $tries=3 and thousands of jobs
+    // sharing one rate-limit budget, a job could be released more than 3
+    // times purely from scheduling and get marked permanently failed
+    // without handle() ever running — the safety control defeating
+    // itself. retryUntil() (a wall-clock deadline) supersedes
+    // $tries-based exhaustion in Laravel, so rate-limit releases can
+    // never starve out a job that never actually failed.
     $job = new SyncCardPricingJob('me05-116');
 
     expect($job->retryUntil())->toBeInstanceOf(\DateTimeInterface::class);
     expect($job->retryUntil())->toBeGreaterThan(now()->addMinutes(30));
 });
 
+test('the job uses a separate, smaller rate limit when running on the imports queue than on default', function () {
+    $onDefault = new SyncCardPricingJob('me05-116');
+    $onImports = new SyncCardPricingJob('me05-116');
+    $onImports->queue = 'imports';
+
+    $limiterName = fn (RateLimited $middleware) => (new ReflectionProperty($middleware, 'limiterName'))->getValue($middleware);
+
+    expect($limiterName($onDefault->middleware()[0]))->toBe('tcgdex-default');
+    expect($limiterName($onImports->middleware()[0]))->toBe('tcgdex-imports');
+});
+
 test('the job is rate-limited so Horizon\'s workers can never burst tcgdex faster than the configured cap', function () {
-    // Found live 2026-09-16: `catalog:refresh-prices` dispatching all
-    // ~1986 cards at once, even with only Horizon's default 2 parallel
-    // workers, drove near-100% "Could not resolve host" failures against
-    // api.tcgdex.net (a single ad-hoc request succeeded fine — this is
-    // burst/DNS-under-load, not a broken endpoint). Whether Horizon runs
-    // 1 worker or 10 in the future, this job must self-limit its own
-    // throughput rather than relying on worker count being small.
+    // tcgdex fails requests under concurrent burst load even when a
+    // single ad-hoc request succeeds fine, so this job must self-limit
+    // its own throughput against the API rather than relying on Horizon's
+    // worker count staying small.
     $middleware = (new SyncCardPricingJob('me05-116'))->middleware();
 
     expect($middleware)->toHaveCount(1);

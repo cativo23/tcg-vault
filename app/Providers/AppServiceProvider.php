@@ -23,15 +23,22 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Caps every tcgdex API call this app's queue makes (catalog
-        // sync/import, pricing refresh) to a safe rate — regardless of
-        // how many Horizon workers run in parallel. Found live
-        // 2026-09-16: dispatching the whole ~1986-card catalog at once
-        // drove near-100% "Could not resolve host" failures against
-        // api.tcgdex.net even with only Horizon's default 2 workers (a
-        // single ad-hoc request succeeded instantly — this is burst load,
-        // not a broken endpoint). Named 'tcgdex' so every job that talks
-        // to tcgdex shares the same budget, not one cap per job class.
-        RateLimiter::for('tcgdex', fn () => Limit::perSecond(3));
+        // sync/import, pricing refresh) to a safe combined rate, regardless
+        // of how many Horizon workers run in parallel — tcgdex treats
+        // concurrent bursts as failures even though a single ad-hoc request
+        // succeeds instantly.
+        //
+        // Split into two separate budgets (2/sec + 1/sec = the same 3/sec
+        // ceiling tcgdex needs) rather than one shared 'tcgdex' bucket.
+        // Horizon's queue priority ('default' before 'imports',
+        // config/horizon.php) only controls which job gets popped first —
+        // a single shared rate-limit bucket is queue-blind, so a large
+        // 'imports' backlog could exhaust the whole budget before a
+        // 'default' job gets a turn, making the priority ordering
+        // cosmetic. Giving 'default' its own reserved slice guarantees it
+        // real throughput no matter how much 'imports' work is pending.
+        RateLimiter::for('tcgdex-default', fn () => Limit::perSecond(2));
+        RateLimiter::for('tcgdex-imports', fn () => Limit::perSecond(1));
 
         if ($this->app->isProduction()) {
             // Always generate URLs (including Breeze's password-reset

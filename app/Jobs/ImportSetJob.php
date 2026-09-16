@@ -26,18 +26,13 @@ use Illuminate\Queue\SerializesModels;
  * this for a set that's already complete just re-affirms/refreshes
  * existing rows, never duplicates.
  *
- * Found by an automated security review (2026-09-16), same day the
- * shared 'tcgdex' rate limiter shipped: the OLD design made all 200+
- * per-card tcgdex calls INSIDE ONE job execution, holding a Horizon
- * worker hostage for minutes on an ordinary, unprivileged user action
- * (production has only 2 workers total — two users each triggering an
- * import for a different not-yet-imported set could starve the whole
- * `default` queue). It also paced itself with its own usleep() instead
- * of the shared 'tcgdex' limiter, so it could burst tcgdex well past
- * the budget SyncCardPricingJob respects. Fixed by making this job do
- * ONE cheap listing call and dispatch one SyncCardPricingJob per card —
- * the real per-card work (HTTP call, error handling, shared rate limit)
- * all live there, already tested on their own.
+ * This job does ONE cheap listing call and dispatches one
+ * SyncCardPricingJob per card rather than making all per-card tcgdex
+ * calls itself — the real per-card work (HTTP call, error handling,
+ * shared rate limit) lives in SyncCardPricingJob so a single import
+ * never holds a Horizon worker hostage for minutes on an ordinary,
+ * unprivileged user action, and so per-card throughput stays governed
+ * by the shared 'tcgdex' rate limiter instead of its own separate pacing.
  */
 final class ImportSetJob implements ShouldBeUnique, ShouldQueue
 {
@@ -64,14 +59,26 @@ final class ImportSetJob implements ShouldBeUnique, ShouldQueue
         return $this->setTcgdexId;
     }
 
+    /**
+     * handle() itself finishes almost instantly (one listing call), so
+     * without this the uniqueness lock would end long before the fan-out
+     * it triggers actually finishes — a near-simultaneous duplicate
+     * trigger for the same set could dispatch a second full wave of
+     * per-card jobs. Keeps the lock alive well past a realistic import.
+     */
+    public function uniqueFor(): int
+    {
+        return 6 * 3600;
+    }
+
     public function handle(CardCatalogProvider $provider): void
     {
         $cardIds = $provider->listSetCardIds($this->setTcgdexId);
 
         foreach ($cardIds as $cardId) {
             // Deliberately NOT 'default' — see config/horizon.php's
-            // queue-priority comment. This fan-out (up to 200+ jobs at
-            // once, from one unprivileged user action) must never
+            // queue-priority comment. This fan-out (up to hundreds of jobs
+            // at once, from one unprivileged user action) must never
             // compete ahead of the scheduled daily refresh or another
             // user's own pending work for the shared 'tcgdex' budget.
             SyncCardPricingJob::dispatch($cardId)->onQueue('imports');

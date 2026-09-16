@@ -38,21 +38,18 @@ final class SyncCardPricingJob implements ShouldQueue
     }
 
     /**
-     * Found by an automated security review (2026-09-16): Laravel
-     * increments a job's attempt count the instant a worker POPS it off
-     * the queue — before any middleware runs — so every time
-     * RateLimited('tcgdex') releases this job back onto the queue
-     * because the shared bucket is full, that release consumes one of
-     * $tries=3 even though handle() never ran (confirmed against
-     * Illuminate\Queue's Redis driver source). With ~1986+ jobs sharing
-     * a 3/sec budget, a job could plausibly be released 3+ times purely
-     * from scheduling bad luck and get marked permanently failed
-     * without ever making one real HTTP attempt — the rate limiter
-     * (a safety control) silently defeating the job's own retry budget.
-     * retryUntil() is a wall-clock deadline that supersedes $tries-based
-     * exhaustion, so throttling delay alone can never burn through this
-     * job's genuine retry allowance. 1 hour comfortably covers the
-     * worst case (~1986 jobs / 3 per second ≈ 11 minutes to drain).
+     * Laravel increments a job's attempt count the instant a worker pops
+     * it off the queue, before any middleware runs — so every release by
+     * RateLimited('tcgdex') because the shared bucket is full consumes one
+     * of $tries=3 even though handle() never ran. With thousands of jobs
+     * sharing a 3/sec budget, a job could plausibly be released 3+ times
+     * purely from scheduling and get marked permanently failed without
+     * ever making a real HTTP attempt — the rate limiter would silently
+     * defeat the job's own retry budget. retryUntil() is a wall-clock
+     * deadline that supersedes $tries-based exhaustion, so throttling
+     * delay alone can never burn through this job's genuine retry
+     * allowance; 1 hour comfortably covers the worst-case drain time for
+     * the full catalog at this rate.
      */
     public function retryUntil(): \DateTimeInterface
     {
@@ -60,16 +57,16 @@ final class SyncCardPricingJob implements ShouldQueue
     }
 
     /**
-     * Shared with every other tcgdex-calling job under the 'tcgdex' named
-     * limiter (AppServiceProvider) — caps total throughput to a safe rate
-     * regardless of how many Horizon workers are configured to run this
-     * queue in parallel.
+     * Uses a separate, smaller budget on the 'imports' queue than on
+     * 'default' (AppServiceProvider) so a large set-import backlog can
+     * never exhaust the whole shared rate limit before a 'default' job
+     * (the scheduled refresh, or another user's own request) gets a turn.
      *
      * @return array<int, object>
      */
     public function middleware(): array
     {
-        return [new RateLimited('tcgdex')];
+        return [new RateLimited($this->queue === 'imports' ? 'tcgdex-imports' : 'tcgdex-default')];
     }
 
     public function handle(CatalogSyncService $syncService): void
