@@ -23,22 +23,41 @@ effect of an unrelated fix.
 ## Status legend
 🔲 not started · 🟡 in progress · ✅ done locally · 🚀 deployed to prod
 
-**All 5 items below are still 🔲 not started** — the session got pulled into
-a separate thread (security-review fixes on the earlier rate-limiting work,
-a price-drift question, and the sync-cadence/landing-copy question) before
-reaching any of these. All deployed and closed; not blocking. Resume at #1.
+**Item #1 is ✅ done locally** (see below) — Carlos paused before starting #2
+for the night. **Resume at #2.**
 
 ---
 
-## 1. 🔲 "Show missing" (ghost cards) renders almost nothing
+## 1. ✅ "Show missing" (ghost cards) renders almost nothing
 
-**Problem**: On a 120-card set with 1 owned, toggling "Show missing" reports
-"Showing 2 cards" instead of the real ~119 missing prints. Kills the core
-"what do I need to complete this set" use case.
-**Likely area**: `App\Livewire\Gallery\Show` — the `$entries` query/filter
-when `showMissing=true`, possibly related to the recent pagination/dedupe
-work on this same component this session.
-**Severity**: Blocker.
+**Turned out not to be a `Gallery\Show` logic bug at all.** The filter code
+was correct and matched its only test. Root cause: the `horizon` container
+(where every queued job — `SyncCardPricingJob`, `ImportSetJob`, the daily
+`catalog:refresh-prices` schedule — actually runs) was only attached to the
+`tcgvault-internal` Docker network, which is `internal: true` and has no
+route out. Every queued call to tcgdex's API failed DNS resolution and
+eventually landed in `failed_jobs`. Adding a single card still worked
+because that one sync runs synchronously inside the `app` container's web
+request (which does have internet) — only the async backfill of the rest
+of a set, and the entire daily price refresh, were silently broken.
+
+This means the "Fresh pricing, updated daily" landing-page claim (fixed
+earlier this session) had never actually been true in an automated sense
+until this fix — daily refresh had no way to succeed before now.
+
+**Fix applied and deployed**: added `space-server_web` to `horizon`'s
+`networks` in `compose.prod.yml` (matching what `app` already has),
+recreated the container. `scheduler` didn't need it — it only dispatches
+to the queue, never calls tcgdex directly.
+
+**Data cleanup**: 4 sets had accumulated partial card rows from before this
+fix (sv02 Paldea Evolved, swsh3 Darkness Ablaze, me03 Perfect Order,
+sv08.5 Prismatic Evolutions) — re-dispatched `ImportSetJob` for each;
+backfill completed with 0 failures once the network fix landed.
+
+**Still worth doing** (not done yet, low priority): add a Horizon/queue
+health check or alert on `failed_jobs` growth — this class of failure
+produces no user-facing error and no alert, only a silently stale set.
 
 ## 2. 🔲 Add-card search returns an unpaginated wall of 100+ results
 
