@@ -28,6 +28,16 @@ test('the collection index lists the authenticated users items', function () {
         ->assertSee('NM');
 });
 
+test('the search box shows a loading indicator while a debounced search is in flight', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $html = Livewire::test(\App\Livewire\Admin\CollectionItems::class)->html();
+
+    expect($html)->toContain('wire:loading')
+        ->toContain('wire:target="search"');
+});
+
 test('the value column prices each row at its OWN variant, not the card-level default for every row', function () {
     // A normal and a reverse-holofoil copy of the same card must not
     // show the same price — the cell must price each row by its own
@@ -673,6 +683,9 @@ test('an item with no priced snapshot shows an em dash for value', function () {
     // the actual currency shape (e.g. "$40.00") instead, so this test would
     // really fail if the Value column stopped rendering an em dash.
     expect($html)->not->toMatch('/\$\d/');
+    // A bare "—" gives no reason it's blank — a newly-added card with no
+    // price data yet reads identically to something actually broken.
+    expect($html)->toContain('title="No price data synced for this card/variant yet"');
 });
 
 test('a flagged item shows the needs-review badge', function () {

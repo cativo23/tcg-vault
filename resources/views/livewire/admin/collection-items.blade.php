@@ -12,7 +12,10 @@
 
         <div class="nw-toolbar-group">
             <label class="sr-only" for="collection-search">Search your collection</label>
-            <input id="collection-search" type="search" wire:model.live.debounce.300ms="search" placeholder="Search name, set, notes…" class="nw-pill-input w-40 sm:w-52" autocomplete="off">
+            <span class="nw-search-wrap">
+                <input id="collection-search" type="search" wire:model.live.debounce.300ms="search" placeholder="Search name, set, notes…" class="nw-pill-input w-40 sm:w-52" autocomplete="off">
+                <span wire:loading wire:target="search" class="nw-search-loading" aria-hidden="true"></span>
+            </span>
 
             <label class="sr-only" for="collection-condition">Filter by condition</label>
             <select id="collection-condition" wire:model.live="conditionFilter" class="nw-pill-select">
@@ -70,7 +73,8 @@
                         // price every row for a card identically, regardless
                         // of which variant each copy is.
                         $snapshot = $resolver->resolveForVariant($item->card, $item->variant);
-                        $valueLabel = $snapshot?->market_minor !== null
+                        $valueKnown = $snapshot?->market_minor !== null;
+                        $valueLabel = $valueKnown
                             ? \App\Support\Money::format($snapshot->market_minor * $item->quantity, $snapshot->currency)
                             : '—';
                         $gradingLabel = $item->grade_company && $item->grade_value
@@ -97,7 +101,16 @@
                                 <span wire:click="startEditingQty({{ $item->id }})" class="cursor-pointer">{{ $item->quantity }}</span>
                             @endif
                         </td>
-                        <td class="p-3 mono">{{ $valueLabel }}</td>
+                        <td class="p-3 mono">
+                            @if ($valueKnown)
+                                {{ $valueLabel }}
+                            @else
+                                {{-- A bare "—" reads identically to something broken — a
+                                     newly-added card just hasn't had a price synced yet
+                                     (prices refresh daily; see catalog:refresh-prices). --}}
+                                <span title="No price data synced for this card/variant yet">{{ $valueLabel }}</span>
+                            @endif
+                        </td>
                         <td class="p-3">
                             @if ($editingItemId === $item->id)
                                 <input type="text" wire:model="editingNotes" wire:keydown.enter="saveNotes" class="border rounded px-2 py-1 w-full">
