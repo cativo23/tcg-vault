@@ -65,7 +65,11 @@
             <tbody>
                 @forelse ($items as $item)
                     @php
-                        $snapshot = $resolver->resolve($item->card);
+                        // resolveForVariant, not resolve(): this row IS a
+                        // specific variant — the card-level chain would
+                        // price every row for a card identically, regardless
+                        // of which variant each copy is.
+                        $snapshot = $resolver->resolveForVariant($item->card, $item->variant);
                         $valueLabel = $snapshot?->market_minor !== null
                             ? \App\Support\Money::format($snapshot->market_minor * $item->quantity, $snapshot->currency)
                             : '—';

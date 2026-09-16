@@ -120,6 +120,12 @@
                     />
                 @endforeach
             </div>
+
+            @if ($hasMore)
+                <div wire:key="load-more-{{ $sort }}-{{ $take }}" wire:intersect="loadMore" wire:loading.class="opacity-50" class="flex justify-center py-8">
+                    <button type="button" wire:click="loadMore" class="nw-btn-secondary">Load more</button>
+                </div>
+            @endif
         @endif
     @endif
 </div>

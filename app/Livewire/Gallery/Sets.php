@@ -16,6 +16,11 @@ final class Sets extends Component
 {
     use ResolvesPublicCollection;
 
+    // Same bound as Gallery\Index — a public, unauthenticated route must
+    // never fan out unbounded work regardless of how large one
+    // collector's public collection grows.
+    private const MAX_CARDS = 600;
+
     public function mount(string $username): void
     {
         $this->resolveTargetUser($username);
@@ -30,7 +35,7 @@ final class Sets extends Component
 
         // One query for every owned card, grouped per set in PHP, so the
         // per-set value never becomes a query per set.
-        $ownedBySet = $public->cardsQuery()->get()->groupBy('set_id');
+        $ownedBySet = $public->cardsQuery()->take(self::MAX_CARDS)->get()->groupBy('set_id');
 
         $setValues = $sets->mapWithKeys(fn ($set) => [
             $set->id => $valuation->totalsByCurrency($ownedBySet->get($set->id, collect())),

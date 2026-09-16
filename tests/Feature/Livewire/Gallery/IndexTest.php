@@ -124,6 +124,73 @@ test('tcgdex\'s literal "None" rarity never becomes a selectable filter option',
     $response->assertDontSee('value="none"', false);
 });
 
+test('value sort orders by unit price, not total owned value, and uses the priciest owned variant', function () {
+    // The exact case Carlos flagged live: Inkay (3× normal @ $0.11 =
+    // $0.33 total) was outranking Misty's Vitality (1× @ $0.20) under
+    // "value" — because the old sort used quantity-weighted total, not
+    // unit price. Separately, Inkay's real high-value copy is a
+    // reverse-holofoil ($0.45), which the card-level priority chain
+    // would never even have looked at.
+    $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+
+    $inkay = Card::create(['tcgdex_id' => 'me05-051', 'set_id' => $set->id, 'local_id' => '051', 'name' => 'Inkay']);
+    $misty = Card::create(['tcgdex_id' => 'me05-080', 'set_id' => $set->id, 'local_id' => '080', 'name' => "Misty's Vitality"]);
+
+    CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 11]);
+    CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 45]);
+    CardPriceSnapshot::create(['card_id' => $misty->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 20]);
+
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 3]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $misty->id, 'card_tcgdex_id' => 'me05-080', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+
+    // Unit price: Inkay's normal is $0.11, Misty's Vitality is $0.20 —
+    // Misty's Vitality must lead the default "value" sort even though
+    // Inkay's 3 copies add up to more total money.
+    Livewire::test(Index::class, ['username' => 'carlos'])
+        ->assertSeeInOrder(["Misty's Vitality", 'Inkay']);
+});
+
+test('the grid loads 24 cards at a time and load-more reveals the rest', function () {
+    // Carlos explicitly chose infinite-scroll (load-more), not page-number
+    // pagination: 2026-09-15, "paginacion de que cuando bajas se carguen
+    // las siguientes, y asi no como con paginas reales".
+    $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+
+    foreach (range(1, 30) as $i) {
+        $card = Card::create(['tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card {$i}"]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "me05-{$i}", 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    Livewire::test(Index::class, ['username' => 'carlos'])
+        ->assertViewHas('entries', fn ($entries) => $entries->count() === 24)
+        ->assertViewHas('totalEntries', 30)
+        ->assertViewHas('hasMore', true)
+        ->call('loadMore')
+        ->assertViewHas('entries', fn ($entries) => $entries->count() === 30)
+        ->assertViewHas('hasMore', false);
+});
+
+test('changing search, a filter, or the sort resets how many cards are loaded', function () {
+    $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+
+    foreach (range(1, 30) as $i) {
+        $card = Card::create(['tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card {$i}"]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "me05-{$i}", 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    Livewire::test(Index::class, ['username' => 'carlos'])
+        ->call('loadMore')
+        ->assertViewHas('entries', fn ($entries) => $entries->count() === 30)
+        ->set('search', 'Card 1')
+        ->assertViewHas('entries', fn ($entries) => $entries->count() <= 24);
+});
+
 test('an unknown sort is ignored rather than trusted', function () {
     seedCollection();
 

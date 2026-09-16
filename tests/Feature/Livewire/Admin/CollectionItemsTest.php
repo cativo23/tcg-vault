@@ -28,6 +28,28 @@ test('the collection index lists the authenticated users items', function () {
         ->assertSee('NM');
 });
 
+test('the value column prices each row at its OWN variant, not the card-level default for every row', function () {
+    // Reproduces exactly what Carlos saw live: a normal and a
+    // reverse-holofoil Wailmer both showing $0.16 — the table cell
+    // re-resolved price straight from resolve($item->card), ignoring
+    // which variant each row actually is.
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $wailmer = Card::create(['tcgdex_id' => 'me05-015', 'set_id' => $set->id, 'local_id' => '015', 'name' => 'Wailmer']);
+    CardPriceSnapshot::create(['card_id' => $wailmer->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 16]);
+    CardPriceSnapshot::create(['card_id' => $wailmer->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 27]);
+
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $wailmer->id, 'card_tcgdex_id' => 'me05-015', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $wailmer->id, 'card_tcgdex_id' => 'me05-015', 'variant' => 'reverse-holofoil', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSee('$0.16')
+        ->assertSee('$0.27');
+});
+
 test('an admin can update an items notes', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
@@ -393,6 +415,38 @@ test('when a card has no synced pricing data the variant dropdown falls back to 
     expect($modalSelect)->toContain('value="normal"')
         ->not->toContain('value="holofoil"')
         ->not->toContain('value="reverse-holofoil"');
+});
+
+test('the variant dropdown uses the card\'s own print flags, not just synced pricing coverage', function () {
+    // Reproduces exactly what Carlos flagged live (2026-09-15): Antique
+    // Jaw Fossil (Perfect Order) is a normal + reverse-holofoil print
+    // (no straight holo), owned as "normal" — but only synced with a
+    // cardmarket 'holofoil' price row (the importer mislabels
+    // cardmarket's reverse-holo price as 'holofoil' for cards with no
+    // straight holo print). The old CardPriceSnapshot-derived dropdown
+    // logic only ever offered "Holofoil". The card's own `variants` flags
+    // (from tcgdex, always synced) know better.
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me03', 'name' => 'Perfect Order']);
+    $card = Card::create([
+        'tcgdex_id' => 'me03-068', 'set_id' => $set->id, 'local_id' => '068', 'name' => 'Antique Jaw Fossil',
+        'variants' => ['holo' => false, 'normal' => true, 'wPromo' => false, 'reverse' => true, 'firstEdition' => false],
+    ]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 4]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 9]);
+
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me03-068',
+        'condition' => 'NM', 'quantity' => 1, 'variant' => 'normal',
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->assertSet('editingAvailableVariants', ['normal', 'reverse-holofoil'])
+        ->assertSet('editingVariant', 'normal');
 });
 
 test('assigning a variant clears needs_variant_review', function () {

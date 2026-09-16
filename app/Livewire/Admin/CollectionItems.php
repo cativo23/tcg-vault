@@ -6,6 +6,7 @@ namespace App\Livewire\Admin;
 
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -208,10 +209,27 @@ final class CollectionItems extends Component
         $this->editingGradeCompany = $item->grade_company;
         $this->editingGradeValue = $item->grade_value;
 
-        $variants = array_values(array_intersect(
-            self::KNOWN_VARIANTS,
-            CardPriceSnapshot::where('card_id', $item->card_id)->distinct()->pluck('variant')->all(),
-        ));
+        // The card's OWN print flags (from tcgdex, always synced) are the
+        // real source of truth for what variants exist — not which
+        // CardPriceSnapshot rows happen to be synced. The cardmarket
+        // importer names its only foil-tier price 'holofoil' regardless
+        // of whether the card has a straight holo print or only a
+        // reverse-holo one, which used to silently narrow this dropdown
+        // to the wrong single option (Carlos, live, 2026-09-15: Antique
+        // Jaw Fossil — normal + reverse-holofoil print, dropdown only
+        // offered "Holofoil").
+        $variants = CardVariants::available($item->card->variants ?? []);
+
+        // Fall back to synced pricing coverage only when the card has no
+        // real variant flags at all (never observed in production, but
+        // test fixtures and any card synced before `variants` existed
+        // may still hit this path).
+        if ($variants === []) {
+            $variants = array_values(array_intersect(
+                self::KNOWN_VARIANTS,
+                CardPriceSnapshot::where('card_id', $item->card_id)->distinct()->pluck('variant')->all(),
+            ));
+        }
 
         $this->editingAvailableVariants = $variants !== []
             ? $variants
@@ -346,7 +364,11 @@ final class CollectionItems extends Component
             // chain across a separate table). Bounded by a real personal
             // collection's size (dozens–low hundreds), not thousands.
             $withValue = $items->getCollection()->map(function (CollectionItem $item) use ($resolver) {
-                $snapshot = $resolver->resolve($item->card);
+                // resolveForVariant, not resolve(): this row IS a specific
+                // variant (or null, pending review) — resolve()'s
+                // card-level chain would ignore that and could pick a
+                // cheaper (or pricier) variant than the one this copy is.
+                $snapshot = $resolver->resolveForVariant($item->card, $item->variant);
                 // _valueMinor is a transient, in-memory-only sort key — it
                 // is never persisted, so it must never be passed to save().
                 $item->setAttribute('_valueMinor', $snapshot?->market_minor !== null ? $snapshot->market_minor * $item->quantity : -1);

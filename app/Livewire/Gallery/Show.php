@@ -93,17 +93,19 @@ final class Show extends Component
             $cardsQuery->where('rarity', $this->rarityFilter);
         }
 
-        $entries = $cardsQuery->get()->map(fn (Card $card) => [
-            'card' => $card,
-            'snapshot' => $resolver->resolve($card),
-            'delta' => $resolver->resolveDelta($card),
-            'items' => $card->collectionItems,
-            'owned' => $card->collectionItems->isNotEmpty(),
-        ]);
+        $allEntries = $cardsQuery->get()->map(function (Card $card) use ($resolver, $valuation) {
+            $snapshot = $valuation->headlineSnapshot($card);
 
-        if (! $this->showMissing) {
-            $entries = $entries->filter(fn ($e) => $e['owned']);
-        }
+            return [
+                'card' => $card,
+                'snapshot' => $snapshot,
+                'delta' => $resolver->deltaFor($card, $snapshot),
+                'items' => $card->collectionItems,
+                'owned' => $card->collectionItems->isNotEmpty(),
+            ];
+        });
+
+        $entries = $this->showMissing ? $allEntries : $allEntries->filter(fn ($e) => $e['owned']);
 
         $sorted = match ($this->sort) {
             'name' => $entries->sortBy(fn ($e) => $e['card']->name),
@@ -125,15 +127,22 @@ final class Show extends Component
             $sorted = $sorted->values();
         }
 
-        // Stats come from the whole set, unfiltered — the toolbar narrows the grid, not the numbers.
-        $ownedCards = $this->set->cards()
-            ->whereHas('collectionItems', fn ($q) => $public->scopeItems($q))
-            ->with(['priceSnapshots', 'collectionItems' => fn ($q) => $public->scopeItems($q)])
-            ->get();
+        // Stats come from the whole set, unfiltered — the toolbar narrows
+        // the grid, not the numbers. When the toolbar has no active
+        // filter, $allEntries already IS the whole set (same relations
+        // eager-loaded the same way) — reuse it instead of a second
+        // identical-shape query. Only re-query when search/rarity have
+        // narrowed $cardsQuery away from "the whole set".
+        $ownedCards = ($this->search === '' && $this->rarityFilter === '')
+            ? $allEntries->filter(fn ($e) => $e['owned'])->pluck('card')
+            : $this->set->cards()
+                ->whereHas('collectionItems', fn ($q) => $public->scopeItems($q))
+                ->with(['priceSnapshots', 'collectionItems' => fn ($q) => $public->scopeItems($q)])
+                ->get();
 
         $ownedTotals = $valuation->totalsByCurrency($ownedCards);
         $mostValuable = $ownedCards
-            ->map(fn (Card $card) => ['card' => $card, 'snapshot' => $resolver->resolve($card)])
+            ->map(fn (Card $card) => ['card' => $card, 'snapshot' => $valuation->headlineSnapshot($card)])
             ->filter(fn ($p) => $p['snapshot'] !== null && $p['snapshot']->market_minor !== null)
             ->sortByDesc(fn ($p) => $p['snapshot']->market_minor)
             ->first();
