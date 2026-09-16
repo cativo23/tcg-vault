@@ -15,6 +15,26 @@ use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Support\Facades\Log;
 use Spatie\LaravelData\DataCollection;
 
+test('a rate-limit release cannot exhaust the job\'s retries before it ever actually runs', function () {
+    // Found by an automated security review of the rate-limiter commit
+    // (2026-09-16): Laravel's RateLimited middleware releases a job back
+    // onto the queue when the shared bucket is full, and that release
+    // DOES consume one of $tries (attempts are incremented at pop time,
+    // before the middleware even runs) — confirmed against
+    // vendor/laravel/framework's queue source. With only $tries=3 and a
+    // shared 3/sec budget serving ~1986+ jobs, a job popped early but
+    // unlucky in scheduling could be released more than 3 times and get
+    // marked permanently failed WITHOUT handle() ever running once —
+    // the safety control defeating itself. retryUntil() (a wall-clock
+    // deadline) supersedes $tries-based exhaustion in Laravel, so
+    // rate-limit releases can no longer starve out a job that never
+    // actually failed.
+    $job = new SyncCardPricingJob('me05-116');
+
+    expect($job->retryUntil())->toBeInstanceOf(\DateTimeInterface::class);
+    expect($job->retryUntil())->toBeGreaterThan(now()->addMinutes(30));
+});
+
 test('the job is rate-limited so Horizon\'s workers can never burst tcgdex faster than the configured cap', function () {
     // Found live 2026-09-16: `catalog:refresh-prices` dispatching all
     // ~1986 cards at once, even with only Horizon's default 2 parallel

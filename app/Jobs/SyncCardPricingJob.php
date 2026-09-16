@@ -23,9 +23,10 @@ final class SyncCardPricingJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
-     * 3 attempts with backoff — a transient tcgdex hiccup shouldn't drop
-     * a card from today's refresh, but a card that's actually gone
-     * (see handle()'s catch below) fails fast instead of burning all 3.
+     * $tries is effectively superseded by retryUntil() below (Laravel
+     * checks retryUntil() first when both are defined) — kept only as
+     * documentation of intent for a genuine transient tcgdex failure. Do
+     * NOT rely on this number alone: see retryUntil()'s docblock for why.
      */
     public int $tries = 3;
 
@@ -37,11 +38,32 @@ final class SyncCardPricingJob implements ShouldQueue
     }
 
     /**
+     * Found by an automated security review (2026-09-16): Laravel
+     * increments a job's attempt count the instant a worker POPS it off
+     * the queue — before any middleware runs — so every time
+     * RateLimited('tcgdex') releases this job back onto the queue
+     * because the shared bucket is full, that release consumes one of
+     * $tries=3 even though handle() never ran (confirmed against
+     * Illuminate\Queue's Redis driver source). With ~1986+ jobs sharing
+     * a 3/sec budget, a job could plausibly be released 3+ times purely
+     * from scheduling bad luck and get marked permanently failed
+     * without ever making one real HTTP attempt — the rate limiter
+     * (a safety control) silently defeating the job's own retry budget.
+     * retryUntil() is a wall-clock deadline that supersedes $tries-based
+     * exhaustion, so throttling delay alone can never burn through this
+     * job's genuine retry allowance. 1 hour comfortably covers the
+     * worst case (~1986 jobs / 3 per second ≈ 11 minutes to drain).
+     */
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHour();
+    }
+
+    /**
      * Shared with every other tcgdex-calling job under the 'tcgdex' named
      * limiter (AppServiceProvider) — caps total throughput to a safe rate
      * regardless of how many Horizon workers are configured to run this
-     * queue in parallel. A rate-limited job is released back onto the
-     * queue (not counted as a failed attempt) when the limit is hit.
+     * queue in parallel.
      *
      * @return array<int, object>
      */
