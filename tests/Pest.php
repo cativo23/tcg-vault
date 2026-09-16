@@ -32,6 +32,10 @@ uses(Tests\TestCase::class)->in('Unit/Providers');
 // database (factory + Eloquent), same rationale as Catalog/Collection above.
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Invites');
 
+// Unit/Modules/Settings tests exercise a real Setting model against the
+// database and its cache layer, same rationale as the others above.
+uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Settings');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations
