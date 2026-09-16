@@ -95,3 +95,18 @@ const bindHeroSpotlight = () => {
 
 document.addEventListener('DOMContentLoaded', bindHeroSpotlight);
 document.addEventListener('livewire:navigated', bindHeroSpotlight);
+
+// The nav's fade-edge hint (app.css .nw-nav.is-scrollable::after) must
+// only show when the nav genuinely overflows — a username long enough
+// to push it into scroll on a narrow viewport, not every viewport.
+// Re-checked on resize since a real overflow/no-overflow boundary
+// depends on both viewport width and the current username's length.
+const markScrollableNav = () => {
+    document.querySelectorAll('.nw-nav').forEach((nav) => {
+        nav.classList.toggle('is-scrollable', nav.scrollWidth > nav.clientWidth + 1);
+    });
+};
+
+document.addEventListener('DOMContentLoaded', markScrollableNav);
+document.addEventListener('livewire:navigated', markScrollableNav);
+window.addEventListener('resize', markScrollableNav);
