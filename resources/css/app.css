@@ -12,7 +12,7 @@
   --bone-3: #ded9c9;
   --paper: #fbf9f3; /* raised surface (tiles, panels) — one step lighter than the page */
   --ink: #141412;
-  --ink-2: #23231f;
+  --ink-2: #23231f; /* only ever paired with the frozen chrome tokens below — not part of the theme */
   --muted: #6d6c62;
   --hair: rgba(20, 20, 18, 0.14);
   --signal: #37d17f;
@@ -25,11 +25,74 @@
   --gutter: clamp(16px, 4vw, 34px);
   --radius-card: 7px;
   --radius-pill: 999px;
+
+  /* Chrome: the topbar/footer/chead/ticker "always dark" band design.md
+     itself calls chrome — deliberately outside the theme below, same
+     literal values in light and dark mode. Freezing these (rather than
+     letting them ride --ink/--bone) is what keeps the brand nav and the
+     card ticker/header stripe readable and unchanged regardless of
+     theme, instead of needing per-selector dark overrides. */
+  --chrome-bg: #141412;
+  --chrome-fg: #f2efe6;
 }
 
+/* ─── dark theme ───
+   --ink and --bone (plus their -2/-3 steps, --paper, --muted, --flat,
+   --hair, --danger, --warning, --signal-deep) are the themed tokens:
+   flipping them here re-themes every rule in this file that already
+   uses them, with zero changes to those rules. --chrome-bg/--chrome-fg
+   (above), --ink-2 and --rarity-silver stay out of this block on
+   purpose — their only consumers are the frozen chrome elements, which
+   must look identical in both themes. No stored preference defers to
+   the OS; an explicit toggle (app.js) always wins over it. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bone: #141412;
+    --bone-2: #1b1b18;
+    --bone-3: #242420;
+    --paper: #292925;
+    --ink: #f2efe6;
+    --muted: #8f8d80;
+    --flat: #b0ada0;
+    --hair: rgba(242, 239, 230, 0.14);
+    --danger: #e2564a;
+    --warning: #f0a83c;
+    --signal-deep: #4ee496; /* --signal-deep is TEXT on --bone; the light-mode value fails contrast on a dark page */
+  }
+}
+:root[data-theme='dark'] {
+  --bone: #141412;
+  --bone-2: #1b1b18;
+  --bone-3: #242420;
+  --paper: #292925;
+  --ink: #f2efe6;
+  --muted: #8f8d80;
+  --flat: #b0ada0;
+  --hair: rgba(242, 239, 230, 0.14);
+  --danger: #e2564a;
+  --warning: #f0a83c;
+  --signal-deep: #4ee496;
+}
+
+/* ─── theme-switch transition ───
+   Every element below that actually carries a themed color gets a
+   short background-color/color/border-color transition merged into
+   its OWN existing transition (never a separate blanket rule — a
+   second `transition` shorthand on the same selector doesn't add to
+   the first, it replaces it) and never a blanket `*` selector: `*`
+   would also catch .nw-tile's hover transform and the sleeve-sweep
+   ::after, fighting both (see the card-hover-cascade note above), and
+   with a grid of dozens of tiles on screen it'd force a property-diff
+   on every property of every element on every toggle. Paint-only
+   properties, so toggling never triggers layout. Reduced motion is
+   already covered: the `*` rule in the reduced-motion block below
+   zeroes these too. .nw-topbar/.nw-footer/.chead/.ticker's background
+   are frozen chrome (see --chrome-bg above) and never change with the
+   theme, so they carry no theme transition. */
 body {
   background: var(--bone);
   color: var(--ink);
+  transition: background-color 220ms var(--ease), color 220ms var(--ease);
   font-family: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-variation-settings: 'wdth' 100;
   -webkit-font-smoothing: antialiased;
@@ -78,10 +141,10 @@ body {
 }
 .nw-main > .nw-grow { flex: 1; }
 
-/* ─── top bar ─── */
+/* ─── top bar (chrome — see the --chrome-bg/--chrome-fg note above) ─── */
 .nw-topbar {
-  background: var(--ink);
-  color: var(--bone);
+  background: var(--chrome-bg);
+  color: var(--chrome-fg);
 }
 .nw-brand {
   font-variation-settings: 'wdth' 66, 'wght' 900;
@@ -91,7 +154,7 @@ body {
   display: flex;
   align-items: center;
   gap: 9px;
-  color: var(--bone);
+  color: var(--chrome-fg);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -141,7 +204,7 @@ body {
   right: 0;
   bottom: 0;
   width: 20px;
-  background: linear-gradient(to right, transparent, var(--ink));
+  background: linear-gradient(to right, transparent, var(--chrome-bg));
   pointer-events: none;
 }
 .nw-nav a {
@@ -154,7 +217,7 @@ body {
 }
 .nw-nav a:hover,
 .nw-nav a[aria-current='page'] {
-  color: var(--bone);
+  color: var(--chrome-fg);
   border-color: var(--signal);
 }
 .nw-nav-ghost {
@@ -162,7 +225,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.11em;
-  color: var(--bone);
+  color: var(--chrome-fg);
   border: 1px solid rgba(242, 239, 230, 0.32);
   border-radius: 999px;
   padding: 5px 11px;
@@ -171,6 +234,40 @@ body {
   white-space: nowrap;
 }
 .nw-nav-ghost:hover { background: var(--ink-2); }
+
+/* ─── theme toggle ───
+   Lives on the same dark chrome as the brand/nav (topbar), so it uses
+   the frozen chrome tokens like the rest of that band, not --ink/--bone.
+   Both icons are always in the DOM; which one shows follows the exact
+   same three-state precedence as the token overrides above (OS default,
+   then an explicit [data-theme] wins) so the glyph and the actual
+   colors in effect can never disagree. */
+.nw-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(242, 239, 230, 0.32);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--chrome-fg);
+  cursor: pointer;
+  flex: none;
+  transition: background 160ms var(--ease);
+}
+.nw-theme-toggle:hover { background: var(--ink-2); }
+.nw-theme-toggle svg { width: 14px; height: 14px; }
+.nw-theme-toggle .i-sun { display: none; }
+.nw-theme-toggle .i-moon { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .nw-theme-toggle .i-sun { display: block; }
+  :root:not([data-theme='light']) .nw-theme-toggle .i-moon { display: none; }
+}
+:root[data-theme='dark'] .nw-theme-toggle .i-sun { display: block; }
+:root[data-theme='dark'] .nw-theme-toggle .i-moon { display: none; }
+:root[data-theme='light'] .nw-theme-toggle .i-sun { display: none; }
+:root[data-theme='light'] .nw-theme-toggle .i-moon { display: block; }
 
 /* ─── masthead + stat band ─── */
 .nw-masthead { padding-top: clamp(26px, 5vw, 46px); }
@@ -258,7 +355,7 @@ body {
 }
 .nw-count { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .13em; color: var(--muted); }
 .nw-count b { color: var(--ink); }
-.nw-seg { display: inline-flex; align-items: center; gap: 3px; background: var(--bone-2); border-radius: 999px; padding: 3px; }
+.nw-seg { display: inline-flex; align-items: center; gap: 3px; background: var(--bone-2); border-radius: 999px; padding: 3px; transition: background-color 220ms var(--ease); }
 .nw-seg .lbl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .13em; color: var(--muted); padding: 0 9px 0 10px; }
 .nw-seg button {
   font: inherit;
@@ -287,7 +384,7 @@ body {
   border-radius: 999px;
   padding: 7px 14px;
   min-height: 36px;
-  transition: border-color 160ms var(--ease), background 160ms var(--ease);
+  transition: border-color 160ms var(--ease), background 160ms var(--ease), color 220ms var(--ease);
 }
 .nw-pill-select {
   font-size: 10.5px;
@@ -344,7 +441,7 @@ body {
   color: inherit;
   text-decoration: none;
   will-change: transform;
-  transition: transform 260ms var(--ease), box-shadow 260ms var(--ease);
+  transition: transform 260ms var(--ease), box-shadow 260ms var(--ease), background-color 220ms var(--ease);
   transform-origin: center center;
 }
 .nw-tile:hover,
@@ -356,8 +453,8 @@ body {
 .nw-tile:active { transform: translateY(-5px) scale(1.02); transition-duration: 90ms; }
 
 .nw-tile .chead {
-  background: var(--ink);
-  color: var(--bone);
+  background: var(--chrome-bg);
+  color: var(--chrome-fg);
   padding: 7px 10px 6px;
   display: flex;
   justify-content: space-between;
@@ -454,7 +551,7 @@ body {
    its (short) set names happened to fit anyway. */
 .nw-tile .cset .truncate { min-width: 0; flex: 1 1 auto; }
 .nw-tile .ticker {
-  background: var(--ink);
+  background: var(--chrome-bg);
   color: var(--flat);
   font-family: 'Martian Mono', ui-monospace, monospace;
   font-variation-settings: 'wdth' 87.5, 'wght' 700;
@@ -466,7 +563,7 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 6px;
-  transition: background 200ms var(--ease);
+  transition: background 200ms var(--ease), color 220ms var(--ease);
   min-height: 31px;
 }
 .nw-tile:hover .ticker,
@@ -525,6 +622,7 @@ body {
   color: var(--muted);
   text-align: center;
   padding: 1rem;
+  transition: color 220ms var(--ease);
 }
 .imgwrap.empty svg { width: 30px; height: 30px; opacity: .55; }
 .imgwrap.empty span { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em; }
@@ -546,7 +644,7 @@ body {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 0 0 1px var(--ink);
-  transition: transform 220ms var(--ease), box-shadow 220ms var(--ease);
+  transition: transform 220ms var(--ease), box-shadow 220ms var(--ease), background-color 220ms var(--ease);
 }
 .nw-setcard:hover,
 .nw-setcard:focus-visible { transform: translateY(-4px); box-shadow: 0 0 0 1px var(--ink), 0 18px 30px -14px rgba(20, 20, 18, .35); }
@@ -590,7 +688,7 @@ body {
   padding: 6px 14px 6px 8px;
   text-decoration: none;
   color: inherit;
-  transition: box-shadow 160ms var(--ease), transform 160ms var(--ease);
+  transition: box-shadow 160ms var(--ease), transform 160ms var(--ease), background-color 220ms var(--ease);
   min-height: 44px;
 }
 .nw-chip:hover,
@@ -605,6 +703,7 @@ body {
   border-radius: 8px;
   box-shadow: 0 0 0 1px var(--ink);
   overflow: hidden;
+  transition: background-color 220ms var(--ease), box-shadow 220ms var(--ease);
 }
 .nw-panel .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; padding: 18px 20px 4px; flex-wrap: wrap; }
 .nw-panel .head .k { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
@@ -630,7 +729,7 @@ body {
 .nw-feed { list-style: none; padding: 0; margin: 0; }
 .nw-feed li { display: flex; gap: 14px; align-items: flex-start; padding: 13px 0; border-bottom: 1px solid var(--hair); }
 .nw-feed li:last-child { border-bottom: 0; }
-.nw-feed .ico { width: 34px; height: 34px; border-radius: 7px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--bone-2); font-size: 13px; overflow: hidden; }
+.nw-feed .ico { width: 34px; height: 34px; border-radius: 7px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--bone-2); font-size: 13px; overflow: hidden; transition: background-color 220ms var(--ease); }
 .nw-feed .ico.up { background: rgba(55, 209, 127, .14); color: var(--signal-deep); }
 .nw-feed .ico.down { color: var(--muted); }
 .nw-feed .ico img { width: 100%; height: 100%; object-fit: cover; }
@@ -698,6 +797,7 @@ body {
   border-radius: 7px;
   box-shadow: 0 0 0 1px var(--hair);
   padding: 12px 14px;
+  transition: background-color 220ms var(--ease), box-shadow 220ms var(--ease);
 }
 .nw-price .src { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); display: flex; justify-content: space-between; gap: 6px; }
 .nw-price .amt { font-family: 'Martian Mono', ui-monospace, monospace; font-variation-settings: 'wdth' 87.5, 'wght' 700; font-size: 20px; letter-spacing: -.05em; margin-top: 6px; white-space: nowrap; }
@@ -730,6 +830,7 @@ body {
   border: 1px solid var(--ink);
   color: var(--ink);
   white-space: nowrap;
+  transition: border-color 220ms var(--ease), color 220ms var(--ease), background-color 220ms var(--ease);
 }
 .nw-badge.slab { background: var(--ink); color: var(--bone); }
 .nw-badge.soft { border-color: var(--hair); color: var(--muted); }
@@ -747,7 +848,7 @@ body {
 
 /* ─── footer ─── */
 .nw-footer {
-  background: var(--ink);
+  background: var(--chrome-bg);
   color: rgba(242, 239, 230, .55);
   padding-block: 22px 26px;
   font-size: 10.5px;
@@ -755,10 +856,10 @@ body {
   letter-spacing: .02em;
   margin-top: auto;
 }
-.nw-footer strong { color: var(--bone); font-weight: 700; }
-.nw-footer a { color: var(--bone); text-decoration: none; border-bottom: 1px solid rgba(242, 239, 230, .3); }
+.nw-footer strong { color: var(--chrome-fg); font-weight: 700; }
+.nw-footer a { color: var(--chrome-fg); text-decoration: none; border-bottom: 1px solid rgba(242, 239, 230, .3); }
 .nw-footer a:hover { border-color: var(--signal); }
-.nw-footer .fbrand { font-variation-settings: 'wdth' 66, 'wght' 900; text-transform: uppercase; font-size: 13px; letter-spacing: .08em; color: var(--bone); margin-bottom: 8px; }
+.nw-footer .fbrand { font-variation-settings: 'wdth' 66, 'wght' 900; text-transform: uppercase; font-size: 13px; letter-spacing: .08em; color: var(--chrome-fg); margin-bottom: 8px; }
 
 /* ─── empty state ─── */
 .nw-empty {
@@ -773,19 +874,19 @@ body {
 .nw-empty p { font-size: 13px; margin-top: 8px; }
 
 /* ─── legacy primitives still used by the admin/auth screens ─── */
-.nw-btn-primary { background: var(--ink); color: var(--bone); border-radius: 8px; padding: 0.6rem 1.1rem; font-weight: 600; transition: opacity 160ms var(--ease); }
+.nw-btn-primary { background: var(--ink); color: var(--bone); border-radius: 8px; padding: 0.6rem 1.1rem; font-weight: 600; transition: opacity 160ms var(--ease), background-color 220ms var(--ease), color 220ms var(--ease); }
 .nw-btn-primary:hover { opacity: 0.85; }
-.nw-card { background: var(--paper); border-radius: 8px; box-shadow: 0 0 0 1px var(--ink); }
-.nw-btn-secondary { background: var(--bone-2); color: var(--ink); border: 1px solid var(--hair); border-radius: 8px; padding: 0.6rem 1.1rem; font-weight: 600; transition: background 160ms var(--ease); }
+.nw-card { background: var(--paper); border-radius: 8px; box-shadow: 0 0 0 1px var(--ink); transition: background-color 220ms var(--ease), box-shadow 220ms var(--ease); }
+.nw-btn-secondary { background: var(--bone-2); color: var(--ink); border: 1px solid var(--hair); border-radius: 8px; padding: 0.6rem 1.1rem; font-weight: 600; transition: background 160ms var(--ease), color 220ms var(--ease), border-color 220ms var(--ease); }
 .nw-btn-secondary:hover { background: var(--bone-3); }
-.nw-btn-danger { background: var(--danger); color: var(--bone); border-radius: 8px; padding: 0.6rem 1.1rem; font-weight: 600; transition: opacity 160ms var(--ease); }
+.nw-btn-danger { background: var(--danger); color: var(--bone); border-radius: 8px; padding: 0.6rem 1.1rem; font-weight: 600; transition: opacity 160ms var(--ease), background-color 220ms var(--ease), color 220ms var(--ease); }
 .nw-btn-danger:hover { opacity: 0.85; }
-.nw-input { background: var(--bone-2); color: var(--ink); border: 1px solid var(--hair); border-radius: 6px; padding: 0.5rem 0.75rem; transition: border-color 160ms var(--ease); }
+.nw-input { background: var(--bone-2); color: var(--ink); border: 1px solid var(--hair); border-radius: 6px; padding: 0.5rem 0.75rem; transition: border-color 160ms var(--ease), background-color 220ms var(--ease), color 220ms var(--ease); }
 .nw-input:focus { border-color: var(--signal); outline: none; box-shadow: none; }
 .nw-link { color: var(--ink); text-decoration: none; border-bottom: 2px solid transparent; transition: opacity 160ms var(--ease), border-color 160ms var(--ease); }
 .nw-link:hover { opacity: 0.7; }
 .nw-link.is-active { border-bottom-color: var(--signal); }
-.nw-topbar .nw-link, .nw-topbar .nw-hover-tint { color: var(--bone); }
+.nw-topbar .nw-link, .nw-topbar .nw-hover-tint { color: var(--chrome-fg); }
 .nw-topbar .nw-row-hover:hover { background: var(--ink-2); }
 .nw-topbar .nw-row-hover.is-active { background: var(--ink-2) !important; }
 .nw-dropdown-link:hover { background: var(--bone-2); }
@@ -839,13 +940,16 @@ body {
    new global dark mode. */
 .nw-home-hero {
   /* Was a separate near-black (#0e0e0c) that didn't quite match the
-     topbar/close section's --ink (#141412) — two close-but-different
+     topbar/close section's ink (#141412) — two close-but-different
      dark tones read as more "off" than either alone, reinforcing the
-     landing-vs-app split. Same --ink everywhere dark appears now. */
-  --home-dark-bg: var(--ink);
+     landing-vs-app split. Same chrome tone everywhere dark appears.
+     --chrome-bg, not --ink: this band is frozen chrome (see the note
+     on --chrome-bg above) and must stay this exact dark regardless of
+     theme, not follow --ink's dark-mode flip to a light value. */
+  --home-dark-bg: var(--chrome-bg);
   --home-dark-muted: #8f8d80;
   background: var(--home-dark-bg);
-  color: var(--bone);
+  color: var(--chrome-fg);
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -899,7 +1003,12 @@ body {
   opacity: 0; animation: nw-home-rise .6s var(--ease) forwards .3s;
 }
 .nw-home-cta {
-  margin-top: 20px; display: inline-block; background: var(--bone); color: var(--home-dark-bg);
+  /* --chrome-fg/--home-dark-bg, not --bone: this button sits on the
+     frozen-dark hero (--home-dark-bg is itself an alias of --chrome-bg,
+     see above) and needs the matching frozen light color regardless of
+     theme — --bone flips dark in dark mode and would render this pill
+     the same near-black as the hero behind it. */
+  margin-top: 20px; display: inline-block; background: var(--chrome-fg); color: var(--home-dark-bg);
   padding: 10px 20px; border-radius: var(--radius-pill, 999px); font-size: 12px; font-weight: 700;
   opacity: 0; animation: nw-home-rise .6s var(--ease) forwards .42s;
 }
@@ -1009,11 +1118,11 @@ body {
    .nw-footer already uses everywhere — not a new dark tone invented for
    this page, so there's no visible seam between this block and the
    footer immediately below it). ─── */
-.nw-home-close { padding: 40px 24px; text-align: center; background: var(--ink); color: var(--bone); }
+.nw-home-close { padding: 40px 24px; text-align: center; background: var(--chrome-bg); color: var(--chrome-fg); }
 .nw-home-close h2 { font-variation-settings: 'wdth' 62, 'wght' 800; font-size: 22px; }
 .nw-home-close h2 .accent { color: var(--signal-deep); }
 .nw-home-close p { color: rgba(242, 239, 230, .55); font-size: 12px; margin-top: 8px; }
 .nw-home-close .cta {
-  display: inline-block; margin-top: 16px; background: var(--bone); color: var(--ink);
+  display: inline-block; margin-top: 16px; background: var(--chrome-fg); color: var(--chrome-bg);
   padding: 10px 20px; border-radius: var(--radius-pill, 999px); font-size: 12px; font-weight: 700;
 }
