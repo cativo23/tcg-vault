@@ -14,6 +14,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
@@ -33,6 +34,20 @@ final class SyncCardPricingJob implements ShouldQueue
     public function backoff(): array
     {
         return [10, 30, 60]; // seconds
+    }
+
+    /**
+     * Shared with every other tcgdex-calling job under the 'tcgdex' named
+     * limiter (AppServiceProvider) — caps total throughput to a safe rate
+     * regardless of how many Horizon workers are configured to run this
+     * queue in parallel. A rate-limited job is released back onto the
+     * queue (not counted as a failed attempt) when the limit is hit.
+     *
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        return [new RateLimited('tcgdex')];
     }
 
     public function handle(CatalogSyncService $syncService): void

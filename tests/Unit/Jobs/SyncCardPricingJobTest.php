@@ -11,8 +11,23 @@ use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CatalogSyncService;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Support\Facades\Log;
 use Spatie\LaravelData\DataCollection;
+
+test('the job is rate-limited so Horizon\'s workers can never burst tcgdex faster than the configured cap', function () {
+    // Found live 2026-09-16: `catalog:refresh-prices` dispatching all
+    // ~1986 cards at once, even with only Horizon's default 2 parallel
+    // workers, drove near-100% "Could not resolve host" failures against
+    // api.tcgdex.net (a single ad-hoc request succeeded fine — this is
+    // burst/DNS-under-load, not a broken endpoint). Whether Horizon runs
+    // 1 worker or 10 in the future, this job must self-limit its own
+    // throughput rather than relying on worker count being small.
+    $middleware = (new SyncCardPricingJob('me05-116'))->middleware();
+
+    expect($middleware)->toHaveCount(1);
+    expect($middleware[0])->toBeInstanceOf(RateLimited::class);
+});
 
 // CatalogSyncService is `final` and this environment has no uopz/runkit
 // extension, so Mockery cannot mock it directly. Instead we mock the

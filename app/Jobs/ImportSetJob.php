@@ -72,6 +72,19 @@ final class ImportSetJob implements ShouldBeUnique, ShouldQueue
         return $this->setTcgdexId;
     }
 
+    /**
+     * Paces the internal per-card loop below — unlike SyncCardPricingJob
+     * (which is one dispatch per card and shares the 'tcgdex' named rate
+     * limiter across separate job executions), this job makes its whole
+     * back-to-back run of calls INSIDE ONE execution, so a job-dispatch
+     * rate limiter never touches it. Found live 2026-09-16: bursting
+     * tcgdex without pacing (even from a single worker) reliably drove
+     * "Could not resolve host" failures under load; a small delay between
+     * calls is what made a 1986-card manual resync succeed afterward.
+     * Skipped in tests so the suite doesn't pay real wall-clock time for it.
+     */
+    private const DELAY_BETWEEN_CARDS_MICROSECONDS = 150_000;
+
     public function handle(CardCatalogProvider $provider, CatalogSyncService $syncService): void
     {
         $cardIds = $provider->listSetCardIds($this->setTcgdexId);
@@ -88,6 +101,10 @@ final class ImportSetJob implements ShouldBeUnique, ShouldQueue
                     'tcgdex_card_id' => $cardId,
                     'reason' => $e->getMessage(),
                 ]);
+            }
+
+            if (! app()->runningUnitTests()) {
+                usleep(self::DELAY_BETWEEN_CARDS_MICROSECONDS);
             }
         }
     }
