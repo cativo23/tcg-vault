@@ -21,17 +21,22 @@
     $photo = $items->first(fn ($i) => $i->photo_path !== null);
     $imageUrl = $photo ? Storage::disk('collection-photos')->url($photo->photo_path) : $card->official_image_url;
     $direction = $delta === null ? null : ($delta->isUp() ? 'up' : ($delta->isDown() ? 'down' : null));
+    // A graded slab replaces the rarity chip entirely (see @elseif
+    // below), so the tier accent only ever needs computing for the
+    // ungraded case — but computing it unconditionally here keeps the
+    // logic in one place instead of duplicated across both branches.
+    $rarityTier = $graded ? 'standard' : Rarity::tier($card->rarity);
 @endphp
 
 <div class="nw-slot" style="--i: {{ $index }}">
-    <a href="{{ $href }}" class="nw-tile {{ $owned ? '' : 'ghost' }}" wire:navigate
+    <a href="{{ $href }}" class="nw-tile {{ $owned ? '' : 'ghost' }} {{ $rarityTier !== 'standard' ? 'rarity-'.$rarityTier : '' }}" wire:navigate
        aria-label="{{ $card->name }}, number {{ $card->local_id }}{{ $card->set ? ', '.$card->set->name : '' }}{{ $owned ? '' : ', not in the collection' }}">
         <div class="chead">
             <span class="num">#{{ $card->local_id }}</span>
             @if ($graded)
                 <span class="rar slab" title="Graded {{ $graded->grade_company }} {{ $graded->grade_value }}">{{ $graded->grade_company }} {{ $graded->grade_value }}</span>
             @elseif (Rarity::abbreviate($card->rarity) !== '')
-                <span class="rar" title="{{ Rarity::label($card->rarity) }}">{{ Rarity::abbreviate($card->rarity) }}</span>
+                <span class="rar {{ $rarityTier !== 'standard' ? 'rarity-'.$rarityTier : '' }}" title="{{ Rarity::label($card->rarity) }}">{{ Rarity::abbreviate($card->rarity) }}</span>
             @endif
         </div>
 

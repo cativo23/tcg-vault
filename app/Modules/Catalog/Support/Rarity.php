@@ -65,4 +65,47 @@ final class Rarity
 
         return Str::title($rarity);
     }
+
+    /**
+     * Standard/silver/chase are which pulls a collector actually hunts
+     * for, not just a listing of KNOWN — 'common'/'uncommon'/'rare' stay
+     * unaccented (the grid's current look), everything one tier up from
+     * a plain pull is 'silver', and the small set of prints that are the
+     * actual chase get 'chase' (a restrained holo treatment, not a
+     * per-rarity color for every one of the 16+ known tiers).
+     *
+     * @var array<string, string>
+     */
+    private const TIERS = [
+        'common' => 'standard',
+        'uncommon' => 'standard',
+        'rare' => 'standard',
+        'rare holo' => 'silver',
+        'holo rare' => 'silver',
+        'double rare' => 'silver',
+        'ultra rare' => 'silver',
+        'promo' => 'silver',
+        'trainer gallery rare holo' => 'silver',
+        'illustration rare' => 'chase',
+        'special illustration rare' => 'chase',
+        'hyper rare' => 'chase',
+        'mega hyper rare' => 'chase',
+        'ace spec rare' => 'chase',
+        'shiny rare' => 'chase',
+        'shiny ultra rare' => 'chase',
+        'secret rare' => 'chase',
+    ];
+
+    /**
+     * A visual accent, not a value judgment — an unrecognized rarity
+     * string (a new set using wording this list doesn't have yet) tiers
+     * as 'standard' rather than guessing, unlike abbreviate()'s own
+     * initials fallback for display.
+     */
+    public static function tier(?string $rarity): string
+    {
+        $key = Str::lower(trim((string) $rarity));
+
+        return self::TIERS[$key] ?? 'standard';
+    }
 }

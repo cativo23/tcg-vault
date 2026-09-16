@@ -103,6 +103,33 @@ Rules that came out of building it:
 - Rarity on a tile is the collector shorthand (`Rarity::abbreviate`: SIR,
   MHR, RR…); the full name lives on the detail page. tcgdex's literal
   `"None"` renders nothing, not "N".
+- **Rarity gets a 3-tier visual accent (`Rarity::tier()`), amending the
+  "one accent, period" rule above** — added 2026-09-16 after Carlos
+  explicitly reconsidered the original "per-type accent colors: tried
+  and rejected" call for this specific case (undifferentiated tiles are
+  a real usability problem for anyone not already fluent in Pokémon
+  rarity abbreviations), and researched how MTG, Hearthstone, and
+  Pokémon TCG Pocket itself solve the same problem before deciding —
+  all three tie the accent to fixed PRINTED rarity, never fluctuating
+  market price, and all follow the same neutral→silver→gold/apex
+  escalation. tcg-vault's version:
+  - `standard` (Common/Uncommon/Rare) — no accent, unchanged from the
+    original "one accent" look.
+  - `silver` (Rare Holo, Double Rare, Ultra Rare, Promo, Trainer
+    Gallery Rare Holo) — `--rarity-silver` on the chip only.
+  - `chase` (Illustration/Special Illustration/Hyper/Mega Hyper/Ace
+    Spec/Shiny(Ultra) Rare, Secret Rare) — a restrained holo-foil
+    gradient (chip text + a thin gradient hairline around the whole
+    tile), reviewed live as a mockup and approved before implementing.
+    This is deliberately NOT the "rainbow-holo rings" direction
+    rejected during the original brainstorm — Carlos clarified that
+    rejection was about that specific execution (a busier, heavier
+    treatment), not the concept of a holo/rainbow accent itself.
+  - An unrecognized rarity string tiers as `standard` — never guessed
+    into `chase`; this is a visual accent, not a value judgment.
+  - This still does NOT reopen the door to per-rarity-STRING colors
+    (16+ distinct hues) or to a price-driven accent — both were
+    considered and explicitly ruled out in the same conversation.
 - A graded copy replaces the rarity chip with the slab label (`PSA 10`) in
   `--signal` on ink; on the detail page it is an ink-filled `.nw-badge.slab`.
 - The collector's own photo is always the primary image when it exists;
