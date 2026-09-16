@@ -49,7 +49,7 @@ test('the features section describes all three real features', function () {
     $response = $this->get('/');
 
     $response->assertOk();
-    $response->assertSee('Real-time pricing');
+    $response->assertSee('Fresh pricing, updated daily');
     $response->assertSee('Your own photo, not a placeholder');
     $response->assertSee('Complete sets, at a glance');
 });
@@ -60,7 +60,7 @@ test('the closing sections show data coverage, FAQ, and repeat the CTA', functio
     $response->assertOk();
     $response->assertSee('tcgdex.dev');
     $response->assertSee('Does it cost anything?');
-    $response->assertSeeInOrder(['Track every', 'Real-time pricing', 'Does it cost anything?', 'Notify me when it opens']);
+    $response->assertSeeInOrder(['Track every', 'Fresh pricing, updated daily', 'Does it cost anything?', 'Notify me when it opens']);
 });
 
 test('the real photo example exists on disk and is referenced by the page', function () {

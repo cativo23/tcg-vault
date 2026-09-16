@@ -6,7 +6,7 @@
             <div class="nw-home-copy">
                 <p class="nw-home-eyebrow">tcg-vault</p>
                 <h1 class="nw-home-h1">Track every <span class="accent">card</span>.</h1>
-                <p class="nw-home-sub">Real-time pricing, value history, every card with its own photo. Not a spreadsheet.</p>
+                <p class="nw-home-sub">Daily pricing, value history, every card with its own photo. Not a spreadsheet.</p>
                 <span class="nw-home-cta">Create your account — coming soon</span>
             </div>
 
@@ -24,7 +24,7 @@
         <div class="nw-home-feature">
             <div>
                 <p class="nw-home-feature-eyebrow">tcg-vault</p>
-                <h2>Real-time pricing</h2>
+                <h2>Fresh pricing, updated daily</h2>
                 <ul>
                     <li>Synced with tcgdex — tcgplayer (USD) and cardmarket (EUR)</li>
                     <li>Watch how your collection's value changes over time</li>
