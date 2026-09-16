@@ -11,6 +11,16 @@
 
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Feature');
 
+// RefreshDatabase resets the database between tests but not the cache
+// store — Setting's cache (see app/Modules/Settings/Models/Setting.php)
+// otherwise leaks a value cached by one test's default into the next
+// test that queries the same key with a different one, since the
+// 'array' cache driver used in testing lives for the whole process,
+// not per-test.
+afterEach(function () {
+    \Illuminate\Support\Facades\Cache::flush();
+});
+
 // Unit tests under Modules/Catalog need the Laravel container for Http::fake()/config(),
 // but this binding does not apply to other Unit tests.
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Catalog');
