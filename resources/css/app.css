@@ -106,12 +106,38 @@ body {
   50% { opacity: .3; transform: scale(.8); }
 }
 .nw-nav {
+  position: relative;
   display: flex;
   gap: clamp(14px, 2vw, 24px);
   font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.11em;
+  /* The brand and admin-link/spacer either side are fixed-width and
+     don't shrink — on a narrow viewport this flex item is what has to
+     give. min-width: 0 lets it shrink below its own content's intrinsic
+     width instead of pushing the whole topbar past the viewport; the
+     resulting horizontal scroll uses the same contained-scroll idiom as
+     .nw-rail/.nw-toolbar .nw-seg elsewhere in this file, not a new one. */
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.nw-nav::-webkit-scrollbar { display: none; }
+.nw-nav::after {
+  /* A hidden scrollbar gives zero indication there's a clipped link
+     past the edge — this fade hints at it without needing JS to track
+     scroll position. Absolutely positioned, so it overlays the nav's
+     own border box and never adds to its scrollWidth. */
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  background: linear-gradient(to right, transparent, var(--ink));
+  pointer-events: none;
 }
 .nw-nav a {
   color: rgba(242, 239, 230, 0.55);
