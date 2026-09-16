@@ -7,8 +7,6 @@ the full picture; this file is what an agent needs before making changes.
 - Read `design.md` before touching any color, spacing, or layout primitive
   — it's a locked design system, amend it explicitly rather than working
   around it.
-- Read `UX-AUDIT-PLAN.md` for the reasoning behind a batch of already-shipped
-  UX fixes (closed out, not an open task list).
 - TDD-first: red → green → refactor. Write the failing test before the
   implementation on every change.
 - Conventional commits (`type(scope): description`), one concern per commit.

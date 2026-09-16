@@ -62,5 +62,3 @@ project's `tdd-first.md` convention.
 - **`deploy/README.md`** — how the production deploy actually works
   (manual build/push/deploy to `polaris2`, no CI yet) and the architecture
   decisions behind it.
-- **`UX-AUDIT-PLAN.md`** — a closed-out UX audit with the reasoning behind
-  a batch of fixes already shipped; useful history, not an open task list.
