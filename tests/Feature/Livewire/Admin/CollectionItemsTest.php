@@ -750,7 +750,30 @@ test('the table shows variant, grading, value, and status columns', function () 
     Livewire::test(\App\Livewire\Admin\CollectionItems::class)
         ->assertSee('Holofoil')
         ->assertSee('PSA 10')
-        ->assertSee('$40.00'); // 2000 minor * qty 2 = 4000 minor = $40.00
+        // Per-unit price, matching the public gallery tile — Qty is its
+        // own column right next to Value, so nothing is lost, and this
+        // way "Value" never means two different things across the app.
+        ->assertSee('$20.00');
+});
+
+test('the value column shows the per-unit price, not multiplied by quantity', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Drilbur']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 18]);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 2, 'variant' => 'normal',
+    ]);
+
+    // A row with 2 copies at $0.18 each must show $0.18 here, matching
+    // what the public gallery tile shows for the same card — not $0.36
+    // (a number that isn't any real market price of anything).
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSee('$0.18')
+        ->assertDontSee('$0.36');
 });
 
 test('an item with no priced snapshot shows an em dash for value', function () {

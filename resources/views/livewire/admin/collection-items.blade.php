@@ -74,8 +74,14 @@
                         // of which variant each copy is.
                         $snapshot = $resolver->resolveForVariant($item->card, $item->variant);
                         $valueKnown = $snapshot?->market_minor !== null;
+                        // Per-unit price, matching the public gallery tile —
+                        // Qty is its own column right next to this one, so
+                        // multiplying here would just be a number that isn't
+                        // any real market price of anything, and would mean
+                        // something different from the same card's "Value"
+                        // on the gallery.
                         $valueLabel = $valueKnown
-                            ? \App\Support\Money::format($snapshot->market_minor * $item->quantity, $snapshot->currency)
+                            ? \App\Support\Money::format($snapshot->market_minor, $snapshot->currency)
                             : '—';
                         $gradingLabel = $item->grade_company && $item->grade_value
                             ? "{$item->grade_company} {$item->grade_value}"

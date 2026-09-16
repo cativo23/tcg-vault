@@ -416,7 +416,11 @@ final class CollectionItems extends Component
                 $snapshot = $resolver->resolveForVariant($item->card, $item->variant);
                 // _valueMinor is a transient, in-memory-only sort key — it
                 // is never persisted, so it must never be passed to save().
-                $item->setAttribute('_valueMinor', $snapshot?->market_minor !== null ? $snapshot->market_minor * $item->quantity : -1);
+                // Per-unit, matching what the Value column actually
+                // displays — sorting by a quantity-multiplied number the
+                // column no longer shows would order rows by a figure
+                // the admin can't see anywhere on the page.
+                $item->setAttribute('_valueMinor', $snapshot?->market_minor ?? -1);
 
                 return $item;
             })->sortByDesc('_valueMinor')->values();
