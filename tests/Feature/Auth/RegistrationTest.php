@@ -55,6 +55,10 @@ test('registration requires a valid username', function () {
     $this->assertGuest();
 });
 
+test('staff is reserved as a username, matching the /staff platform route', function () {
+    expect(\App\Models\User::reservedUsernames())->toContain('staff');
+});
+
 test('registration is inaccessible when TCGVAULT_ALLOW_REGISTRATION is off', function () {
     putenv('TCGVAULT_ALLOW_REGISTRATION=false');
     $_ENV['TCGVAULT_ALLOW_REGISTRATION'] = 'false';

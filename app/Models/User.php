@@ -47,7 +47,7 @@ class User extends Authenticatable
         return [
             'login', 'logout', 'register', 'admin', 'profile', 'gallery',
             'forgot-password', 'reset-password', 'verify-email', 'confirm-password',
-            'dashboard', 'storage', 'livewire', 'up', 'api',
+            'dashboard', 'storage', 'livewire', 'up', 'api', 'staff',
         ];
     }
 
