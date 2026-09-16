@@ -33,8 +33,8 @@ final class Index extends Component
      */
     private const MAX_CARDS = 600;
 
-    /** How many cards load at a time — Carlos chose infinite-scroll
-     * (load more on scroll), not page-number pagination, 2026-09-15.
+    /** How many cards load at a time; the gallery uses infinite scroll
+     * (load more on scroll), not page-number pagination.
      */
     private const PER_PAGE = 24;
 

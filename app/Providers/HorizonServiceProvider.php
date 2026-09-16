@@ -34,10 +34,9 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
         // (queue payload visibility, retry/delete controls) just by being
         // logged in.
         //
-        // Switched from admin_username to admin_email 2026-09-15 — Carlos
-        // asked for both Horizon and Telescope to share the same identity
-        // check, and TelescopeServiceProvider's gate uses email (Telescope's
-        // own stock scaffolding gates on email, not username). Same
+        // Gates on email rather than username so this matches
+        // TelescopeServiceProvider's gate, which uses Telescope's stock
+        // email-based check — both use the same
         // config('tcgvault.admin_email') value the seeder already requires.
         Gate::define('viewHorizon', function ($user = null) {
             return $user !== null && $user->email === config('tcgvault.admin_email');

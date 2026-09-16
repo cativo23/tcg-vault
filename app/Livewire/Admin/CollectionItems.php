@@ -214,10 +214,9 @@ final class CollectionItems extends Component
         // CardPriceSnapshot rows happen to be synced. The cardmarket
         // importer names its only foil-tier price 'holofoil' regardless
         // of whether the card has a straight holo print or only a
-        // reverse-holo one, which used to silently narrow this dropdown
-        // to the wrong single option (Carlos, live, 2026-09-15: Antique
-        // Jaw Fossil — normal + reverse-holofoil print, dropdown only
-        // offered "Holofoil").
+        // reverse-holo one, which would otherwise silently narrow this
+        // dropdown to the wrong single option for a card that is normal +
+        // reverse-holofoil only.
         $variants = CardVariants::available($item->card->variants ?? []);
 
         // Fall back to synced pricing coverage only when the card has no

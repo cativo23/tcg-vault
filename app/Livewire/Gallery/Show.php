@@ -38,9 +38,9 @@ final class Show extends Component
     #[Url(as: 'rarity', except: '')]
     public string $rarityFilter = '';
 
-    // Ghosts (cards the collector doesn't own) are opt-in, off by default —
-    // Carlos flagged live (2026-09-15) that a set page should open on just
-    // the collector's own cards, not the whole official checklist.
+    // Ghosts (cards the collector doesn't own) are opt-in, off by default:
+    // a set page opens on just the collector's own cards, not the whole
+    // official checklist.
     #[Url(as: 'missing', except: false)]
     public bool $showMissing = false;
 
@@ -115,12 +115,11 @@ final class Show extends Component
         };
 
         // Owned cards lead within the chosen order for every sort EXCEPT
-        // "number" — Carlos flagged live (2026-09-15) that the default
-        // numeric sort should be the set's true literal card order (owned
-        // and missing interleaved by their real position), not two
-        // separate owned-then-missing blocks each individually numeric.
-        // The other sort modes (name/rarity/value) keep the original
-        // "collection is the subject" grouping.
+        // "number": the default numeric sort stays the set's true literal
+        // card order (owned and missing interleaved by their real
+        // position), not two separate owned-then-missing blocks each
+        // individually numeric. The other sort modes (name/rarity/value)
+        // keep the "collection is the subject" grouping.
         if ($this->sort !== 'number') {
             $sorted = $sorted->sortByDesc(fn ($e) => $e['owned'] ? 1 : 0, SORT_REGULAR, false)->values();
         } else {

@@ -35,26 +35,16 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     public function __construct(private readonly string $baseUrl) {}
 
     /**
-     * Found live in production 2026-09-15: api.tcgdex.net's DNS record
-     * resolves to an IPv6 address, and the production container's IPv6
-     * egress route to it is dead (100% failure in repeated `curl -6`
-     * tests), while IPv4 succeeds 100% of the time. The system `curl`
-     * binary hides this via its own Happy-Eyeballs fallback, but
-     * Guzzle/cURL inside PHP does not fall back the same way here — jobs
-     * failed intermittently with "Could not resolve host", which is
-     * curl error 6, not a connection-refused error. Forcing IPv4 on
-     * every tcgdex request sidesteps the broken IPv6 route entirely
-     * rather than depending on a resolver-level fix outside this app.
-     *
-     * Regression found live 2026-09-15 (same day): the first fix passed
-     * a raw CURLOPT_IPRESOLVE via the 'curl' options array, which Guzzle
-     * itself rejects — "conflicts with Guzzle-managed request handling"
-     * — because Guzzle already manages that option internally and
-     * refuses to let a caller set it directly. This broke EVERY tcgdex
-     * call in production (search, add-card, imports) with an uncaught
-     * GuzzleHttp\Exception\InvalidArgumentException. Guzzle's own
-     * request-options API has a dedicated option for exactly this case:
-     * 'force_ip_resolve', which is what must be used instead.
+     * api.tcgdex.net's DNS record resolves to an IPv6 address, but the
+     * production container's IPv6 egress route to it is dead while IPv4
+     * succeeds reliably; Guzzle/cURL does not fall back to IPv4 the way
+     * the system `curl` binary's Happy-Eyeballs logic does, so requests
+     * fail intermittently with "Could not resolve host" otherwise.
+     * Forcing IPv4 on every tcgdex request sidesteps the broken IPv6
+     * route rather than depending on a resolver-level fix outside this
+     * app. This must go through Guzzle's 'force_ip_resolve' request
+     * option — Guzzle manages CURLOPT_IPRESOLVE internally and rejects a
+     * raw curl option for it.
      */
     private function http(int $timeoutSeconds): \Illuminate\Http\Client\PendingRequest
     {
@@ -145,10 +135,10 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     {
         $params = ['name' => $query];
 
-        // Verified live against api.tcgdex.net 2026-09-15: 'set.id' narrows
-        // results server-side (dot notation for nested-field filters, per
-        // tcgdex's own filtering docs), so a name search doesn't need to
-        // fetch every cross-set printing and filter in PHP.
+        // 'set.id' narrows results server-side (dot notation for
+        // nested-field filters, per tcgdex's own filtering docs), so a
+        // name search doesn't need to fetch every cross-set printing and
+        // filter in PHP.
         if ($setTcgdexId !== null) {
             $params['set.id'] = $setTcgdexId;
         }
@@ -208,26 +198,20 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
                 // cardmarket's 'avg-holo'/'low-holo'/'trend-holo' price
                 // whatever the card's OTHER foil-tier print is — tcgdex
                 // does not disambiguate straight-holo from reverse-holo
-                // in the field name itself. Found live 2026-09-15:
-                // Antique Jaw Fossil is normal+reverse with no straight
-                // holo print at all, so its 'avg-holo' figure is really
-                // its reverse-holo price, but this always got labeled
-                // 'holofoil' — silently wrong for every normal+reverse
-                // card with no straight holo print (the common case for
-                // non-holo-rarity cards). Cross-reference the card's own
-                // `variants` flags instead of guessing from the field name.
+                // in the field name itself, so a normal+reverse card with
+                // no straight holo print would otherwise get its
+                // reverse-holo price mislabeled 'holofoil'. Cross-reference
+                // the card's own `variants` flags instead of guessing from
+                // the field name.
                 $foilVariants = match (true) {
-                    // Found by an automated security review (2026-09-16):
-                    // ~10% of this catalog (197/1986 cards checked live)
-                    // has BOTH holo and reverse true — a real, common
-                    // case, not an edge case. cardmarket's single
-                    // aggregated figure can't tell those two prints
-                    // apart, so the OLD code attributed it entirely to
-                    // 'holofoil' and silently never priced the
-                    // reverse-holo print at all for these cards, even
-                    // though real market data existed. Surface the same
-                    // figure under BOTH labels instead of dropping one —
-                    // a shared estimate beats total silence.
+                    // A meaningful share of the catalog has BOTH holo and
+                    // reverse true — a common case, not an edge case.
+                    // cardmarket's single aggregated figure can't tell
+                    // those two prints apart, so attributing it to only
+                    // one label would silently leave the other print
+                    // unpriced despite real market data existing. Surface
+                    // the same figure under BOTH labels instead of
+                    // dropping one — a shared estimate beats total silence.
                     ($variants['holo'] ?? false) === true && ($variants['reverse'] ?? false) === true => ['holofoil', 'reverse-holofoil'],
                     ($variants['holo'] ?? false) === true => ['holofoil'],
                     ($variants['reverse'] ?? false) === true => ['reverse-holofoil'],
@@ -294,12 +278,11 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     {
         // tcgdex genuinely uses dotted set IDs for "half sets"/special
         // releases (e.g. "sv08.5" Prismatic Evolutions, "me02.5" Ascended
-        // Heroes) — a card ID from one of those is e.g. "sv08.5-048".
-        // Found live 2026-09-15: the original hyphen-only pattern rejected
-        // these as InvalidTcgdexIdException, even though they're real
-        // tcgdex IDs, not attacker input. Still SSRF-safe: no "/", ":",
-        // or consecutive/leading/trailing "." or "-" can ever match, so
-        // path traversal and protocol/host injection stay impossible.
+        // Heroes) — a card ID from one of those is e.g. "sv08.5-048", so
+        // the pattern must allow "." as well as "-". Still SSRF-safe: no
+        // "/", ":", or consecutive/leading/trailing "." or "-" can ever
+        // match, so path traversal and protocol/host injection stay
+        // impossible.
         if (! preg_match('/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/i', $id)) {
             throw InvalidTcgdexIdException::forId($id);
         }

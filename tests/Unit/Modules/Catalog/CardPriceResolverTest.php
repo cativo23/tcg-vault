@@ -32,12 +32,12 @@ test('falls back to cardmarket default when no tcgplayer normal or holofoil exis
 });
 
 test('falls back to cardmarket normal (not just default) when no tcgplayer normal or holofoil exists', function () {
-    // Since 2026-09-16, the importer labels cardmarket's base price
-    // 'normal' (not 'default') for any card that genuinely has a normal
-    // print (the common case) — the card-level fallback chain must
-    // recognize both labels as "cardmarket's primary listing", not just
-    // the older 'default' string, or it silently falls through to
-    // whichever row happens to sort first instead of the right one.
+    // The importer labels cardmarket's base price 'normal' (not
+    // 'default') for any card that genuinely has a normal print (the
+    // common case) — the card-level fallback chain must recognize both
+    // labels as "cardmarket's primary listing", or it silently falls
+    // through to whichever row happens to sort first instead of the
+    // right one.
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
 

@@ -125,12 +125,11 @@ test('tcgdex\'s literal "None" rarity never becomes a selectable filter option',
 });
 
 test('value sort orders by unit price, not total owned value, and uses the priciest owned variant', function () {
-    // The exact case Carlos flagged live: Inkay (3× normal @ $0.11 =
-    // $0.33 total) was outranking Misty's Vitality (1× @ $0.20) under
-    // "value" — because the old sort used quantity-weighted total, not
-    // unit price. Separately, Inkay's real high-value copy is a
-    // reverse-holofoil ($0.45), which the card-level priority chain
-    // would never even have looked at.
+    // "value" sort must rank by unit price, not quantity-weighted total —
+    // otherwise 3× a cheap normal copy could outrank 1× a pricier card.
+    // It must also use the owned copy's actual variant price (here,
+    // Inkay's high-value copy is a reverse-holofoil), not the card-level
+    // priority chain, which would never even look at that variant.
     $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
@@ -153,9 +152,8 @@ test('value sort orders by unit price, not total owned value, and uses the prici
 });
 
 test('the grid loads 24 cards at a time and load-more reveals the rest', function () {
-    // Carlos explicitly chose infinite-scroll (load-more), not page-number
-    // pagination: 2026-09-15, "paginacion de que cuando bajas se carguen
-    // las siguientes, y asi no como con paginas reales".
+    // The gallery uses infinite-scroll (load-more), not page-number
+    // pagination.
     $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);

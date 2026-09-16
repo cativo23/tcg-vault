@@ -29,9 +29,8 @@ test('lists sets the user has at least one card from, with correct completion co
 });
 
 test('owning even one card out of a huge set never rounds the progress bar down to 0%', function () {
-    // Carlos flagged live (2026-09-15): Ascended Heroes showed an empty
-    // progress bar for 1/217 owned (0.46%, which plain round() truncates
-    // to 0) — visually indistinguishable from owning nothing at all.
+    // A tiny nonzero fraction (1/217 = 0.46%) must not round down to 0%,
+    // which would be visually indistinguishable from owning nothing at all.
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me02.5', 'name' => 'Ascended Heroes', 'card_count' => 217]);

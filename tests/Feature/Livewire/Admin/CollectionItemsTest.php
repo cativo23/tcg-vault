@@ -29,10 +29,9 @@ test('the collection index lists the authenticated users items', function () {
 });
 
 test('the value column prices each row at its OWN variant, not the card-level default for every row', function () {
-    // Reproduces exactly what Carlos saw live: a normal and a
-    // reverse-holofoil Wailmer both showing $0.16 — the table cell
-    // re-resolved price straight from resolve($item->card), ignoring
-    // which variant each row actually is.
+    // A normal and a reverse-holofoil copy of the same card must not
+    // show the same price — the cell must price each row by its own
+    // variant, not by re-resolving the card-level default.
     $user = User::factory()->create();
     $this->actingAs($user);
 
@@ -418,14 +417,12 @@ test('when a card has no synced pricing data the variant dropdown falls back to 
 });
 
 test('the variant dropdown uses the card\'s own print flags, not just synced pricing coverage', function () {
-    // Reproduces exactly what Carlos flagged live (2026-09-15): Antique
-    // Jaw Fossil (Perfect Order) is a normal + reverse-holofoil print
-    // (no straight holo), owned as "normal" — but only synced with a
-    // cardmarket 'holofoil' price row (the importer mislabels
-    // cardmarket's reverse-holo price as 'holofoil' for cards with no
-    // straight holo print). The old CardPriceSnapshot-derived dropdown
-    // logic only ever offered "Holofoil". The card's own `variants` flags
-    // (from tcgdex, always synced) know better.
+    // A card that is normal + reverse-holofoil (no straight holo), owned
+    // as "normal" but only synced with a cardmarket 'holofoil' price row
+    // (the importer mislabels cardmarket's reverse-holo price as
+    // 'holofoil' for cards with no straight holo print), must still offer
+    // the correct variants. The card's own `variants` flags (from tcgdex,
+    // always synced) are the reliable source, not synced pricing rows.
     $user = User::factory()->create();
     $this->actingAs($user);
 

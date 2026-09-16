@@ -146,10 +146,10 @@ test('resolves an already-synced card from the local catalog without calling tcg
 });
 
 test('flags a locally-synced card as variant-ambiguous when it has more than one known price variant', function () {
-    // Real bug, found live 2026-09-15: TCGplayer's export never marks which
-    // physical copy is holofoil vs normal, so two separately-exported lines
-    // for a card with a known holofoil variant merge into one "qty 3, no
-    // variant" entry with zero signal for which copies are which.
+    // TCGplayer's export never marks which physical copy is holofoil vs
+    // normal, so two separately-exported lines for a card with a known
+    // holofoil variant merge into one "qty 3, no variant" entry with zero
+    // signal for which copies are which.
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-037', 'set_id' => $set->id, 'local_id' => '037', 'name' => 'Lampent']);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 500]);

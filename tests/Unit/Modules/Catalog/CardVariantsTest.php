@@ -6,10 +6,9 @@ use App\Modules\Catalog\Support\CardVariants;
 
 test('maps tcgdex\'s own variant flags to this app\'s variant vocabulary', function () {
     // Antique Jaw Fossil (Perfect Order): normal + reverse-holofoil print,
-    // no straight holo — exactly the card Carlos flagged live (2026-09-15)
-    // where the edit dropdown only offered "Holofoil" because that logic
-    // was reading synced CardPriceSnapshot rows (mislabeled by the
-    // cardmarket importer) instead of the card's own real variant flags.
+    // no straight holo. A card like this must map to its real variants
+    // even though the cardmarket importer mislabels its synced price row
+    // as 'holofoil'.
     expect(CardVariants::available([
         'holo' => false,
         'normal' => true,

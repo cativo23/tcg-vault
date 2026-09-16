@@ -31,12 +31,11 @@ final class AddCollectionItem extends Component
     /**
      * Human set names for the current $results, keyed by setTcgdexId —
      * searchCardsByName() only returns the raw tcgdex set id (e.g.
-     * "sv02"), which isn't enough to tell apart the many cards with the
-     * same name across different sets (Carlos, live: "por que hay varios
-     * pikachus" — several results, no readable way to tell which was
-     * "sv02-062" apart from the others). Resolved from the local Catalog
-     * only — no extra tcgdex round-trip per result — so a set that was
-     * never synced locally just falls back to showing its raw code.
+     * "sv02"), which isn't enough to tell apart the many cards sharing
+     * the same name across different sets. Resolved from the local
+     * Catalog only — no extra tcgdex round-trip per result — so a set
+     * that was never synced locally just falls back to showing its raw
+     * code.
      *
      * @var array<string, string>
      */

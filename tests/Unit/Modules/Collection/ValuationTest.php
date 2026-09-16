@@ -37,11 +37,11 @@ test('totals are kept per currency and multiplied by owned quantity, USD listed 
 });
 
 test('cardTotal values each owned copy at its OWN variant\'s price, not one blanket card price times total quantity', function () {
-    // The exact shape Carlos flagged live: 2 normal Inkay + 1
-    // reverse-holofoil Inkay. The old behaviour resolved ONE snapshot
+    // A card with 2 normal copies + 1 reverse-holofoil copy must value
+    // each copy at its own variant's price — resolving a single snapshot
     // for the whole card (the card-level priority chain, which would
-    // never even look at reverse-holofoil) and multiplied it by all 3
-    // copies — either undervaluing or overvaluing the holo copy.
+    // never even look at reverse-holofoil) and multiplying by total
+    // quantity would under- or over-value the holo copy.
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);

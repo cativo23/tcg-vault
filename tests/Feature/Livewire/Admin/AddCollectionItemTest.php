@@ -157,10 +157,9 @@ test('selecting a card narrows the variant dropdown to what that card actually h
 });
 
 test('selecting a card uses its own print flags, not just synced pricing coverage', function () {
-    // Same real bug as the admin table edit modal (2026-09-15): Antique
-    // Jaw Fossil is a normal + reverse-holofoil print with no straight
-    // holo, but its only synced price is cardmarket's mislabeled
-    // 'holofoil' row.
+    // A card that is normal + reverse-holofoil with no straight holo
+    // print, but whose only synced price is cardmarket's 'holofoil' row
+    // (mislabeled reverse-holo), must still offer the correct variants.
     $user = User::factory()->create();
     $this->actingAs($user);
     Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);

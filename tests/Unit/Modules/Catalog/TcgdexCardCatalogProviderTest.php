@@ -72,13 +72,11 @@ test('findCard maps a tcgdex payload into a CardDetailData with normalized price
 });
 
 test('a cardmarket-only card with no straight holo print labels its prices normal/reverse-holofoil, never a misnamed holofoil', function () {
-    // Reproduces exactly what Carlos flagged live (2026-09-15): Antique
-    // Jaw Fossil (me03-068, Perfect Order) is a normal + reverse-holofoil
-    // print with NO straight holo — but the importer used to
-    // unconditionally label cardmarket's 'avg' as 'default' and
-    // 'avg-holo' as 'holofoil', regardless of what the card's own
-    // `variants` flags say. tcgdex's real payload for this card (verified
-    // live against api.tcgdex.net):
+    // Antique Jaw Fossil (me03-068, Perfect Order) is a normal +
+    // reverse-holofoil print with NO straight holo. Labeling must be
+    // driven by the card's own `variants` flags, not an unconditional
+    // 'default'/'holofoil' assumption. tcgdex's real payload for this
+    // card:
     Http::fake([
         'api.tcgdex.net/v2/en/cards/me03-068' => Http::response([
             'id' => 'me03-068',
@@ -111,17 +109,13 @@ test('a cardmarket-only card with no straight holo print labels its prices norma
 });
 
 test('a card with BOTH a straight holo and a reverse-holo print gets cardmarket coverage for both, not just one', function () {
-    // Found by an automated security review (2026-09-16): for a card
-    // with normal+holo+reverse all true (real for ~10% of this app's
-    // catalog — 197/1986 cards checked live), cardmarket's payload only
-    // ever has ONE aggregated foil-tier figure ('avg-holo'), and the
-    // old match(true) logic attributed it entirely to 'holofoil' — no
-    // PriceEntryData for 'reverse-holofoil' was ever constructed, so a
-    // collector who owns the reverse-holo print got null/no price at
-    // all despite real market data existing. cardmarket can't actually
-    // disambiguate which foil tier its one figure represents, so the
-    // same figure is now surfaced under BOTH labels rather than
-    // silently dropping one.
+    // For a card with normal+holo+reverse all true (a meaningful share
+    // of this app's catalog, not an edge case), cardmarket's payload only
+    // ever has ONE aggregated foil-tier figure ('avg-holo'). cardmarket
+    // can't disambiguate which foil tier that figure represents, so it
+    // must be surfaced under BOTH labels rather than attributed to only
+    // one — otherwise a collector who owns the other print gets no price
+    // at all despite real market data existing.
     Http::fake([
         'api.tcgdex.net/v2/en/cards/me05-777' => Http::response([
             'id' => 'me05-777',
@@ -201,13 +195,12 @@ test('findSet maps a tcgdex set payload into SetSummaryData', function () {
     expect($set->tcgdexId)->toBe('me05');
     expect($set->name)->toBe('Pitch Black');
     expect($set->series)->toBe('Mega Evolution');
-    // Carlos flagged live (2026-09-16): 'official' (84) is the set's
-    // PRINTED checklist number — every card, secrets included, still
-    // prints e.g. "116/084" on itself — but it undercounts what's
-    // actually collectible. 'total' (120) includes secret rares (which
-    // this app already imports in full via ImportSetJob/listSetCardIds),
-    // so completion % must be measured against it, matching how other
-    // TCG trackers (Pokellector, TCGCollector) represent completion.
+    // 'official' (84) is the set's PRINTED checklist number — every card,
+    // secrets included, still prints e.g. "116/084" on itself — but it
+    // undercounts what's actually collectible. 'total' (120) includes
+    // secret rares (which this app already imports in full via
+    // ImportSetJob/listSetCardIds), so completion % must be measured
+    // against it, matching how other TCG trackers represent completion.
     expect($set->cardCount)->toBe(120);
     expect($set->logoUrl)->toBe('https://assets.tcgdex.net/en/me/me05/logo.png');
 });
