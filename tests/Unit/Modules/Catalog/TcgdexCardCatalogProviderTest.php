@@ -367,7 +367,7 @@ test('searchCardsByName maps tcgdex brief results into CardSummaryData', functio
     Http::assertSent(function ($request) {
         // Guzzle/Laravel's array-form query encoding uses %20 for spaces
         // (RFC 3986), not '+' — verified against this app's HTTP client.
-        return $request->url() === 'https://api.tcgdex.net/v2/en/cards?name=Mega%20Darkrai';
+        return $request->url() === 'https://api.tcgdex.net/v2/en/cards?name=Mega%20Darkrai&pagination%3Apage=1&pagination%3AitemsPerPage=24';
     });
 });
 
@@ -378,7 +378,7 @@ test('searchCardsByName includes set.id in the request when a set filter is give
     $provider->searchCardsByName('Pikachu', 'sv02');
 
     Http::assertSent(function ($request) {
-        return $request->url() === 'https://api.tcgdex.net/v2/en/cards?name=Pikachu&set.id=sv02';
+        return $request->url() === 'https://api.tcgdex.net/v2/en/cards?name=Pikachu&set.id=sv02&pagination%3Apage=1&pagination%3AitemsPerPage=24';
     });
 });
 
@@ -389,7 +389,38 @@ test('searchCardsByName omits set.id from the request when no set filter is give
     $provider->searchCardsByName('Pikachu');
 
     Http::assertSent(function ($request) {
-        return $request->url() === 'https://api.tcgdex.net/v2/en/cards?name=Pikachu';
+        return $request->url() === 'https://api.tcgdex.net/v2/en/cards?name=Pikachu&pagination%3Apage=1&pagination%3AitemsPerPage=24';
+    });
+});
+
+test('searchCardsByName always paginates server-side, so a common name can never return an unbounded wall of results', function () {
+    // tcgdex returns every match in one response unless pagination:page /
+    // pagination:itemsPerPage are sent (https://tcgdex.dev/rest/filtering-sorting-pagination#pagination)
+    // — omitting them was the actual root cause of the "Pikachu" search
+    // returning 200+ tiles. Defaulting to page 1 keeps this safe even for
+    // an unfiltered search on the very first call.
+    Http::fake(['api.tcgdex.net/v2/en/cards*' => Http::response([], 200)]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $provider->searchCardsByName('Pikachu');
+
+    Http::assertSent(function ($request) {
+        parse_str(parse_url($request->url(), PHP_URL_QUERY), $query);
+
+        return $query['pagination:page'] === '1' && $query['pagination:itemsPerPage'] === '24';
+    });
+});
+
+test('searchCardsByName requests a later page when asked, for loading more results', function () {
+    Http::fake(['api.tcgdex.net/v2/en/cards*' => Http::response([], 200)]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $provider->searchCardsByName('Pikachu', null, page: 3);
+
+    Http::assertSent(function ($request) {
+        parse_str(parse_url($request->url(), PHP_URL_QUERY), $query);
+
+        return $query['pagination:page'] === '3' && $query['pagination:itemsPerPage'] === '24';
     });
 });
 

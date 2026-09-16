@@ -32,6 +32,15 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      */
     private const SET_LISTING_TIMEOUT = 20;
 
+    /**
+     * tcgdex returns every match for a name search in one response unless
+     * pagination:page/pagination:itemsPerPage are sent (both required —
+     * https://tcgdex.dev/rest/filtering-sorting-pagination#pagination).
+     * A common name unfiltered by set can match 200+ printings, which
+     * would otherwise render as an unbounded wall of result tiles.
+     */
+    private const SEARCH_PAGE_SIZE = 24;
+
     public function __construct(private readonly string $baseUrl) {}
 
     /**
@@ -131,7 +140,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         return array_map(static fn (array $card): string => $card['id'], $cards);
     }
 
-    public function searchCardsByName(string $query, ?string $setTcgdexId = null): array
+    public function searchCardsByName(string $query, ?string $setTcgdexId = null, int $page = 1): array
     {
         $params = ['name' => $query];
 
@@ -142,6 +151,9 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         if ($setTcgdexId !== null) {
             $params['set.id'] = $setTcgdexId;
         }
+
+        $params['pagination:page'] = $page;
+        $params['pagination:itemsPerPage'] = self::SEARCH_PAGE_SIZE;
 
         $response = $this->http(self::REQUEST_TIMEOUT)->get('cards', $params);
 
