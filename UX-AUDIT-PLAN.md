@@ -23,8 +23,9 @@ effect of an unrelated fix.
 ## Status legend
 🔲 not started · 🟡 in progress · ✅ done locally · 🚀 deployed to prod
 
-**Items #1 and #2 are ✅ done locally** (see below). **Resume at #3**
-(mobile nav + set-pill row overflow).
+**Items #1, #2 and #3 are ✅ done locally** (see below). **Resume at #4**
+(TCGPlayer import error + language — needs one decision from Carlos
+before implementing).
 
 ---
 
@@ -86,17 +87,35 @@ page, and selecting a card still works normally.
 
 7 new tests (2 provider, 5 component); full suite 310/310 passing.
 
-## 3. 🔲 Mobile nav + set-pill row overflow the viewport
+## 3. ✅ Mobile nav + set-pill row overflow the viewport
 
-**Problem**: At ~390px, top nav clips "ACTIVITY" with no collapse/hamburger,
-and the set-pill rail (`/{username}` home) overflows past the right edge —
-confirmed real horizontal overflow (`scrollWidth` > `clientWidth`), not just
-a visual impression. Distinct from the card-tile truncation bug already
-fixed this session (`resources/css/app.css` — the `.cset .truncate`
-min-width fix) — that one was inside the grid; this one is the nav/rail
-chrome itself.
-**Likely area**: `.nw-topbar`/`.nw-nav` and `.nw-rail` in `resources/css/app.css`.
-**Severity**: Blocker (mobile).
+**Re-measured live at 390px (forced viewport, since window resizing wasn't
+available in this session's browser tool) — only half of this was a real
+bug:**
+
+- **Nav (`.nw-topbar`)**: real. `scrollWidth 450` vs `clientWidth 390` —
+  the topbar itself pushed the whole page 60px past the viewport, and
+  "ACTIVITY" was genuinely clipped with no way to reach it.
+- **Set-pill rail (`.nw-rail`)**: not a bug. It overflows *internally*
+  (595 vs 322) but its own parent never does (390 = 390) — `.nw-rail` is
+  already a deliberately contained scroll rail (`overflow-x: auto` +
+  hidden scrollbar), the same idiom as `.nw-toolbar .nw-seg` and
+  `.nw-strip` elsewhere in this file. Working as designed, just with no
+  visual hint that more content exists past the edge — noted in the
+  backlog below, not a blocker.
+
+**Fix applied to `.nw-nav`**: `min-width: 0` lets it shrink instead of
+forcing the topbar wider than the viewport, `overflow-x: auto` +
+hidden scrollbar contains the overflow instead of leaking it to the
+page (same idiom as the rail), and a `::after` fade-gradient hints
+there's more to scroll to — a hidden scrollbar alone gave zero
+indication "ACTIVITY" was reachable. No hamburger/JS needed; `design.md`
+has no responsive guidance that would block this.
+
+Verified live: at a forced 390px width the topbar no longer overflows
+the page (`scrollWidth === clientWidth`), and scrolling the nav strip
+reveals "ACTIVITY" fully legible. Full suite still 313/313 (CSS-only
+change, no new test coverage needed).
 
 ## 4. 🔲 TCGPlayer import: dev-facing error + untranslated page
 
@@ -146,3 +165,7 @@ this need review" hint.
   moment after retyping/pasting — no spinner while a request is in flight.
 - Newly-added card with no tcgdex price data shows a bare "—" in Value
   with no explanation (e.g. a tooltip).
+- `.nw-rail` (set pills on `/{username}`) has a working contained scroll
+  but a fully hidden scrollbar and no fade/edge hint — same affordance
+  gap `.nw-nav` had before item #3's fix; low priority since it's a
+  content rail users already expect to swipe, not primary nav.
