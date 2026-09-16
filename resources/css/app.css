@@ -235,6 +235,23 @@ body {
   padding-top: 16px;
 }
 .nw-toolbar-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nw-search-wrap { position: relative; display: inline-flex; }
+.nw-search-loading {
+  /* Debounce + a real request round-trip is a real, visible ~2s pause on
+     a slow connection — nothing on screen changes until the results
+     re-render, which reads as broken rather than "still typing." A small
+     pulsing dot, not text, so it doesn't reflow the toolbar row. */
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: nw-pulse 1s var(--ease) infinite;
+  pointer-events: none;
+}
 .nw-count { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .13em; color: var(--muted); }
 .nw-count b { color: var(--ink); }
 .nw-seg { display: inline-flex; align-items: center; gap: 3px; background: var(--bone-2); border-radius: 999px; padding: 3px; }
@@ -786,7 +803,11 @@ body {
    extends that dark band down further for this one page, it isn't a
    new global dark mode. */
 .nw-home-hero {
-  --home-dark-bg: #0e0e0c;
+  /* Was a separate near-black (#0e0e0c) that didn't quite match the
+     topbar/close section's --ink (#141412) — two close-but-different
+     dark tones read as more "off" than either alone, reinforcing the
+     landing-vs-app split. Same --ink everywhere dark appears now. */
+  --home-dark-bg: var(--ink);
   --home-dark-muted: #8f8d80;
   background: var(--home-dark-bg);
   color: var(--bone);
