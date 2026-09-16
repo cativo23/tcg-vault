@@ -6,13 +6,14 @@ use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
 Route::middleware('guest')->group(function () {
-    // Single-admin personal vault: registration is a deliberate opt-in,
-    // gated behind config('tcgvault.allow_registration') (see config/tcgvault.php).
-    // Off by default, so the route doesn't exist at all rather than exist-but-blocked.
-    if (config('tcgvault.allow_registration')) {
-        Volt::route('register', 'pages.auth.register')
-            ->name('register');
-    }
+    // Always registered — whether it shows the real form or an
+    // invite-only notice is a runtime decision inside the component
+    // itself (Setting::get('registration.open'), falling back to
+    // config('tcgvault.allow_registration')), not whether this route
+    // exists. Toggling registration must never make the route
+    // disappear out from under someone mid-flow, and needs no deploy.
+    Volt::route('register', 'pages.auth.register')
+        ->name('register');
 
     // Deliberately ALWAYS registered, independent of allow_registration —
     // the invite flow is the beta's only way in, and toggling public

@@ -22,6 +22,8 @@ test('registration screen can be rendered', function () {
 });
 
 test('new users can register', function () {
+    $this->seed(\Database\Seeders\PermissionSeeder::class);
+
     $component = Volt::test('pages.auth.register')
         ->set('name', 'Test User')
         ->set('username', 'testuser')
@@ -59,18 +61,36 @@ test('staff is reserved as a username, matching the /staff platform route', func
     expect(\App\Models\User::reservedUsernames())->toContain('staff');
 });
 
-test('registration is inaccessible when TCGVAULT_ALLOW_REGISTRATION is off', function () {
-    putenv('TCGVAULT_ALLOW_REGISTRATION=false');
-    $_ENV['TCGVAULT_ALLOW_REGISTRATION'] = 'false';
-    $_SERVER['TCGVAULT_ALLOW_REGISTRATION'] = 'false';
+// /register is now ALWAYS registered — a runtime-togglable setting
+// decides whether it shows the real form or an invite-only notice, not
+// whether the route exists. This is deliberate: an admin flipping the
+// setting off must never lock out someone mid-registration by making
+// the route itself disappear, and toggling it needs no deploy.
 
-    try {
-        $this->refreshApplication();
+test('registration shows an invite-only notice, not a 404, when closed', function () {
+    config(['tcgvault.allow_registration' => false]);
 
-        $this->get('/register')->assertNotFound();
-    } finally {
-        putenv('TCGVAULT_ALLOW_REGISTRATION');
-        unset($_ENV['TCGVAULT_ALLOW_REGISTRATION'], $_SERVER['TCGVAULT_ALLOW_REGISTRATION']);
-        $this->refreshApplication();
-    }
+    $response = $this->get('/register');
+
+    $response->assertOk();
+    $response->assertDontSee('wire:submit="register"', false);
+});
+
+test('the invite-only notice has no request-access form or CTA — invites are handed out manually', function () {
+    config(['tcgvault.allow_registration' => false]);
+
+    $response = $this->get('/register');
+
+    $response->assertDontSeeText(__('Request access'));
+    $response->assertDontSee('<input', false);
+});
+
+test('registration is reachable when the runtime setting overrides a closed config default', function () {
+    config(['tcgvault.allow_registration' => false]);
+    \App\Modules\Settings\Models\Setting::set('registration.open', true);
+
+    $this->get('/register')
+        ->assertOk()
+        ->assertSeeVolt('pages.auth.register')
+        ->assertSee('wire:submit="register"', false);
 });
