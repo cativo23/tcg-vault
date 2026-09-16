@@ -35,3 +35,27 @@ test('a regular user does not pass a gate it has no permission for', function ()
 
     expect(Gate::forUser($user)->allows('some-permission-that-does-not-exist-yet'))->toBeFalse();
 });
+
+test('a user with use-collection can reach the admin collection routes', function () {
+    Role::create(['name' => 'user'])->givePermissionTo(
+        \Spatie\Permission\Models\Permission::create(['name' => 'use-collection']),
+    );
+    $user = User::factory()->create();
+    $user->assignRole('user');
+
+    $this->actingAs($user)->get('/admin')->assertOk();
+});
+
+test('a user without use-collection is forbidden from the admin collection routes', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->get('/admin')->assertForbidden();
+});
+
+test('a super-admin can reach the admin collection routes without the use-collection permission', function () {
+    Role::create(['name' => 'super-admin']);
+    $user = User::factory()->create();
+    $user->assignRole('super-admin');
+
+    $this->actingAs($user)->get('/admin')->assertOk();
+});

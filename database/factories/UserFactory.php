@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
 
 /**
  * @extends Factory<User>
@@ -16,6 +17,23 @@ class UserFactory extends Factory
      * The current password being used by the factory.
      */
     protected static ?string $password;
+
+    /**
+     * A plain factory user models an ordinary collector unless a test
+     * says otherwise — so it gets the `user` role (and its
+     * use-collection permission) by default, same as every real invited
+     * account. Guarded on the role actually existing: plenty of tests
+     * never seed roles/permissions at all, and Spatie throws rather than
+     * no-op on an unknown role name.
+     */
+    public function configure(): static
+    {
+        return $this->afterCreating(function (User $user) {
+            if (Role::where('name', 'user')->exists()) {
+                $user->assignRole('user');
+            }
+        });
+    }
 
     /**
      * Define the model's default state.

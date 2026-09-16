@@ -108,6 +108,7 @@ test('users can not authenticate with invalid password', function () {
 });
 
 test('navigation menu can be rendered', function () {
+    $this->seed(\Database\Seeders\PermissionSeeder::class);
     $user = User::factory()->create();
 
     $this->actingAs($user);

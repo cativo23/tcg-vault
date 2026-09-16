@@ -26,16 +26,20 @@ Route::view('profile', 'profile')
     ->middleware(['auth'])
     ->name('profile');
 
+// Gated on the use-collection permission, not just auth — a
+// platform-management-only admin (content admin, billing admin, when
+// those exist) must not get a personal gallery just by being an admin.
+// super-admin passes regardless via AppServiceProvider's Gate::before.
 Route::get('/admin/add', AddCollectionItem::class)
-    ->middleware(['auth'])
+    ->middleware(['auth', 'can:use-collection'])
     ->name('admin.collection.add');
 
 Route::get('/admin/import', Import::class)
-    ->middleware(['auth'])
+    ->middleware(['auth', 'can:use-collection'])
     ->name('admin.collection.import');
 
 Route::get('/admin', CollectionItems::class)
-    ->middleware(['auth'])
+    ->middleware(['auth', 'can:use-collection'])
     ->name('admin.collection.index');
 
 // Every auth.php route (login, register, forgot-password, the

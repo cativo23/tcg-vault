@@ -35,6 +35,7 @@ test('the guest layout renders the anti-FOUC theme script', function () {
 });
 
 test('the authenticated app layout exposes a theme toggle button', function () {
+    $this->seed(\Database\Seeders\PermissionSeeder::class);
     $user = User::factory()->create();
 
     $response = $this->actingAs($user)->get('/admin');
@@ -47,6 +48,7 @@ test('no layout renders the hardcoded Tailwind colors that used to bypass the to
     $loginHtml = $this->get('/login')->getContent();
     expect($loginHtml)->not->toContain('text-gray-900');
 
+    $this->seed(\Database\Seeders\PermissionSeeder::class);
     $user = User::factory()->create();
     $adminHtml = $this->actingAs($user)->get('/admin')->getContent();
     expect($adminHtml)->not->toContain('bg-white');
