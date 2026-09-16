@@ -347,6 +347,73 @@ test('starting a new search resets back to the first page', function () {
         ->assertCount('results', 1);
 });
 
+test('loading more does nothing when there is no active search, instead of calling tcgdex with an empty query', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldNotReceive('searchCardsByName');
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->call('loadMoreResults')
+        ->assertSet('results', []);
+});
+
+test('loading more does nothing once hasMoreResults is false, even if called directly', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->with('Darkrai', null)->once()->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: null),
+    ]);
+    // Never a second call — the component's own action, not just the UI's
+    // "Load more" button being hidden, must be what stops further fetching.
+    $provider->shouldNotReceive('searchCardsByName')->with('Darkrai', null, Mockery::any());
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Darkrai')
+        ->call('runSearch')
+        ->assertSet('hasMoreResults', false)
+        ->call('loadMoreResults')
+        ->assertCount('results', 1);
+});
+
+test('loading more stops at a hard ceiling even if a client calls it directly, over and over', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $fullPage = fn () => array_map(
+        fn (int $i) => new CardSummaryData(tcgdexId: "sv02-{$i}", setTcgdexId: 'sv02', localId: (string) $i, name: 'Pikachu', imageUrl: null),
+        range(1, 24),
+    );
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    // First page (runSearch) + enough further pages to reach the ceiling,
+    // never beyond it — bounds real outbound calls to tcgdex regardless
+    // of how many times a client invokes the action.
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn($fullPage());
+    $provider->shouldReceive('searchCardsByName')->with('Pikachu', null, Mockery::any())->andReturn($fullPage());
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $component = Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+        ->set('search', 'Pikachu')
+        ->call('runSearch');
+
+    // Calling far past any plausible legitimate "keep scrolling" count.
+    for ($i = 0; $i < 30; $i++) {
+        $component->call('loadMoreResults');
+    }
+
+    expect(count($component->get('results')))->toBeLessThanOrEqual(240);
+    $component->assertSet('hasMoreResults', false);
+});
+
 test('a stale search error clears once a later search succeeds', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

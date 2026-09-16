@@ -33,6 +33,20 @@ final class AddCollectionItem extends Component
      */
     private const RESULTS_PER_PAGE = 24;
 
+    /**
+     * Ceiling on how many results loadMoreResults() can accumulate.
+     * loadMoreResults() is a public Livewire action a client can invoke
+     * directly regardless of what's rendered — hasMoreResults is only a
+     * rendering hint (it decides whether the button/scroll-trigger
+     * exists), not something that stops the action itself. Without a
+     * ceiling enforced inside the action, repeated direct calls would
+     * fetch tcgdex pages without limit — unbounded outbound requests
+     * (the exact rate-limit/ban risk this app already works to avoid
+     * elsewhere) and an ever-growing $results array kept in Livewire's
+     * serialized component state.
+     */
+    private const MAX_RESULTS = self::RESULTS_PER_PAGE * 10;
+
     /** @var array<int, CardSummaryData> */
     public array $results = [];
 
@@ -150,13 +164,23 @@ final class AddCollectionItem extends Component
      */
     public function loadMoreResults(CardCatalogProvider $provider): void
     {
+        // Mirrors runSearch()'s own empty-search gate — this is a public
+        // action, not just a button behind that same check in the view.
+        // hasMoreResults/MAX_RESULTS are enforced here too, not only used
+        // to decide whether to render the "Load more" trigger, so a
+        // client calling this directly and repeatedly can't outrun them.
+        if ($this->search === '' || ! $this->hasMoreResults || count($this->results) >= self::MAX_RESULTS) {
+            return;
+        }
+
         $this->searchPage++;
 
         try {
             $nextPage = $provider->searchCardsByName($this->search, $this->setFilter ?: null, $this->searchPage);
             $this->results = [...$this->results, ...$nextPage];
             $this->resultSetNames = [...$this->resultSetNames, ...$this->setNamesFor($nextPage)];
-            $this->hasMoreResults = count($nextPage) >= self::RESULTS_PER_PAGE;
+            $this->hasMoreResults = count($nextPage) >= self::RESULTS_PER_PAGE
+                && count($this->results) < self::MAX_RESULTS;
         } catch (Throwable $e) {
             report($e);
 
