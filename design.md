@@ -3,11 +3,12 @@
 Locked design system. Future Hallmark runs read this file first; pages defer
 to it. Amend intentionally — the file is the rule.
 
-Reference implementation: `.superpowers/brainstorm/2045737-1789365953/content/vault-final.html`
-(the "Colección" screen, approved by Carlos after a long comparative brainstorm —
-see history in that session for everything explicitly rejected along the way:
-nightwire/cyberpunk, luxury-vault gold, auction-ledger no-image layouts,
-rainbow-holo rings, per-type accent colors, and ~6 rejected font pairings).
+The tokens and rules below came out of a long comparative brainstorm (Carlos
+approved the "Colección" screen after rejecting several other directions
+along the way: nightwire/cyberpunk, luxury-vault gold, auction-ledger
+no-image layouts, per-type accent colors as a blanket rule, and ~6 font
+pairings) — that working history has since been cleaned up; this file is
+the current, standalone source of truth.
 
 ## System
 - Genre · modern-minimal (restrained, data-forward, one accent)
@@ -15,7 +16,7 @@ rainbow-holo rings, per-type accent colors, and ~6 rejected font pairings).
 - Theme · custom (vibe: "bone-paper trading floor, one signal green, cards do the talking")
 - Axes · paper-band: light (bone, not stark white) / display-style: grotesk-condensed (single family, variable width axis) / accent-hue: warm-neutral base + one cool-green signal
 
-## Tokens (canonical · mirrors `:root` in vault-final.html)
+## Tokens (canonical · mirrors `:root` in `resources/css/app.css`)
 ```css
 :root {
   --color-paper:      oklch(94% 0.012 85);   /* --bone   #f2efe6 */
@@ -42,10 +43,11 @@ rainbow-holo rings, per-type accent colors, and ~6 rejected font pairings).
 }
 ```
 
-**Non-negotiable rules that came out of the brainstorm, not just taste:**
+**Non-negotiable rules, not just taste — a few have since been amended
+with narrow, explicit exceptions (marked below), never loosened wholesale:**
 - **One family does display + body**, using Archivo's variable *width* axis (`font-variation-settings: 'wdth' N`) to get condensed-vs-normal voices instead of pairing a second typeface. `font-stretch` does **not** map this axis in Chrome — always set width via `font-variation-settings`, never `font-stretch`.
 - **Martian Mono is reserved for numerals only** (prices, card IDs, dates) — never body text, never headings. That's the entire "outlier" budget.
-- **One accent color, period — for price semantics.** `--color-accent` (green) means exactly one thing: "price trending up." Falling/flat prices render in `--color-flat` (neutral), never a second color standing in for price direction. Don't introduce holo/rainbow treatments or per-card-type accent colors — both were explicitly tried and rejected.
+- **One accent color, period — for price semantics.** `--color-accent` (green) means exactly one thing: "price trending up." Falling/flat prices render in `--color-flat` (neutral), never a second color standing in for price direction. A blanket, unbounded "holo/rainbow treatments and per-card-type accent colors" rule was tried and rejected during the original brainstorm — but see the Rarity accent below for the one narrow, bounded exception since carved out of it (tied to fixed printed rarity, 3 tiers only, never price-driven).
 - **`--color-danger` (red) is a separate, narrow exception**, added after Carlos flagged the original rule as ambiguous when Phase 2 needed a delete/error color: reserved *exclusively* for destructive actions (delete buttons) and validation errors — never for price direction, never decorative, never introduced as a second "accent" competing with green. If a screen needs to show "this failed" or "this is irreversible," `--color-danger` is correct; if it needs to show "this number went down," that's still `--color-flat`, not red.
 - **`--color-warning` (amber) is a third, equally narrow exception**, added after the UX audit found "Review" (a flag meaning *something needs the admin's attention, not that anything failed or will be destroyed*) rendered in the same red as the Delete action right next to it — reusing `--color-danger` for that would blur a real semantic difference: "needs attention" is not "destructive" or "this failed." Reserved *exclusively* for "this needs a look" states (the needs-variant-review flag today). Never for destructive actions (stays `--color-danger`), never for price direction (stays `--color-flat`/`--color-accent`), never applied per-category (e.g. per-rarity) — that would reintroduce the rejected "per-type accent colors" pattern this file already rules out elsewhere.
 - **Card images are the content.** Chrome (masthead, stat band, ticker) carries the visual weight so the grid itself can stay plain — bone background, one hairline border, no ornament competing with the artwork.
@@ -64,13 +66,13 @@ rainbow-holo rings, per-type accent colors, and ~6 rejected font pairings).
 - Reduced-motion fallback · all durations → 0, no count-up, hover collapses to a 2px ink ring only
 
 ## Exports
-The tokens live in `resources/css/app.css` (`:root`), ported verbatim from
-`vault-final.html`; that stylesheet is now the source of truth. Two tokens
-were added there on top of the mockup's set, both derived from it rather
-than new colors: `--paper` (#fbf9f3, the raised tile/panel surface the
-mockup hardcoded) and `--signal-deep` (#12a45f, the mockup's darker green
-for accent *text* on bone — pure `--signal` fails contrast as type; it stays
-the color for fills, dots, rings and the ticker on ink).
+The tokens live in `resources/css/app.css` (`:root`), which is the source of
+truth — this file documents intent and rules, `app.css` is the exact values.
+Two tokens exist there beyond the set above, both derived from it rather
+than new colors: `--paper` (#fbf9f3, the raised tile/panel surface) and
+`--signal-deep` (#12a45f, a darker green for accent *text* on bone — pure
+`--signal` fails contrast as type; it stays the color for fills, dots,
+rings and the ticker on ink).
 
 ## Primitives (2026-09-14 redesign — all `.nw-*` in `app.css`)
 The approved mockups are now real Blade, one class family, reused across

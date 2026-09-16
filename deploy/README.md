@@ -1,8 +1,7 @@
 # tcg-vault — Deploy to polaris2
 
 Single-origin Docker deploy at **https://tcgvault.cativo.dev**. Manual
-build/push/deploy (GitHub Actions autorelease is a later slice). Design:
-`docs/superpowers/specs/2026-09-15-deploy-polaris2-design.md`.
+build/push/deploy (GitHub Actions autorelease is a later slice).
 
 ## One-time server setup
 ```bash
@@ -49,9 +48,11 @@ docker compose -f compose.prod.yml exec app php artisan db:seed
 - [ ] `/horizon` loads while authenticated, 403s for a guest.
 - [ ] Upload a collection photo via `/admin/add`, then `docker compose down && up -d`
       — the photo is still there (proves the volume mount, not the writable layer).
+- [ ] `docker compose exec horizon getent hosts api.tcgdex.net` resolves — confirms
+      `horizon` itself has internet egress (see Architecture notes below; this is a
+      real, previously-hit failure mode, not a hypothetical one).
 - [ ] A manual `docker compose exec app php artisan catalog:refresh-prices` actually
-      reaches tcgdex (this box's own egress, unlike the sandbox this was built in,
-      is confirmed healthy) and writes real `CardPriceSnapshot` rows.
+      reaches tcgdex and writes real `CardPriceSnapshot` rows.
 - [ ] `docker compose ps` → `app`, `horizon`, `scheduler`, `postgres`, `redis` all
       healthy/up.
 - [ ] `~/deploy/tcg-vault/.env` is mode `600`; no secrets in the image or git.
@@ -65,6 +66,15 @@ Actions autorelease slice.
 - **Single image, three services.** `app` (web, port 8080 behind Traefik), `horizon`
   (queue supervisor — chosen over a bare `queue:work` since Redis is already required),
   `scheduler` (`schedule:work` — runs the daily `catalog:refresh-prices` job, Phase 4).
+- **`horizon` needs its own internet egress, on `tcgvault-egress`, not just
+  `tcgvault-internal`.** Queued jobs (`SyncCardPricingJob`, `ImportSetJob`, the daily
+  price refresh) call tcgdex's API from inside that container — `tcgvault-internal` is
+  `internal: true` and blocks all outbound routing. Missing this silently breaks every
+  queued tcgdex call (DNS resolution fails) with no user-facing error — it only shows up
+  as `failed_jobs` growing and sets never finishing their card backfill. `tcgvault-egress`
+  is a private bridge used by nothing else on the host — not `space-server_web` — since
+  `horizon` exposes no port/service and gains nothing from sitting on the same
+  ~25-container shared network `app` needs for Traefik ingress.
 - **Own Postgres/Redis**, not shared with tacoview's — decided deliberately (coupling
   cost > RAM saved, especially once tacoview resumes).
 - **Caches** are warmed at container boot via serversideup `AUTORUN_*` flags;

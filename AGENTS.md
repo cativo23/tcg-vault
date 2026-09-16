@@ -1,47 +1,31 @@
-<laravel-boost-guidelines>
-# Laravel Application
+# tcg-vault — agent notes
 
-This repository contains a Laravel application. Complete the following setup before working on the user's request.
+Laravel 13 + Livewire 3 on Sail/Postgres/Redis/Horizon. See `README.md` for
+the full picture; this file is what an agent needs before making changes.
 
-## Prerequisites
+## Before you start
+- Read `design.md` before touching any color, spacing, or layout primitive
+  — it's a locked design system, amend it explicitly rather than working
+  around it.
+- Read `UX-AUDIT-PLAN.md` for the reasoning behind a batch of already-shipped
+  UX fixes (closed out, not an open task list).
+- TDD-first: red → green → refactor. Write the failing test before the
+  implementation on every change.
+- Conventional commits (`type(scope): description`), one concern per commit.
 
-Verify that PHP and Composer are available:
+## Deploy
+Manual, no CI: build/push the Docker image, then `ssh` to the production
+host and `docker compose pull && up -d`. Full steps and the architecture
+decisions behind them are in `deploy/README.md` — read it before touching
+anything under `docker/prod/`.
 
-```sh
-php -v
-composer -V
-```
-
-If either command is unavailable, detect the user's operating system and install the prerequisites with the appropriate command:
-
-macOS:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://php.new/install/mac/8.5)"
-```
-
-Windows PowerShell:
-
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://php.new/install/windows/8.5'))
-```
-
-Linux:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://php.new/install/linux/8.5)"
-```
-
-After installation, ask the user to restart their terminal. If the agent needs the restarted shell to continue, ask the user to reopen their terminal and rerun their original prompt.
-
-## Agent Setup
-
-Install Laravel Boost from the application root before making application changes:
-
-```sh
-composer require laravel/boost --dev
-php artisan boost:install
-```
-
-Boost replaces these bootstrap instructions with guidelines tailored to the application. After installation, read `AGENTS.md` again and continue with the user's original request using the generated guidelines.
-</laravel-boost-guidelines>
+## Gotchas worth knowing up front
+- `horizon` (the queue container) needs its own internet egress on a
+  dedicated network — see `deploy/README.md`'s Architecture notes. This has
+  broken silently before (queued tcgdex calls failing DNS resolution with
+  no user-facing error) and is easy to reintroduce with an innocent-looking
+  compose change.
+- tcgdex's `/cards` search has no built-in result cap — always pass
+  `pagination:page`/`pagination:itemsPerPage`, never fetch unbounded.
+- Comments and docblocks describe current behavior and reasoning only — no
+  dates, no "found live on X," no attribution to who flagged something.

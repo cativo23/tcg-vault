@@ -13,20 +13,25 @@ production only after Carlos confirms an item live locally.
 
 ## Design-system constraint (read before touching colors)
 
-`design.md` locks this app to **one accent color** (`--signal` green =
-"price up"), deliberately, after a long comparative brainstorm that
-rejected multiple color directions. Any fix below that touches color
-(#8) must work WITHIN that constraint or get Carlos's explicit sign-off
-to amend `design.md` first — don't add a second accent hue as a side
-effect of an unrelated fix.
+`design.md` locked this app to **one accent color** (`--signal` green =
+"price up") after a long comparative brainstorm that rejected multiple
+color directions. This audit ran into that constraint twice — the
+Review/Delete color collision and the rarity-accent backlog item, both
+below — and Carlos amended `design.md` explicitly both times rather
+than either being blocked or added silently. That's still the rule for
+any future color change: work within the existing tokens, or get
+Carlos's sign-off to amend `design.md` first.
 
 ## Status legend
 🔲 not started · 🟡 in progress · ✅ done locally · 🚀 deployed to prod
 
-**All 5 items are 🚀 deployed to production** (single combined deploy).
-Verified post-deploy: all containers healthy, `horizon` still has
-internet egress after the redeploy, `https://tcgvault.cativo.dev/up`
-→ 200.
+**All 5 items + the full backlog below are 🚀 deployed to production**,
+verified post-deploy each time. This audit is closed — later fixes
+(a nav-fade regression Carlos caught live, Notes/photo added to the
+admin edit modal, admin Value shown per-unit instead of qty-multiplied,
+the official set abbreviation next to card numbers) came from Carlos's
+own live use of the deployed app, not from this audit, and are tracked
+in git history rather than here.
 
 ---
 
@@ -173,11 +178,10 @@ Variant field. 2 new tests, full suite 316/316.
 
 ## Backlog — resolved 2026-09-16, one item still open
 
-All 8 originally listed here are done, verified live, and committed
-(not yet deployed — see status note at the top). Deliberately fixed
-before the multi-tenant work resumes, on Carlos's call: better to
-polish while traffic is low-single-user than after more people land on
-a rough page.
+All 8 originally listed here are done, verified live, committed, and
+deployed. Deliberately fixed before the multi-tenant work resumes, on
+Carlos's call: better to polish while traffic is low-single-user than
+after more people land on a rough page.
 
 - ✅ Search fields (public + admin) had no loading feedback during the
   debounce window — a pulsing-dot indicator now shows on all 3 (gallery,
