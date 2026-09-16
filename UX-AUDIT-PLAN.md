@@ -171,26 +171,45 @@ Variant field. 2 new tests, full suite 316/316.
 
 ---
 
-## Backlog (noted, not scheduled yet — revisit after the 5 above)
+## Backlog — resolved 2026-09-16, one item still open
 
-- Search fields (public + admin) give no loading feedback during the
-  ~2s debounce window — feels unresponsive.
-- Collection value shows `$X + €Y` with a `+` that visually implies a sum
-  of two currencies that can never actually be added.
-- Activity page header "0 PRICE MOVES" sits directly above an unrelated
-  "Added <card>" list — reads as a mismatched count.
-- Admin table: "Review" status badge and "Delete" action share the same
-  red/terracotta tone — **routes through the design-system constraint
-  above**, needs Carlos's call, not a unilateral color add.
-- Rarity badges/tile headers are all black/white regardless of rarity — a
-  subtle rarity-tied accent could aid scanning the grid. Same constraint.
-- Landing page (`/`) is dark/near-black; the rest of the authenticated app
-  is light/bone — reads as two different products.
-- Add-card search can visibly show results from a previous query for a
-  moment after retyping/pasting — no spinner while a request is in flight.
-- Newly-added card with no tcgdex price data shows a bare "—" in Value
-  with no explanation (e.g. a tooltip).
-- `.nw-rail` (set pills on `/{username}`) has a working contained scroll
-  but a fully hidden scrollbar and no fade/edge hint — same affordance
-  gap `.nw-nav` had before item #3's fix; low priority since it's a
-  content rail users already expect to swipe, not primary nav.
+All 8 originally listed here are done, verified live, and committed
+(not yet deployed — see status note at the top). Deliberately fixed
+before the multi-tenant work resumes, on Carlos's call: better to
+polish while traffic is low-single-user than after more people land on
+a rough page.
+
+- ✅ Search fields (public + admin) had no loading feedback during the
+  debounce window — a pulsing-dot indicator now shows on all 3 (gallery,
+  admin table, add-card).
+- ✅ Collection value's `$X + €Y` visually implied a sum — `+` → `·`, a
+  separator with no arithmetic meaning.
+- ✅ Activity's "0 price moves" header could undercount what the feed
+  actually showed (additions always appear regardless of price moves) —
+  now counts the feed itself ("N updates").
+- ✅ Admin table's "Review" badge and "Delete" shared `--danger` red —
+  **Carlos approved a third, narrow color token**, `--warning` (amber),
+  restricted the same way `--danger` is (never destructive, never price
+  direction, never per-category). `design.md` amended.
+- ✅ Add-card search showed the previous query's results, unchanged,
+  for the full request round-trip — the grid now dims while a search is
+  in flight, not just a spinner elsewhere on the page.
+- ✅ A card with no synced price showed a bare "—" in the admin Value
+  column — now has a title explaining it's unsynced, not broken.
+- ✅ Landing's dark hero/close used a different near-black than the
+  rest of the app's `--ink` — unified to one token; Carlos reviewed a
+  screenshot and approved keeping the dark bookends, not going fully
+  light.
+- 🔲 **Rarity badges/tile headers with no rarity-tied accent** —
+  **NOT approved**, still open. Carlos's color sign-off above was
+  specifically for the Review/Delete collision (red was already taken,
+  amber wasn't) — a per-rarity accent is a different, bigger reversal:
+  `design.md`'s brainstorm history explicitly rejected "per-type accent
+  colors" once already. Needs its own explicit go-ahead, not assumed
+  bundled into the warning-token approval.
+
+Also found and fixed along the way (not originally on this list):
+searching `?search=<no matches>` on the public gallery collapsed into
+the same empty state as a genuinely-empty collection, hiding the
+search box and Clear button — no way to remove the search term short
+of editing the URL by hand.
