@@ -197,6 +197,26 @@
                         @error('editingGradeValue') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                     </div>
                 </div>
+
+                <div class="mt-3">
+                    <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Notes</label>
+                    <textarea wire:model="editingNotes" rows="2" class="w-full border rounded px-2 py-1"></textarea>
+                    @error('editingNotes') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
+                </div>
+
+                <div class="mt-3">
+                    <label class="block text-xs font-medium mb-1" style="color: var(--muted)">
+                        {{ $this->editingItemPhotoPath ? 'Replace photo' : 'Add a photo' }}
+                    </label>
+                    @if ($editingPhoto)
+                        <img src="{{ $editingPhoto->temporaryUrl() }}" class="w-20 h-20 object-cover rounded mb-2">
+                    @elseif ($this->editingItemPhotoPath)
+                        <img src="{{ \Illuminate\Support\Facades\Storage::disk('collection-photos')->url($this->editingItemPhotoPath) }}" class="w-20 h-20 object-cover rounded mb-2">
+                    @endif
+                    <input type="file" wire:model="editingPhoto" accept="image/*" class="text-sm">
+                    @error('editingPhoto') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
+                </div>
+
                 <div class="mt-4 flex gap-2">
                     <button wire:click="saveItem" class="nw-btn-primary text-sm px-4 py-2">Save</button>
                     <button wire:click="cancelEditingItem" class="text-sm px-4 py-2" style="color: var(--muted)">Cancel</button>

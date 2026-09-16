@@ -256,6 +256,93 @@ test('an admin can edit an items full details', function () {
     expect($fresh->grade_value)->toBe('9');
 });
 
+test('the edit modal preloads an items existing notes', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'notes' => 'Bought at a local shop',
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->assertSet('editingNotes', 'Bought at a local shop');
+});
+
+test('the edit modal can set notes for the first time, not just after the item already has some', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->assertSet('editingNotes', '')
+        ->set('editingNotes', 'Never got a photo of this one')
+        ->call('saveItem');
+
+    expect($item->fresh()->notes)->toBe('Never got a photo of this one');
+});
+
+test('uploading a new photo through the edit modal replaces the stored file and deletes the old one', function () {
+    Storage::fake('collection-photos');
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    Storage::disk('collection-photos')->put('old-photo.jpg', 'old contents');
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'old-photo.jpg',
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->set('editingPhoto', \Illuminate\Http\UploadedFile::fake()->image('new-photo.jpg'))
+        ->call('saveItem');
+
+    $fresh = $item->fresh();
+    expect($fresh->photo_path)->not->toBeNull();
+    expect($fresh->photo_path)->not->toBe('old-photo.jpg');
+    Storage::disk('collection-photos')->assertExists($fresh->photo_path);
+    Storage::disk('collection-photos')->assertMissing('old-photo.jpg');
+});
+
+test('saving the edit modal without touching the photo field keeps the existing photo', function () {
+    Storage::fake('collection-photos');
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    Storage::disk('collection-photos')->put('existing-photo.jpg', 'contents');
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'existing-photo.jpg',
+    ]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->call('startEditingItem', $item->id)
+        ->set('editingQuantity', 2)
+        ->call('saveItem');
+
+    expect($item->fresh()->photo_path)->toBe('existing-photo.jpg');
+    Storage::disk('collection-photos')->assertExists('existing-photo.jpg');
+});
+
 test('editing an items condition rejects a value outside the allowed set', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

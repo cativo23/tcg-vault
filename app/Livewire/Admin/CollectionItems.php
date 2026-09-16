@@ -16,12 +16,14 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 #[Layout('layouts.app')]
 final class CollectionItems extends Component
 {
+    use WithFileUploads;
     use WithPagination;
 
     private const VALUE_SORT_ROW_LIMIT = 1000;
@@ -79,6 +81,17 @@ final class CollectionItems extends Component
 
     #[Validate('nullable|string|max:16')]
     public ?string $editingGradeValue = null;
+
+    /**
+     * The edit modal reuses the SAME $editingNotes property the inline
+     * table-cell edit (startEditingNotes/saveNotes above) already uses —
+     * the two flows never run at once (only one of editingItemId/
+     * editingFullItemId is ever set), so there's no real collision, and
+     * it means Notes behaves identically whether reached from the cell
+     * or the modal instead of tracking two independent copies of it.
+     */
+    #[Validate('nullable|image|mimes:jpeg,png,webp|max:5120')]
+    public $editingPhoto = null;
 
     /**
      * Not every card actually has all 3 known variants (some are
@@ -208,6 +221,8 @@ final class CollectionItems extends Component
         $this->editingVariant = $item->variant;
         $this->editingGradeCompany = $item->grade_company;
         $this->editingGradeValue = $item->grade_value;
+        $this->editingNotes = (string) $item->notes;
+        $this->editingPhoto = null;
 
         // The card's OWN print flags (from tcgdex, always synced) are the
         // real source of truth for what variants exist — not which
@@ -242,9 +257,24 @@ final class CollectionItems extends Component
         }
     }
 
+    /**
+     * The modal's photo preview needs the item's CURRENT stored photo,
+     * but the item being edited isn't guaranteed to still be on
+     * whatever page/sort $items currently renders (e.g. quantity or
+     * variant just changed the value-sort order) — look it up directly
+     * rather than searching the current page's collection.
+     */
+    public function getEditingItemPhotoPathProperty(): ?string
+    {
+        return $this->editingFullItemId !== null
+            ? $this->ownedItemOrFail($this->editingFullItemId)->photo_path
+            : null;
+    }
+
     public function cancelEditingItem(): void
     {
         $this->editingFullItemId = null;
+        $this->editingPhoto = null;
         $this->resetValidation();
     }
 
@@ -258,19 +288,35 @@ final class CollectionItems extends Component
 
         $item = $this->ownedItemOrFail($this->editingFullItemId);
 
-        $item->update([
+        $update = [
             'condition' => $this->editingCondition,
             'quantity' => $this->editingQuantity,
             'variant' => $this->editingVariant,
             'grade_company' => $this->editingGradeCompany,
             'grade_value' => $this->editingGradeValue,
+            'notes' => $this->editingNotes,
             // Assigning a real variant is exactly what resolves the
             // ambiguity the importer flagged — never touched by editing
-            // any other field (Notes has its own separate save method).
+            // any other field.
             'needs_variant_review' => $this->editingVariant !== null ? false : $item->needs_variant_review,
-        ]);
+        ];
+
+        // Leaving the photo field untouched must keep the existing
+        // photo — only a NEW upload replaces it. Deleting the old file
+        // only after a new one is actually chosen, never just because
+        // the modal was opened, mirrors delete()'s own cleanup pattern.
+        if ($this->editingPhoto) {
+            if ($item->photo_path) {
+                Storage::disk('collection-photos')->delete($item->photo_path);
+            }
+
+            $update['photo_path'] = basename($this->editingPhoto->store('/', 'collection-photos'));
+        }
+
+        $item->update($update);
 
         $this->editingFullItemId = null;
+        $this->editingPhoto = null;
     }
 
     public function sortBy(string $sort): void
