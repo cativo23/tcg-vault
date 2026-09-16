@@ -15,7 +15,11 @@
                 @php
                     $total = $set->card_count ?? $set->real_card_count;
                     $owned = $set->owned_card_count;
-                    $pct = $total > 0 ? (int) round(($owned / $total) * 100) : 0;
+                    // Carlos flagged live (2026-09-15): owning 1 of 217
+                    // cards rounds to 0% and renders an empty bar —
+                    // visually indistinguishable from owning nothing.
+                    // Never round a real, nonzero owned count down to 0.
+                    $pct = $total > 0 ? max($owned > 0 ? 1 : 0, (int) round(($owned / $total) * 100)) : 0;
                 @endphp
                 <a href="{{ route('gallery.show', ['username' => $targetUser->username, 'setTcgdexId' => $set->tcgdex_id]) }}"
                    class="nw-setcard nw-slot" style="--i: {{ $loop->index }}" wire:navigate>

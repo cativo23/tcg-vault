@@ -16,7 +16,8 @@
             @endif
         </div>
 
-        @php $pct = $totalCount > 0 ? (int) round(($ownedCount / $totalCount) * 100) : 0; @endphp
+        {{-- Never round a real, nonzero owned count down to 0% — same fix as Gallery\Sets, same live report. --}}
+        @php $pct = $totalCount > 0 ? max($ownedCount > 0 ? 1 : 0, (int) round(($ownedCount / $totalCount) * 100)) : 0; @endphp
         <div class="nw-stats" aria-label="Set summary">
             <div class="nw-stat accent">
                 <div class="k">Owned value</div>

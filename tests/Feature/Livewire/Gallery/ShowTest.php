@@ -33,6 +33,23 @@ test('shows only owned cards by default, computes stats from the whole set', fun
     $response->assertSee('Collected</div>', escape: false); // stats still cover the whole set, unfiltered
 });
 
+test('owning even one card out of a huge set never rounds the progress bar down to 0%', function () {
+    // Same rounding bug as Sets.php, on the set-detail page's own progress
+    // bar/percentage text.
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me02.5', 'name' => 'Ascended Heroes', 'card_count' => 217]);
+    $card = Card::create(['tcgdex_id' => 'me02.5-123', 'set_id' => $set->id, 'local_id' => '123', 'name' => 'Gastly']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me02.5-123', 'condition' => 'NM', 'quantity' => 1]);
+
+    $response = $this->get('/carlos/me02.5');
+
+    $response->assertOk();
+    $response->assertSee('1', false);
+    $response->assertSee('of 217 · 1%', false);
+    $response->assertSee('width: 1%', false);
+});
+
 test('toggling "show missing" reveals cards the collector does not own', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
