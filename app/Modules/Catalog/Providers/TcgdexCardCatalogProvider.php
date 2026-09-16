@@ -120,6 +120,11 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             // collector hit "100%" while missing every secret rare.
             cardCount: $json['cardCount']['total'] ?? $json['cardCount']['official'] ?? null,
             logoUrl: isset($json['logo']) ? "{$json['logo']}.png" : null,
+            // The collector shorthand printed on the card itself and used
+            // across the hobby (e.g. "ASC" for Ascended Heroes) — not every
+            // set has one (older/promo sets), so this stays null rather
+            // than falling back to a made-up abbreviation.
+            abbreviation: $json['abbreviation']['official'] ?? null,
         );
     }
 

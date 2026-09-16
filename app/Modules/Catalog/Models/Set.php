@@ -15,6 +15,7 @@ final class Set extends Model
     protected $fillable = [
         'tcgdex_id',
         'name',
+        'abbreviation',
         'series',
         'released_on',
         'card_count',

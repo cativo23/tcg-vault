@@ -5,15 +5,32 @@ declare(strict_types=1);
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 
-function cardTileCard(string $rarity): Card
+function cardTileCard(string $rarity, ?string $setAbbreviation = null): Card
 {
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'abbreviation' => $setAbbreviation]);
 
     return Card::create([
         'tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116',
         'name' => 'Mega Darkrai ex', 'rarity' => $rarity,
     ]);
 }
+
+test('the set abbreviation shows next to the card number when tcgdex has one', function () {
+    $card = cardTileCard('Common', 'PBL');
+
+    $view = $this->blade('<x-card-tile :card="$card" :href="\'#\'" />', ['card' => $card->fresh('set')]);
+
+    $view->assertSee('PBL #116', false);
+});
+
+test('the card number renders alone when the set has no known abbreviation', function () {
+    $card = cardTileCard('Common', null);
+
+    $view = $this->blade('<x-card-tile :card="$card" :href="\'#\'" />', ['card' => $card->fresh('set')]);
+
+    $view->assertSee('#116');
+    $view->assertDontSee('null #116', false);
+});
 
 test('a standard-tier rarity gets no accent class at all', function () {
     $card = cardTileCard('Common');

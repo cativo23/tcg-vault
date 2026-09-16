@@ -59,6 +59,21 @@ test('syncCard creates the set, the card, and its price snapshots on first sync'
     expect($snapshot->captured_on->toDateString())->toBe(CarbonImmutable::today()->toDateString());
 });
 
+test('syncCard persists the sets official abbreviation when tcgdex has one', function () {
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(fakeCardDetail());
+    $provider->shouldReceive('findSet')->with('me05')->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: 'Mega Evolution',
+        releasedOn: null, cardCount: 84, logoUrl: 'https://assets.tcgdex.net/en/me/me05/logo.png',
+        abbreviation: 'PBL',
+    ));
+
+    $service = new CatalogSyncService($provider);
+    $service->syncCard('me05-116');
+
+    expect(Set::where('tcgdex_id', 'me05')->first()->abbreviation)->toBe('PBL');
+});
+
 test('syncCard throws when the provider returns a card whose ID does not match what was requested', function () {
     $provider = Mockery::mock(CardCatalogProvider::class);
     $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(

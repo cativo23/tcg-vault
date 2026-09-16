@@ -32,7 +32,13 @@
     <a href="{{ $href }}" class="nw-tile {{ $owned ? '' : 'ghost' }} {{ $rarityTier !== 'standard' ? 'rarity-'.$rarityTier : '' }}" wire:navigate
        aria-label="{{ $card->name }}, number {{ $card->local_id }}{{ $card->set ? ', '.$card->set->name : '' }}{{ $owned ? '' : ', not in the collection' }}">
         <div class="chead">
-            <span class="num">#{{ $card->local_id }}</span>
+            {{-- The collector shorthand tcgdex prints per set (e.g. "PBL")
+                 — without it, two same-named cards from different sets (a
+                 common Gastly reprint, say) are only distinguishable by
+                 set name below the artwork, not at a glance up here. Not
+                 every set has one (older/promo sets), so this degrades to
+                 just the number when tcgdex has none. --}}
+            <span class="num">{{ $card->set?->abbreviation ? $card->set->abbreviation.' ' : '' }}#{{ $card->local_id }}</span>
             @if ($graded)
                 <span class="rar slab" title="Graded {{ $graded->grade_company }} {{ $graded->grade_value }}">{{ $graded->grade_company }} {{ $graded->grade_value }}</span>
             @elseif (Rarity::abbreviate($card->rarity) !== '')

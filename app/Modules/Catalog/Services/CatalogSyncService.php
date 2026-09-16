@@ -90,6 +90,7 @@ final class CatalogSyncService
             ['tcgdex_id' => $setSummary->tcgdexId],
             [
                 'name' => $setSummary->name,
+                'abbreviation' => $setSummary->abbreviation,
                 'series' => $setSummary->series,
                 'released_on' => $setSummary->releasedOn,
                 'card_count' => $setSummary->cardCount,

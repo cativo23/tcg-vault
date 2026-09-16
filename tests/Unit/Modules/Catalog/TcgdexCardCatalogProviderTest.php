@@ -205,6 +205,37 @@ test('findSet maps a tcgdex set payload into SetSummaryData', function () {
     expect($set->logoUrl)->toBe('https://assets.tcgdex.net/en/me/me05/logo.png');
 });
 
+test('findSet reads the official collector abbreviation when tcgdex provides one', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/sets/me02.5' => Http::response([
+            'id' => 'me02.5',
+            'name' => 'Ascended Heroes',
+            'cardCount' => ['total' => 295, 'official' => 217],
+            'abbreviation' => ['official' => 'ASC'],
+        ], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $set = $provider->findSet('me02.5');
+
+    expect($set->abbreviation)->toBe('ASC');
+});
+
+test('findSet leaves the abbreviation null for a set tcgdex has none for', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/sets/basep' => Http::response([
+            'id' => 'basep',
+            'name' => 'Wizards Black Star Promos',
+            'cardCount' => ['total' => 53, 'official' => 53],
+        ], 200),
+    ]);
+
+    $provider = new TcgdexCardCatalogProvider(config('tcgdex.base_url'));
+    $set = $provider->findSet('basep');
+
+    expect($set->abbreviation)->toBeNull();
+});
+
 test('findSet throws SetNotFoundException on a 404', function () {
     Http::fake([
         'api.tcgdex.net/v2/en/sets/does-not-exist' => Http::response(null, 404),

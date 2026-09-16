@@ -16,5 +16,6 @@ final class SetSummaryData extends Data
         public ?CarbonImmutable $releasedOn,
         public ?int $cardCount,
         public ?string $logoUrl,
+        public ?string $abbreviation = null,
     ) {}
 }
