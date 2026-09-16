@@ -15,6 +15,8 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->call(PermissionSeeder::class);
+
         $email = config('tcgvault.admin_email');
         $password = config('tcgvault.admin_password');
 
