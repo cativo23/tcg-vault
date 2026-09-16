@@ -12,6 +12,16 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
+        {{-- Sets data-theme from localStorage before anything else renders,
+             so there's no flash of the wrong theme. Absent (never toggled)
+             means the prefers-color-scheme block in app.css decides. --}}
+        <script>
+            (function () {
+                var t = localStorage.getItem('tcg-vault-theme');
+                if (t) document.documentElement.setAttribute('data-theme', t);
+            })();
+        </script>
+
         <title>{{ $pageTitle }}</title>
         <meta name="description" content="{{ $pageDescription }}">
         <link rel="canonical" href="{{ $canonical ?? url()->current() }}">
@@ -56,14 +66,16 @@
                     </nav>
                 @endif
 
-                @auth
-                    {{-- The owner, viewing their own public gallery while logged
-                         in, needs a way back to /admin — every other visitor here
-                         is a guest by definition. --}}
-                    <a href="{{ route('admin.collection.index') }}" class="nw-nav-ghost">{{ __('Admin') }}</a>
-                @else
-                    <span class="w-[52px] sm:w-[62px]" aria-hidden="true"></span>
-                @endauth
+                <div class="flex items-center gap-2">
+                    <x-theme-toggle />
+
+                    @auth
+                        {{-- The owner, viewing their own public gallery while logged
+                             in, needs a way back to /admin — every other visitor here
+                             is a guest by definition. --}}
+                        <a href="{{ route('admin.collection.index') }}" class="nw-nav-ghost">{{ __('Admin') }}</a>
+                    @endauth
+                </div>
             </div>
         </header>
 

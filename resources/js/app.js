@@ -110,3 +110,34 @@ const markScrollableNav = () => {
 document.addEventListener('DOMContentLoaded', markScrollableNav);
 document.addEventListener('livewire:navigated', markScrollableNav);
 window.addEventListener('resize', markScrollableNav);
+
+// Theme toggle. The attribute itself is set synchronously by an inline
+// <head> script (before this module loads) so there's no flash of the
+// wrong theme; this only handles the click. No stored preference means
+// "follow the OS", which app.css's prefers-color-scheme block already
+// does on its own — this never writes a value until the user actually
+// clicks the toggle.
+const THEME_KEY = 'tcg-vault-theme';
+
+const applyTheme = (theme) => {
+    if (theme) document.documentElement.setAttribute('data-theme', theme);
+    else document.documentElement.removeAttribute('data-theme');
+};
+
+const currentTheme = () => document.documentElement.getAttribute('data-theme')
+    || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+
+const bindThemeToggle = () => {
+    document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+        if (btn.dataset.themeBound) return;
+        btn.dataset.themeBound = '1';
+        btn.addEventListener('click', () => {
+            const next = currentTheme() === 'dark' ? 'light' : 'dark';
+            localStorage.setItem(THEME_KEY, next);
+            applyTheme(next);
+        });
+    });
+};
+
+document.addEventListener('DOMContentLoaded', bindThemeToggle);
+document.addEventListener('livewire:navigated', bindThemeToggle);
