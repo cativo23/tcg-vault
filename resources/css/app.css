@@ -364,6 +364,16 @@ body {
   justify-content: space-between;
   gap: 6px;
 }
+/* Carlos flagged live (2026-09-16): Gallery\Show's grid (showSet=false,
+   so this falls back to the rarity label — often a long string like
+   "Special Illustration Rare") broke the 2-column mobile layout, cards
+   overlapping/cut off. Tailwind's `truncate` utility (overflow:hidden;
+   text-overflow:ellipsis;white-space:nowrap) does nothing on a flex
+   child unless it can also shrink below its content's natural width —
+   flex items default to min-width:auto, so the un-wrapped text just
+   grows the tile instead of ellipsizing. Index rarely hit this because
+   its (short) set names happened to fit anyway. */
+.nw-tile .cset .truncate { min-width: 0; flex: 1 1 auto; }
 .nw-tile .ticker {
   background: var(--ink);
   color: var(--flat);
