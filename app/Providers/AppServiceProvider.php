@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
@@ -49,5 +51,13 @@ class AppServiceProvider extends ServiceProvider
             URL::forceRootUrl(config('app.url'));
             URL::forceScheme('https');
         }
+
+        // super-admin passes every gate and permission check, present or
+        // future, without needing its own explicit permission list kept
+        // in sync as new ones are added — see PermissionSeeder's
+        // docblock for why that list is deliberately never seeded.
+        Gate::before(function (?Authenticatable $user, string $ability) {
+            return $user?->hasRole('super-admin') ? true : null;
+        });
     }
 }
