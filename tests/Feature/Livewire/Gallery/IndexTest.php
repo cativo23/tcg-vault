@@ -45,6 +45,20 @@ test('the collection home shows every owned card once, with the collector as the
     $response->assertSeeInOrder(['Showing', '2', 'of', '2']);
 });
 
+test('the search box shows a loading indicator while a debounced search is in flight', function () {
+    seedCollection();
+
+    $response = $this->get('/carlos');
+
+    $response->assertOk();
+    // The debounce window (~300ms) plus a real request round-trip is a
+    // visible pause with nothing else on screen to say a search is
+    // happening — assert the wire:loading trigger is wired to the same
+    // property the search input debounces on.
+    $response->assertSee('wire:loading', escape: false);
+    $response->assertSee('wire:target="search"', escape: false);
+});
+
 test('the collection value never adds two currencies together', function () {
     seedCollection();
 
@@ -221,6 +235,24 @@ test('a private collection shows the empty state, never its cards', function () 
     $response->assertOk();
     $response->assertDontSee('Mega Darkrai ex');
     $response->assertSee('Nothing on display yet');
+});
+
+test('a search matching nothing shows "no cards match" with a way to clear it, not the whole-collection-empty state', function () {
+    seedCollection();
+
+    $response = $this->get('/carlos?search=pica');
+
+    $response->assertOk();
+    // Before the fix, a filtered zero-result count was indistinguishable
+    // from the collection having no public cards at all — this wrongly
+    // rendered "Nothing on display yet" and dropped the entire toolbar
+    // (search input + Clear button) along with it, leaving no UI way to
+    // remove the search term short of editing the URL by hand.
+    $response->assertDontSee('Nothing on display yet');
+    $response->assertDontSee('This collection has no public cards');
+    $response->assertSee('No cards match');
+    $response->assertSee('id="gallery-search"', false);
+    $response->assertSee('clearFilters', false);
 });
 
 test('a nonexistent username 404s', function () {

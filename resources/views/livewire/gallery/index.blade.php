@@ -52,7 +52,7 @@
         </nav>
     @endif
 
-    @if ($totalEntries === 0)
+    @if ($collectionIsEmpty)
         <div class="nw-empty">
             <div class="t">Nothing on display yet</div>
             <p>This collection has no public cards. Check back soon.</p>
@@ -68,7 +68,10 @@
 
             <div class="nw-toolbar-group">
                 <label class="sr-only" for="gallery-search">Search cards by name</label>
-                <input id="gallery-search" type="search" wire:model.live.debounce.300ms="search" placeholder="Search cards…" class="nw-pill-input w-40 sm:w-52" autocomplete="off">
+                <span class="nw-search-wrap">
+                    <input id="gallery-search" type="search" wire:model.live.debounce.300ms="search" placeholder="Search cards…" class="nw-pill-input w-40 sm:w-52" autocomplete="off">
+                    <span wire:loading wire:target="search" class="nw-search-loading" aria-hidden="true"></span>
+                </span>
 
                 @if ($sets->count() > 1)
                     <label class="sr-only" for="gallery-set">Filter by set</label>

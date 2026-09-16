@@ -198,6 +198,14 @@ final class Index extends Component
             'topEntry' => $topEntry,
             'rarities' => $rarities,
             'isFiltered' => $this->search !== '' || $this->setFilter !== '' || $this->rarityFilter !== '',
+            // Deliberately NOT $totalEntries === 0 — that reflects the
+            // current search/set/rarity filter, so a search matching
+            // nothing collapsed into the exact same "this collection has
+            // no public cards at all" empty state as a genuinely empty
+            // collection, dropping the whole toolbar (search box, Clear
+            // button) along with it and leaving no way to undo the search
+            // short of editing the URL by hand. $allCards is unfiltered.
+            'collectionIsEmpty' => $allCards->isEmpty(),
         ])->layoutData([
             'title' => "{$name}'s collection",
             'description' => sprintf(
