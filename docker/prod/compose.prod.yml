@@ -43,7 +43,12 @@ services:
     # actually working fine. Disable it explicitly rather than let it lie.
     healthcheck:
       disable: true
-    networks: [tcgvault-internal]
+    # Queued jobs (SyncCardPricingJob, ImportSetJob) call tcgdex's API from
+    # inside this container — needs space-server_web for actual internet
+    # egress, not just tcgvault-internal (which Docker blocks from routing
+    # out). Without it, every queued tcgdex call fails DNS resolution and
+    # the daily price-refresh schedule silently never completes.
+    networks: [space-server_web, tcgvault-internal]
     deploy:
       resources:
         # 128M was too tight: verified live post-deploy that the master
