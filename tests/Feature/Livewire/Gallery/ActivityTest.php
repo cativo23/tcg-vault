@@ -47,7 +47,11 @@ test('a delta spanning a source/variant/currency change is not shown — compari
     $response = $this->get('/carlos/activity');
 
     $response->assertOk();
-    $response->assertSee('0 price moves');
+    // "1 update" is the item's own addition to the feed, not a move —
+    // the header counts everything actually listed below it, so it
+    // must never read a move-only number while the feed shows an
+    // unrelated "Added <card>" entry.
+    $response->assertSee('1 update');
 });
 
 test('a card whose newest day only has a non-priority source does not render a fabricated zero delta', function () {
@@ -72,7 +76,7 @@ test('a card whose newest day only has a non-priority source does not render a f
     $response->assertOk();
     $response->assertDontSee('+$0.00');
     $response->assertDontSee('-$0.00');
-    $response->assertSee('0 price moves');
+    $response->assertSee('1 update');
 });
 
 test('a snapshot with a null market_minor is never used as the previous comparison point', function () {
@@ -88,7 +92,7 @@ test('a snapshot with a null market_minor is never used as the previous comparis
     $response = $this->get('/carlos/activity');
 
     $response->assertOk();
-    $response->assertSee('0 price moves');
+    $response->assertSee('1 update');
 });
 
 test('a card with only one snapshot day shows no delta, not a fake one', function () {
@@ -109,7 +113,7 @@ test('a card with only one snapshot day shows no delta, not a fake one', functio
     // substring that the view never actually renders — a currency-code
     // suffix like "2.50 USD" contains no "$" — so it passed regardless
     // of whether this behavior actually worked.)
-    $response->assertSee('0 price moves');
+    $response->assertSee('1 update');
 });
 
 test('shows recently added items in the activity feed', function () {

@@ -85,7 +85,13 @@ final class Activity extends Component
 
         return view('livewire.gallery.activity', [
             'feed' => $feed,
-            'moveCount' => $moves->count(),
+            // Deliberately the feed's own count, not $moves->count() — an
+            // item is always in $feed as an "added" entry regardless of
+            // whether its price has ever moved, so a header counting only
+            // moves could read "0 price moves" directly above a feed
+            // showing real "Added <card>" entries. This is what's
+            // actually listed below.
+            'feedCount' => $feed->count(),
             'totals' => $totals,
             'series' => $series,
             'primaryCurrency' => $primaryCurrency,

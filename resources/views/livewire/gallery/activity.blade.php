@@ -34,7 +34,7 @@
     </div>
 
     <div class="nw-section-head">
-        <span>Latest · {{ $moveCount }} price {{ Str::plural('move', $moveCount) }}</span>
+        <span>Latest · {{ $feedCount }} {{ Str::plural('update', $feedCount) }}</span>
     </div>
 
     @if ($feed->isEmpty())
