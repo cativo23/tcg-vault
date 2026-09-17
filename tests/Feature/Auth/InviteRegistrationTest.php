@@ -23,6 +23,15 @@ test('a usable invite link shows the registration form with the email locked', f
         ->assertSee('invitee@example.com');
 });
 
+test('the invite registration page shows a brand header so an invitee knows where they landed', function () {
+    $invite = Invite::factory()->create();
+
+    $this->get(signedInviteUrl($invite))
+        ->assertOk()
+        ->assertSee("You're invited")
+        ->assertSee('Create your account to start tracking your collection.');
+});
+
 test('an expired invite link is rejected', function () {
     $invite = Invite::factory()->create(['expires_at' => now()->addDay()]);
     $url = signedInviteUrl($invite);
