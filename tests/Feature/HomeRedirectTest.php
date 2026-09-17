@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use App\Settings\RegistrationSettings;
 
 test('an anonymous visitor sees the home page even when an admin username is configured', function () {
     config(['tcgvault.admin_username' => 'carlos']);
@@ -55,12 +56,17 @@ test('the features section describes all three real features', function () {
 });
 
 test('the closing sections show data coverage, FAQ, and repeat the CTA', function () {
+    // Not what's under test here — pin it so the closing CTA copy assertion
+    // below doesn't depend on the suite's registration-open default.
+    app(RegistrationSettings::class)->open = false;
+    app(RegistrationSettings::class)->save();
+
     $response = $this->get('/');
 
     $response->assertOk();
     $response->assertSee('tcgdex.dev');
     $response->assertSee('Does it cost anything?');
-    $response->assertSeeInOrder(['Track every', 'Fresh pricing, updated daily', 'Does it cost anything?', 'Notify me when it opens']);
+    $response->assertSeeInOrder(['Track every', 'Fresh pricing, updated daily', 'Does it cost anything?', 'Invite-only, for now']);
 });
 
 test('the real photo example exists on disk and is referenced by the page', function () {
