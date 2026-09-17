@@ -8,10 +8,10 @@ use Livewire\Volt\Volt;
 Route::middleware('guest')->group(function () {
     // Always registered — whether it shows the real form or an
     // invite-only notice is a runtime decision inside the component
-    // itself (Setting::get('registration.open'), falling back to
-    // config('tcgvault.allow_registration')), not whether this route
-    // exists. Toggling registration must never make the route
-    // disappear out from under someone mid-flow, and needs no deploy.
+    // itself (App\Settings\RegistrationSettings::$open), not whether
+    // this route exists. Toggling registration must never make the
+    // route disappear out from under someone mid-flow, and needs no
+    // deploy.
     Volt::route('register', 'pages.auth.register')
         ->name('register');
 

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Staff;
 
-use App\Modules\Settings\Models\Setting;
+use App\Settings\RegistrationSettings;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -18,14 +18,16 @@ final class PlatformSettings extends Component
     {
         Gate::authorize('manage-platform-settings');
 
-        $this->registrationOpen = (bool) Setting::get('registration.open', config('tcgvault.allow_registration'));
+        $this->registrationOpen = app(RegistrationSettings::class)->open;
     }
 
     public function save(): void
     {
         Gate::authorize('manage-platform-settings');
 
-        Setting::set('registration.open', $this->registrationOpen, auth()->id());
+        $settings = app(RegistrationSettings::class);
+        $settings->open = $this->registrationOpen;
+        $settings->save();
     }
 
     public function render()

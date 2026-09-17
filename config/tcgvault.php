@@ -18,10 +18,13 @@ return [
     // username used elsewhere) rather than relying on the derived one.
     'admin_username' => env('TCGVAULT_ADMIN_USERNAME'),
 
-    // This is a single-admin personal vault, not a multi-tenant SaaS — an
-    // open /register is unwanted account-creation surface. Off by default;
-    // flip it on only for the rare case a second account is genuinely
-    // wanted.
+    // Only the INITIAL value, seeded once into RegistrationSettings by
+    // database/settings/..._create_registration_settings.php — after
+    // that migration runs, App\Settings\RegistrationSettings::$open
+    // (toggled from /staff/settings) is the real, live source of truth,
+    // not this env var. Off by default: the beta is invite-only, and
+    // opening public registration is a deliberate admin action, not a
+    // deploy-time one.
     'allow_registration' => env('TCGVAULT_ALLOW_REGISTRATION', false),
 
     /**

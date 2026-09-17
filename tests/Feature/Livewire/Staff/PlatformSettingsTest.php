@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\User;
-use App\Modules\Settings\Models\Setting;
+use App\Settings\RegistrationSettings;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 
@@ -27,15 +27,16 @@ test('an admin can toggle registration mode from the settings page', function ()
         ->set('registrationOpen', true)
         ->call('save');
 
-    expect(Setting::get('registration.open'))->toBeTrue();
+    expect(app(RegistrationSettings::class)->open)->toBeTrue();
 });
 
 test('a regular user cannot toggle registration mode', function () {
+    $before = app(RegistrationSettings::class)->open;
     $user = User::factory()->create();
 
     Livewire::actingAs($user)
         ->test('staff.platform-settings')
         ->assertForbidden();
 
-    expect(Setting::get('registration.open', 'unset'))->toBe('unset');
+    expect(app(RegistrationSettings::class)->open)->toBe($before);
 });

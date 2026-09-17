@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\User;
-use App\Modules\Settings\Models\Setting;
+use App\Settings\RegistrationSettings;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -20,19 +20,17 @@ new #[Layout('layouts.guest')] class extends Component
     public bool $registrationOpen;
 
     /**
-     * The single place this key+fallback pair is spelled out in this
-     * file — mount() and register() both call it rather than each
-     * writing out the same Setting::get() expression, so the two can
-     * never quietly diverge (e.g. a future rename of the setting key
-     * updated in one spot but not the other).
+     * The single place this is read in this file — mount() and
+     * register() both call it rather than each resolving
+     * RegistrationSettings independently, so the two can never quietly
+     * diverge.
+     *
+     * Runtime setting decides the CONTENT this route shows, not
+     * whether the route exists — see routes/auth.php.
      */
     private function currentRegistrationOpen(): bool
     {
-        // Runtime setting decides the CONTENT this route shows, not
-        // whether the route exists — see routes/auth.php. Falls back to
-        // the env-configured default when no admin has ever touched the
-        // toggle from /staff/settings.
-        return (bool) Setting::get('registration.open', config('tcgvault.allow_registration'));
+        return app(RegistrationSettings::class)->open;
     }
 
     public function mount(): void

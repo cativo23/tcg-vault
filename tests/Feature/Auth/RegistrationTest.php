@@ -67,8 +67,15 @@ test('staff is reserved as a username, matching the /staff platform route', func
 // setting off must never lock out someone mid-registration by making
 // the route itself disappear, and toggling it needs no deploy.
 
+function closeRegistration(): void
+{
+    $settings = app(\App\Settings\RegistrationSettings::class);
+    $settings->open = false;
+    $settings->save();
+}
+
 test('registration shows an invite-only notice, not a 404, when closed', function () {
-    config(['tcgvault.allow_registration' => false]);
+    closeRegistration();
 
     $response = $this->get('/register');
 
@@ -77,7 +84,7 @@ test('registration shows an invite-only notice, not a 404, when closed', functio
 });
 
 test('the invite-only notice has no request-access form or CTA — invites are handed out manually', function () {
-    config(['tcgvault.allow_registration' => false]);
+    closeRegistration();
 
     $response = $this->get('/register');
 
@@ -86,7 +93,7 @@ test('the invite-only notice has no request-access form or CTA — invites are h
 });
 
 test('tampering the client-side registrationOpen property cannot bypass a closed registration setting', function () {
-    config(['tcgvault.allow_registration' => false]);
+    closeRegistration();
     $this->seed(\Database\Seeders\PermissionSeeder::class);
 
     $component = Volt::test('pages.auth.register')
@@ -108,22 +115,18 @@ test('tampering the client-side registrationOpen property cannot bypass a closed
     expect(\App\Models\User::where('email', 'attacker@example.com')->exists())->toBeFalse();
 });
 
-test('with no settings row ever created, registration.open falls back to the env-configured default on a fresh install', function () {
-    // No Setting::set() call anywhere in this test — proves the
-    // fallback chain works with zero seeding required on day one.
-    config(['tcgvault.allow_registration' => true]);
-    $this->seed(\Database\Seeders\PermissionSeeder::class);
-
-    $this->get('/register')
-        ->assertOk()
-        ->assertSee('wire:submit="register"', false);
-
-    expect(\App\Modules\Settings\Models\Setting::query()->where('key', 'registration.open')->exists())->toBeFalse();
+test('the registration_settings migration seeds registration.open from the env-configured default', function () {
+    // Proves the seeding happens at migration time, not as a runtime
+    // fallback — spatie/laravel-settings always has a real row after
+    // migrating, unlike the hand-rolled store this replaced.
+    expect(app(\App\Settings\RegistrationSettings::class)->open)
+        ->toBe((bool) config('tcgvault.allow_registration'));
 });
 
-test('registration is reachable when the runtime setting overrides a closed config default', function () {
-    config(['tcgvault.allow_registration' => false]);
-    \App\Modules\Settings\Models\Setting::set('registration.open', true);
+test('registration reflects whatever an admin last set it to, independent of the env default', function () {
+    $settings = app(\App\Settings\RegistrationSettings::class);
+    $settings->open = true;
+    $settings->save();
 
     $this->get('/register')
         ->assertOk()

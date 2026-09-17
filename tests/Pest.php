@@ -12,11 +12,10 @@
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Feature');
 
 // RefreshDatabase resets the database between tests but not the cache
-// store — Setting's cache (see app/Modules/Settings/Models/Setting.php)
-// otherwise leaks a value cached by one test's default into the next
-// test that queries the same key with a different one, since the
-// 'array' cache driver used in testing lives for the whole process,
-// not per-test.
+// store — spatie/laravel-settings caches settings classes (see
+// config/settings.php), and the 'array' cache driver used in testing
+// lives for the whole process, not per-test, so a value cached by one
+// test can otherwise leak into the next.
 afterEach(function () {
     \Illuminate\Support\Facades\Cache::flush();
 });
@@ -42,9 +41,10 @@ uses(Tests\TestCase::class)->in('Unit/Providers');
 // database (factory + Eloquent), same rationale as Catalog/Collection above.
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Invites');
 
-// Unit/Modules/Settings tests exercise a real Setting model against the
-// database and its cache layer, same rationale as the others above.
-uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Settings');
+// Unit/Settings tests exercise real spatie/laravel-settings classes
+// against the database and its cache layer, same rationale as the
+// others above.
+uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Settings');
 
 /*
 |--------------------------------------------------------------------------
