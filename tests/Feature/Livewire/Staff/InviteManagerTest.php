@@ -86,6 +86,31 @@ test('an admin cannot double-invite an email with an existing usable invite', fu
     expect(Invite::count())->toBe(1);
 });
 
+test('invite creation is rate-limited per admin', function () {
+    Permission::create(['name' => 'manage-invites']);
+    $admin = \App\Models\User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+
+    // Livewire actions bypass the route's own throttle middleware
+    // entirely (they run through /livewire/update, not this
+    // component's GET route) — the limit has to live inside the
+    // action itself.
+    for ($i = 0; $i < 20; $i++) {
+        Livewire::actingAs($admin)
+            ->test('staff.invite-manager')
+            ->set('email', "person{$i}@example.com")
+            ->call('createInvite');
+    }
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->set('email', 'one-too-many@example.com')
+        ->call('createInvite')
+        ->assertHasErrors('email');
+
+    expect(Invite::where('email', 'one-too-many@example.com')->exists())->toBeFalse();
+});
+
 test('a regular user cannot revoke an invite', function () {
     $user = \App\Models\User::factory()->create();
     $invite = Invite::factory()->create();
