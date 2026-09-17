@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire;
 
 use App\Models\User;
+use App\Settings\RegistrationSettings;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -22,6 +23,8 @@ use Livewire\Component;
 #[Layout('layouts.public')]
 final class Home extends Component
 {
+    public bool $registrationOpen;
+
     public function mount(): void
     {
         /** @var User|null $user */
@@ -30,6 +33,8 @@ final class Home extends Component
         if ($user !== null) {
             $this->redirectRoute('gallery.index', ['username' => $user->username], navigate: false);
         }
+
+        $this->registrationOpen = app(RegistrationSettings::class)->open;
     }
 
     public function render()

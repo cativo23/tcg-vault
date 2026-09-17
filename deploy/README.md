@@ -35,7 +35,12 @@ docker compose -f compose.prod.yml pull
 docker compose -f compose.prod.yml up -d
 # Migrations are a deliberate manual step (never auto-run):
 docker compose -f compose.prod.yml exec app php artisan migrate --force
-# First deploy only — seeds/validates the admin user:
+# Every deploy, not just the first: idempotent (firstOrCreate/
+# assignRole no-op if already done), and now also the only thing that
+# backfills roles/permissions onto accounts created before a given
+# deploy — skipping this after the roles/permissions/invites migration
+# lands locks the existing admin out of Horizon, Telescope, and their
+# own /admin, since those now gate on a permission nothing else grants.
 docker compose -f compose.prod.yml exec app php artisan db:seed
 ```
 

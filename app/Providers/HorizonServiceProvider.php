@@ -27,19 +27,13 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
      */
     protected function gate(): void
     {
-        // Single-admin app — gate on the CONFIGURED admin specifically, not
-        // just "any authenticated user". TCGVAULT_ALLOW_REGISTRATION exists
-        // (config/tcgvault.php) for a future second account; if that's ever
-        // enabled, a non-admin account must not inherit Horizon access
-        // (queue payload visibility, retry/delete controls) just by being
-        // logged in.
-        //
-        // Gates on email rather than username so this matches
-        // TelescopeServiceProvider's gate, which uses Telescope's stock
-        // email-based check — both use the same
-        // config('tcgvault.admin_email') value the seeder already requires.
+        // Gated on the view-horizon permission (seeded in
+        // database/seeders/PermissionSeeder.php), not a hardcoded email —
+        // a registered account must not inherit queue payload visibility
+        // (retry/delete controls) just by being logged in. super-admin
+        // passes regardless via AppServiceProvider's Gate::before.
         Gate::define('viewHorizon', function ($user = null) {
-            return $user !== null && $user->email === config('tcgvault.admin_email');
+            return $user !== null && $user->can('view-horizon');
         });
     }
 }

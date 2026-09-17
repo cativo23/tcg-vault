@@ -9,6 +9,8 @@ use App\Livewire\Gallery\Index;
 use App\Livewire\Gallery\Sets;
 use App\Livewire\Gallery\Show;
 use App\Livewire\Home;
+use App\Livewire\Staff\InviteManager;
+use App\Livewire\Staff\PlatformSettings;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', Home::class)->name('home');
@@ -26,17 +28,31 @@ Route::view('profile', 'profile')
     ->middleware(['auth'])
     ->name('profile');
 
-Route::get('/admin/add', AddCollectionItem::class)
-    ->middleware(['auth'])
-    ->name('admin.collection.add');
+// Gated on the use-collection permission, not just auth — a
+// platform-management-only admin (content admin, billing admin, when
+// those exist) must not get a personal gallery just by being an admin.
+// super-admin passes regardless via AppServiceProvider's Gate::before.
+Route::middleware(['auth', 'can:use-collection'])->group(function () {
+    Route::get('/admin/add', AddCollectionItem::class)
+        ->name('admin.collection.add');
 
-Route::get('/admin/import', Import::class)
-    ->middleware(['auth'])
-    ->name('admin.collection.import');
+    Route::get('/admin/import', Import::class)
+        ->name('admin.collection.import');
 
-Route::get('/admin', CollectionItems::class)
-    ->middleware(['auth'])
-    ->name('admin.collection.index');
+    Route::get('/admin', CollectionItems::class)
+        ->name('admin.collection.index');
+});
+
+// Platform-management, not "my collection" — deliberately a separate
+// top-level segment from /admin/* so the two concepts (managing the
+// platform vs. managing your own gallery) never share a URL prefix.
+Route::get('/staff/invites', InviteManager::class)
+    ->middleware(['auth', 'can:manage-invites'])
+    ->name('staff.invites');
+
+Route::get('/staff/settings', PlatformSettings::class)
+    ->middleware(['auth', 'can:manage-platform-settings'])
+    ->name('staff.settings');
 
 // Every auth.php route (login, register, forgot-password, the
 // reset-password/{token} and verify-email/{id}/{hash} routes) MUST be

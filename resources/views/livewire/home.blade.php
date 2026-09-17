@@ -7,7 +7,11 @@
                 <p class="nw-home-eyebrow">tcg-vault</p>
                 <h1 class="nw-home-h1">Track every <span class="accent">card</span>.</h1>
                 <p class="nw-home-sub">Daily pricing, value history, every card with its own photo. Not a spreadsheet.</p>
-                <span class="nw-home-cta">Create your account — coming soon</span>
+                @if ($registrationOpen)
+                    <a href="{{ route('register') }}" class="nw-home-cta" wire:navigate>Create your account</a>
+                @else
+                    <span class="nw-home-cta">Invite-only — ask an existing member</span>
+                @endif
             </div>
 
             <div class="nw-home-fan">
@@ -109,7 +113,13 @@
             </div>
             <div class="item">
                 <p class="q">When does registration open?</p>
-                <p class="a">Coming soon. Right now tcg-vault runs on a single account — open registration is on the way.</p>
+                <p class="a">
+                    @if ($registrationOpen)
+                        Yes — registration is open, create your account anytime.
+                    @else
+                        Not yet — it's invite-only while in beta.
+                    @endif
+                </p>
             </div>
             <div class="item">
                 <p class="q">Where do the prices come from?</p>
@@ -124,7 +134,12 @@
 
     <section class="nw-home-close">
         <h2>Track every <span class="accent">card</span>.</h2>
-        <p>Create your account — coming soon.</p>
-        <span class="cta">Notify me when it opens</span>
+        @if ($registrationOpen)
+            <p>Create your account and start tracking.</p>
+            <a href="{{ route('register') }}" class="cta" wire:navigate>Create your account</a>
+        @else
+            <p>Invite-only while in beta.</p>
+            <span class="cta">Invite-only, for now</span>
+        @endif
     </section>
 </div>

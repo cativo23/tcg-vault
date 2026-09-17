@@ -30,3 +30,24 @@ test('an explicit admin_username config overrides the email-derived default', fu
     $user = User::where('email', 'cativo23.kt@gmail.com')->firstOrFail();
     expect($user->username)->toBe('cativo23');
 });
+
+test('the seeded bootstrap admin gets the super-admin role', function () {
+    config(['tcgvault.admin_email' => 'cativo23.kt@gmail.com']);
+    config(['tcgvault.admin_password' => 'a-real-password']);
+
+    $this->seed();
+
+    $user = User::where('email', 'cativo23.kt@gmail.com')->firstOrFail();
+    expect($user->hasRole('super-admin'))->toBeTrue();
+});
+
+test('re-seeding does not duplicate the bootstrap admins super-admin role assignment', function () {
+    config(['tcgvault.admin_email' => 'cativo23.kt@gmail.com']);
+    config(['tcgvault.admin_password' => 'a-real-password']);
+
+    $this->seed();
+    $this->seed();
+
+    $user = User::where('email', 'cativo23.kt@gmail.com')->firstOrFail();
+    expect($user->roles()->where('name', 'super-admin')->count())->toBe(1);
+});

@@ -11,6 +11,15 @@
 
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Feature');
 
+// RefreshDatabase resets the database between tests but not the cache
+// store — spatie/laravel-settings caches settings classes (see
+// config/settings.php), and the 'array' cache driver used in testing
+// lives for the whole process, not per-test, so a value cached by one
+// test can otherwise leak into the next.
+afterEach(function () {
+    \Illuminate\Support\Facades\Cache::flush();
+});
+
 // Unit tests under Modules/Catalog need the Laravel container for Http::fake()/config(),
 // but this binding does not apply to other Unit tests.
 uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Catalog');
@@ -27,6 +36,15 @@ uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class
 // Unit/Providers tests boot a real service provider instance against the
 // container (config(), URL facade), no database needed.
 uses(Tests\TestCase::class)->in('Unit/Providers');
+
+// Unit/Modules/Invites tests exercise a real Invite model against the
+// database (factory + Eloquent), same rationale as Catalog/Collection above.
+uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Invites');
+
+// Unit/Settings tests exercise real spatie/laravel-settings classes
+// against the database and its cache layer, same rationale as the
+// others above.
+uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Settings');
 
 /*
 |--------------------------------------------------------------------------

@@ -15,6 +15,8 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->call(PermissionSeeder::class);
+
         $email = config('tcgvault.admin_email');
         $password = config('tcgvault.admin_password');
 
@@ -54,6 +56,10 @@ class DatabaseSeeder extends Seeder
                 'email_verified_at' => now(),
             ],
         );
+
+        // Idempotent by Spatie's own design — assignRole() no-ops if the
+        // user already has the role, so re-seeding never duplicates it.
+        $user->assignRole('super-admin');
 
         // Console context has no authenticated user, so TenantScope's
         // fail-closed default (see app/Modules/Collection/Scopes/TenantScope.php)

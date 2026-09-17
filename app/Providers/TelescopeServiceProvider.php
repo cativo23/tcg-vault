@@ -53,17 +53,18 @@ class TelescopeServiceProvider extends TelescopeApplicationServiceProvider
      * Register the Telescope gate.
      *
      * This gate determines who can access Telescope in non-local
-     * environments. Same identity check as Horizon's gate
-     * (HorizonServiceProvider::gate()) — single-admin app, gated on the
-     * configured admin's email specifically, not just "any authenticated
-     * user". If TCGVAULT_ALLOW_REGISTRATION is ever turned on, a second
-     * account must not inherit Telescope access (request/query/job
-     * payload visibility) just by being logged in.
+     * environments. Same mechanism as Horizon's gate
+     * (HorizonServiceProvider::gate()) — gated on the view-telescope
+     * permission (seeded in database/seeders/PermissionSeeder.php), not
+     * a hardcoded email, so a registered account doesn't inherit
+     * request/query/job payload visibility just by being logged in.
+     * super-admin passes regardless via AppServiceProvider's
+     * Gate::before.
      */
     protected function gate(): void
     {
         Gate::define('viewTelescope', function (User $user) {
-            return $user->email === config('tcgvault.admin_email');
+            return $user->can('view-telescope');
         });
     }
 }

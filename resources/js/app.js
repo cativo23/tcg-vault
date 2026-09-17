@@ -141,3 +141,10 @@ const bindThemeToggle = () => {
 
 document.addEventListener('DOMContentLoaded', bindThemeToggle);
 document.addEventListener('livewire:navigated', bindThemeToggle);
+
+// wire:navigate swaps the document without re-running the inline <head>
+// script that sets data-theme from localStorage on a full load — so a
+// stored preference that disagrees with prefers-color-scheme gets lost
+// on every SPA navigation until the next hard reload. Re-apply it here,
+// same event bindThemeToggle already re-binds on.
+document.addEventListener('livewire:navigated', () => applyTheme(localStorage.getItem(THEME_KEY)));

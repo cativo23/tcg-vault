@@ -4,6 +4,7 @@
     $pageTitle = isset($title) && $title !== '' ? "{$title} · {$siteName}" : $siteName;
     $pageDescription = $description ?? 'A Pokémon TCG collection, catalogued card by card with live market value.';
     $isActive = fn (string ...$routes) => request()->routeIs(...$routes) ? 'page' : null;
+    $registrationOpen = app(\App\Settings\RegistrationSettings::class)->open;
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -75,6 +76,13 @@
                              is a guest by definition. --}}
                         <a href="{{ route('admin.collection.index') }}" class="nw-nav-ghost">{{ __('Admin') }}</a>
                     @endauth
+
+                    @guest
+                        <a href="{{ route('login') }}" class="nw-nav-ghost" wire:navigate>{{ __('Log in') }}</a>
+                        @if ($registrationOpen)
+                            <a href="{{ route('register') }}" class="nw-nav-ghost" wire:navigate>{{ __('Sign up') }}</a>
+                        @endif
+                    @endguest
                 </div>
             </div>
         </header>

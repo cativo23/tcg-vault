@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
+use Spatie\Permission\Models\Permission;
 
 // Telescope's dashboard routes are intentionally not registered during
 // tests (TELESCOPE_ENABLED=false in phpunit.xml — standard Laravel
@@ -16,16 +17,16 @@ test('a guest cannot view Telescope', function () {
     expect(Gate::allows('viewTelescope'))->toBeFalse();
 });
 
-test('the configured admin can view Telescope', function () {
-    config(['tcgvault.admin_email' => 'admin@example.com']);
-    $user = User::factory()->create(['email' => 'admin@example.com']);
+test('a user with the view-telescope permission can view Telescope', function () {
+    Permission::create(['name' => 'view-telescope']);
+    $user = User::factory()->create();
+    $user->givePermissionTo('view-telescope');
 
     expect(Gate::forUser($user)->allows('viewTelescope'))->toBeTrue();
 });
 
-test('a logged-in user who is not the configured admin cannot view Telescope', function () {
-    config(['tcgvault.admin_email' => 'admin@example.com']);
-    $user = User::factory()->create(['email' => 'someone-else@example.com']);
+test('a logged-in user without the view-telescope permission cannot view Telescope', function () {
+    $user = User::factory()->create();
 
     expect(Gate::forUser($user)->allows('viewTelescope'))->toBeFalse();
 });
