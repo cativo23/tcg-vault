@@ -28,6 +28,8 @@ final class PlatformSettings extends Component
         $settings = app(RegistrationSettings::class);
         $settings->open = $this->registrationOpen;
         $settings->save();
+
+        $this->dispatch('settings-saved');
     }
 
     public function render()

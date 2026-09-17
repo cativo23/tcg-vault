@@ -30,6 +30,18 @@ test('an admin can toggle registration mode from the settings page', function ()
     expect(app(RegistrationSettings::class)->open)->toBeTrue();
 });
 
+test('saving dispatches a confirmation event', function () {
+    Permission::create(['name' => 'manage-platform-settings']);
+    $admin = User::factory()->create();
+    $admin->givePermissionTo('manage-platform-settings');
+
+    Livewire::actingAs($admin)
+        ->test('staff.platform-settings')
+        ->set('registrationOpen', true)
+        ->call('save')
+        ->assertDispatched('settings-saved');
+});
+
 test('a regular user cannot toggle registration mode', function () {
     $before = app(RegistrationSettings::class)->open;
     $user = User::factory()->create();

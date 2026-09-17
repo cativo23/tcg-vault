@@ -11,7 +11,10 @@
                 {{ __('Off keeps the beta invite-only — /register shows a notice instead of the sign-up form.') }}
             </p>
 
-            <x-primary-button class="mt-4">{{ __('Save') }}</x-primary-button>
+            <div class="mt-4 flex items-center gap-3">
+                <x-primary-button>{{ __('Save') }}</x-primary-button>
+                <x-action-message on="settings-saved">{{ __('Saved.') }}</x-action-message>
+            </div>
         </form>
     </div>
 </div>
