@@ -107,6 +107,26 @@ test('a client cannot overwrite the locked hash either', function () {
     ])->set('hash', 'anything');
 })->throws(\Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException::class);
 
+test('an invite whose email now belongs to an existing account is rejected instead of raising a database error', function () {
+    // The invite-creation check in InviteManager only rules out an
+    // existing account at the moment the invite is issued — an invite
+    // is valid for days afterward, long enough for that same email to
+    // land on an account some other way in the meantime (the public
+    // register route re-opening, or an admin creating the account
+    // directly). Redemption must re-check, not assume the email is
+    // still free just because the invite itself is still usable.
+    Role::create(['name' => 'user']);
+    $invite = Invite::factory()->create(['email' => 'already-registered@example.com']);
+    User::factory()->create(['email' => 'already-registered@example.com']);
+
+    \Livewire\Livewire::test(\App\Livewire\Auth\InviteRegistration::class, [
+        'invite' => $invite,
+        'hash' => sha1($invite->email),
+    ])->assertForbidden();
+
+    expect($invite->refresh()->used_at)->toBeNull();
+});
+
 test('an invite already used cannot be used again', function () {
     Role::create(['name' => 'user']);
     $invite = Invite::factory()->create(['used_at' => now(), 'accepted_by' => User::factory()->create()->id]);

@@ -65,6 +65,18 @@ final class InviteRegistration extends Component
         if (! hash_equals(sha1($invite->email), $hash) || ! $invite->isUsable()) {
             throw new HttpException(403, 'This invite is no longer valid.');
         }
+
+        // The invite-creation check in InviteManager only rules out an
+        // existing account at the moment the invite is issued — an
+        // invite stays valid for days afterward, long enough for that
+        // same email to land on an account some other way in the
+        // meantime (public registration re-opening, an admin creating
+        // the account directly). Without this, User::create() below hits
+        // users.email's unique constraint and throws an unhandled
+        // UniqueConstraintViolationException instead of a normal 403.
+        if (User::where('email', $invite->email)->exists()) {
+            throw new HttpException(403, 'This invite is no longer valid.');
+        }
     }
 
     public function register(): void
