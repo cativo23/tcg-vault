@@ -3,7 +3,7 @@
         <h1 class="text-xl font-semibold mb-4" style="color: var(--ink)">Add a card</h1>
 
         <div class="mb-4">
-            <label class="block text-sm font-medium mb-1">Set</label>
+            <x-input-label value="Set" />
             <select wire:model.live="setFilter" class="nw-input w-full">
                 <option value="">All sets</option>
                 @foreach ($availableSets as $tcgdexId => $name)
@@ -13,7 +13,7 @@
         </div>
 
         <div class="mb-4">
-            <label class="block text-sm font-medium mb-1">Search tcgdex by name</label>
+            <x-input-label value="Search tcgdex by name" />
             <span class="nw-search-wrap w-full">
                 <input type="text" wire:model.live.debounce.400ms="search" wire:keyup="runSearch"
                        class="nw-input w-full" placeholder="e.g. Mega Darkrai ex">
@@ -35,7 +35,7 @@
                  "nothing happened yet" or worse, as the actual answer.
                  Dimming them ties the stale content to the same loading
                  state instead of leaving it looking current. --}}
-            <div wire:loading.class="opacity-40" wire:target="search,runSearch" class="grid grid-cols-3 gap-3 mb-3">
+            <div wire:loading.class="opacity-40" wire:target="search,runSearch" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
                 @foreach ($results as $result)
                     <button type="button" wire:click="selectCard(@js($result->tcgdexId))"
                             class="nw-stagger-item border rounded p-2 text-left text-sm {{ $selectedTcgdexId === $result->tcgdexId ? 'ring-2' : '' }}"
@@ -69,7 +69,7 @@
 
         <div class="grid grid-cols-2 gap-4 mb-4">
             <div>
-                <label class="block text-sm font-medium mb-1">Condition</label>
+                <x-input-label value="Condition" />
                 <select wire:model="condition" class="nw-input w-full">
                     <option value="NM">Near Mint</option>
                     <option value="LP">Lightly Played</option>
@@ -80,12 +80,12 @@
                 @error('condition') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
             </div>
             <div>
-                <label class="block text-sm font-medium mb-1">Quantity</label>
+                <x-input-label value="Quantity" />
                 <input type="number" min="1" wire:model="quantity" class="nw-input w-full">
                 @error('quantity') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
             </div>
             <div>
-                <label class="block text-sm font-medium mb-1">Variant</label>
+                <x-input-label value="Variant" />
                 <select wire:model="variant" class="nw-input w-full">
                     <option value="">— not specified —</option>
                     @foreach ($availableVariants as $v)
@@ -95,22 +95,22 @@
                 @error('variant') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
             </div>
             <div>
-                <label class="block text-sm font-medium mb-1">Grading company (optional)</label>
+                <x-input-label value="Grading company (optional)" />
                 <input type="text" wire:model="gradeCompany" class="nw-input w-full" placeholder="PSA, BGS...">
             </div>
             <div>
-                <label class="block text-sm font-medium mb-1">Grade (optional)</label>
+                <x-input-label value="Grade (optional)" />
                 <input type="text" wire:model="gradeValue" class="nw-input w-full" placeholder="9, 10...">
             </div>
         </div>
 
         <div class="mb-4">
-            <label class="block text-sm font-medium mb-1">Notes (optional)</label>
+            <x-input-label value="Notes (optional)" />
             <textarea wire:model="notes" rows="3" class="nw-input w-full"></textarea>
         </div>
 
         <div class="mb-6">
-            <label class="block text-sm font-medium mb-1">Your own photo (optional — falls back to tcgdex's official image)</label>
+            <x-input-label value="Your own photo (optional — falls back to tcgdex's official image)" />
             <input type="file" wire:model="photo" accept="image/*">
             @if ($photo) <img src="{{ $photo->temporaryUrl() }}" class="mt-2 w-32 rounded"> @endif
         </div>
