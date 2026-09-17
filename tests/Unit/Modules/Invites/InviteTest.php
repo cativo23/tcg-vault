@@ -71,6 +71,21 @@ test('the usable scope matches isUsable() exactly, as a single query instead of 
     expect($ids)->not->toContain($used->id, $revoked->id, $expired->id);
 });
 
+test('the database itself rejects a second usable invite for the same email, closing the app-level checks TOCTOU race', function () {
+    Invite::factory()->create(['email' => 'race@example.com']);
+
+    Invite::factory()->create(['email' => 'race@example.com']);
+})->throws(\Illuminate\Database\QueryException::class);
+
+test('a second invite for the same email is fine once the first is no longer usable', function () {
+    $first = Invite::factory()->create(['email' => 'again@example.com']);
+    $first->revoke();
+
+    $second = Invite::factory()->create(['email' => 'again@example.com']);
+
+    expect($second->exists)->toBeTrue();
+});
+
 test('revoking an invite records who revoked it', function () {
     $admin = \App\Models\User::factory()->create();
     $invite = Invite::factory()->create();

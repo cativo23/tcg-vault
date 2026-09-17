@@ -6,6 +6,7 @@ namespace App\Livewire\Staff;
 
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
@@ -56,11 +57,28 @@ final class InviteManager extends Component
             ],
         ]);
 
-        Invite::create([
-            'email' => $this->email,
-            'created_by' => auth()->id(),
-            'expires_at' => now()->addDays(config('tcgvault.invite_ttl_days', 7)),
-        ]);
+        try {
+            Invite::create([
+                'email' => $this->email,
+                'created_by' => auth()->id(),
+                'expires_at' => now()->addDays(config('tcgvault.invite_ttl_days', 7)),
+            ]);
+        } catch (QueryException $exception) {
+            // The validation check above already covers the common
+            // sequential case; this catches the genuine race it can't
+            // (two concurrent creates for the same email both passing
+            // that check before either commits) — the database's own
+            // partial unique index (see the invites migration) is the
+            // real guarantee, this just turns its violation into a
+            // normal validation error instead of a 500.
+            if (! str_contains($exception->getMessage(), 'invites_usable_email_unique')) {
+                throw $exception;
+            }
+
+            $this->addError('email', 'This email already has a pending invite.');
+
+            return;
+        }
 
         $this->reset('email');
     }
