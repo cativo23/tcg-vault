@@ -59,6 +59,18 @@ test('revoke is atomic against a concurrent accept — a stale in-memory copy ca
     expect($invite->fresh()->revoked_at)->toBeNull();
 });
 
+test('the usable scope matches isUsable() exactly, as a single query instead of loading every row', function () {
+    $usable = Invite::factory()->create();
+    $used = Invite::factory()->create(['used_at' => now()]);
+    $revoked = Invite::factory()->create(['revoked_at' => now()]);
+    $expired = Invite::factory()->create(['expires_at' => now()->subDay()]);
+
+    $ids = Invite::usable()->pluck('id');
+
+    expect($ids)->toContain($usable->id);
+    expect($ids)->not->toContain($used->id, $revoked->id, $expired->id);
+});
+
 test('revoking an invite records who revoked it', function () {
     $admin = \App\Models\User::factory()->create();
     $invite = Invite::factory()->create();

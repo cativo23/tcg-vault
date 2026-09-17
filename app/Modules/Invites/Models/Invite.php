@@ -6,6 +6,7 @@ namespace App\Modules\Invites\Models;
 
 use App\Models\User;
 use Database\Factories\InviteFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -60,6 +61,22 @@ final class Invite extends Model
         return $this->used_at === null
             && $this->revoked_at === null
             && $this->expires_at->isFuture();
+    }
+
+    /**
+     * The query-level twin of isUsable() — same three conditions,
+     * expressed so callers checking "does a usable invite exist" (e.g.
+     * the duplicate-invite check in InviteManager::createInvite()) can
+     * ask the database directly instead of loading every row for an
+     * email and filtering in PHP. Kept next to isUsable() so the two
+     * can't silently drift apart.
+     */
+    public function scopeUsable(Builder $query): Builder
+    {
+        return $query
+            ->whereNull('used_at')
+            ->whereNull('revoked_at')
+            ->where('expires_at', '>', now());
     }
 
     /**
