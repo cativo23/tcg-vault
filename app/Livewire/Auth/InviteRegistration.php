@@ -92,8 +92,17 @@ final class InviteRegistration extends Component
                 'username' => $validated['username'],
                 'email' => $invite->email,
                 'password' => Hash::make($validated['password']),
-                'email_verified_at' => now(),
             ]);
+
+            // User::$fillable deliberately excludes email_verified_at —
+            // mass assignment must never let an arbitrary write
+            // self-verify an email — so passing it to create() above
+            // would silently be dropped, not persisted. forceFill() is
+            // the explicit, narrow bypass for this one trusted,
+            // server-side write: an invite is proof of email ownership
+            // (the invite was sent TO this address), so marking it
+            // verified here is correct, not a shortcut.
+            $user->forceFill(['email_verified_at' => now()])->save();
 
             $user->assignRole('user');
 

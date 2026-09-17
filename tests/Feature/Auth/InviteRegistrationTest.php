@@ -69,6 +69,12 @@ test('completing an invite creates the user with the user role, marks the invite
 
     $user = User::where('email', 'invitee@example.com')->firstOrFail();
     expect($user->hasRole('user'))->toBeTrue();
+    // User::$fillable deliberately excludes email_verified_at (mass
+    // assignment must never let an arbitrary write self-verify an
+    // email) — User::create() silently drops it rather than persisting
+    // it, so this must be set through an explicit, non-mass-assignment
+    // write instead.
+    expect($user->fresh()->email_verified_at)->not->toBeNull();
 
     $invite->refresh();
     expect($invite->used_at)->not->toBeNull();
