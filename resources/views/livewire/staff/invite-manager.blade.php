@@ -17,6 +17,7 @@
                 <th class="pb-2">{{ __('Email') }}</th>
                 <th class="pb-2">{{ __('Status') }}</th>
                 <th class="pb-2">{{ __('Expires') }}</th>
+                <th class="pb-2">{{ __('Link') }}</th>
                 <th class="pb-2"></th>
             </tr>
         </thead>
@@ -36,6 +37,16 @@
                         @endif
                     </td>
                     <td class="py-1">{{ $invite->expires_at->diffForHumans() }}</td>
+                    <td class="py-1 max-w-xs truncate">
+                        @if ($invite->isUsable())
+                            {{-- Deterministic from the invite's own id/email/expiry — recomputed
+                                 on every render rather than stored, so it's always the real,
+                                 currently-valid link, never a stale one from creation time. --}}
+                            <input type="text" readonly value="{{ $invite->signedUrl() }}"
+                                   onclick="this.select()" class="w-full text-xs bg-transparent border-0 p-0"
+                                   style="color: var(--muted)">
+                        @endif
+                    </td>
                     <td class="py-1">
                         @if ($invite->isUsable())
                             <button type="button" wire:click="revokeInvite({{ $invite->id }})" class="nw-link underline text-sm">

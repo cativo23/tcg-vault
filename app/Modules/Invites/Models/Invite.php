@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\URL;
 
 /**
  * @use HasFactory<InviteFactory>
@@ -61,6 +62,21 @@ final class Invite extends Model
         return $this->used_at === null
             && $this->revoked_at === null
             && $this->expires_at->isFuture();
+    }
+
+    /**
+     * Deterministic from this row's own id/email/expiry plus APP_KEY —
+     * safe to recompute on demand (e.g. every time the invite manager
+     * renders) rather than having to generate and store it once at
+     * creation, which is what made it easy to create an Invite row and
+     * never actually surface a link anyone could use.
+     */
+    public function signedUrl(): string
+    {
+        return URL::temporarySignedRoute('invite.accept', $this->expires_at, [
+            'invite' => $this->id,
+            'hash' => sha1($this->email),
+        ]);
     }
 
     /**

@@ -43,6 +43,36 @@ test('a regular user cannot even mount the invite manager component directly', f
     expect(Invite::count())->toBe(0);
 });
 
+test('the invite manager shows a copyable signed link for each pending invite, so the admin can actually send it', function () {
+    Permission::create(['name' => 'manage-invites']);
+    $admin = \App\Models\User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->set('email', 'someone@example.com')
+        ->call('createInvite');
+
+    $invite = Invite::where('email', 'someone@example.com')->firstOrFail();
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->assertSee($invite->signedUrl());
+});
+
+test('a revoked invite no longer shows its link — there is nothing left to send', function () {
+    Permission::create(['name' => 'manage-invites']);
+    $admin = \App\Models\User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+    $invite = Invite::factory()->create();
+    $url = $invite->signedUrl();
+    $invite->revoke($admin->id);
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->assertDontSee($url, false);
+});
+
 test('an admin can revoke an unused invite', function () {
     Permission::create(['name' => 'manage-invites']);
     $admin = \App\Models\User::factory()->create();
