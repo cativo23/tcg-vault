@@ -58,4 +58,8 @@
             @endforeach
         </tbody>
     </table>
+
+    <div class="mt-4">
+        {{ $invites->links() }}
+    </div>
 </div>

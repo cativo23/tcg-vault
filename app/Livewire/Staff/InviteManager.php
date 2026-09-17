@@ -12,10 +12,15 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 #[Layout('layouts.app')]
 final class InviteManager extends Component
 {
+    use WithPagination;
+
+    private const PER_PAGE = 24;
+
     public string $email = '';
 
     public function mount(): void
@@ -137,7 +142,7 @@ final class InviteManager extends Component
     public function render()
     {
         return view('livewire.staff.invite-manager', [
-            'invites' => Invite::latest()->get(),
+            'invites' => Invite::latest()->paginate(self::PER_PAGE),
         ]);
     }
 }

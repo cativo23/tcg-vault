@@ -73,6 +73,31 @@ test('a revoked invite no longer shows its link — there is nothing left to sen
         ->assertDontSee($url, false);
 });
 
+test('the invite list paginates at 24 per page, same as the collection admin table', function () {
+    Permission::create(['name' => 'manage-invites']);
+    $admin = \App\Models\User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+    Invite::factory()->count(30)->create();
+
+    $component = Livewire::actingAs($admin)->test('staff.invite-manager');
+
+    expect($component->viewData('invites')->count())->toBe(24);
+    expect($component->viewData('invites')->total())->toBe(30);
+});
+
+test('page 2 of the invite list is reachable and shows the remaining invites', function () {
+    Permission::create(['name' => 'manage-invites']);
+    $admin = \App\Models\User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+    Invite::factory()->count(30)->create();
+
+    $component = Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->call('gotoPage', 2);
+
+    expect($component->viewData('invites')->count())->toBe(6);
+});
+
 test('an admin can revoke an unused invite', function () {
     Permission::create(['name' => 'manage-invites']);
     $admin = \App\Models\User::factory()->create();
