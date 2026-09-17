@@ -56,7 +56,13 @@ new #[Layout('layouts.guest')] class extends Component
         <!-- Remember Me -->
         <div class="block mt-4">
             <label for="remember" class="inline-flex items-center">
-                <input wire:model="form.remember" id="remember" type="checkbox" class="rounded border-gray-300 shadow-sm" style="accent-color: var(--ink)" name="remember">
+                {{-- @tailwindcss/forms renders the checked state via
+                     `background-color: currentColor` PLUS a hardcoded white
+                     checkmark glyph drawn on top — `color` has to stay dark
+                     in both themes or the checkmark vanishes into a light
+                     fill, so this uses the frozen --chrome-bg, not the
+                     theme-flipping --ink. --}}
+                <input wire:model="form.remember" id="remember" type="checkbox" class="rounded shadow-sm" style="color: var(--chrome-bg); border-color: var(--hair)" name="remember">
                 <span class="ms-2 text-sm" style="color: var(--muted)">{{ __('Remember me') }}</span>
             </label>
         </div>
