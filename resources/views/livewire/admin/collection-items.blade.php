@@ -143,8 +143,8 @@
                             @endif
                         </td>
                         <td class="p-3 text-right">
-                            <button wire:click="startEditingItem({{ $item->id }})" class="text-xs mr-2" style="color: var(--ink)">Edit</button>
-                            <button wire:click="confirmDelete({{ $item->id }})" class="text-xs" style="color: var(--danger)">Delete</button>
+                            <button wire:click="startEditingItem({{ $item->id }})" class="nw-row-btn mr-2">Edit</button>
+                            <button wire:click="confirmDelete({{ $item->id }})" class="nw-row-btn nw-row-btn--danger">Delete</button>
                         </td>
                     </tr>
                 @empty

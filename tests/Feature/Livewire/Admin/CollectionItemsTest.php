@@ -839,7 +839,10 @@ test('the needs-review badge does not share a color with the destructive Delete 
     // A dedicated --warning token keeps that distinction real instead of
     // reusing the same red for both meanings.
     expect($html)->toContain('color: var(--warning)');
-    expect(substr_count($html, 'color: var(--danger)'))->toBe(1); // Delete only
+    // Delete's --danger styling lives in the .nw-row-btn--danger CSS class
+    // now, not an inline style, so the invariant is checked by class count
+    // instead of counting inline `color: var(--danger)` occurrences.
+    expect(substr_count($html, 'nw-row-btn--danger'))->toBe(1); // Delete only
 });
 
 test('the notes cell hints that it is clickable even when empty', function () {

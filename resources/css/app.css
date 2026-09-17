@@ -895,6 +895,27 @@ body {
 .nw-row-hover:hover { background: var(--bone-2); }
 .nw-btn-primary:active, .nw-btn-secondary:active, .nw-btn-danger:active { transform: scale(0.97); transition: transform 120ms var(--ease); }
 
+/* ─── row-level actions (dense tables: per-row Edit/Delete, invite Revoke) ───
+   .nw-btn-* is sized for a standalone CTA (0.6rem/1.1rem padding) — too heavy
+   repeated twice per row down a table. Same pill/hairline family, compact. */
+.nw-row-btn {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background-color 160ms var(--ease), border-color 160ms var(--ease);
+}
+.nw-row-btn:hover { background: var(--bone-2); border-color: var(--ink); }
+.nw-row-btn--danger { color: var(--danger); }
+.nw-row-btn--danger:hover { border-color: var(--danger); }
+
 /* design.md focus rule — same visual weight as hover so keyboard users get
    full parity. The doubled selector intentionally ties @tailwindcss/forms'
    reset specificity so this rule wins by source order. */

@@ -54,7 +54,7 @@
                         </td>
                         <td class="p-3 text-right">
                             @if ($invite->isUsable())
-                                <button type="button" wire:click="revokeInvite({{ $invite->id }})" class="text-xs" style="color: var(--danger)">
+                                <button type="button" wire:click="revokeInvite({{ $invite->id }})" class="nw-row-btn nw-row-btn--danger">
                                     {{ __('Revoke') }}
                                 </button>
                             @endif
