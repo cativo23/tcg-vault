@@ -102,7 +102,26 @@ final class InviteManager extends Component
 
             $stale->revoke(auth()->id());
 
-            DB::transaction(fn () => Invite::create($attributes));
+            try {
+                DB::transaction(fn () => Invite::create($attributes));
+            } catch (QueryException $retryException) {
+                // The row that conflicted a moment ago was the stale one
+                // just revoked above — but between that revoke and this
+                // retry, a different request can still have landed a
+                // genuinely usable invite for the same email (the same
+                // kind of race the first catch above exists for, just
+                // one step later). That's real contention, not a bug:
+                // report it the same way the sequential check would
+                // have, rather than letting a second unhandled
+                // QueryException surface as a raw database error.
+                if (! str_contains($retryException->getMessage(), 'invites_usable_email_unique')) {
+                    throw $retryException;
+                }
+
+                $this->addError('email', 'This email already has a pending invite.');
+
+                return;
+            }
         }
 
         $this->reset('email');

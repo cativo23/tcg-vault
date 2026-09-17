@@ -138,6 +138,53 @@ test('re-inviting an email whose only conflicting invite has expired self-heals 
     expect(Invite::where('email', 'again@example.com')->usable()->count())->toBe(1);
 });
 
+test('self-healing a stale invite fails gracefully, not with a raw database error, if a genuinely usable invite lands for the same email in between', function () {
+    // The self-heal path (see Invite::revoke() and the catch block in
+    // createInvite()) only re-checks the ONE conflicting row it already
+    // knows about. A true race has a second window it doesn't cover:
+    // between that first INSERT failing and the retry INSERT running,
+    // some other request can land a genuinely usable invite for the
+    // same email — the retry then collides with THAT row instead, and
+    // nothing catches the second failure.
+    Permission::create(['name' => 'manage-invites']);
+    $admin = \App\Models\User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+
+    $stale = Invite::factory()->create([
+        'email' => 'interleaved@example.com',
+        'expires_at' => now()->subDay(),
+    ]);
+
+    $creatingCalls = 0;
+    Invite::creating(function () use (&$creatingCalls) {
+        $creatingCalls++;
+
+        // Only on the retry (the 2nd attempt this request makes) —
+        // simulate another admin's request winning the same race
+        // window right after this one's self-heal revoked the stale
+        // row but before its own retry INSERT lands. Written directly
+        // through the query builder so it doesn't re-fire this same
+        // 'creating' listener.
+        if ($creatingCalls === 2) {
+            \Illuminate\Support\Facades\DB::table('invites')->insert([
+                'email' => 'interleaved@example.com',
+                'created_by' => auth()->id(),
+                'expires_at' => now()->addDays(7),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    });
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->set('email', 'interleaved@example.com')
+        ->call('createInvite')
+        ->assertHasErrors('email');
+
+    expect($stale->refresh()->revoked_at)->not->toBeNull();
+});
+
 test('invite creation is rate-limited per admin', function () {
     Permission::create(['name' => 'manage-invites']);
     $admin = \App\Models\User::factory()->create();
