@@ -24,7 +24,10 @@ new class extends Component
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center">
                     <a href="{{ route('dashboard') }}" class="nw-brand" wire:navigate>
-                        <span class="nw-dot" aria-hidden="true"></span>
+                        <svg class="nw-mark" viewBox="0 0 64 32" aria-hidden="true">
+                            <polyline points="4,22 16,27 28,15 40,19 52,7" fill="none" stroke="#f2efe6" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="52" cy="7" r="4.5" fill="#37d17f"/>
+                        </svg>
                         tcg-vault
                     </a>
                 </div>

@@ -17,8 +17,10 @@
 
         <title>{{ config('app.name', 'tcg-vault') }}</title>
 
-        {{-- Brand mark as favicon: the ink square and the one signal dot. --}}
-        <link rel="icon" href="data:image/svg+xml,{{ rawurlencode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#141412"/><circle cx="16" cy="16" r="6" fill="#37d17f"/></svg>') }}">
+        {{-- Brand mark as favicon: the Vault Line — a rising sparkline running off
+             the ink square's edge into a signal-green node, echoing the app's own
+             daily value-tracking chart. --}}
+        <link rel="icon" href="data:image/svg+xml,{{ rawurlencode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="1" y="1" width="30" height="30" rx="7" fill="#141412"/><path d="M2 22 L14 24 L26 10" fill="none" stroke="#f2efe6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="26" cy="10" r="3" fill="#37d17f"/></svg>') }}">
 
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
