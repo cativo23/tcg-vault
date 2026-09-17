@@ -19,13 +19,25 @@ new #[Layout('layouts.guest')] class extends Component
 
     public bool $registrationOpen;
 
-    public function mount(): void
+    /**
+     * The single place this key+fallback pair is spelled out in this
+     * file — mount() and register() both call it rather than each
+     * writing out the same Setting::get() expression, so the two can
+     * never quietly diverge (e.g. a future rename of the setting key
+     * updated in one spot but not the other).
+     */
+    private function currentRegistrationOpen(): bool
     {
         // Runtime setting decides the CONTENT this route shows, not
         // whether the route exists — see routes/auth.php. Falls back to
         // the env-configured default when no admin has ever touched the
         // toggle from /staff/settings.
-        $this->registrationOpen = (bool) Setting::get('registration.open', config('tcgvault.allow_registration'));
+        return (bool) Setting::get('registration.open', config('tcgvault.allow_registration'));
+    }
+
+    public function mount(): void
+    {
+        $this->registrationOpen = $this->currentRegistrationOpen();
     }
 
     /**
@@ -38,10 +50,7 @@ new #[Layout('layouts.guest')] class extends Component
         // update mechanism regardless of whether a wire:model in the
         // blade binds to it, so it is display-only. The actual gate
         // re-reads the real setting server-side, every time.
-        abort_unless(
-            (bool) \App\Modules\Settings\Models\Setting::get('registration.open', config('tcgvault.allow_registration')),
-            403,
-        );
+        abort_unless($this->currentRegistrationOpen(), 403);
 
         $validated = $this->validate([
             'name' => ['required', 'string', 'max:255'],

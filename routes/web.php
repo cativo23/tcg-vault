@@ -32,17 +32,16 @@ Route::view('profile', 'profile')
 // platform-management-only admin (content admin, billing admin, when
 // those exist) must not get a personal gallery just by being an admin.
 // super-admin passes regardless via AppServiceProvider's Gate::before.
-Route::get('/admin/add', AddCollectionItem::class)
-    ->middleware(['auth', 'can:use-collection'])
-    ->name('admin.collection.add');
+Route::middleware(['auth', 'can:use-collection'])->group(function () {
+    Route::get('/admin/add', AddCollectionItem::class)
+        ->name('admin.collection.add');
 
-Route::get('/admin/import', Import::class)
-    ->middleware(['auth', 'can:use-collection'])
-    ->name('admin.collection.import');
+    Route::get('/admin/import', Import::class)
+        ->name('admin.collection.import');
 
-Route::get('/admin', CollectionItems::class)
-    ->middleware(['auth', 'can:use-collection'])
-    ->name('admin.collection.index');
+    Route::get('/admin', CollectionItems::class)
+        ->name('admin.collection.index');
+});
 
 // Platform-management, not "my collection" — deliberately a separate
 // top-level segment from /admin/* so the two concepts (managing the

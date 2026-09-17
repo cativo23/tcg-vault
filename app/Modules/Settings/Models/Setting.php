@@ -48,6 +48,12 @@ final class Setting extends Model
      * Falls back to $default when no row exists — so nothing needs to
      * be seeded on day one, and a setting this app hasn't started
      * exposing to the UI yet still behaves like its config() default.
+     *
+     * $default is only consulted on a cache miss and is NOT part of
+     * the cache key — always call this with the same $default for a
+     * given $key (e.g. one config() expression, not different literals
+     * at different call sites), or whichever call populates the cache
+     * first wins for every other caller until the TTL expires.
      */
     public static function get(string $key, mixed $default = null): mixed
     {
