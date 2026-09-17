@@ -39,6 +39,16 @@ new class extends Component
                             {{ __('View gallery') }}
                         </x-nav-link>
                     @endif
+                    @can('manage-invites')
+                        <x-nav-link :href="route('staff.invites')" :active="request()->routeIs('staff.invites')" wire:navigate>
+                            {{ __('Invites') }}
+                        </x-nav-link>
+                    @endcan
+                    @can('manage-platform-settings')
+                        <x-nav-link :href="route('staff.settings')" :active="request()->routeIs('staff.settings')" wire:navigate>
+                            {{ __('Settings') }}
+                        </x-nav-link>
+                    @endcan
                 </div>
             </div>
 
@@ -97,6 +107,16 @@ new class extends Component
                     {{ __('View gallery') }}
                 </x-responsive-nav-link>
             @endif
+            @can('manage-invites')
+                <x-responsive-nav-link :href="route('staff.invites')" :active="request()->routeIs('staff.invites')" wire:navigate>
+                    {{ __('Invites') }}
+                </x-responsive-nav-link>
+            @endcan
+            @can('manage-platform-settings')
+                <x-responsive-nav-link :href="route('staff.settings')" :active="request()->routeIs('staff.settings')" wire:navigate>
+                    {{ __('Settings') }}
+                </x-responsive-nav-link>
+            @endcan
         </div>
 
         <!-- Responsive Settings Options -->
