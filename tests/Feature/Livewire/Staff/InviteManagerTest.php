@@ -116,6 +116,28 @@ test('an admin cannot double-invite an email with an existing usable invite', fu
     expect(Invite::count())->toBe(1);
 });
 
+test('re-inviting an email whose only conflicting invite has expired self-heals instead of permanently locking the email out', function () {
+    Permission::create(['name' => 'manage-invites']);
+    $admin = \App\Models\User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+    // Expired but never revoked — used_at/revoked_at both still null,
+    // so it still trips the partial unique index even though isUsable()
+    // (and the app-level duplicate check) already treat it as unusable.
+    $stale = Invite::factory()->create([
+        'email' => 'again@example.com',
+        'expires_at' => now()->subDay(),
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->set('email', 'again@example.com')
+        ->call('createInvite')
+        ->assertHasNoErrors();
+
+    expect($stale->refresh()->revoked_at)->not->toBeNull();
+    expect(Invite::where('email', 'again@example.com')->usable()->count())->toBe(1);
+});
+
 test('invite creation is rate-limited per admin', function () {
     Permission::create(['name' => 'manage-invites']);
     $admin = \App\Models\User::factory()->create();

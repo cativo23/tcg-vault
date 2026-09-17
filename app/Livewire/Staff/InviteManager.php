@@ -7,6 +7,7 @@ namespace App\Livewire\Staff;
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
@@ -57,27 +58,51 @@ final class InviteManager extends Component
             ],
         ]);
 
+        $attributes = [
+            'email' => $this->email,
+            'created_by' => auth()->id(),
+            'expires_at' => now()->addDays(config('tcgvault.invite_ttl_days', 7)),
+        ];
+
         try {
-            Invite::create([
-                'email' => $this->email,
-                'created_by' => auth()->id(),
-                'expires_at' => now()->addDays(config('tcgvault.invite_ttl_days', 7)),
-            ]);
+            // Wrapped explicitly so a violation only rolls back THIS
+            // statement (via a savepoint when nested inside a wider
+            // transaction, e.g. under RefreshDatabase in tests) —
+            // without this, a failed INSERT can otherwise poison every
+            // later query in an enclosing transaction.
+            DB::transaction(fn () => Invite::create($attributes));
         } catch (QueryException $exception) {
             // The validation check above already covers the common
             // sequential case; this catches the genuine race it can't
             // (two concurrent creates for the same email both passing
             // that check before either commits) — the database's own
             // partial unique index (see the invites migration) is the
-            // real guarantee, this just turns its violation into a
-            // normal validation error instead of a 500.
+            // real guarantee.
             if (! str_contains($exception->getMessage(), 'invites_usable_email_unique')) {
                 throw $exception;
             }
 
-            $this->addError('email', 'This email already has a pending invite.');
+            // The index has no way to exclude merely-expired rows
+            // (Postgres requires an IMMUTABLE predicate; `expires_at >
+            // now()` isn't) — so the row it's actually complaining
+            // about may be expired-and-forgotten, not a real pending
+            // invite. Self-heal that case instead of permanently
+            // locking the email out until someone remembers to revoke
+            // the stale row by hand.
+            $stale = Invite::where('email', $this->email)
+                ->whereNull('used_at')
+                ->whereNull('revoked_at')
+                ->first();
 
-            return;
+            if ($stale === null || $stale->isUsable()) {
+                $this->addError('email', 'This email already has a pending invite.');
+
+                return;
+            }
+
+            $stale->revoke(auth()->id());
+
+            DB::transaction(fn () => Invite::create($attributes));
         }
 
         $this->reset('email');

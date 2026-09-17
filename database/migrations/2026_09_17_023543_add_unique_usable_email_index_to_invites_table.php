@@ -18,10 +18,14 @@ return new class extends Migration
      * Deliberately does NOT also exclude expired-but-not-revoked
      * invites: Postgres requires a partial index's predicate to be
      * IMMUTABLE, and `expires_at > now()` is not (`now()` is only
-     * STABLE) — Postgres rejects that predicate outright. An expired,
-     * never-revoked invite blocking a fresh one for the same email is
-     * a real but minor gap (isUsable() already treats it as unusable
-     * everywhere else); revoking it clears this index too.
+     * STABLE) — Postgres rejects that predicate outright. This index
+     * can therefore still be violated by a merely-expired row.
+     * InviteManager::createInvite() handles that: on a violation, it
+     * checks whether the conflicting row is actually usable or just
+     * expired-and-forgotten, and if the latter, revokes it and retries
+     * — so an expired invite self-heals on the next invite attempt
+     * rather than permanently locking the email out until someone
+     * remembers to revoke it by hand.
      */
     public function up(): void
     {
