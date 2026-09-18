@@ -24,7 +24,8 @@ gh pr create --base master --title "release: v0.2.0" --body "See CHANGELOG.md"
 ## Required GitHub Actions secrets/variables (repo settings → Secrets and variables)
 | Name | Type | Purpose |
 |---|---|---|
-| `DOCKER_USERNAME` | secret | Docker Hub login + image namespace |
+| `RELEASE_PAT` | secret | Creates the GitHub Release in `auto-release.yml`. Must be a PAT (classic `repo` scope, or fine-grained `contents: write`), **not** `GITHUB_TOKEN` — releases created by the default token don't trigger `deploy.yml`'s `release: published` event (GitHub's recursion guard), so using it here would create a Release that never deploys, with no error anywhere. |
+| `DOCKER_USERNAME` | variable | Docker Hub login + image namespace — not secret, kept as a variable so it isn't masked as `***` in logs |
 | `DOCKER_PASSWORD` | secret | Docker Hub access token |
 | `SSH_USERNAME` | secret | polaris2 SSH user |
 | `SSH_PRIVATE_KEY` | secret | polaris2 SSH private key |

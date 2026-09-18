@@ -1,9 +1,10 @@
 name: Auto Release
 
-# Cut a branch named release/vX.Y.Z (or release/X.Y.Z), move the Unreleased
-# CHANGELOG.md section under that version heading, and open a PR into
-# master. Merging it here creates the GitHub Release that deploy.yml
-# listens for.
+# Merging a PR from a branch named release/vX.Y.Z (or release/X.Y.Z) into
+# master creates the GitHub Release deploy.yml listens for, with notes
+# pulled from CHANGELOG.md's matching "## [X.Y.Z]" section. Moving that
+# section under the release/... branch and opening the PR are manual
+# steps — see deploy/README.md's "Cutting a release".
 on:
   pull_request:
     types: [closed]
@@ -11,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  checks: read
 
 concurrency:
   group: release
@@ -23,8 +25,15 @@ jobs:
       startsWith(github.event.pull_request.head.ref, 'release/')
     runs-on: ubuntu-latest
     steps:
+      # Pinned to the actual merge commit, not actions/checkout's default
+      # refs/pull/N/merge — that ref can be GC'd once the PR is closed, and
+      # for a squash merge it's a different commit than merge_commit_sha
+      # (used below to tag the Release), so the CHANGELOG.md this reads
+      # could come from a different tree than what gets released.
       - name: Checkout repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Extract and validate version
         id: version
@@ -41,6 +50,14 @@ jobs:
           fi
           echo "tag=$RAW" >> "$GITHUB_OUTPUT"
           echo "number=${RAW#v}" >> "$GITHUB_OUTPUT"
+          # A version with a pre-release identifier (v0.3.0-rc.1) must not
+          # move :latest in deploy.yml — that tag's `enable=` is driven by
+          # this Release's own `prerelease` flag.
+          if [[ "$RAW" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # The `if:` above only checks the branch name and that the PR merged —
       # naming a branch release/vX.Y.Z is a convention, not a guarantee its
@@ -57,7 +74,13 @@ jobs:
         run: |
           echo "Waiting for the CI 'test' check run on $MERGE_SHA…"
           for i in $(seq 1 60); do
-            CONCLUSION=$(gh api "repos/$REPO/commits/$MERGE_SHA/check-runs" --jq '.check_runs[] | select(.name=="test") | .conclusion // "pending"')
+            # A re-run (manual, or a second push-triggered run landing on
+            # the same SHA) produces more than one "test" check run — take
+            # the most recently started one instead of every match, or two
+            # concatenated conclusions like "success success" match none
+            # of the branches below and fail the release for a CI run that
+            # actually passed.
+            CONCLUSION=$(gh api "repos/$REPO/commits/$MERGE_SHA/check-runs" --jq '[.check_runs[] | select(.name=="test")] | sort_by(.started_at) | last | .conclusion // "pending"')
             if [ -z "$CONCLUSION" ]; then
               echo "No 'test' check run found yet (attempt $i/60)…"
             elif [ "$CONCLUSION" = "success" ]; then
@@ -112,14 +135,28 @@ jobs:
 
           printf '%s\n' "$NOTES" > /tmp/release-notes.md
 
+      # Deliberately NOT secrets.GITHUB_TOKEN: GitHub does not fire new
+      # workflow runs (including deploy.yml's `on: release: published`)
+      # for events created by the default GITHUB_TOKEN — the built-in
+      # recursion guard. Using it here would create a Release that looks
+      # completely normal in the UI while silently never triggering a
+      # deploy. RELEASE_PAT is a classic/fine-grained PAT with at least
+      # `contents: write` — see deploy/README.md's secrets table.
       - name: Create GitHub Release
         if: steps.check_tag.outputs.exists != 'true'
         env:
           TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
+          PRERELEASE_FLAG=""
+          if [[ "$PRERELEASE" == "true" ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
           gh release create "$TAG" \
             --title "$TAG" \
             --notes-file /tmp/release-notes.md \
-            --target "$MERGE_SHA"
+            --target "$MERGE_SHA" \
+            $PRERELEASE_FLAG
