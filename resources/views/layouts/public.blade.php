@@ -75,12 +75,15 @@
                 <div class="flex items-center gap-2">
                     <x-theme-toggle />
 
-                    @auth
-                        {{-- The owner, viewing their own public gallery while logged
-                             in, needs a way back to /admin — every other visitor here
-                             is a guest by definition. --}}
-                        <a href="{{ route('admin.collection.index') }}" class="nw-nav-ghost">{{ __('Admin') }}</a>
-                    @endauth
+                    @if (auth()->check() && $username && auth()->user()->username === $username)
+                        {{-- Only the collector looking at their OWN page gets this —
+                             @auth alone used to show it to any logged-in visitor,
+                             linking to THEIR admin area while browsing someone
+                             else's collection. "Manage collection" instead of the
+                             old "Admin" label: this is "manage my own cards," not
+                             a backend/technical destination. --}}
+                        <a href="{{ route('admin.collection.index') }}" class="nw-nav-ghost">{{ __('Manage collection') }}</a>
+                    @endif
 
                     @guest
                         <a href="{{ route('login') }}" class="nw-nav-ghost" wire:navigate>{{ __('Log in') }}</a>

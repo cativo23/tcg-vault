@@ -206,6 +206,11 @@ final class Index extends Component
             // button) along with it and leaving no way to undo the search
             // short of editing the URL by hand. $allCards is unfiltered.
             'collectionIsEmpty' => $allCards->isEmpty(),
+            // The empty state's copy and CTA must branch on this — a
+            // visitor and the collector looking at the exact same "no
+            // public cards" state need different messages (the collector
+            // has somewhere to go; a visitor doesn't).
+            'isOwner' => $this->isOwnerViewing(),
         ])->layoutData([
             'title' => "{$name}'s collection",
             'description' => sprintf(

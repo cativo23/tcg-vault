@@ -40,4 +40,17 @@ trait ResolvesPublicCollection
     {
         return $this->targetUser->name ?: $this->targetUser->username;
     }
+
+    /**
+     * Whether the person currently looking at this page IS the collector
+     * it belongs to, not just any logged-in user — every empty-state and
+     * "manage this" affordance on a public gallery screen must gate on
+     * this, not on auth()->check() alone, or a logged-in visitor viewing
+     * someone else's page would get shown controls for their OWN
+     * collection instead.
+     */
+    protected function isOwnerViewing(): bool
+    {
+        return auth()->check() && auth()->id() === $this->targetUser->id;
+    }
 }
