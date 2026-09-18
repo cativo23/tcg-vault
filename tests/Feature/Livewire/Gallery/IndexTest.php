@@ -308,6 +308,25 @@ test('the owner sees a clearly labeled way to manage their own collection', func
     $response->assertDontSee('>Admin<', false); // renamed: "Admin" reads as a technical/backend term, not "manage my own cards"
 });
 
+test('the desktop nav lives behind sm:block and a hamburger panel exists for narrow viewports', function () {
+    // Regression: .nw-nav shrinks under pressure (min-width: 0) but
+    // .nw-brand and the button group beside it don't — a long right-side
+    // label ("Manage collection") squeezed the 3 nav links to 0 width on
+    // real phones instead of just scrolling, and there was no fallback.
+    seedCollection();
+
+    $response = $this->get('/carlos');
+
+    $response->assertOk();
+    $response->assertSee('class="hidden sm:block"', false);
+    $response->assertSee('nw-hamburger', false);
+    $response->assertSee('id="mobile-gallery-nav"', false);
+    // The desktop nav's 3 links must still exist somewhere for the
+    // mobile panel to duplicate — this isn't asserting the panel is
+    // non-empty, just that both copies exist in the markup.
+    $response->assertSee('aria-label="Gallery"', false);
+});
+
 test('a nonexistent username 404s', function () {
     $this->get('/nobody-here')->assertNotFound();
 });

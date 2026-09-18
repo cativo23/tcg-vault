@@ -62,7 +62,7 @@
     <body class="antialiased">
         <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-[70] focus:m-2 focus:px-3 focus:py-2" style="background: var(--signal); color: var(--ink)">Skip to content</a>
 
-        <header class="nw-topbar sticky top-0 z-50">
+        <header class="nw-topbar sticky top-0 z-50" x-data="{ mobileNavOpen: false }">
             <div class="nw-wrap flex items-center justify-between gap-4" style="height: 52px">
                 <a href="{{ $username ? route('gallery.index', ['username' => $username]) : url('/') }}" class="nw-brand" wire:navigate>
                     <svg class="nw-mark" viewBox="0 0 64 32" aria-hidden="true">
@@ -73,14 +73,24 @@
                 </a>
 
                 @if ($username)
-                    <nav class="nw-nav" aria-label="Gallery">
-                        <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif wire:navigate>Collection</a>
-                        <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif wire:navigate>Sets</a>
-                        <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif wire:navigate>Activity</a>
-                    </nav>
+                    {{-- Desktop only — .nw-nav's own min-width:0/overflow-x:auto
+                         lets IT shrink under pressure, but .nw-brand and the
+                         button group on the other side don't, so a long right-side
+                         label (e.g. "Manage collection") squeezed this to 0 width
+                         on real phones instead of just scrolling. Moved below into
+                         a hamburger panel rather than fighting for the same row. --}}
+                    <div class="hidden sm:block">
+                        <nav class="nw-nav" aria-label="Gallery">
+                            <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif wire:navigate>Collection</a>
+                            <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif wire:navigate>Sets</a>
+                            <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif wire:navigate>Activity</a>
+                        </nav>
+                    </div>
                 @endif
 
                 <div class="flex items-center gap-2">
+                    {{-- Kept out of the hamburger deliberately — a viewer
+                         toggling dark/light shouldn't need a menu open to do it. --}}
                     <x-theme-toggle />
 
                     @if ($isOwner)
@@ -101,8 +111,46 @@
                             <a href="{{ route('register') }}" class="nw-nav-ghost" wire:navigate>{{ __('Sign up') }}</a>
                         @endif
                     @endguest
+
+                    @if ($username)
+                        <button
+                            type="button"
+                            class="nw-hamburger sm:hidden"
+                            @click="mobileNavOpen = ! mobileNavOpen"
+                            :aria-expanded="mobileNavOpen.toString()"
+                            aria-label="Toggle navigation menu"
+                            aria-controls="mobile-gallery-nav"
+                        >
+                            <svg x-show="! mobileNavOpen" class="h-5 w-5" stroke="currentColor" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                            <svg x-show="mobileNavOpen" x-cloak class="h-5 w-5" stroke="currentColor" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    @endif
                 </div>
             </div>
+
+            @if ($username)
+                <nav
+                    id="mobile-gallery-nav"
+                    x-show="mobileNavOpen"
+                    x-cloak
+                    x-transition:enter="transition ease-out duration-200"
+                    x-transition:enter-start="opacity-0 -translate-y-2"
+                    x-transition:enter-end="opacity-100 translate-y-0"
+                    x-transition:leave="transition ease-in duration-150"
+                    x-transition:leave-start="opacity-100 translate-y-0"
+                    x-transition:leave-end="opacity-0 -translate-y-2"
+                    class="nw-nav-mobile sm:hidden"
+                    aria-label="Gallery"
+                >
+                    <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Collection</a>
+                    <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Sets</a>
+                    <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Activity</a>
+                </nav>
+            @endif
         </header>
 
         <div class="nw-main">
