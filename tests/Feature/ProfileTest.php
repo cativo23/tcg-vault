@@ -17,6 +17,20 @@ test('profile page is displayed', function () {
         ->assertSeeVolt('profile.delete-user-form');
 });
 
+test('the profile page uses the apps own display heading, not a generic Breeze one', function () {
+    // Was the one page left rendering <x-slot name="header"> with plain
+    // Tailwind text-xl — every other admin screen (Collection, Platform
+    // Settings) puts a .nw-display .nw-h1 heading directly in the body.
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $response = $this->get('/profile');
+
+    $response->assertOk();
+    $response->assertSee('class="nw-display nw-h1 nw-h1--sm mb-4"', false);
+    $response->assertDontSee('text-xl font-semibold', false);
+});
+
 test('profile information can be updated', function () {
     $user = User::factory()->create();
 
