@@ -237,6 +237,52 @@ body {
 }
 .nw-nav-ghost:hover { background: var(--ink-2); }
 
+/* ─── mobile nav (hamburger + panel) ───
+   .nw-nav itself is desktop-only now (wrapped in .hidden.sm:block by the
+   layout) — a long right-side label was squeezing it to 0 width on real
+   phones since .nw-brand and the button group don't shrink but .nw-nav
+   deliberately does. Below sm, the same 3 links live here instead. */
+.nw-hamburger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--chrome-fg);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 160ms var(--ease);
+}
+.nw-hamburger:hover { background: var(--ink-2); }
+.nw-nav-mobile {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid rgba(242, 239, 230, .14);
+}
+.nw-nav-mobile a {
+  /* 44px-tall rows, not the ~20px a single text line would give —
+     these are real touch targets, not desktop hover links. */
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(242, 239, 230, 0.7);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(242, 239, 230, .08);
+}
+.nw-nav-mobile a:last-child { border-bottom: none; }
+.nw-nav-mobile a:hover,
+.nw-nav-mobile a[aria-current='page'] {
+  color: var(--chrome-fg);
+  background: var(--ink-2);
+}
+
 /* ─── theme toggle ───
    Lives on the same dark chrome as the brand/nav (topbar), so it uses
    the frozen chrome tokens like the rest of that band, not --ink/--bone.

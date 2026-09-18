@@ -2,6 +2,14 @@
     <div class="flex items-center justify-between mb-4">
         <h1 class="nw-display nw-h1 nw-h1--sm">My Collection</h1>
         <div class="flex items-center gap-2">
+            {{-- No separate Save step — same instant-toggle pattern as
+                 "Needs review" below, since this is reversible any time,
+                 not a destructive action that needs a confirm step. --}}
+            <div class="nw-seg" role="group" aria-label="Visibility">
+                <button type="button" wire:click="toggleVisibility" aria-pressed="{{ $isPublic ? 'true' : 'false' }}">
+                    {{ $isPublic ? 'Public' : 'Private' }}
+                </button>
+            </div>
             <a href="{{ route('admin.collection.import') }}" class="nw-btn-secondary">Import TCGplayer</a>
             <a href="{{ route('admin.collection.add') }}" class="nw-btn-primary">+ Add card</a>
         </div>

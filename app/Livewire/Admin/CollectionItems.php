@@ -45,6 +45,47 @@ final class CollectionItems extends Component
 
     private const SORTS = ['value', 'name', 'newest'];
 
+    /**
+     * Whether the collector's page is visible to anyone but themselves.
+     * Every creation path (this component's own save(), Import, the
+     * seeder) defaults a brand-new Collection to false — there was never
+     * a way to change it afterward anywhere in the app until this.
+     */
+    public bool $isPublic = false;
+
+    public function mount(): void
+    {
+        $this->isPublic = $this->resolveCollection()->is_public;
+    }
+
+    /**
+     * Same firstOrCreate identity (user_id + 'my-collection' slug) every
+     * other collection-touching component uses — AddCollectionItem,
+     * Import. A user with no items yet still gets a real row here so
+     * the toggle has something to persist to before they've added
+     * anything.
+     */
+    private function resolveCollection(): Collection
+    {
+        return Collection::firstOrCreate(
+            ['user_id' => auth()->id(), 'slug' => 'my-collection'],
+            ['name' => 'My Collection', 'is_public' => false],
+        );
+    }
+
+    public function updateVisibility(): void
+    {
+        $this->resolveCollection()->update(['is_public' => $this->isPublic]);
+
+        $this->dispatch('visibility-saved');
+    }
+
+    public function toggleVisibility(): void
+    {
+        $this->isPublic = ! $this->isPublic;
+        $this->updateVisibility();
+    }
+
     public ?int $confirmingDeleteItemId = null;
 
     /**
@@ -434,6 +475,14 @@ final class CollectionItems extends Component
                 $withValue->count(),
                 $perPage,
                 $page,
+                // Without an explicit path, this fell back to whatever
+                // the default resolver could infer — which resolved to
+                // "/" rather than "/admin" in practice, so every "Next"
+                // link on the default (value) sort took you to the
+                // marketing home page instead of page 2 of your own
+                // collection. This route only ever renders this one
+                // component, so hardcode it rather than trust inference.
+                ['path' => route('admin.collection.index')],
             );
         }
 
