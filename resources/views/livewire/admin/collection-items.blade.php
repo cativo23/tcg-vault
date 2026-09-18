@@ -148,7 +148,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="10" class="p-6 text-center" style="color: var(--muted)">No cards yet — add your first one.</td></tr>
+                    <tr><td colspan="10" class="p-6 text-center" style="color: var(--muted)">No cards yet — <a href="{{ route('admin.collection.add') }}" wire:navigate style="color: var(--ink); text-decoration: underline">add your first one</a>.</td></tr>
                 @endforelse
             </tbody>
         </table>
