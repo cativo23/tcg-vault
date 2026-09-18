@@ -76,6 +76,14 @@ jobs:
 
       - name: Run test suite
         env:
+          # .env.example points at Sail's "pgsql" compose service name,
+          # which doesn't resolve here — the service container above is
+          # reachable at 127.0.0.1 with the same root/no-password/testing
+          # credentials Sail uses locally.
           DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
           DB_DATABASE: testing
+          DB_USERNAME: root
+          DB_PASSWORD: ""
         run: php artisan test
