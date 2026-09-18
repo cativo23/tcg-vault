@@ -27,19 +27,26 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.4"
           extensions: intl, pgsql, pdo_pgsql, redis
           coverage: none
 
-      - name: Cache Composer dependencies
-        uses: actions/cache@v4
+      # Caches Composer's own download cache, not vendor/ itself — so a
+      # cache hit only ever skips a network fetch, never substitutes
+      # already-built package files. composer install still runs in full
+      # every time and reconciles everything against composer.lock, which
+      # is what protects this from cache-poisoning (a stale/tampered cache
+      # entry can't get vendor/ files loaded without going through that
+      # reconciliation first).
+      - name: Cache Composer download cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: vendor
+          path: ~/.cache/composer
           key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
           restore-keys: composer-${{ runner.os }}-
 
@@ -50,7 +57,7 @@ jobs:
         run: vendor/bin/pint --test
 
       - name: Use Node.js 24.x
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: npm

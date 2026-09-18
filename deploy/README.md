@@ -102,17 +102,23 @@ docker compose -f compose.prod.yml exec app php artisan db:seed
 - [ ] `~/deploy/tcg-vault/.env` is mode `600`; no secrets in the image or git.
 
 ## Rollback
-Releases are tagged (`cativo23/tcg-vault:vX.Y.Z`, plus `:sha`). To roll back:
+`deploy.yml` deploys the exact release tag it just built (`IMAGE_TAG`
+exported before `pull`/`up`) — never the mutable `:latest` — so `docker
+compose images` on the server always tells you exactly what's running.
+`compose.prod.yml`'s own default (`${IMAGE_TAG:-latest}`) only applies when
+`IMAGE_TAG` isn't set, i.e. manual/local deploys.
+
+To roll back:
 ```bash
 ssh polaris2
 cd ~/deploy/tcg-vault
-docker compose -f compose.prod.yml pull cativo23/tcg-vault:v0.1.0   # or edit
-  # compose.prod.yml's image tag temporarily, then:
+export IMAGE_TAG=v0.1.0   # the known-good release tag
+docker compose -f compose.prod.yml pull
 docker compose -f compose.prod.yml up -d
 ```
-Or re-run `deploy.yml` manually via `gh workflow run deploy.yml` is not
-available (it's release-triggered only) — re-publish the known-good tag as
-a new GitHub Release, or deploy by hand as above.
+`deploy.yml` itself is release-triggered only (no `workflow_dispatch`), so
+there's no "re-run the last deploy" button — roll back by hand as above, or
+publish the known-good tag as a new GitHub Release.
 
 ## Architecture notes
 - **Single image, three services.** `app` (web, port 8080 behind Traefik), `horizon`

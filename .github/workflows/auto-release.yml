@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Extract and validate version
         id: version
@@ -41,6 +41,38 @@ jobs:
           fi
           echo "tag=$RAW" >> "$GITHUB_OUTPUT"
           echo "number=${RAW#v}" >> "$GITHUB_OUTPUT"
+
+      # The `if:` above only checks the branch name and that the PR merged —
+      # naming a branch release/vX.Y.Z is a convention, not a guarantee its
+      # code passed tests. ci.yml's own push-to-master trigger fires from
+      # this same merge, so without waiting for it here nothing stops a
+      # release from being cut off a merge commit whose CI is still
+      # running, or has already failed.
+      - name: Wait for CI to pass on the merge commit
+        id: wait_ci
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "Waiting for the CI 'test' check run on $MERGE_SHA…"
+          for i in $(seq 1 60); do
+            CONCLUSION=$(gh api "repos/$REPO/commits/$MERGE_SHA/check-runs" --jq '.check_runs[] | select(.name=="test") | .conclusion // "pending"')
+            if [ -z "$CONCLUSION" ]; then
+              echo "No 'test' check run found yet (attempt $i/60)…"
+            elif [ "$CONCLUSION" = "success" ]; then
+              echo "CI passed."
+              exit 0
+            elif [ "$CONCLUSION" = "pending" ]; then
+              echo "CI still running (attempt $i/60)…"
+            else
+              echo "::error::CI check run concluded '$CONCLUSION' on $MERGE_SHA — refusing to release."
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "::error::Timed out waiting for CI on $MERGE_SHA."
+          exit 1
 
       - name: Check tag does not already exist
         id: check_tag

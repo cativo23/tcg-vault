@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${DOCKER_USERNAME:-cativo23}/tcg-vault:latest
+    image: ${DOCKER_USERNAME:-cativo23}/tcg-vault:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: [.env]
     depends_on:
@@ -29,7 +29,7 @@ services:
       - "traefik.docker.network=space-server_web"
 
   horizon:
-    image: ${DOCKER_USERNAME:-cativo23}/tcg-vault:latest
+    image: ${DOCKER_USERNAME:-cativo23}/tcg-vault:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: [.env]
     command: ["php", "artisan", "horizon"]
@@ -65,7 +65,7 @@ services:
         reservations: { cpus: '0.1', memory: 96M }
 
   scheduler:
-    image: ${DOCKER_USERNAME:-cativo23}/tcg-vault:latest
+    image: ${DOCKER_USERNAME:-cativo23}/tcg-vault:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: [.env]
     command: ["php", "artisan", "schedule:work"]
