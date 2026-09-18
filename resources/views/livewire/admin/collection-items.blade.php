@@ -1,7 +1,13 @@
 <div class="nw-wrap py-10">
-    <div class="flex items-center justify-between mb-4">
+    {{-- flex-wrap, not a fixed row: .nw-h1's overflow-wrap:anywhere (needed
+         elsewhere for long usernames) breaks text letter-by-letter once a
+         flex sibling squeezes it below one word's width — happened here
+         once the button row grew to 3 items. Wrapping the buttons to their
+         own line on narrow screens keeps the heading at its natural size
+         instead of fighting it for the same row. --}}
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h1 class="nw-display nw-h1 nw-h1--sm">My Collection</h1>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
             {{-- No separate Save step — same instant-toggle pattern as
                  "Needs review" below, since this is reversible any time,
                  not a destructive action that needs a confirm step. --}}

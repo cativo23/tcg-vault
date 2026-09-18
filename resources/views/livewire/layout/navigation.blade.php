@@ -82,8 +82,12 @@ new class extends Component
                                 {{ __('Profile') }}
                             </x-dropdown-link>
 
-                            <!-- Authentication -->
-                            <button wire:click="logout" class="w-full text-start">
+                            {{-- Bordered in the one real accent color the palette
+                                 allows (--signal — --danger is reserved for
+                                 destructive actions per design.md, and Log Out
+                                 isn't one) so it doesn't read as just another
+                                 row identical to Profile above it. --}}
+                            <button wire:click="logout" class="w-full text-start block" style="border: 1px solid var(--signal); border-radius: 6px; overflow: hidden; margin-top: 4px">
                                 <x-dropdown-link>
                                     {{ __('Log Out') }}
                                 </x-dropdown-link>
@@ -143,7 +147,7 @@ new class extends Component
                 </x-responsive-nav-link>
 
                 <!-- Authentication -->
-                <button wire:click="logout" class="w-full text-start">
+                <button wire:click="logout" class="w-full text-start block" style="border: 1px solid var(--signal); border-radius: 6px; overflow: hidden; margin-top: 4px">
                     <x-responsive-nav-link>
                         {{ __('Log Out') }}
                     </x-responsive-nav-link>
