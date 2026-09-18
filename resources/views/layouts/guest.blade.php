@@ -32,6 +32,30 @@
     <body class="font-sans antialiased">
         <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 px-4" style="background: var(--bone)">
             <div class="w-full sm:max-w-md">
+                {{--
+                    Shared here, not per-page — login used to carry its own
+                    ad hoc header (the old flat-dot mark, never updated to
+                    the Vault Line redesign) while forgot/reset-password had
+                    none at all. One wordmark for every guest page keeps
+                    them from drifting apart again.
+
+                    .nw-brand/.nw-mark are styled for the always-dark
+                    .nw-topbar chrome (frozen, never themed) — this page
+                    sits on the themed var(--bone), so color is overridden
+                    to var(--ink) and the mark's stroke set to currentColor
+                    instead of the navbar's hardcoded light tone, or the
+                    mark disappears against a light-mode background.
+                --}}
+                <div class="flex justify-center mb-6">
+                    <a href="{{ route('home') }}" class="nw-brand" style="color: var(--ink)" wire:navigate.hover>
+                        <svg class="nw-mark" viewBox="0 0 64 32" aria-hidden="true">
+                            <polyline points="4,22 16,27 28,15 40,19 52,7" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="52" cy="7" r="4.5" fill="#37d17f"/>
+                        </svg>
+                        tcg-vault
+                    </a>
+                </div>
+
                 {{ $slot }}
             </div>
         </div>

@@ -1,27 +1,14 @@
 <div>
     {{--
         The invite is the only front door into a private, single-admin
-        vault — an invitee has no other page to have seen first, so the
-        brand mark + a one-line "why you're here" has to live right on
-        this form instead of assuming a landing page already set context.
+        vault — an invitee has no other page to have seen first, so a
+        one-line "why you're here" has to live right on this form instead
+        of assuming a landing page already set context. The wordmark
+        itself comes from layouts/guest.blade.php, shared by every guest
+        auth page.
     --}}
     <div class="flex flex-col items-center mb-8 text-center">
-        {{--
-            .nw-brand/.nw-mark are styled for the always-dark .nw-topbar
-            chrome (frozen, never themed) — this page sits on the
-            themed var(--bone), so color is overridden to var(--ink) and
-            the mark's stroke set to currentColor instead of the
-            navbar's hardcoded light tone, or the mark disappears
-            against a light-mode background.
-        --}}
-        <a href="{{ route('home') }}" class="nw-brand" style="color: var(--ink)" wire:navigate.hover>
-            <svg class="nw-mark" viewBox="0 0 64 32" aria-hidden="true">
-                <polyline points="4,22 16,27 28,15 40,19 52,7" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="52" cy="7" r="4.5" fill="#37d17f"/>
-            </svg>
-            tcg-vault
-        </a>
-        <p class="nw-eyebrow" style="margin-top: 1.5rem;">{{ __("You're invited") }}</p>
+        <p class="nw-eyebrow">{{ __("You're invited") }}</p>
         <p style="margin-top: 0.5rem; color: var(--muted)">{{ __('Create your account to start tracking your collection.') }}</p>
     </div>
 

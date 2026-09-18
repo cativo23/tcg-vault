@@ -25,11 +25,6 @@ new #[Layout('layouts.guest')] class extends Component
 }; ?>
 
 <div class="nw-card p-8">
-    <div class="flex items-center gap-2 mb-6">
-        <span class="mono" style="color: var(--signal); font-size: 20px; line-height: 1">●</span>
-        <span class="text-lg font-semibold tracking-tight" style="color: var(--ink)">tcg-vault</span>
-    </div>
-
     <!-- Session Status -->
     <x-auth-session-status class="mb-4" :status="session('status')" />
 
