@@ -988,6 +988,36 @@ test('a user cannot open the delete modal for another users item by guessing its
         ->assertStatus(404);
 });
 
+test('pagination links point back at /admin, not the site root', function () {
+    // Bug: the default "value" sort can't be expressed as a SQL ORDER
+    // BY (CardPriceResolver's priority chain lives in PHP), so this
+    // branch builds a LengthAwarePaginator by hand with no explicit
+    // `path` option. Left to its default resolver, its links rendered
+    // as "/?page=2" instead of "/admin?page=2" — clicking "Next"
+    // took you to the marketing home page, not page 2 of your own
+    // collection.
+    \Spatie\Permission\Models\Role::findOrCreate('user')->givePermissionTo(
+        \Spatie\Permission\Models\Permission::findOrCreate('use-collection'),
+    );
+    $user = User::factory()->create();
+    $user->assignRole('user');
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    foreach (range(1, 25) as $i) {
+        $card = Card::create(['tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card {$i}"]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "me05-{$i}", 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    $response = $this->get('/admin');
+
+    $response->assertOk();
+    $response->assertSee('/admin?page=2', false);
+    $response->assertDontSee('href="/?page=2"', false);
+});
+
 test('the empty state links straight into adding a card, not just inert text', function () {
     // Was plain text ("No cards yet — add your first one.") with no
     // link anywhere on the row — the "+ Add card" button above the
@@ -1003,4 +1033,49 @@ test('the empty state links straight into adding a card, not just inert text', f
     // with no link of its own. After the fix it appears a second time,
     // in the row itself.
     expect(substr_count($html, route('admin.collection.add')))->toBe(2);
+});
+
+test('a new collection defaults to private, matching every other creation path', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSet('isPublic', false);
+
+    expect(Collection::where('user_id', $user->id)->where('slug', 'my-collection')->first()->is_public)->toBeFalse();
+});
+
+test('toggling visibility persists it to the users collection', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->set('isPublic', true)
+        ->call('updateVisibility')
+        ->assertSet('isPublic', true);
+
+    expect(Collection::where('user_id', $user->id)->where('slug', 'my-collection')->first()->is_public)->toBeTrue();
+});
+
+test('an existing collections current visibility is reflected, not silently reset', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::create(['user_id' => $user->id, 'slug' => 'my-collection', 'name' => 'My Collection', 'is_public' => true]);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSet('isPublic', true);
+});
+
+test('the visibility button toggles and persists in one click, no separate save step', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    Livewire::test(\App\Livewire\Admin\CollectionItems::class)
+        ->assertSet('isPublic', false)
+        ->assertSee('Private')
+        ->call('toggleVisibility')
+        ->assertSet('isPublic', true)
+        ->assertSee('Public');
+
+    expect(Collection::where('user_id', $user->id)->where('slug', 'my-collection')->first()->is_public)->toBeTrue();
 });
