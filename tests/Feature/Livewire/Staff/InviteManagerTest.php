@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Models\User;
 use App\Modules\Invites\Models\Invite;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 
@@ -11,14 +13,14 @@ test('a guest cannot reach the invite manager', function () {
 });
 
 test('a regular user is forbidden from the invite manager route', function () {
-    $user = \App\Models\User::factory()->create();
+    $user = User::factory()->create();
 
     $this->actingAs($user)->get('/staff/invites')->assertForbidden();
 });
 
 test('an admin can create an invite', function () {
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
 
     Livewire::actingAs($admin)
@@ -34,7 +36,7 @@ test('an admin can create an invite', function () {
 });
 
 test('a regular user cannot even mount the invite manager component directly', function () {
-    $user = \App\Models\User::factory()->create();
+    $user = User::factory()->create();
 
     Livewire::actingAs($user)
         ->test('staff.invite-manager')
@@ -45,7 +47,7 @@ test('a regular user cannot even mount the invite manager component directly', f
 
 test('the invite manager shows a copyable signed link for each pending invite, so the admin can actually send it', function () {
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
 
     Livewire::actingAs($admin)
@@ -62,7 +64,7 @@ test('the invite manager shows a copyable signed link for each pending invite, s
 
 test('a revoked invite no longer shows its link — there is nothing left to send', function () {
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
     $invite = Invite::factory()->create();
     $url = $invite->signedUrl();
@@ -75,7 +77,7 @@ test('a revoked invite no longer shows its link — there is nothing left to sen
 
 test('the invite list paginates at 24 per page, same as the collection admin table', function () {
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
     Invite::factory()->count(30)->create();
 
@@ -87,7 +89,7 @@ test('the invite list paginates at 24 per page, same as the collection admin tab
 
 test('page 2 of the invite list is reachable and shows the remaining invites', function () {
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
     Invite::factory()->count(30)->create();
 
@@ -100,7 +102,7 @@ test('page 2 of the invite list is reachable and shows the remaining invites', f
 
 test('an admin can revoke an unused invite', function () {
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
     $invite = Invite::factory()->create();
 
@@ -113,9 +115,9 @@ test('an admin can revoke an unused invite', function () {
 
 test('an admin cannot invite an email that already has an account', function () {
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
-    $existing = \App\Models\User::factory()->create(['email' => 'taken@example.com']);
+    $existing = User::factory()->create(['email' => 'taken@example.com']);
 
     Livewire::actingAs($admin)
         ->test('staff.invite-manager')
@@ -128,7 +130,7 @@ test('an admin cannot invite an email that already has an account', function () 
 
 test('an admin cannot double-invite an email with an existing usable invite', function () {
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
     Invite::factory()->create(['email' => 'pending@example.com']);
 
@@ -143,7 +145,7 @@ test('an admin cannot double-invite an email with an existing usable invite', fu
 
 test('re-inviting an email whose only conflicting invite has expired self-heals instead of permanently locking the email out', function () {
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
     // Expired but never revoked — used_at/revoked_at both still null,
     // so it still trips the partial unique index even though isUsable()
@@ -172,7 +174,7 @@ test('self-healing a stale invite fails gracefully, not with a raw database erro
     // same email — the retry then collides with THAT row instead, and
     // nothing catches the second failure.
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
 
     $stale = Invite::factory()->create([
@@ -191,7 +193,7 @@ test('self-healing a stale invite fails gracefully, not with a raw database erro
         // through the query builder so it doesn't re-fire this same
         // 'creating' listener.
         if ($creatingCalls === 2) {
-            \Illuminate\Support\Facades\DB::table('invites')->insert([
+            DB::table('invites')->insert([
                 'email' => 'interleaved@example.com',
                 'created_by' => auth()->id(),
                 'expires_at' => now()->addDays(7),
@@ -212,7 +214,7 @@ test('self-healing a stale invite fails gracefully, not with a raw database erro
 
 test('invite creation is rate-limited per admin', function () {
     Permission::create(['name' => 'manage-invites']);
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $admin->givePermissionTo('manage-invites');
 
     // Livewire actions bypass the route's own throttle middleware
@@ -236,7 +238,7 @@ test('invite creation is rate-limited per admin', function () {
 });
 
 test('a regular user cannot revoke an invite', function () {
-    $user = \App\Models\User::factory()->create();
+    $user = User::factory()->create();
     $invite = Invite::factory()->create();
 
     Livewire::actingAs($user)

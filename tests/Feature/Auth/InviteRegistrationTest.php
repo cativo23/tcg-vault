@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Livewire\Auth\InviteRegistration;
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Support\Facades\URL;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
+use Livewire\Livewire;
 use Spatie\Permission\Models\Role;
 
 function signedInviteUrl(Invite $invite): string
@@ -65,7 +68,7 @@ test('completing an invite creates the user with the user role, marks the invite
 
     $invite = Invite::factory()->create(['email' => 'invitee@example.com']);
 
-    \Livewire\Livewire::test(\App\Livewire\Auth\InviteRegistration::class, [
+    Livewire::test(InviteRegistration::class, [
         'invite' => $invite,
         'hash' => sha1($invite->email),
     ])
@@ -101,20 +104,20 @@ test('a client cannot swap invite to hijack a different invite — the property 
     // which would let a live session swap which invite a later
     // register() call redeems, without ever needing a fresh signed URL
     // for that other invite. #[Locked] rejects this outright.
-    \Livewire\Livewire::test(\App\Livewire\Auth\InviteRegistration::class, [
+    Livewire::test(InviteRegistration::class, [
         'invite' => $myInvite,
         'hash' => sha1($myInvite->email),
     ])->set('invite', $othersInvite);
-})->throws(\Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException::class);
+})->throws(CannotUpdateLockedPropertyException::class);
 
 test('a client cannot overwrite the locked hash either', function () {
     $invite = Invite::factory()->create();
 
-    \Livewire\Livewire::test(\App\Livewire\Auth\InviteRegistration::class, [
+    Livewire::test(InviteRegistration::class, [
         'invite' => $invite,
         'hash' => sha1($invite->email),
     ])->set('hash', 'anything');
-})->throws(\Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException::class);
+})->throws(CannotUpdateLockedPropertyException::class);
 
 test('an invite whose email now belongs to an existing account is rejected instead of raising a database error', function () {
     // The invite-creation check in InviteManager only rules out an
@@ -128,7 +131,7 @@ test('an invite whose email now belongs to an existing account is rejected inste
     $invite = Invite::factory()->create(['email' => 'already-registered@example.com']);
     User::factory()->create(['email' => 'already-registered@example.com']);
 
-    \Livewire\Livewire::test(\App\Livewire\Auth\InviteRegistration::class, [
+    Livewire::test(InviteRegistration::class, [
         'invite' => $invite,
         'hash' => sha1($invite->email),
     ])->assertForbidden();
@@ -140,7 +143,7 @@ test('an invite already used cannot be used again', function () {
     Role::create(['name' => 'user']);
     $invite = Invite::factory()->create(['used_at' => now(), 'accepted_by' => User::factory()->create()->id]);
 
-    \Livewire\Livewire::test(\App\Livewire\Auth\InviteRegistration::class, [
+    Livewire::test(InviteRegistration::class, [
         'invite' => $invite,
         'hash' => sha1($invite->email),
     ])->assertForbidden();

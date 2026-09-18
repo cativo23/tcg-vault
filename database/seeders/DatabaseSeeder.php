@@ -23,7 +23,7 @@ class DatabaseSeeder extends Seeder
         if (! $email || ! $password) {
             throw new \RuntimeException(
                 'TCGVAULT_ADMIN_EMAIL and TCGVAULT_ADMIN_PASSWORD must be set in .env before seeding — '
-                . 'there is no default, to avoid ever seeding a guessable admin password.',
+                .'there is no default, to avoid ever seeding a guessable admin password.',
             );
         }
 

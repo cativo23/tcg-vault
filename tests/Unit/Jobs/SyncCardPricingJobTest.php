@@ -28,7 +28,7 @@ test('a rate-limit release cannot exhaust the job\'s retries before it ever actu
     // never starve out a job that never actually failed.
     $job = new SyncCardPricingJob('me05-116');
 
-    expect($job->retryUntil())->toBeInstanceOf(\DateTimeInterface::class);
+    expect($job->retryUntil())->toBeInstanceOf(DateTimeInterface::class);
     expect($job->retryUntil())->toBeGreaterThan(now()->addMinutes(30));
 });
 

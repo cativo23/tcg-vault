@@ -7,20 +7,22 @@ namespace App\Modules\Catalog\Contracts;
 use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Data\SetSummaryData;
+use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Exceptions\SetNotFoundException;
 
 interface CardCatalogProvider
 {
     /**
      * Fetch full detail + current pricing for one card.
      *
-     * @throws \App\Modules\Catalog\Exceptions\CardNotFoundException
+     * @throws CardNotFoundException
      */
     public function findCard(string $tcgdexId): CardDetailData;
 
     /**
      * Fetch metadata for one set (no card list).
      *
-     * @throws \App\Modules\Catalog\Exceptions\SetNotFoundException
+     * @throws SetNotFoundException
      */
     public function findSet(string $tcgdexId): SetSummaryData;
 

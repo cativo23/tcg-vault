@@ -7,6 +7,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use App\Modules\Collection\Scopes\TenantScope;
 
 test('a collection belongs to a user and the tenant scope filters by the authenticated user', function () {
     $owner = User::factory()->create();
@@ -31,7 +32,7 @@ test('console/seeder code can still reach every tenant by explicitly opting out 
     $owner = User::factory()->create();
     Collection::factory()->for($owner)->create(['name' => 'Any', 'slug' => 'any']);
 
-    expect(Collection::withoutGlobalScope(\App\Modules\Collection\Scopes\TenantScope::class)->count())->toBe(1);
+    expect(Collection::withoutGlobalScope(TenantScope::class)->count())->toBe(1);
 });
 
 test('a collection has many items, and an item belongs to a card', function () {

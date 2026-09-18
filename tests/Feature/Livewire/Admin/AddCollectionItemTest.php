@@ -2,11 +2,15 @@
 
 declare(strict_types=1);
 
+use App\Livewire\Admin\AddCollectionItem;
 use App\Models\User;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Data\PriceEntryData;
+use App\Modules\Catalog\Data\SetSummaryData;
+use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
@@ -33,7 +37,7 @@ test('a logged-in admin can search tcgdex and see results', function () {
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->assertSet('results.0.name', 'Mega Darkrai ex');
@@ -44,7 +48,7 @@ test('the search box shows a loading indicator while a debounced search is in fl
     $this->actingAs($user);
     Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
 
-    $html = Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)->html();
+    $html = Livewire::test(AddCollectionItem::class)->html();
 
     expect($html)->toContain('wire:loading')
         ->toContain('wire:target="search,runSearch"');
@@ -61,7 +65,7 @@ test('previous results dim instead of sitting unchanged while a new search is in
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    $html = Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    $html = Livewire::test(AddCollectionItem::class)
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->html();
@@ -86,7 +90,7 @@ test('a result whose set is already synced locally shows the real set name, not 
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Pikachu')
         ->call('runSearch')
         ->assertSee('Paldea Evolved');
@@ -103,7 +107,7 @@ test('a result whose set is not synced locally falls back to the raw tcgdex set 
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Pikachu')
         ->call('runSearch')
         ->assertSee('swsh4');
@@ -123,12 +127,12 @@ test('a logged-in admin can select a result and save it to the collection', func
         rarity: 'SIR', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: [],
     ));
-    $provider->shouldReceive('findSet')->with('me05')->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->with('me05')->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class, ['collectionId' => $collection->id])
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->call('selectCard', 'me05-116')
@@ -152,12 +156,12 @@ test('an uploaded photo is stored and its path saved on the item', function () {
         rarity: 'SIR', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: [],
     ));
-    $provider->shouldReceive('findSet')->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class, ['collectionId' => $collection->id])
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
         ->call('selectCard', 'me05-116')
         ->set('condition', 'NM')
         ->set('photo', UploadedFile::fake()->image('card.jpg'))
@@ -185,7 +189,7 @@ test('selecting a card narrows the variant dropdown to what that card actually h
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->call('selectCard', 'me05-116')
         ->assertSet('availableVariants', ['holofoil'])
         ->assertSet('variant', 'holofoil');
@@ -213,7 +217,7 @@ test('selecting a card uses its own print flags, not just synced pricing coverag
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->call('selectCard', 'me03-068')
         ->assertSet('availableVariants', ['normal', 'reverse-holofoil']);
 });
@@ -225,11 +229,11 @@ test('selecting a card falls back to the full known variant list when the catalo
 
     $provider = Mockery::mock(CardCatalogProvider::class);
     $provider->shouldReceive('findCard')->with('me05-116')->andThrow(
-        \App\Modules\Catalog\Exceptions\CardNotFoundException::forTcgdexId('me05-116'),
+        CardNotFoundException::forTcgdexId('me05-116'),
     );
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->call('selectCard', 'me05-116')
         ->assertSet('availableVariants', ['normal', 'holofoil', 'reverse-holofoil'])
         ->assertSet('variant', null);
@@ -242,11 +246,11 @@ test('a malformed catalog search response shows a friendly error instead of cras
 
     $provider = Mockery::mock(CardCatalogProvider::class);
     $provider->shouldReceive('searchCardsByName')->with('Darkrai', null)->andThrow(
-        new \App\Modules\Catalog\Exceptions\MalformedCatalogResponseException('Malformed tcgdex search response for query [Darkrai]: response body is not a JSON array.'),
+        new MalformedCatalogResponseException('Malformed tcgdex search response for query [Darkrai]: response body is not a JSON array.'),
     );
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->assertHasErrors('search')
@@ -267,7 +271,7 @@ test('a full page of results signals there might be more, without fetching them 
     $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn($firstPage);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Pikachu')
         ->call('runSearch')
         ->assertCount('results', 24)
@@ -285,7 +289,7 @@ test('a partial page of results means there is nothing more to load', function (
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->assertSet('hasMoreResults', false);
@@ -309,7 +313,7 @@ test('loading more appends the next page instead of replacing what is already sh
     $provider->shouldReceive('searchCardsByName')->with('Pikachu', null, 2)->once()->andReturn($secondPage);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Pikachu')
         ->call('runSearch')
         ->assertCount('results', 24)
@@ -336,11 +340,11 @@ test('a card only visible after loading more can still be selected', function ()
     $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn($firstPage);
     $provider->shouldReceive('searchCardsByName')->with('Pikachu', null, 2)->once()->andReturn($secondPage);
     $provider->shouldReceive('findCard')->with('swsh4-043')->andThrow(
-        \App\Modules\Catalog\Exceptions\CardNotFoundException::forTcgdexId('swsh4-043'),
+        CardNotFoundException::forTcgdexId('swsh4-043'),
     );
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Pikachu')
         ->call('runSearch')
         ->call('loadMoreResults')
@@ -371,7 +375,7 @@ test('starting a new search resets back to the first page', function () {
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Pikachu')
         ->call('runSearch')
         ->call('loadMoreResults')
@@ -391,7 +395,7 @@ test('loading more does nothing when there is no active search, instead of calli
     $provider->shouldNotReceive('searchCardsByName');
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->call('loadMoreResults')
         ->assertSet('results', []);
 });
@@ -410,7 +414,7 @@ test('loading more does nothing once hasMoreResults is false, even if called dir
     $provider->shouldNotReceive('searchCardsByName')->with('Darkrai', null, Mockery::any());
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->assertSet('hasMoreResults', false)
@@ -436,7 +440,7 @@ test('loading more stops at a hard ceiling even if a client calls it directly, o
     $provider->shouldReceive('searchCardsByName')->with('Pikachu', null, Mockery::any())->andReturn($fullPage());
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    $component = Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    $component = Livewire::test(AddCollectionItem::class)
         ->set('search', 'Pikachu')
         ->call('runSearch');
 
@@ -456,14 +460,14 @@ test('a stale search error clears once a later search succeeds', function () {
 
     $provider = Mockery::mock(CardCatalogProvider::class);
     $provider->shouldReceive('searchCardsByName')->with('Darkrai', null)->once()->andThrow(
-        new \App\Modules\Catalog\Exceptions\MalformedCatalogResponseException('Malformed tcgdex search response for query [Darkrai]: response body is not a JSON array.'),
+        new MalformedCatalogResponseException('Malformed tcgdex search response for query [Darkrai]: response body is not a JSON array.'),
     );
     $provider->shouldReceive('searchCardsByName')->with('Pikachu', null)->once()->andReturn([
         new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: null),
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    $component = Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    $component = Livewire::test(AddCollectionItem::class)
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->assertHasErrors('search');
@@ -480,7 +484,7 @@ test('the set dropdown lists only locally synced sets, sorted by name', function
     Set::create(['tcgdex_id' => 'sv02', 'name' => 'Paldea Evolved']);
     Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->assertSetStrict('availableSets', ['sv02' => 'Paldea Evolved', 'me05' => 'Pitch Black']);
 });
 
@@ -496,7 +500,7 @@ test('picking a set narrows the search to that set', function () {
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Pikachu')
         ->set('setFilter', 'sv02')
         ->assertSet('results.0.tcgdexId', 'sv02-062');
@@ -517,7 +521,7 @@ test('changing the set filter re-runs the current search immediately', function 
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Pikachu')
         ->call('runSearch')
         ->assertSet('results.0.tcgdexId', 'me05-999')
@@ -536,7 +540,7 @@ test('leaving the set filter on "All sets" behaves exactly like today\'s unfilte
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->assertSet('setFilter', null)
         ->set('search', 'Pikachu')
         ->call('runSearch')
@@ -558,7 +562,7 @@ test('picking "All sets" after a real set sends an empty string over the wire, w
     ]);
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->set('search', 'Pikachu')
         ->set('setFilter', 'sv02')
         ->assertSet('results.0.tcgdexId', 'sv02-062')
@@ -582,12 +586,12 @@ test('a brand-new user with no Collection row can save a card, which creates one
         rarity: 'SIR', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: [],
     ));
-    $provider->shouldReceive('findSet')->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class)
+    Livewire::test(AddCollectionItem::class)
         ->call('selectCard', 'me05-116')
         ->set('condition', 'NM')
         ->set('quantity', 1)
@@ -612,12 +616,12 @@ test('a user cannot save a card into another users collection by passing its ID 
         rarity: 'SIR', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: [],
     ));
-    $provider->shouldReceive('findSet')->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class, ['collectionId' => $otherUsersCollection->id])
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $otherUsersCollection->id])
         ->call('selectCard', 'me05-116')
         ->set('condition', 'NM')
         ->set('quantity', 1)
@@ -634,11 +638,11 @@ test('a catalog sync failure during save shows a friendly error and does not cre
 
     $provider = Mockery::mock(CardCatalogProvider::class);
     $provider->shouldReceive('findCard')->with('me05-116')->andThrow(
-        \App\Modules\Catalog\Exceptions\CardNotFoundException::forTcgdexId('me05-116'),
+        CardNotFoundException::forTcgdexId('me05-116'),
     );
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(\App\Livewire\Admin\AddCollectionItem::class, ['collectionId' => $collection->id])
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
         ->call('selectCard', 'me05-116')
         ->set('condition', 'NM')
         ->set('quantity', 1)

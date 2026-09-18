@@ -25,7 +25,7 @@ final class Collection extends Model
 
     protected static function booted(): void
     {
-        static::addGlobalScope(new TenantScope());
+        self::addGlobalScope(new TenantScope);
     }
 
     protected static function newFactory(): CollectionFactory

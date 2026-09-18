@@ -1,9 +1,15 @@
 <?php
 
+use App\Modules\Catalog\CatalogServiceProvider;
+use App\Providers\AppServiceProvider;
+use App\Providers\HorizonServiceProvider;
+use App\Providers\TelescopeServiceProvider;
+use App\Providers\VoltServiceProvider;
+
 return [
-    App\Modules\Catalog\CatalogServiceProvider::class,
-    App\Providers\AppServiceProvider::class,
-    App\Providers\HorizonServiceProvider::class,
-    App\Providers\TelescopeServiceProvider::class,
-    App\Providers\VoltServiceProvider::class,
+    CatalogServiceProvider::class,
+    AppServiceProvider::class,
+    HorizonServiceProvider::class,
+    TelescopeServiceProvider::class,
+    VoltServiceProvider::class,
 ];

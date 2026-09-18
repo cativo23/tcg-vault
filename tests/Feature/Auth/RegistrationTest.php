@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\User;
+use App\Settings\RegistrationSettings;
+use Database\Seeders\PermissionSeeder;
 use Livewire\Volt\Volt;
 
 // This is a single-admin personal vault: /register is gated behind
@@ -22,7 +25,7 @@ test('registration screen can be rendered', function () {
 });
 
 test('new users can register', function () {
-    $this->seed(\Database\Seeders\PermissionSeeder::class);
+    $this->seed(PermissionSeeder::class);
 
     $component = Volt::test('pages.auth.register')
         ->set('name', 'Test User')
@@ -40,7 +43,7 @@ test('new users can register', function () {
     // Registration must never create a NULL-username account — that
     // account would 500 on its own /profile page (fixed post-final-review,
     // this test pins it so it can't regress).
-    expect(\App\Models\User::where('email', 'test@example.com')->firstOrFail()->username)->toBe('testuser');
+    expect(User::where('email', 'test@example.com')->firstOrFail()->username)->toBe('testuser');
 });
 
 test('registration requires a valid username', function () {
@@ -58,7 +61,7 @@ test('registration requires a valid username', function () {
 });
 
 test('staff is reserved as a username, matching the /staff platform route', function () {
-    expect(\App\Models\User::reservedUsernames())->toContain('staff');
+    expect(User::reservedUsernames())->toContain('staff');
 });
 
 // /register is now ALWAYS registered — a runtime-togglable setting
@@ -69,7 +72,7 @@ test('staff is reserved as a username, matching the /staff platform route', func
 
 function closeRegistration(): void
 {
-    $settings = app(\App\Settings\RegistrationSettings::class);
+    $settings = app(RegistrationSettings::class);
     $settings->open = false;
     $settings->save();
 }
@@ -94,7 +97,7 @@ test('the invite-only notice has no request-access form or CTA — invites are h
 
 test('tampering the client-side registrationOpen property cannot bypass a closed registration setting', function () {
     closeRegistration();
-    $this->seed(\Database\Seeders\PermissionSeeder::class);
+    $this->seed(PermissionSeeder::class);
 
     $component = Volt::test('pages.auth.register')
         // The real client-side attack: setting a public Livewire
@@ -112,19 +115,19 @@ test('tampering the client-side registrationOpen property cannot bypass a closed
 
     $component->assertForbidden();
     $this->assertGuest();
-    expect(\App\Models\User::where('email', 'attacker@example.com')->exists())->toBeFalse();
+    expect(User::where('email', 'attacker@example.com')->exists())->toBeFalse();
 });
 
 test('the registration_settings migration seeds registration.open from the env-configured default', function () {
     // Proves the seeding happens at migration time, not as a runtime
     // fallback — spatie/laravel-settings always has a real row after
     // migrating, unlike the hand-rolled store this replaced.
-    expect(app(\App\Settings\RegistrationSettings::class)->open)
+    expect(app(RegistrationSettings::class)->open)
         ->toBe((bool) config('tcgvault.allow_registration'));
 });
 
 test('registration reflects whatever an admin last set it to, independent of the env default', function () {
-    $settings = app(\App\Settings\RegistrationSettings::class);
+    $settings = app(RegistrationSettings::class);
     $settings->open = true;
     $settings->save();
 

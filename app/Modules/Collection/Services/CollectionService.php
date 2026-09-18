@@ -14,7 +14,7 @@ final class CollectionService
     public function __construct(private readonly CatalogSyncService $catalogSyncService) {}
 
     /**
-     * @param array{variant?: ?string, condition: string, grade_company?: ?string, grade_value?: ?string, quantity?: int, notes?: ?string, photo_path?: ?string, needs_variant_review?: bool} $itemData
+     * @param  array{variant?: ?string, condition: string, grade_company?: ?string, grade_value?: ?string, quantity?: int, notes?: ?string, photo_path?: ?string, needs_variant_review?: bool}  $itemData
      */
     public function addItem(Collection $collection, string $tcgdexCardId, array $itemData): CollectionItem
     {
