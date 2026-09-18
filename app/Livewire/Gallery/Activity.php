@@ -98,6 +98,7 @@ final class Activity extends Component
         ])->layoutData([
             'title' => "Activity · {$name}'s collection",
             'description' => "Price movements and recent additions in {$name}'s Pokémon TCG collection.",
+            'isOwner' => $this->isOwnerViewing(),
         ]);
     }
 

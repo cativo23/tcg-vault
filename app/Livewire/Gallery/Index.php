@@ -219,6 +219,7 @@ final class Index extends Component
                 $sets->count(),
             ),
             'ogImage' => $topEntry['card']->official_image_url ?? null,
+            'isOwner' => $this->isOwnerViewing(),
         ]);
     }
 }

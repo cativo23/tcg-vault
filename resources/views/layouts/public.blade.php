@@ -5,6 +5,14 @@
     $pageDescription = $description ?? 'A Pokémon TCG collection, catalogued card by card with live market value.';
     $isActive = fn (string ...$routes) => request()->routeIs(...$routes) ? 'page' : null;
     $registrationOpen = app(\App\Settings\RegistrationSettings::class)->open;
+    // Every screen that resolves a $targetUser already computes this via
+    // ResolvesPublicCollection::isOwnerViewing() and passes it through
+    // layoutData — that ID-based check is the single source of truth for
+    // "is this the collector's own page", so the layout must never
+    // re-derive its own (username-string) version of the same rule.
+    // Screens with no target user (the '/' home page) never pass it, so
+    // it defaults closed.
+    $isOwner = $isOwner ?? false;
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -75,13 +83,15 @@
                 <div class="flex items-center gap-2">
                     <x-theme-toggle />
 
-                    @if (auth()->check() && $username && auth()->user()->username === $username)
+                    @if ($isOwner)
                         {{-- Only the collector looking at their OWN page gets this —
                              @auth alone used to show it to any logged-in visitor,
                              linking to THEIR admin area while browsing someone
                              else's collection. "Manage collection" instead of the
                              old "Admin" label: this is "manage my own cards," not
-                             a backend/technical destination. --}}
+                             a backend/technical destination. $isOwner comes from
+                             the component's layoutData, not a re-derived check
+                             here — see the @php block above. --}}
                         <a href="{{ route('admin.collection.index') }}" class="nw-nav-ghost">{{ __('Manage collection') }}</a>
                     @endif
 
