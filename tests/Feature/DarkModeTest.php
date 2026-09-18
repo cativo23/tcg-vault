@@ -49,6 +49,20 @@ test('the authenticated app layout exposes a theme toggle button', function () {
     $response->assertSee('data-theme-toggle', false);
 });
 
+test('the authenticated app layouts theme toggle is not hidden inside the mobile hamburger panel', function () {
+    // Regression: the toggle used to live inside "hidden sm:flex"
+    // (desktop-only), with a second copy duplicated inside the
+    // Responsive Navigation Menu panel — on mobile it was only reachable
+    // by opening the hamburger first, unlike a display preference people
+    // expect to flip in one tap regardless of viewport.
+    $this->seed(\Database\Seeders\PermissionSeeder::class);
+    $user = User::factory()->create();
+
+    $html = $this->actingAs($user)->get('/admin')->getContent();
+
+    expect(substr_count($html, 'data-theme-toggle'))->toBe(1);
+});
+
 test('no layout renders the hardcoded Tailwind colors that used to bypass the token system', function () {
     $loginHtml = $this->get('/login')->getContent();
     expect($loginHtml)->not->toContain('text-gray-900');
