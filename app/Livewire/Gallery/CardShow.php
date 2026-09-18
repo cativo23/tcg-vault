@@ -136,6 +136,7 @@ final class CardShow extends Component
                 $items->isNotEmpty() ? "in {$name}'s collection" : "not yet in {$name}'s collection",
             ),
             'ogImage' => $images[0]['url'] ?? null,
+            'isOwner' => $this->isOwnerViewing(),
         ]);
     }
 

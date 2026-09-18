@@ -49,6 +49,7 @@ final class Sets extends Component
         ])->layoutData([
             'title' => "Sets · {$name}'s collection",
             'description' => "The {$sets->count()} Pokémon TCG sets in {$name}'s collection, with completion and owned value per set.",
+            'isOwner' => $this->isOwnerViewing(),
         ]);
     }
 }

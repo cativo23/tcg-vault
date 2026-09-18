@@ -255,6 +255,59 @@ test('a search matching nothing shows "no cards match" with a way to clear it, n
     $response->assertSee('clearFilters', false);
 });
 
+test('the owner viewing their own empty collection gets a way to add cards, not just "check back soon"', function () {
+    // Real user complaint: a brand-new collector's own gallery page (the
+    // one they land on / share) told THEM to "check back soon" as if
+    // someone else would populate it, with no link anywhere to the admin
+    // screen that actually lets them add a card.
+    $user = User::factory()->create(['username' => 'carlos']);
+    Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+
+    $response = $this->actingAs($user)->get('/carlos');
+
+    $response->assertOk();
+    $response->assertDontSee('Check back soon');
+    $response->assertSee(route('admin.collection.add'), false);
+});
+
+test('a visitor viewing someone else\'s empty collection still sees the guest message, never an admin link', function () {
+    $owner = User::factory()->create(['username' => 'carlos']);
+    Collection::factory()->for($owner)->create(['is_public' => true, 'slug' => 'main']);
+    $visitor = User::factory()->create(['username' => 'ash']);
+
+    $response = $this->actingAs($visitor)->get('/carlos');
+
+    $response->assertOk();
+    $response->assertSee('Check back soon');
+    $response->assertDontSee(route('admin.collection.add'), false);
+});
+
+test('a logged-in visitor never sees a manage-collection link into someone else\'s account', function () {
+    // Bug: the topbar's admin link was gated on @auth alone (any
+    // logged-in user) instead of checking it's actually THIS collector's
+    // own page — a logged-in visitor browsing another collector's
+    // gallery got a link claiming to manage a collection, which actually
+    // opened THEIR OWN /admin, not the page they were looking at.
+    $owner = User::factory()->create(['username' => 'carlos']);
+    Collection::factory()->for($owner)->create(['is_public' => true, 'slug' => 'main']);
+    $visitor = User::factory()->create(['username' => 'ash']);
+
+    $response = $this->actingAs($visitor)->get('/carlos');
+
+    $response->assertOk();
+    $response->assertDontSee(route('admin.collection.index'), false);
+});
+
+test('the owner sees a clearly labeled way to manage their own collection', function () {
+    seedCollection();
+
+    $response = $this->actingAs(User::where('username', 'carlos')->first())->get('/carlos');
+
+    $response->assertOk();
+    $response->assertSee(route('admin.collection.index'), false);
+    $response->assertDontSee('>Admin<', false); // renamed: "Admin" reads as a technical/backend term, not "manage my own cards"
+});
+
 test('a nonexistent username 404s', function () {
     $this->get('/nobody-here')->assertNotFound();
 });

@@ -54,8 +54,14 @@
 
     @if ($collectionIsEmpty)
         <div class="nw-empty">
-            <div class="t">Nothing on display yet</div>
-            <p>This collection has no public cards. Check back soon.</p>
+            @if ($isOwner)
+                <div class="t">Nothing here yet</div>
+                <p>Add a card or make one public from your collection.</p>
+                <a href="{{ route('admin.collection.add') }}" class="nw-btn-primary" style="display: inline-block; margin-top: 16px" wire:navigate>Add a card</a>
+            @else
+                <div class="t">Nothing on display yet</div>
+                <p>This collection has no public cards. Check back soon.</p>
+            @endif
         </div>
     @else
         <div class="nw-toolbar">

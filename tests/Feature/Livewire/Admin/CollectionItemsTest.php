@@ -987,3 +987,20 @@ test('a user cannot open the delete modal for another users item by guessing its
         ->call('confirmDelete', $otherItem->id)
         ->assertStatus(404);
 });
+
+test('the empty state links straight into adding a card, not just inert text', function () {
+    // Was plain text ("No cards yet — add your first one.") with no
+    // link anywhere on the row — the "+ Add card" button above the
+    // table is easy to miss on first load, and this was the only other
+    // thing on the page telling a new user what to do.
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $html = Livewire::test(\App\Livewire\Admin\CollectionItems::class)->html();
+
+    // Before the fix, the add-card route only appears once (the "+ Add
+    // card" button in the header) — the empty-state row is plain text
+    // with no link of its own. After the fix it appears a second time,
+    // in the row itself.
+    expect(substr_count($html, route('admin.collection.add')))->toBe(2);
+});

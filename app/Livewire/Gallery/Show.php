@@ -177,6 +177,7 @@ final class Show extends Component
                 $name,
             ),
             'ogImage' => $mostValuable['card']->official_image_url ?? $this->set->logo_url,
+            'isOwner' => $this->isOwnerViewing(),
         ]);
     }
 }
