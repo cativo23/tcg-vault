@@ -1,0 +1,93 @@
+name: Auto Release
+
+# Cut a branch named release/vX.Y.Z (or release/X.Y.Z), move the Unreleased
+# CHANGELOG.md section under that version heading, and open a PR into
+# master. Merging it here creates the GitHub Release that deploy.yml
+# listens for.
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Extract and validate version
+        id: version
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          RAW="${BRANCH#release/}"
+          if [[ "$RAW" != v* ]]; then
+            RAW="v${RAW}"
+          fi
+          if ! [[ "$RAW" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid version format: $RAW (expected vX.Y.Z)"
+            exit 1
+          fi
+          echo "tag=$RAW" >> "$GITHUB_OUTPUT"
+          echo "number=${RAW#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Check tag does not already exist
+        id: check_tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$TAG" &>/dev/null; then
+            echo "::warning::Release $TAG already exists — skipping."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Parse release notes from CHANGELOG.md
+        if: steps.check_tag.outputs.exists != 'true'
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.number }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          NOTES=$(awk -v ver="$VERSION" '
+            BEGIN { found=0 }
+            /^## \[/ {
+              if (found) exit
+              if ($0 ~ "^## \\[" ver "\\]") { found=1; next }
+            }
+            found { print }
+          ' CHANGELOG.md)
+
+          NOTES=$(printf '%s\n' "$NOTES" | sed -e '/[^[:space:]]/,$!d' -e :a -e '/^\s*$/{ $d; N; ba; }')
+
+          if [ -z "$NOTES" ]; then
+            NOTES="Release $TAG"
+            echo "::warning::No CHANGELOG.md section found for [$VERSION] — using fallback message."
+          fi
+
+          printf '%s\n' "$NOTES" > /tmp/release-notes.md
+
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file /tmp/release-notes.md \
+            --target "$MERGE_SHA"

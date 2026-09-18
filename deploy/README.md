@@ -1,7 +1,46 @@
 # tcg-vault — Deploy to polaris2
 
-Single-origin Docker deploy at **https://tcgvault.cativo.dev**. Manual
-build/push/deploy (GitHub Actions autorelease is a later slice).
+Single-origin Docker deploy at **https://tcgvault.cativo.dev**. Automated
+via GitHub Actions: CI on every push/PR, then a `release/vX.Y.Z` branch
+merge to `master` builds/pushes the image and deploys. Manual steps below
+still apply for the one-time server setup and for anything the workflows
+deliberately don't automate (migrations, first-time secrets).
+
+## Cutting a release
+```bash
+git checkout -b release/v0.2.0 master
+# update CHANGELOG.md: move the "## [Unreleased]" entries under "## [0.2.0]"
+git commit -am "chore(release): v0.2.0"
+git push -u origin release/v0.2.0
+gh pr create --base master --title "release: v0.2.0" --body "See CHANGELOG.md"
+# merging that PR:
+#   1. auto-release.yml creates GitHub Release v0.2.0 from the CHANGELOG section
+#   2. deploy.yml builds+pushes cativo23/tcg-vault:v0.2.0 / :latest, then
+#      SSHes into polaris2 and runs `docker compose pull && up -d`
+# migrations are NEVER run automatically — see the manual step below if
+# this release includes any.
+```
+
+## Required GitHub Actions secrets/variables (repo settings → Secrets and variables)
+| Name | Type | Purpose |
+|---|---|---|
+| `DOCKER_USERNAME` | secret | Docker Hub login + image namespace |
+| `DOCKER_PASSWORD` | secret | Docker Hub access token |
+| `SSH_USERNAME` | secret | polaris2 SSH user |
+| `SSH_PRIVATE_KEY` | secret | polaris2 SSH private key |
+| `DEPLOY_HOST` | variable | polaris2 hostname/IP |
+| `DEPLOY_PORT` | variable | polaris2 SSH port |
+
+The `prod` environment gates `deploy.yml`'s two jobs — create a `prod`
+environment in repo settings (with these secrets/vars scoped to it, or
+inherited from repo-level) if you want an extra manual-approval gate before
+the deploy job runs.
+
+The app's own secrets (`APP_KEY`, `DB_PASSWORD`, `REDIS_PASSWORD`,
+`RESEND_KEY`) are **not** GitHub secrets — they stay in
+`~/deploy/tcg-vault/.env` on the server itself (one-time setup below) and
+are never touched by the deploy workflow, which only re-syncs
+`compose.prod.yml` and re-pulls the image.
 
 ## One-time server setup
 ```bash
@@ -63,9 +102,17 @@ docker compose -f compose.prod.yml exec app php artisan db:seed
 - [ ] `~/deploy/tcg-vault/.env` is mode `600`; no secrets in the image or git.
 
 ## Rollback
-Until releases are tagged, rollback = rebuild/push a known-good commit as `:latest` and
-redeploy (`docker compose pull && up -d`). Tagging (`:sha` / `:vX`) comes with the GitHub
-Actions autorelease slice.
+Releases are tagged (`cativo23/tcg-vault:vX.Y.Z`, plus `:sha`). To roll back:
+```bash
+ssh polaris2
+cd ~/deploy/tcg-vault
+docker compose -f compose.prod.yml pull cativo23/tcg-vault:v0.1.0   # or edit
+  # compose.prod.yml's image tag temporarily, then:
+docker compose -f compose.prod.yml up -d
+```
+Or re-run `deploy.yml` manually via `gh workflow run deploy.yml` is not
+available (it's release-triggered only) — re-publish the known-good tag as
+a new GitHub Release, or deploy by hand as above.
 
 ## Architecture notes
 - **Single image, three services.** `app` (web, port 8080 behind Traefik), `horizon`
