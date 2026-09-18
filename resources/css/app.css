@@ -602,6 +602,16 @@ body {
   display: block;
 }
 .imgwrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Loading shimmer — opacity only, per the motion stance. Card art comes
+   from assets.tcgdex.net and can take a couple of seconds; without this
+   the plain --bone-3 background just sits there with no sign anything
+   is happening. Stops the moment the <img> flips is-loaded (onload or
+   onerror), never on a fixed timer. */
+.imgwrap:not(.empty) { animation: imgwrap-shimmer 1.3s ease-in-out infinite; }
+.imgwrap:has(img.is-loaded) { animation: none; }
+.imgwrap img { opacity: 0; transition: opacity 220ms var(--ease); }
+.imgwrap img.is-loaded { opacity: 1; }
+@keyframes imgwrap-shimmer { 0%, 100% { background-color: var(--bone-3); } 50% { background-color: var(--bone-2); } }
 /* sleeve-reflection sweep — transform only, plays once per hover */
 .imgwrap::after {
   content: '';
@@ -846,7 +856,14 @@ body {
   overflow-x: auto;
   padding-block: 12px 24px;
   scrollbar-width: thin;
+  /* Firefox */
+  scrollbar-color: var(--hair) transparent;
 }
+/* WebKit/Blink — scrollbar-color alone doesn't reach these engines */
+.nw-strip::-webkit-scrollbar { height: 6px; }
+.nw-strip::-webkit-scrollbar-track { background: transparent; }
+.nw-strip::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 999px; }
+.nw-strip::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
 /* ─── footer ─── */
 .nw-footer {

@@ -4,7 +4,10 @@
      the picture is. design.md's empty state: hatch + icon + label. --}}
 <div {{ $attributes->merge(['class' => 'imgwrap '.($url ? '' : 'empty ').$class]) }} @if (! $url) role="img" aria-label="No image available for {{ $name }}" @endif>
     @if ($url)
-        <img src="{{ $url }}" alt="{{ $name }}" loading="{{ $eager ? 'eager' : 'lazy' }}" decoding="async" @if ($eager) fetchpriority="high" @endif>
+        {{-- onerror also flips is-loaded — a broken URL must stop the
+             shimmer too, not pulse forever over what's effectively a
+             blank frame. --}}
+        <img src="{{ $url }}" alt="{{ $name }}" loading="{{ $eager ? 'eager' : 'lazy' }}" decoding="async" onload="this.classList.add('is-loaded')" onerror="this.classList.add('is-loaded')" @if ($eager) fetchpriority="high" @endif>
     @else
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3.5" y="2.5" width="17" height="19" rx="2.5"></rect>
