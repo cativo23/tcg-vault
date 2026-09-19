@@ -101,8 +101,15 @@
                              old "Admin" label: this is "manage my own cards," not
                              a backend/technical destination. $isOwner comes from
                              the component's layoutData, not a re-derived check
-                             here — see the @php block above. --}}
-                        <a href="{{ route('admin.collection.index') }}" class="nw-nav-ghost">{{ __('Manage collection') }}</a>
+                             here — see the @php block above.
+
+                             Desktop-only row placement — the label's own text width
+                             plus the brand and hamburger left this row wider than a
+                             phone screen with nothing left able to shrink, which blew
+                             out the whole page (same min-width:auto trap as .nw-nav
+                             above) and pushed the hamburger itself off-screen. Below
+                             sm it lives in the mobile nav panel instead. --}}
+                        <a href="{{ route('admin.collection.index') }}" class="nw-nav-ghost hidden sm:inline-flex">{{ __('Manage collection') }}</a>
                     @endif
 
                     @guest
@@ -149,6 +156,9 @@
                     <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Collection</a>
                     <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Sets</a>
                     <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Activity</a>
+                    @if ($isOwner)
+                        <a href="{{ route('admin.collection.index') }}" @click="mobileNavOpen = false">{{ __('Manage collection') }}</a>
+                    @endif
                 </nav>
             @endif
         </header>
