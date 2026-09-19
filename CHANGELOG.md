@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-19
+
 ### Added
 
 - CI/CD: automated test suite on every push/PR, and a release-branch deploy
