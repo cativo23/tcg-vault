@@ -100,6 +100,27 @@ body {
   min-height: 100vh;
 }
 
+/* ─── film grain (EXPERIMENT — not wired into design.md yet) ───
+   A single page-level overlay, not a per-component texture: SVG
+   feTurbulence generated at paint time (no image request, no repaint
+   cost) tiled over the whole viewport via a fixed pseudo-element, so
+   the same grain reads consistently over both the dark chrome bands
+   and the paper/bone surfaces instead of needing a separate treatment
+   for each. mix-blend-mode: overlay is what lets one low-opacity layer
+   sit correctly on light AND dark backgrounds without a per-theme
+   value. position: fixed keeps it off the scrollable page (doesn't
+   grow scrollHeight); pointer-events: none keeps it out of hit-testing. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
 .mono {
   font-family: 'Martian Mono', 'SFMono-Regular', ui-monospace, monospace;
   font-variation-settings: 'wdth' 87.5, 'wght' 600;
@@ -467,7 +488,12 @@ body {
   padding-block: clamp(18px, 3vw, 28px) clamp(40px, 6vw, 64px);
 }
 @media (max-width: 430px) {
-  .nw-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  /* minmax(0, 1fr), not 1fr: a bare 1fr track's automatic minimum is its
+     content's min-content size, so one column's tallest/widest tile
+     (long card name, ticker price, etc.) silently widens that whole
+     column past its sibling — same min-width:auto trap as .cset
+     .truncate above, just at the grid-track level instead of flexbox. */
+  .nw-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 }
 .nw-slot {
   opacity: 0;
@@ -633,6 +659,21 @@ body {
 .nw-tile.ghost .ticker { background: var(--bone-2); color: var(--muted); }
 .nw-tile.ghost:hover .ticker { background: var(--bone-3); }
 .nw-tile.ghost .imgwrap::after { display: none; }
+
+/* ─── Pokémon-type dot — next to the card name, not on the artwork ───
+   Trainer/Energy cards carry no `types` in tcgdex's payload, so
+   card-tile only renders this at all when one exists. Inline with the
+   name (not absolutely positioned) so it never covers the art. */
+.nw-type-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--nw-type-color);
+  box-shadow: 0 0 0 1px var(--hair);
+  margin-left: 5px;
+  vertical-align: middle;
+}
 @media (max-width: 430px) {
   .nw-tile .cname { font-size: 13.5px; }
   .nw-tile .ticker { font-size: 11.5px; padding: 6px 8px; }
@@ -686,6 +727,74 @@ body {
 .imgwrap.empty span { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .15em; }
 .imgwrap.empty::after { display: none; }
 .imgwrap.rounded { border-radius: 6px; }
+
+/* ─── responsive data table (Manage Collection) ───
+   Below the breakpoint a <table> row can't fit ten columns plus the
+   Edit/Delete actions on a phone. A horizontally-scrolling table hides
+   those actions off-screen with no visual hint they exist — the
+   standard collapse instead: each <tr> becomes its own card, each <td>
+   a label:value line via its `data-label` attribute (set in the blade
+   view, not derived from :nth-child — resilient to column reordering).
+   The Card-name cell and the actions cell opt out of the label via
+   `data-label=""` since they read fine as a heading / a button row. */
+@media (max-width: 700px) {
+  .nw-table-responsive table,
+  .nw-table-responsive thead,
+  .nw-table-responsive tbody,
+  .nw-table-responsive tr,
+  .nw-table-responsive td {
+    display: block;
+    width: 100%;
+  }
+  .nw-table-responsive thead { display: none; }
+  .nw-table-responsive tbody tr {
+    border: 1px solid var(--hair);
+    border-radius: var(--radius-card);
+    padding: 12px 14px;
+    margin-block: 10px;
+  }
+  .nw-table-responsive tbody tr:first-child { margin-top: 0; }
+  .nw-table-responsive tbody tr:last-child { margin-bottom: 0; }
+  .nw-table-responsive td {
+    padding: 5px 0;
+    border: none;
+  }
+  .nw-table-responsive td[data-label]:not([data-label='']) {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .nw-table-responsive td[data-label]:not([data-label=''])::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .13em;
+    color: var(--muted);
+  }
+  /* Livewire/Blade compile @if/@endif to HTML comments even when the
+     branch is false, so a "conditionally empty" cell like Status is
+     never a bare empty element — :empty still matches (comment nodes
+     don't count), but needs to out-specificity the labeled-cell flex
+     rule above it, which also targets this same td. */
+  .nw-table-responsive td:empty,
+  .nw-table-responsive td[data-label]:not([data-label='']):empty { display: none; }
+  .nw-table-responsive td.nw-tcell-name {
+    font-size: 15px;
+    font-weight: 700;
+    padding-top: 0;
+  }
+  .nw-table-responsive td.nw-tcell-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 10px;
+    margin-top: 4px;
+    border-top: 1px solid var(--hair);
+  }
+}
 
 /* ─── set card ─── */
 .nw-setgrid {

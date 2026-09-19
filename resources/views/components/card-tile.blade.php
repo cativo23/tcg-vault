@@ -1,4 +1,5 @@
 @use('App\Modules\Catalog\Support\Rarity')
+@use('App\Modules\Catalog\Support\PokemonType')
 @use('App\Support\Money')
 @use('Illuminate\Support\Facades\Storage')
 
@@ -26,6 +27,8 @@
     // ungraded case — but computing it unconditionally here keeps the
     // logic in one place instead of duplicated across both branches.
     $rarityTier = $graded ? 'standard' : Rarity::tier($card->rarity);
+    $pokemonType = PokemonType::of($card->raw);
+    $typeColor = PokemonType::color($pokemonType);
 @endphp
 
 <div class="nw-slot" style="--i: {{ $index }}">
@@ -49,7 +52,12 @@
         <x-card-image :url="$imageUrl" :name="$card->name.' #'.$card->local_id" :eager="$eager" />
 
         <div class="cbody">
-            <div class="cname">{{ $card->name }}</div>
+            <div class="cname">
+                {{ $card->name }}
+                @if ($pokemonType)
+                    <span class="nw-type-dot" style="--nw-type-color: {{ $typeColor }}" title="{{ $pokemonType }}"></span>
+                @endif
+            </div>
             <div class="cset">
                 <span class="truncate">{{ $showSet && $card->set ? $card->set->name : Rarity::label($card->rarity) }}</span>
                 @if ($quantity > 1)
