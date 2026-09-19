@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Models\User;
 use App\Modules\Invites\Models\Invite;
+use Illuminate\Database\QueryException;
 
 test('a fresh invite is usable', function () {
     $invite = Invite::factory()->create();
@@ -75,7 +77,7 @@ test('the database itself rejects a second usable invite for the same email, clo
     Invite::factory()->create(['email' => 'race@example.com']);
 
     Invite::factory()->create(['email' => 'race@example.com']);
-})->throws(\Illuminate\Database\QueryException::class);
+})->throws(QueryException::class);
 
 test('a second invite for the same email is fine once the first is no longer usable', function () {
     $first = Invite::factory()->create(['email' => 'again@example.com']);
@@ -87,7 +89,7 @@ test('a second invite for the same email is fine once the first is no longer usa
 });
 
 test('revoking an invite records who revoked it', function () {
-    $admin = \App\Models\User::factory()->create();
+    $admin = User::factory()->create();
     $invite = Invite::factory()->create();
 
     $invite->revoke($admin->id);

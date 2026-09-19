@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use Database\Seeders\PermissionSeeder;
 use Spatie\Permission\Models\Role;
 
 test('a super-admin sees links to the staff invites and settings pages', function () {
@@ -17,7 +18,7 @@ test('a super-admin sees links to the staff invites and settings pages', functio
 });
 
 test('a plain user does not see links to the staff pages', function () {
-    $this->seed(\Database\Seeders\PermissionSeeder::class);
+    $this->seed(PermissionSeeder::class);
     $user = User::factory()->create();
 
     $response = $this->actingAs($user)->get('/admin');

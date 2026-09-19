@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Collection\Models\Collection;
 
 function cardTileCard(string $rarity, ?string $setAbbreviation = null): Card
 {
@@ -66,7 +67,7 @@ test('a chase-tier rarity gets the holo accent on the chip AND the tile itself',
 test('a graded slab replaces the rarity chip entirely, so no rarity tier accent applies', function () {
     $card = cardTileCard('Secret Rare'); // chase-tier rarity, but graded takes over
     $card->collectionItems()->create([
-        'collection_id' => \App\Modules\Collection\Models\Collection::factory()->create()->id,
+        'collection_id' => Collection::factory()->create()->id,
         'card_tcgdex_id' => $card->tcgdex_id, 'condition' => 'NM', 'quantity' => 1,
         'grade_company' => 'PSA', 'grade_value' => '10',
     ]);

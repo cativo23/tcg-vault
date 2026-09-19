@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Invites\Models\Invite;
-use App\Models\User;
+use Database\Seeders\PermissionSeeder;
 
 test('the public layout renders the anti-FOUC theme script before any other head tag', function () {
     $response = $this->get('/');
@@ -40,7 +41,7 @@ test('the guest layout renders the anti-FOUC theme script', function () {
 });
 
 test('the authenticated app layout exposes a theme toggle button', function () {
-    $this->seed(\Database\Seeders\PermissionSeeder::class);
+    $this->seed(PermissionSeeder::class);
     $user = User::factory()->create();
 
     $response = $this->actingAs($user)->get('/admin');
@@ -55,7 +56,7 @@ test('the authenticated app layouts theme toggle is not hidden inside the mobile
     // Responsive Navigation Menu panel — on mobile it was only reachable
     // by opening the hamburger first, unlike a display preference people
     // expect to flip in one tap regardless of viewport.
-    $this->seed(\Database\Seeders\PermissionSeeder::class);
+    $this->seed(PermissionSeeder::class);
     $user = User::factory()->create();
 
     $html = $this->actingAs($user)->get('/admin')->getContent();
@@ -67,7 +68,7 @@ test('no layout renders the hardcoded Tailwind colors that used to bypass the to
     $loginHtml = $this->get('/login')->getContent();
     expect($loginHtml)->not->toContain('text-gray-900');
 
-    $this->seed(\Database\Seeders\PermissionSeeder::class);
+    $this->seed(PermissionSeeder::class);
     $user = User::factory()->create();
     $adminHtml = $this->actingAs($user)->get('/admin')->getContent();
     expect($adminHtml)->not->toContain('bg-white');
@@ -79,7 +80,7 @@ test('the pagination controls use design tokens, not the framework default views
     // passed for the wrong reason (nothing to check), not because the
     // pager was actually themed. Seed past one page on both a page
     // that already had this bug and the newly-paginated invite list.
-    $this->seed(\Database\Seeders\PermissionSeeder::class);
+    $this->seed(PermissionSeeder::class);
     $user = User::factory()->create();
     $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);

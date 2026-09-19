@@ -7,12 +7,12 @@ use App\Models\User;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Data\PriceEntryData;
+use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Spatie\LaravelData\DataCollection;
 
@@ -32,7 +32,7 @@ test('addItem syncs the card into the Catalog and creates a CollectionItem', fun
         rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
     ));
-    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -68,7 +68,7 @@ test('addItem defaults quantity to 1 when not provided', function () {
         rarity: 'Rare Holo', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: [],
     ));
-    $provider->shouldReceive('findSet')->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -92,7 +92,7 @@ test('adding an identical printing again increments quantity instead of creating
         rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
     ));
-    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -119,7 +119,7 @@ test('a quantity merge does not overwrite notes or photo_path from the original 
         rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
     ));
-    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -157,7 +157,7 @@ test('a different variant or condition of the same card creates a separate row, 
         rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
     ));
-    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -184,7 +184,7 @@ test('adding the first card from a brand-new set dispatches ImportSetJob to back
         rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
     ));
-    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: 84, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -207,7 +207,7 @@ test('addItem stores needs_variant_review when passed true', function () {
         rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
     ));
-    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
@@ -235,7 +235,7 @@ test('addItem defaults needs_variant_review to false when not passed', function 
         rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
         prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
     ));
-    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new \App\Modules\Catalog\Data\SetSummaryData(
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
         tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);

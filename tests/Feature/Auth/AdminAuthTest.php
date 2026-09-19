@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 use Livewire\Volt\Volt;
 
 test('guest is redirected to login when visiting the dashboard', function () {
@@ -38,5 +39,5 @@ test('database seeder creates exactly one admin user matching config', function 
 
     $user = User::where('email', 'seed-test@tcg-vault.test')->first();
     expect($user)->not->toBeNull();
-    expect(\Illuminate\Support\Facades\Hash::check('seed-password', $user->password))->toBeTrue();
+    expect(Hash::check('seed-password', $user->password))->toBeTrue();
 });

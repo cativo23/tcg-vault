@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use Illuminate\Database\QueryException;
 
 test('a set can have many cards, and a card belongs to a set', function () {
     $set = Set::create([
@@ -65,5 +66,5 @@ test('duplicate snapshot for the same card+source+variant+day is rejected', func
     expect(fn () => CardPriceSnapshot::create([
         'card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil',
         'captured_on' => '2026-09-14', 'currency' => 'USD', 'market_minor' => 20000,
-    ]))->toThrow(\Illuminate\Database\QueryException::class);
+    ]))->toThrow(QueryException::class);
 });

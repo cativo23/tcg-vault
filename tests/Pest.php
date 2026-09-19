@@ -1,5 +1,9 @@
 <?php
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Tests\TestCase;
+
 /*
 |--------------------------------------------------------------------------
 | Test Case
@@ -9,7 +13,7 @@
 |
 */
 
-uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Feature');
+uses(TestCase::class, RefreshDatabase::class)->in('Feature');
 
 // RefreshDatabase resets the database between tests but not the cache
 // store — spatie/laravel-settings caches settings classes (see
@@ -17,34 +21,34 @@ uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class
 // lives for the whole process, not per-test, so a value cached by one
 // test can otherwise leak into the next.
 afterEach(function () {
-    \Illuminate\Support\Facades\Cache::flush();
+    Cache::flush();
 });
 
 // Unit tests under Modules/Catalog need the Laravel container for Http::fake()/config(),
 // but this binding does not apply to other Unit tests.
-uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Catalog');
+uses(TestCase::class, RefreshDatabase::class)->in('Unit/Modules/Catalog');
 
 // Unit tests under Modules/Collection need the Laravel container and a real database
 // (CollectionService writes CollectionItem rows via Eloquent), same rationale as Catalog above.
-uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Collection');
+uses(TestCase::class, RefreshDatabase::class)->in('Unit/Modules/Collection');
 
 // Unit/Jobs tests let a real CatalogSyncService run against a mocked
 // CardCatalogProvider (CatalogSyncService is final, can't be mocked directly),
 // so they need the container and a real database too.
-uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Jobs');
+uses(TestCase::class, RefreshDatabase::class)->in('Unit/Jobs');
 
 // Unit/Providers tests boot a real service provider instance against the
 // container (config(), URL facade), no database needed.
-uses(Tests\TestCase::class)->in('Unit/Providers');
+uses(TestCase::class)->in('Unit/Providers');
 
 // Unit/Modules/Invites tests exercise a real Invite model against the
 // database (factory + Eloquent), same rationale as Catalog/Collection above.
-uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Modules/Invites');
+uses(TestCase::class, RefreshDatabase::class)->in('Unit/Modules/Invites');
 
 // Unit/Settings tests exercise real spatie/laravel-settings classes
 // against the database and its cache layer, same rationale as the
 // others above.
-uses(Tests\TestCase::class, Illuminate\Foundation\Testing\RefreshDatabase::class)->in('Unit/Settings');
+uses(TestCase::class, RefreshDatabase::class)->in('Unit/Settings');
 
 /*
 |--------------------------------------------------------------------------

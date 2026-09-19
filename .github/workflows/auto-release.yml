@@ -1,0 +1,162 @@
+name: Auto Release
+
+# Merging a PR from a branch named release/vX.Y.Z (or release/X.Y.Z) into
+# master creates the GitHub Release deploy.yml listens for, with notes
+# pulled from CHANGELOG.md's matching "## [X.Y.Z]" section. Moving that
+# section under the release/... branch and opening the PR are manual
+# steps — see deploy/README.md's "Cutting a release".
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+
+permissions:
+  contents: write
+  checks: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to the actual merge commit, not actions/checkout's default
+      # refs/pull/N/merge — that ref can be GC'd once the PR is closed, and
+      # for a squash merge it's a different commit than merge_commit_sha
+      # (used below to tag the Release), so the CHANGELOG.md this reads
+      # could come from a different tree than what gets released.
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Extract and validate version
+        id: version
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          RAW="${BRANCH#release/}"
+          if [[ "$RAW" != v* ]]; then
+            RAW="v${RAW}"
+          fi
+          if ! [[ "$RAW" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid version format: $RAW (expected vX.Y.Z)"
+            exit 1
+          fi
+          echo "tag=$RAW" >> "$GITHUB_OUTPUT"
+          echo "number=${RAW#v}" >> "$GITHUB_OUTPUT"
+          # A version with a pre-release identifier (v0.3.0-rc.1) must not
+          # move :latest in deploy.yml — that tag's `enable=` is driven by
+          # this Release's own `prerelease` flag.
+          if [[ "$RAW" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The `if:` above only checks the branch name and that the PR merged —
+      # naming a branch release/vX.Y.Z is a convention, not a guarantee its
+      # code passed tests. ci.yml's own push-to-master trigger fires from
+      # this same merge, so without waiting for it here nothing stops a
+      # release from being cut off a merge commit whose CI is still
+      # running, or has already failed.
+      - name: Wait for CI to pass on the merge commit
+        id: wait_ci
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "Waiting for the CI 'test' check run on $MERGE_SHA…"
+          for i in $(seq 1 60); do
+            # A re-run (manual, or a second push-triggered run landing on
+            # the same SHA) produces more than one "test" check run — take
+            # the most recently started one instead of every match, or two
+            # concatenated conclusions like "success success" match none
+            # of the branches below and fail the release for a CI run that
+            # actually passed.
+            CONCLUSION=$(gh api "repos/$REPO/commits/$MERGE_SHA/check-runs" --jq '[.check_runs[] | select(.name=="test")] | sort_by(.started_at) | last | .conclusion // "pending"')
+            if [ -z "$CONCLUSION" ]; then
+              echo "No 'test' check run found yet (attempt $i/60)…"
+            elif [ "$CONCLUSION" = "success" ]; then
+              echo "CI passed."
+              exit 0
+            elif [ "$CONCLUSION" = "pending" ]; then
+              echo "CI still running (attempt $i/60)…"
+            else
+              echo "::error::CI check run concluded '$CONCLUSION' on $MERGE_SHA — refusing to release."
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "::error::Timed out waiting for CI on $MERGE_SHA."
+          exit 1
+
+      - name: Check tag does not already exist
+        id: check_tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$TAG" &>/dev/null; then
+            echo "::warning::Release $TAG already exists — skipping."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Parse release notes from CHANGELOG.md
+        if: steps.check_tag.outputs.exists != 'true'
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.number }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          NOTES=$(awk -v ver="$VERSION" '
+            BEGIN { found=0 }
+            /^## \[/ {
+              if (found) exit
+              if ($0 ~ "^## \\[" ver "\\]") { found=1; next }
+            }
+            found { print }
+          ' CHANGELOG.md)
+
+          NOTES=$(printf '%s\n' "$NOTES" | sed -e '/[^[:space:]]/,$!d' -e :a -e '/^\s*$/{ $d; N; ba; }')
+
+          if [ -z "$NOTES" ]; then
+            NOTES="Release $TAG"
+            echo "::warning::No CHANGELOG.md section found for [$VERSION] — using fallback message."
+          fi
+
+          printf '%s\n' "$NOTES" > /tmp/release-notes.md
+
+      # Deliberately NOT secrets.GITHUB_TOKEN: GitHub does not fire new
+      # workflow runs (including deploy.yml's `on: release: published`)
+      # for events created by the default GITHUB_TOKEN — the built-in
+      # recursion guard. Using it here would create a Release that looks
+      # completely normal in the UI while silently never triggering a
+      # deploy. RELEASE_PAT is a classic/fine-grained PAT with at least
+      # `contents: write` — see deploy/README.md's secrets table.
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          PRERELEASE_FLAG=""
+          if [[ "$PRERELEASE" == "true" ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file /tmp/release-notes.md \
+            --target "$MERGE_SHA" \
+            $PRERELEASE_FLAG

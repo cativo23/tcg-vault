@@ -12,6 +12,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Spatie\LaravelData\DataCollection;
 
 function fakeCardDetail(): CardDetailData
@@ -214,7 +215,7 @@ test('a rolled back card sync does not poison the memoized set for a later card 
 
     $service = new CatalogSyncService($provider);
 
-    expect(fn () => $service->syncCard('me05-116'))->toThrow(\Illuminate\Database\QueryException::class);
+    expect(fn () => $service->syncCard('me05-116'))->toThrow(QueryException::class);
 
     // The Set must survive the failed card transaction intact.
     expect(Set::where('tcgdex_id', 'me05')->exists())->toBeTrue();

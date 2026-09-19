@@ -14,6 +14,7 @@ use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
 use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Spatie\LaravelData\DataCollection;
 
@@ -55,7 +56,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      * option — Guzzle manages CURLOPT_IPRESOLVE internally and rejects a
      * raw curl option for it.
      */
-    private function http(int $timeoutSeconds): \Illuminate\Http\Client\PendingRequest
+    private function http(int $timeoutSeconds): PendingRequest
     {
         return Http::baseUrl($this->baseUrl)
             ->timeout($timeoutSeconds)

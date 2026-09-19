@@ -177,7 +177,7 @@ final class CollectionItems extends Component
             $item = CollectionItem::findOrFail($itemId);
             Collection::findOrFail($item->collection_id); // throws if not the caller's collection
         } catch (ModelNotFoundException) {
-            throw new NotFoundHttpException();
+            throw new NotFoundHttpException;
         }
 
         return $item;
