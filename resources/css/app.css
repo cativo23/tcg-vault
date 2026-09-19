@@ -100,6 +100,27 @@ body {
   min-height: 100vh;
 }
 
+/* ─── film grain (EXPERIMENT — not wired into design.md yet) ───
+   A single page-level overlay, not a per-component texture: SVG
+   feTurbulence generated at paint time (no image request, no repaint
+   cost) tiled over the whole viewport via a fixed pseudo-element, so
+   the same grain reads consistently over both the dark chrome bands
+   and the paper/bone surfaces instead of needing a separate treatment
+   for each. mix-blend-mode: overlay is what lets one low-opacity layer
+   sit correctly on light AND dark backgrounds without a per-theme
+   value. position: fixed keeps it off the scrollable page (doesn't
+   grow scrollHeight); pointer-events: none keeps it out of hit-testing. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
 .mono {
   font-family: 'Martian Mono', 'SFMono-Regular', ui-monospace, monospace;
   font-variation-settings: 'wdth' 87.5, 'wght' 600;
