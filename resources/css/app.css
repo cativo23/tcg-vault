@@ -659,6 +659,21 @@ body::before {
 .nw-tile.ghost .ticker { background: var(--bone-2); color: var(--muted); }
 .nw-tile.ghost:hover .ticker { background: var(--bone-3); }
 .nw-tile.ghost .imgwrap::after { display: none; }
+
+/* ─── Pokémon-type dot — next to the card name, not on the artwork ───
+   Trainer/Energy cards carry no `types` in tcgdex's payload, so
+   card-tile only renders this at all when one exists. Inline with the
+   name (not absolutely positioned) so it never covers the art. */
+.nw-type-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--nw-type-color);
+  box-shadow: 0 0 0 1px var(--hair);
+  margin-left: 5px;
+  vertical-align: middle;
+}
 @media (max-width: 430px) {
   .nw-tile .cname { font-size: 13.5px; }
   .nw-tile .ticker { font-size: 11.5px; padding: 6px 8px; }
