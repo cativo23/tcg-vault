@@ -467,7 +467,12 @@ body {
   padding-block: clamp(18px, 3vw, 28px) clamp(40px, 6vw, 64px);
 }
 @media (max-width: 430px) {
-  .nw-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  /* minmax(0, 1fr), not 1fr: a bare 1fr track's automatic minimum is its
+     content's min-content size, so one column's tallest/widest tile
+     (long card name, ticker price, etc.) silently widens that whole
+     column past its sibling — same min-width:auto trap as .cset
+     .truncate above, just at the grid-track level instead of flexbox. */
+  .nw-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 }
 .nw-slot {
   opacity: 0;
