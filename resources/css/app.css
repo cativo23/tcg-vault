@@ -692,6 +692,74 @@ body {
 .imgwrap.empty::after { display: none; }
 .imgwrap.rounded { border-radius: 6px; }
 
+/* ─── responsive data table (Manage Collection) ───
+   Below the breakpoint a <table> row can't fit ten columns plus the
+   Edit/Delete actions on a phone. A horizontally-scrolling table hides
+   those actions off-screen with no visual hint they exist — the
+   standard collapse instead: each <tr> becomes its own card, each <td>
+   a label:value line via its `data-label` attribute (set in the blade
+   view, not derived from :nth-child — resilient to column reordering).
+   The Card-name cell and the actions cell opt out of the label via
+   `data-label=""` since they read fine as a heading / a button row. */
+@media (max-width: 700px) {
+  .nw-table-responsive table,
+  .nw-table-responsive thead,
+  .nw-table-responsive tbody,
+  .nw-table-responsive tr,
+  .nw-table-responsive td {
+    display: block;
+    width: 100%;
+  }
+  .nw-table-responsive thead { display: none; }
+  .nw-table-responsive tbody tr {
+    border: 1px solid var(--hair);
+    border-radius: var(--radius-card);
+    padding: 12px 14px;
+    margin-block: 10px;
+  }
+  .nw-table-responsive tbody tr:first-child { margin-top: 0; }
+  .nw-table-responsive tbody tr:last-child { margin-bottom: 0; }
+  .nw-table-responsive td {
+    padding: 5px 0;
+    border: none;
+  }
+  .nw-table-responsive td[data-label]:not([data-label='']) {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .nw-table-responsive td[data-label]:not([data-label=''])::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .13em;
+    color: var(--muted);
+  }
+  /* Livewire/Blade compile @if/@endif to HTML comments even when the
+     branch is false, so a "conditionally empty" cell like Status is
+     never a bare empty element — :empty still matches (comment nodes
+     don't count), but needs to out-specificity the labeled-cell flex
+     rule above it, which also targets this same td. */
+  .nw-table-responsive td:empty,
+  .nw-table-responsive td[data-label]:not([data-label='']):empty { display: none; }
+  .nw-table-responsive td.nw-tcell-name {
+    font-size: 15px;
+    font-weight: 700;
+    padding-top: 0;
+  }
+  .nw-table-responsive td.nw-tcell-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 10px;
+    margin-top: 4px;
+    border-top: 1px solid var(--hair);
+  }
+}
+
 /* ─── set card ─── */
 .nw-setgrid {
   display: grid;

@@ -63,7 +63,7 @@
         </div>
     </div>
 
-    <div class="nw-card overflow-hidden">
+    <div class="nw-card overflow-hidden nw-table-responsive">
         <table class="w-full text-sm">
             <thead>
                 <tr class="nw-topbar text-left">
@@ -102,18 +102,18 @@
                             : '—';
                     @endphp
                     <tr wire:key="item-{{ $item->id }}" class="nw-stagger-item nw-row-hover border-t" style="border-color: var(--hair); --nw-stagger-index: {{ min($loop->index, 10) }}">
-                        <td class="p-3 font-medium">
+                        <td class="p-3 font-medium nw-tcell-name" data-label="">
                             @if ($item->photo_path)
                                 <img src="{{ \Illuminate\Support\Facades\Storage::disk('collection-photos')->url($item->photo_path) }}"
                                      alt="" class="w-10 h-10 object-cover rounded inline-block mr-2 align-middle">
                             @endif
                             {{ $item->card->name }}
                         </td>
-                        <td class="p-3" style="color: var(--muted)">{{ $item->card->set->name }}</td>
-                        <td class="p-3">{{ $item->variant ? \Illuminate\Support\Str::headline($item->variant) : '—' }}</td>
-                        <td class="p-3 mono">{{ $item->condition }}</td>
-                        <td class="p-3">{{ $gradingLabel }}</td>
-                        <td class="p-3 mono">
+                        <td class="p-3" style="color: var(--muted)" data-label="Set">{{ $item->card->set->name }}</td>
+                        <td class="p-3" data-label="Variant">{{ $item->variant ? \Illuminate\Support\Str::headline($item->variant) : '—' }}</td>
+                        <td class="p-3 mono" data-label="Condition">{{ $item->condition }}</td>
+                        <td class="p-3" data-label="Grading">{{ $gradingLabel }}</td>
+                        <td class="p-3 mono" data-label="Qty">
                             @if ($editingQtyItemId === $item->id)
                                 <input type="number" min="1" wire:model="editingQtyValue" wire:keydown.enter="saveQty" wire:blur="saveQty" class="nw-input w-16">
                                 @error('editingQtyValue') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
@@ -121,7 +121,7 @@
                                 <span wire:click="startEditingQty({{ $item->id }})" class="cursor-pointer">{{ $item->quantity }}</span>
                             @endif
                         </td>
-                        <td class="p-3 mono">
+                        <td class="p-3 mono" data-label="Value">
                             @if ($valueKnown)
                                 {{ $valueLabel }}
                             @else
@@ -131,7 +131,7 @@
                                 <span title="No price data synced for this card/variant yet">{{ $valueLabel }}</span>
                             @endif
                         </td>
-                        <td class="p-3">
+                        <td class="p-3" data-label="Notes">
                             @if ($editingItemId === $item->id)
                                 <input type="text" wire:model="editingNotes" wire:keydown.enter="saveNotes" class="nw-input w-full">
                             @else
@@ -142,21 +142,17 @@
                                 <span wire:click="startEditingNotes({{ $item->id }})" class="cursor-pointer" style="border-bottom: 1px dashed var(--muted)" title="Click to {{ $item->notes ? 'edit' : 'add' }} a note">{{ $item->notes ?: '—' }}</span>
                             @endif
                         </td>
-                        <td class="p-3">
-                            @if ($item->needs_variant_review)
-                                {{-- Clicking straight into the same "Edit item" modal the Edit
-                                     button opens is what actually resolves this — a plain
-                                     colored label gave no indication a variant assignment (not
-                                     e.g. Notes or Qty) is what clears the flag. --danger red is
-                                     reserved for destructive/error UI (Delete, validation) —
-                                     "needs a look" isn't "this failed," so it gets its own
-                                     --warning token instead of colliding with Delete. --}}
-                                <button type="button" wire:click="startEditingItem({{ $item->id }})" class="text-xs font-medium" style="color: var(--warning)" title="Assign a Variant in Edit item to clear this">
-                                    Review
-                                </button>
-                            @endif
-                        </td>
-                        <td class="p-3 text-right">
+                        {{-- Clicking straight into the same "Edit item" modal the Edit button
+                             opens is what actually resolves this — a plain colored label gave
+                             no indication a variant assignment (not e.g. Notes or Qty) is what
+                             clears the flag. --danger red is reserved for destructive/error UI
+                             (Delete, validation) — "needs a look" isn't "this failed," so it
+                             gets its own --warning token instead of colliding with Delete.
+                             data-label="Status" only, no surrounding whitespace, so the mobile
+                             :empty rule can actually collapse this row when there's nothing to
+                             review — a stray text/whitespace node would defeat :empty. --}}
+                        <td class="p-3" data-label="Status">@if ($item->needs_variant_review)<button type="button" wire:click="startEditingItem({{ $item->id }})" class="text-xs font-medium" style="color: var(--warning)" title="Assign a Variant in Edit item to clear this">Review</button>@endif</td>
+                        <td class="p-3 text-right nw-tcell-actions" data-label="">
                             <button wire:click="startEditingItem({{ $item->id }})" class="nw-row-btn mr-2">Edit</button>
                             <button wire:click="confirmDelete({{ $item->id }})" class="nw-row-btn nw-row-btn--danger">Delete</button>
                         </td>
