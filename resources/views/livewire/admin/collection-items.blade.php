@@ -127,6 +127,7 @@
                     @include('livewire.admin.partials.variant-row', [
                         'namePrefix' => "editingRows.$index",
                         'row' => $row,
+                        'rowIndex' => $index,
                         'availableVariants' => $editingAvailableVariants,
                         'onRemove' => "removeVariantRow($index)",
                         'onUpdate' => fn (string $field) => "updateRow($index, '$field')",

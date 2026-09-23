@@ -222,3 +222,18 @@ const bindSparklineTooltips = () => {
 
 document.addEventListener('DOMContentLoaded', bindSparklineTooltips);
 document.addEventListener('livewire:navigated', bindSparklineTooltips);
+
+// The "Saved" tag next to an autosaved field (variant-row partial) —
+// shown for ~2s and faded, mirroring the discreet feedback the old
+// inline Qty/Notes editing gave with no persistent banner.
+document.addEventListener('row-saved', (event) => {
+    const rows = document.querySelectorAll(`[wire\\:key="editingRows.${event.detail.index}"]`);
+    rows.forEach((row) => {
+        const tag = row.querySelector('[data-autosave-tag]');
+        if (!tag) return;
+        tag.style.display = 'flex';
+        tag.style.opacity = '1';
+        clearTimeout(tag._fadeTimer);
+        tag._fadeTimer = setTimeout(() => { tag.style.opacity = '0'; }, 1600);
+    });
+});

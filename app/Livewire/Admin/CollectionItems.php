@@ -207,6 +207,56 @@ final class CollectionItems extends Component
         $this->editingAvailableVariants = [];
     }
 
+    protected function rules(): array
+    {
+        return [
+            'editingRows.*.variant' => 'nullable|in:normal,holofoil,reverse-holofoil',
+            'editingRows.*.condition' => 'required|string|max:16',
+            'editingRows.*.quantity' => 'required|integer|min:1',
+            'editingRows.*.grade_company' => 'nullable|string|max:32',
+            'editingRows.*.grade_value' => 'nullable|string|max:16',
+            'editingRows.*.notes' => 'nullable|string|max:2000',
+        ];
+    }
+
+    public function updateRow(int $index): void
+    {
+        if (! isset($this->editingRows[$index])) {
+            return;
+        }
+
+        $this->validateOnly("editingRows.$index.variant");
+        $this->validateOnly("editingRows.$index.condition");
+        $this->validateOnly("editingRows.$index.quantity");
+        $this->validateOnly("editingRows.$index.grade_company");
+        $this->validateOnly("editingRows.$index.grade_value");
+        $this->validateOnly("editingRows.$index.notes");
+
+        $row = $this->editingRows[$index];
+        $item = $this->ownedItemOrFail($row['id']);
+
+        $item->update([
+            'variant' => $row['variant'],
+            'condition' => $row['condition'],
+            'quantity' => $row['quantity'],
+            'grade_company' => $row['grade_company'],
+            'grade_value' => $row['grade_value'],
+            'notes' => $row['notes'],
+            // Assigning a real variant resolves the importer's ambiguity
+            // flag — same rule as the old saveItem() (CollectionItems.php:342).
+            'needs_variant_review' => $row['variant'] !== null ? false : $item->needs_variant_review,
+        ]);
+
+        $this->dispatch('row-saved', index: $index);
+    }
+
+    public function toggleRowDetails(int $index): void
+    {
+        if (isset($this->editingRows[$index])) {
+            $this->editingRows[$index]['showDetails'] = ! $this->editingRows[$index]['showDetails'];
+        }
+    }
+
     public function confirmDelete(int $itemId): void
     {
         // ownedItemOrFail() throws (404) for another tenant's item before
