@@ -38,11 +38,35 @@ final class CardPriceResolver
      */
     public function resolveForVariant(Card $card, ?string $variant): ?CardPriceSnapshot
     {
+        return $this->variantFrom($card->priceSnapshots, $variant);
+    }
+
+    /**
+     * resolveForVariant() restricted to snapshots captured on or before
+     * $asOf — what a specific copy was worth on a given day, which is
+     * what a collection-value-over-time series needs. resolveAsOf() is
+     * the card-level equivalent and cannot answer this: its chain never
+     * considers a reverse-holofoil row, so charting with it prices every
+     * copy as the normal print.
+     */
+    public function resolveForVariantAsOf(Card $card, ?string $variant, CarbonInterface $asOf): ?CardPriceSnapshot
+    {
+        return $this->variantFrom(
+            $card->priceSnapshots->filter(fn (CardPriceSnapshot $s) => $s->captured_on->lte($asOf)),
+            $variant,
+        );
+    }
+
+    /**
+     * @param  Collection<int, CardPriceSnapshot>  $snapshots
+     */
+    private function variantFrom(Collection $snapshots, ?string $variant): ?CardPriceSnapshot
+    {
         if ($variant === null) {
-            return $this->resolve($card);
+            return $this->resolveFrom($snapshots);
         }
 
-        $matching = $card->priceSnapshots
+        $matching = $snapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant)
             ->sortByDesc('captured_on')
             ->values();
@@ -57,6 +81,29 @@ final class CardPriceResolver
         // recent one.
         return $matching->first(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer')
             ?? $matching->first();
+    }
+
+    /**
+     * The card's price that makes no claim about WHICH print it is:
+     * cardmarket's 'default' row, stored for a card whose own `variants`
+     * flags were missing at sync time (see
+     * TcgdexCardCatalogProvider::extractPrices) and which therefore
+     * prices the card as a whole.
+     *
+     * This is the only honest fallback for a screen that prints a price
+     * beside a SPECIFIC variant name. resolve() is not: its chain
+     * prefers tcgplayer 'normal'/'holofoil', so a copy with no row of
+     * its own would show a different print's value under its own label —
+     * exactly the mislabelling resolveForVariant() exists to prevent.
+     * Null when the card has no variant-agnostic price, in which case
+     * the caller must show nothing rather than something wrong.
+     */
+    public function resolveCardWide(Card $card): ?CardPriceSnapshot
+    {
+        return $card->priceSnapshots
+            ->filter(fn (CardPriceSnapshot $s) => $s->variant === 'default')
+            ->sortByDesc('captured_on')
+            ->first();
     }
 
     /**

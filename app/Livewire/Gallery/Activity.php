@@ -44,8 +44,13 @@ final class Activity extends Component
         $cards = $public->cardsQuery()->take(self::MAX_CARDS)->get();
 
         $moves = $cards
-            ->map(function (Card $card) use ($resolver) {
-                $delta = $resolver->resolveDelta($card);
+            ->map(function (Card $card) use ($resolver, $valuation) {
+                // deltaFor() against the owned headline variant, not
+                // resolveDelta(): the latter runs the card-level chain,
+                // so a collector who owns only the reverse-holofoil
+                // print would be shown the normal print's movement — a
+                // trend for a card they do not have.
+                $delta = $resolver->deltaFor($card, $valuation->headlineSnapshot($card));
 
                 if ($delta === null || $delta->deltaMinor === 0) {
                     return null;
@@ -61,14 +66,35 @@ final class Activity extends Component
             ->filter();
 
         $additions = $public->itemsQuery()
-            ->with('card.set')
+            // priceSnapshots eager-loaded here, not `load()`ed per row
+            // inside the map: resolveForVariant() reads the relation as a
+            // property, so a per-row load would mean one query per feed
+            // entry on a public route.
+            ->with(['card.set', 'card.priceSnapshots'])
             ->take(self::MAX_FEED)
             ->get()
             ->map(fn (CollectionItem $item) => [
                 'kind' => 'added',
                 'card' => $item->card,
                 'item' => $item,
-                'snapshot' => $item->card ? $resolver->resolve($item->card->load('priceSnapshots')) : null,
+                // resolveForVariant, not resolve(): the row next to this
+                // price names the variant the copy actually is, and
+                // resolve()'s card-level chain only ever considers
+                // tcgplayer normal/holofoil — so a "Reverse Holofoil"
+                // entry would carry the normal print's price, which is a
+                // different card's value.
+                //
+                // resolveForVariant() matches the variant EXACTLY and
+                // returns null when nothing does — which a card priced
+                // only under cardmarket 'default' hits for any copy
+                // saved as 'normal'. resolveCardWide(), not resolve(),
+                // backstops that: it returns only the variant-agnostic
+                // 'default' row, so the fallback can never put another
+                // print's price under this row's label. No card-wide
+                // price means no price shown.
+                'snapshot' => $item->card
+                    ? $resolver->resolveForVariant($item->card, $item->variant) ?? $resolver->resolveCardWide($item->card)
+                    : null,
                 'at' => $item->created_at,
             ]);
 
@@ -79,7 +105,7 @@ final class Activity extends Component
 
         $totals = $valuation->totalsByCurrency($cards);
         $primaryCurrency = array_key_first($totals);
-        $series = $primaryCurrency ? $this->valueSeries($cards, $primaryCurrency, $resolver) : collect();
+        $series = $primaryCurrency ? $this->valueSeries($cards, $primaryCurrency, $resolver, $valuation) : collect();
 
         $name = $this->collectorName();
 
@@ -104,15 +130,22 @@ final class Activity extends Component
 
     /**
      * Collection value per snapshot day, in ONE currency: for each day,
-     * every card is priced as of that day and counted only when its
-     * resolved price is in $currency (mixing would fabricate a total).
-     * Days come from the union of every card's snapshot dates, capped to
-     * the most recent MAX_SERIES_DAYS.
+     * every OWNED COPY is priced from its own variant as of that day and
+     * counted only when that price is in $currency (mixing would
+     * fabricate a total). Days come from the union of every card's
+     * snapshot dates, capped to the most recent MAX_SERIES_DAYS.
+     *
+     * Per copy, not per card: a collector holding one normal and one
+     * reverse-holofoil of the same card owns two differently priced
+     * things, and pricing the card once times the total quantity charts
+     * a collection nobody has. Valuation::totalsByCurrencyAsOf() is the
+     * same summation the headline figure uses, so the series' last point
+     * and the number printed above it always agree.
      *
      * @param  Collection<int, Card>  $cards
      * @return Collection<int, array{date: CarbonImmutable, minor: int}>
      */
-    private function valueSeries($cards, string $currency, CardPriceResolver $resolver)
+    private function valueSeries($cards, string $currency, CardPriceResolver $resolver, Valuation $valuation)
     {
         $dates = $cards
             ->flatMap(fn (Card $card) => $resolver->distinctSnapshotDates($card))
@@ -125,18 +158,8 @@ final class Activity extends Component
             return collect();
         }
 
-        return $dates->map(function ($date) use ($cards, $currency, $resolver) {
-            $minor = 0;
-
-            foreach ($cards as $card) {
-                $snapshot = $resolver->resolveAsOf($card, $date);
-
-                if ($snapshot === null || $snapshot->currency !== $currency || $snapshot->market_minor === null) {
-                    continue;
-                }
-
-                $minor += $snapshot->market_minor * max((int) $card->collectionItems->sum('quantity'), 1);
-            }
+        return $dates->map(function ($date) use ($cards, $currency, $valuation) {
+            $minor = $valuation->totalsByCurrencyAsOf($cards, $date)[$currency] ?? 0;
 
             return ['date' => CarbonImmutable::parse($date), 'minor' => $minor];
         })->values();

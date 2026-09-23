@@ -8,6 +8,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Collection\Models\CollectionItem;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 /**
@@ -33,6 +34,29 @@ final class Valuation
 
         foreach ($cards as $card) {
             foreach ($this->itemTotals($card) as $currency => $minor) {
+                $totals[$currency] = ($totals[$currency] ?? 0) + $minor;
+            }
+        }
+
+        return self::order($totals);
+    }
+
+    /**
+     * totalsByCurrency() as it stood on $asOf — every copy priced from
+     * the newest snapshot of ITS OWN variant captured on or before that
+     * day. Sharing itemTotals() with the live total is the point: a
+     * value-over-time chart whose last point disagreed with the headline
+     * figure above it would be describing a different collection.
+     *
+     * @param  iterable<int, Card>  $cards
+     * @return array<string, int>
+     */
+    public function totalsByCurrencyAsOf(iterable $cards, CarbonInterface $asOf): array
+    {
+        $totals = [];
+
+        foreach ($cards as $card) {
+            foreach ($this->itemTotals($card, $asOf) as $currency => $minor) {
                 $totals[$currency] = ($totals[$currency] ?? 0) + $minor;
             }
         }
@@ -76,12 +100,14 @@ final class Valuation
     /**
      * @return array<string, int> currency => minor units, unordered (caller orders)
      */
-    private function itemTotals(Card $card): array
+    private function itemTotals(Card $card, ?CarbonInterface $asOf = null): array
     {
         $totals = [];
 
         foreach ($card->collectionItems as $item) {
-            $snapshot = $this->resolver->resolveForVariant($card, $item->variant);
+            $snapshot = $asOf === null
+                ? $this->resolver->resolveForVariant($card, $item->variant)
+                : $this->resolver->resolveForVariantAsOf($card, $item->variant, $asOf);
 
             if ($snapshot === null || $snapshot->market_minor === null) {
                 continue;
