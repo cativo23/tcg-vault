@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-23
+
+### Fixed
+
+- Activity: an added card is now priced as the variant that copy actually
+  is. A reverse-holofoil card was showing its normal print's price — a
+  Pitch Black Tropius read $0.05 where the reverse holo is worth $0.22.
+- Activity: the value chart counts each copy at its own variant's price
+  instead of pricing every copy as the normal print. One normal plus one
+  reverse-holofoil copy charted as two normals, so the chart could end on
+  a different figure than the collection total printed right above it.
+- Activity: a price movement now follows the variant you own, rather than
+  reporting the normal print's trend to someone who only has the reverse
+  holo.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added
