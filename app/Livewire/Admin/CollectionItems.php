@@ -483,7 +483,6 @@ final class CollectionItems extends Component
             'totalCards' => $groups->count(),
             'totalCopies' => (int) $groups->sum('totalQuantity'),
             'resolver' => $resolver,
-            'items' => $cardGroups, // Compatibility for Task 2: view still expects $items
         ]);
     }
 }

@@ -1120,6 +1120,12 @@ body::before {
 .nw-row-btn--danger { color: var(--danger); }
 .nw-row-btn--danger:hover { border-color: var(--danger); }
 
+.nw-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600;
+  background: var(--bone-2); border: 1px solid var(--hair); border-radius: 999px; padding: 4px 10px;
+  white-space: nowrap;
+}
+
 /* design.md focus rule — same visual weight as hover so keyboard users get
    full parity. The doubled selector intentionally ties @tailwindcss/forms'
    reset specificity so this rule wins by source order. */

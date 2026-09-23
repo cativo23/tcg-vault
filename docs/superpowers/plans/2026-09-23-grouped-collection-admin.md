@@ -18,14 +18,24 @@
 
 ---
 
-### Task 1: Grouped query + fixed counter for the Listado table
+### Task 1: Grouped query + view — one row per card with variant chips
+
+> **Merged 2026-09-23:** originally planned as two tasks (a backend-only
+> query change, then a separate view rewrite). Merged during execution —
+> `Livewire::test()` always renders the real Blade view even when only
+> testing `render()`'s data, so a query-only task's own tests cannot pass
+> without the view already handling the new grouped shape. Splitting them
+> would leave an intermediate commit that 500s the page. One task, one
+> working commit.
 
 **Files:**
 - Modify: `app/Livewire/Admin/CollectionItems.php:391-490` (the `render()` method, and the `VALUE_SORT_ROW_LIMIT` constant's usage)
+- Modify: `resources/views/livewire/admin/collection-items.blade.php:24-165` (toolbar count + table body)
+- Modify: `resources/css/app.css` (new `.nw-chip` class)
 - Test: `tests/Feature/Livewire/Admin/CollectionItemsTest.php`
 
 **Interfaces:**
-- Produces: `render()` passes the view `cardGroups` (a `LengthAwarePaginator` of `stdClass` groups shaped `{card: Card, items: Collection<CollectionItem>, totalQuantity: int, totalValueMinor: int, needsReview: bool}`), `totalCards` (int), `totalCopies` (int) — Task 2's view consumes exactly these three.
+- Produces: `render()` passes the view `cardGroups` (a `LengthAwarePaginator` of `stdClass` groups shaped `{card: Card, items: Collection<CollectionItem>, totalQuantity: int, totalValueMinor: int, needsReview: bool}`), `totalCards` (int), `totalCopies` (int). Each card row renders a `wire:click="openCardEditor({{ $group->card->id }})"` trigger — Task 3 defines that method (it doesn't exist yet; the button/row click is inert until Task 3 lands, which is fine — nothing in this task's own tests calls it).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -190,31 +200,7 @@ This removes the old `if ($this->sort === 'value')` branch entirely (grouping no
 Run: `./vendor/bin/sail php vendor/bin/pest --filter="groups into one row|two separate groups"`
 Expected: PASS
 
-- [ ] **Step 5: Run the full existing suite and note breakage (do not fix yet — Task 7 handles it)**
-
-Run: `./vendor/bin/sail php vendor/bin/pest --filter=CollectionItemsTest`
-Expected: several existing tests fail because the view no longer receives `items` or the old per-item modal properties — this is expected until Tasks 2–7 finish rebuilding the view and modal. Confirm the failures are all in this file and all about the removed `items`/modal API, not an unrelated regression.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add app/Livewire/Admin/CollectionItems.php tests/Feature/Livewire/Admin/CollectionItemsTest.php
-git commit -m "feat(admin): group collection items by card for the listing query"
-```
-
----
-
-### Task 2: Grouped Listado view — chips + fixed counter
-
-**Files:**
-- Modify: `resources/views/livewire/admin/collection-items.blade.php:24-165` (toolbar count + table body)
-- Test: `tests/Feature/Livewire/Admin/CollectionItemsTest.php`
-
-**Interfaces:**
-- Consumes: `cardGroups`, `totalCards`, `totalCopies` from Task 1.
-- Produces: each card row renders a `wire:click="openCardEditor({{ $group->card->id }})"` trigger — Task 3 defines that method.
-
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 5: Write the failing view tests**
 
 ```php
 test('the toolbar count reads distinct cards and total copies, not row count', function () {
@@ -254,12 +240,12 @@ test('a card row shows each owned variant as a chip with its quantity', function
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 6: Run tests to verify they fail**
 
 Run: `./vendor/bin/sail php vendor/bin/pest --filter="toolbar count reads|owned variant as a chip"`
 Expected: FAIL — the current view still renders the old per-item `$items` table.
 
-- [ ] **Step 3: Rewrite the toolbar count and table body**
+- [ ] **Step 7: Rewrite the toolbar count and table body**
 
 In `resources/views/livewire/admin/collection-items.blade.php`, replace line 25:
 
@@ -329,7 +315,7 @@ Replace the whole `<table>` block (lines 67-164) with:
 
 Note the `onclick="event.stopPropagation()"` on the Actions cell — without it, clicking "Edit" would also fire the row's own `wire:click` and call `openCardEditor` twice in one Livewire request; harmless here since both calls are idempotent opens of the same modal, but stopping propagation keeps it to one network round-trip.
 
-- [ ] **Step 4: Add the `.nw-chip` CSS class**
+- [ ] **Step 8: Add the `.nw-chip` CSS class**
 
 `resources/css/app.css` doesn't have a `.nw-chip` class yet (only `.chip`-shaped one-offs used in earlier mockups) — add it near `.nw-row-btn` (search for that class to find the right neighborhood):
 
@@ -341,16 +327,21 @@ Note the `onclick="event.stopPropagation()"` on the Actions cell — without it,
 }
 ```
 
-- [ ] **Step 5: Build assets and run the tests to verify they pass**
+- [ ] **Step 9: Build assets and run all of this task's tests to verify they pass**
 
-Run: `npm run build && ./vendor/bin/sail php vendor/bin/pest --filter="toolbar count reads|owned variant as a chip"`
-Expected: PASS
+Run: `npm run build && ./vendor/bin/sail php vendor/bin/pest --filter="groups into one row|two separate groups|toolbar count reads|owned variant as a chip"`
+Expected: PASS (all 4 tests)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 10: Run the full existing suite and note breakage (do not fix yet — Task 7 handles it)**
+
+Run: `./vendor/bin/sail php vendor/bin/pest --filter=CollectionItemsTest`
+Expected: the page itself now renders correctly for the grouped case (no crash), but several PRE-EXISTING tests fail because they call the old per-item modal/inline-edit actions (`startEditingItem`, `saveItem`, `startEditingQty`, `saveQty`, `confirmDelete`/`delete`) that still exist unchanged in the component — those methods and the old modal blade markup are only removed in Task 3, and the old tests exercising them are only migrated in Task 7. Confirm every failure is specifically about one of those old actions, not a crash in the new grouped rendering path.
+
+- [ ] **Step 11: Commit**
 
 ```bash
-git add resources/views/livewire/admin/collection-items.blade.php resources/css/app.css tests/Feature/Livewire/Admin/CollectionItemsTest.php
-git commit -m "feat(admin): render the collection table as one row per card with variant chips"
+git add app/Livewire/Admin/CollectionItems.php resources/views/livewire/admin/collection-items.blade.php resources/css/app.css tests/Feature/Livewire/Admin/CollectionItemsTest.php
+git commit -m "feat(admin): group the collection table by card, with variant chips"
 ```
 
 ---
@@ -1051,7 +1042,7 @@ git commit -m "feat(admin): remove a variant row instantly, with an inline confi
 **Interfaces:**
 - Consumes: all interfaces from Tasks 1-6 — this task only updates test call sites, no production code changes.
 
-This task cleans up the breakage Task 1's Step 5 flagged. Apply this exact mechanical substitution to each named test:
+This task cleans up the breakage Task 1's Step 10 flagged. Apply this exact mechanical substitution to each named test:
 
 - Any assertion against `$items`/pagination of individual items (e.g. `'the collection index lists the authenticated users items'`) — no change needed, `assertSee('Mega Darkrai ex')`/`assertSee('NM')` still passes against the grouped view; only re-run to confirm.
 - `'the value column prices each row at its OWN variant, not the card-level default for every row'` — no change needed, the chip text still shows both `$0.16`/`$0.27` on the (now single, grouped) row; re-run to confirm.
@@ -1068,7 +1059,7 @@ This task cleans up the breakage Task 1's Step 5 flagged. Apply this exact mecha
   $index = collect($test->get('editingRows'))->search(fn ($r) => $r['id'] === $item->id);
   $test->set("editingRows.$index.notes", 'Bought at a con')->call('updateRow', $index);
   ```
-- `'an item with a photo shows a thumbnail in the rendered view'` / `'an item with no photo renders no image tag for it'` — these asserted a thumbnail in the flat table, which Task 2's grouped row no longer renders (chips have no per-item image slot, matching the approved chip mockup). Delete both tests — the photo's presence is now only relevant inside the card modal via `showDetails`, not covered by this plan's chip UI at all (no mockup showed a photo in a chip).
+- `'an item with a photo shows a thumbnail in the rendered view'` / `'an item with no photo renders no image tag for it'` — these asserted a thumbnail in the flat table, which Task 1's grouped row no longer renders (chips have no per-item image slot, matching the approved chip mockup). Delete both tests — the photo's presence is now only relevant inside the card modal via `showDetails`, not covered by this plan's chip UI at all (no mockup showed a photo in a chip).
 - `'deleting an item removes its stored photo from disk'` — replace the old `delete()`/`confirmDelete()` call sequence with `openCardEditor` → `confirmRemoveRow` → `removeVariantRow`, same shape as Task 6's own test above (reuse that exact pattern).
 - Any other test in this file calling `startEditingItem`, `saveItem`, `startEditingQty`, `saveQty`, `confirmDelete`/`cancelDelete`/`delete` directly — apply the same `openCardEditor` + row-index-lookup + new-method-name substitution shown above.
 

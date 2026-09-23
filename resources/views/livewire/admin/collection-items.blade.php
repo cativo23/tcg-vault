@@ -22,7 +22,7 @@
     </div>
 
     <div class="nw-toolbar mb-4">
-        <div class="nw-count">Showing <b>{{ $items->total() }}</b> {{ Str::plural('card', $items->total()) }}</div>
+        <div class="nw-count">Showing <b>{{ $totalCards }}</b> {{ Str::plural('card', $totalCards) }} <span style="opacity:.6">· {{ $totalCopies }} {{ Str::plural('copy', $totalCopies) }}</span></div>
 
         <div class="nw-toolbar-group">
             <label class="sr-only" for="collection-search">Search your collection</label>
@@ -69,103 +69,48 @@
                 <tr class="nw-topbar text-left">
                     <th class="p-3">Card</th>
                     <th class="p-3">Set</th>
-                    <th class="p-3">Variant</th>
-                    <th class="p-3">Condition</th>
-                    <th class="p-3">Grading</th>
-                    <th class="p-3">Qty</th>
-                    <th class="p-3">Value</th>
-                    <th class="p-3">Notes</th>
-                    <th class="p-3">Status</th>
+                    <th class="p-3">Variants owned</th>
+                    <th class="p-3">Total value</th>
                     <th class="p-3"></th>
                 </tr>
             </thead>
             <tbody>
-                @forelse ($items as $item)
-                    @php
-                        // resolveForVariant, not resolve(): this row IS a
-                        // specific variant — the card-level chain would
-                        // price every row for a card identically, regardless
-                        // of which variant each copy is.
-                        $snapshot = $resolver->resolveForVariant($item->card, $item->variant);
-                        $valueKnown = $snapshot?->market_minor !== null;
-                        // Per-unit price, matching the public gallery tile —
-                        // Qty is its own column right next to this one, so
-                        // multiplying here would just be a number that isn't
-                        // any real market price of anything, and would mean
-                        // something different from the same card's "Value"
-                        // on the gallery.
-                        $valueLabel = $valueKnown
-                            ? \App\Support\Money::format($snapshot->market_minor, $snapshot->currency)
-                            : '—';
-                        $gradingLabel = $item->grade_company && $item->grade_value
-                            ? "{$item->grade_company} {$item->grade_value}"
-                            : '—';
-                    @endphp
-                    <tr wire:key="item-{{ $item->id }}" class="nw-stagger-item nw-row-hover border-t" style="border-color: var(--hair); --nw-stagger-index: {{ min($loop->index, 10) }}">
+                @forelse ($cardGroups as $group)
+                    <tr wire:key="group-{{ $group->card->id }}" wire:click="openCardEditor({{ $group->card->id }})"
+                        class="nw-stagger-item nw-row-hover border-t cursor-pointer" style="border-color: var(--hair); --nw-stagger-index: {{ min($loop->index, 10) }}">
                         <td class="p-3 font-medium nw-tcell-name" data-label="">
-                            @if ($item->photo_path)
-                                <img src="{{ \Illuminate\Support\Facades\Storage::disk('collection-photos')->url($item->photo_path) }}"
-                                     alt="" class="w-10 h-10 object-cover rounded inline-block mr-2 align-middle">
-                            @endif
-                            {{ $item->card->name }}
-                        </td>
-                        <td class="p-3" style="color: var(--muted)" data-label="Set">{{ $item->card->set->name }}</td>
-                        <td class="p-3" data-label="Variant">{{ $item->variant ? \Illuminate\Support\Str::headline($item->variant) : '—' }}</td>
-                        <td class="p-3 mono" data-label="Condition">{{ $item->condition }}</td>
-                        <td class="p-3" data-label="Grading">{{ $gradingLabel }}</td>
-                        <td class="p-3 mono" data-label="Qty">
-                            @if ($editingQtyItemId === $item->id)
-                                <input type="number" min="1" wire:model="editingQtyValue" wire:keydown.enter="saveQty" wire:blur="saveQty" class="nw-input w-16">
-                                @error('editingQtyValue') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
-                            @else
-                                <span wire:click="startEditingQty({{ $item->id }})" class="cursor-pointer">{{ $item->quantity }}</span>
+                            {{ $group->card->name }}
+                            @if ($group->needsReview)
+                                <span class="text-xs font-medium ml-2" style="color: var(--warning)" title="One or more variants need review">Review</span>
                             @endif
                         </td>
-                        <td class="p-3 mono" data-label="Value">
-                            @if ($valueKnown)
-                                {{ $valueLabel }}
-                            @else
-                                {{-- A bare "—" reads identically to something broken — a
-                                     newly-added card just hasn't had a price synced yet
-                                     (prices refresh daily; see catalog:refresh-prices). --}}
-                                <span title="No price data synced for this card/variant yet">{{ $valueLabel }}</span>
-                            @endif
+                        <td class="p-3" style="color: var(--muted)" data-label="Set">{{ $group->card->set->name }}</td>
+                        <td class="p-3" data-label="Variants owned">
+                            <div class="flex flex-wrap gap-1.5">
+                                @foreach ($group->items as $item)
+                                    <span class="nw-chip">
+                                        {{ $item->variant ? \Illuminate\Support\Str::headline($item->variant) : '— unspecified' }} · {{ $item->condition }}
+                                        <span class="mono" style="color: var(--muted)">×{{ $item->quantity }}</span>
+                                    </span>
+                                @endforeach
+                            </div>
                         </td>
-                        <td class="p-3" data-label="Notes">
-                            @if ($editingItemId === $item->id)
-                                <input type="text" wire:model="editingNotes" wire:keydown.enter="saveNotes" class="nw-input w-full">
-                            @else
-                                {{-- The dashed underline is the only visual cue this cell is
-                                     clickable at all — cursor:pointer alone isn't visible until
-                                     a mouse is already over it, and there's nothing else here
-                                     to suggest "—" isn't just a static placeholder. --}}
-                                <span wire:click="startEditingNotes({{ $item->id }})" class="cursor-pointer" style="border-bottom: 1px dashed var(--muted)" title="Click to {{ $item->notes ? 'edit' : 'add' }} a note">{{ $item->notes ?: '—' }}</span>
-                            @endif
+                        <td class="p-3 mono" data-label="Total value">
+                            {{ $group->totalValueMinor > 0 ? \App\Support\Money::format($group->totalValueMinor, 'USD') : '—' }}
                         </td>
-                        {{-- Clicking straight into the same "Edit item" modal the Edit button
-                             opens is what actually resolves this — a plain colored label gave
-                             no indication a variant assignment (not e.g. Notes or Qty) is what
-                             clears the flag. --danger red is reserved for destructive/error UI
-                             (Delete, validation) — "needs a look" isn't "this failed," so it
-                             gets its own --warning token instead of colliding with Delete.
-                             data-label="Status" only, no surrounding whitespace, so the mobile
-                             :empty rule can actually collapse this row when there's nothing to
-                             review — a stray text/whitespace node would defeat :empty. --}}
-                        <td class="p-3" data-label="Status">@if ($item->needs_variant_review)<button type="button" wire:click="startEditingItem({{ $item->id }})" class="text-xs font-medium" style="color: var(--warning)" title="Assign a Variant in Edit item to clear this">Review</button>@endif</td>
-                        <td class="p-3 text-right nw-tcell-actions" data-label="">
-                            <button wire:click="startEditingItem({{ $item->id }})" class="nw-row-btn mr-2">Edit</button>
-                            <button wire:click="confirmDelete({{ $item->id }})" class="nw-row-btn nw-row-btn--danger">Delete</button>
+                        <td class="p-3 text-right nw-tcell-actions" data-label="" onclick="event.stopPropagation()">
+                            <button wire:click="openCardEditor({{ $group->card->id }})" class="nw-row-btn">Edit</button>
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="10" class="p-6 text-center" style="color: var(--muted)">No cards yet — <a href="{{ route('admin.collection.add') }}" wire:navigate style="color: var(--ink); text-decoration: underline">add your first one</a>.</td></tr>
+                    <tr><td colspan="5" class="p-6 text-center" style="color: var(--muted)">No cards yet — <a href="{{ route('admin.collection.add') }}" wire:navigate style="color: var(--ink); text-decoration: underline">add your first one</a>.</td></tr>
                 @endforelse
             </tbody>
         </table>
     </div>
 
     <div class="mt-4">
-        {{ $items->links() }}
+        {{ $cardGroups->links() }}
     </div>
 
     @if ($editingFullItemId !== null)

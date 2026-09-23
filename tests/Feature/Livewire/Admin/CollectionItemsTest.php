@@ -1126,3 +1126,39 @@ test('two different cards each with one item produce two separate groups', funct
     expect($test->viewData('totalCards'))->toBe(2);
     expect($test->viewData('totalCopies'))->toBe(2);
 });
+
+test('the toolbar count reads distinct cards and total copies, not row count', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 2]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'holofoil', 'condition' => 'NM', 'quantity' => 3]);
+
+    Livewire::test(CollectionItems::class)
+        ->assertSee('Showing')
+        ->assertSee('1', false)
+        ->assertSee('card', false)
+        ->assertSee('5', false)
+        ->assertSee('copies', false);
+});
+
+test('a card row shows each owned variant as a chip with its quantity', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 2]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'holofoil', 'condition' => 'LP', 'quantity' => 3]);
+
+    Livewire::test(CollectionItems::class)
+        ->assertSee('Mega Darkrai ex')
+        ->assertSee('Normal · NM')
+        ->assertSee('×2', false)
+        ->assertSee('Holofoil · LP')
+        ->assertSee('×3', false);
+});
