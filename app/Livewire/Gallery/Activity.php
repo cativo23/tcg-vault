@@ -61,14 +61,24 @@ final class Activity extends Component
             ->filter();
 
         $additions = $public->itemsQuery()
-            ->with('card.set')
+            // priceSnapshots eager-loaded here, not `load()`ed per row
+            // inside the map: resolveForVariant() reads the relation as a
+            // property, so a per-row load would mean one query per feed
+            // entry on a public route.
+            ->with(['card.set', 'card.priceSnapshots'])
             ->take(self::MAX_FEED)
             ->get()
             ->map(fn (CollectionItem $item) => [
                 'kind' => 'added',
                 'card' => $item->card,
                 'item' => $item,
-                'snapshot' => $item->card ? $resolver->resolve($item->card->load('priceSnapshots')) : null,
+                // resolveForVariant, not resolve(): the row next to this
+                // price names the variant the copy actually is, and
+                // resolve()'s card-level chain only ever considers
+                // tcgplayer normal/holofoil — so a "Reverse Holofoil"
+                // entry would carry the normal print's price, which is a
+                // different card's value.
+                'snapshot' => $item->card ? $resolver->resolveForVariant($item->card, $item->variant) : null,
                 'at' => $item->created_at,
             ]);
 

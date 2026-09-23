@@ -165,3 +165,25 @@ test('the old Spanish path redirects permanently to the English one', function (
     $response->assertRedirect('/carlos/activity');
     expect($response->status())->toBe(301);
 });
+
+test('an added item is priced at its own variant, not the card-level chain', function () {
+    // The real me05-001 Tropius: tcgplayer prices the normal print at
+    // $0.05 and the reverse-holofoil at $0.22. resolve()'s card-level
+    // chain only ever considers tcgplayer normal/holofoil, so a feed
+    // entry labelled "Reverse Holofoil" would carry the normal print's
+    // $0.05 — a price for a card the collector does not own.
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'Tropius', 'variants' => ['normal' => true, 'reverse' => true]]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-001', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 22]);
+
+    $response = $this->get('/carlos/activity');
+
+    $response->assertOk();
+    $response->assertSee('$0.22');
+    $response->assertDontSee('$0.05');
+});
