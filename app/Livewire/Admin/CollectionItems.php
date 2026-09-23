@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use App\Modules\Collection\Services\CollectionService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Storage;
@@ -135,6 +137,8 @@ final class CollectionItems extends Component
 
     public ?int $editingCardId = null;
 
+    public ?int $editingCollectionId = null;
+
     public string $editingCardName = '';
 
     /**
@@ -172,6 +176,7 @@ final class CollectionItems extends Component
         $items = $this->ownedCardItemsOrFail($cardId);
 
         $this->editingCardId = $cardId;
+        $this->editingCollectionId = $items->first()->collection_id;
         $this->editingRows = $items->map(fn (CollectionItem $i) => [
             'id' => $i->id,
             'variant' => $i->variant,
@@ -202,9 +207,47 @@ final class CollectionItems extends Component
     public function closeCardEditor(): void
     {
         $this->editingCardId = null;
+        $this->editingCollectionId = null;
         $this->editingCardName = '';
         $this->editingRows = [];
         $this->editingAvailableVariants = [];
+    }
+
+    public function addVariantRow(CollectionService $service): void
+    {
+        if ($this->editingCardId === null || $this->editingCollectionId === null) {
+            return;
+        }
+
+        // The Catalog is global and not tenant-scoped (CollectionService.php:23-24)
+        // — this is a straight lookup of catalog data, not a user's own
+        // record, so it doesn't go through ownedItemOrFail()/ownedCardItemsOrFail().
+        $card = Card::findOrFail($this->editingCardId);
+        $collection = Collection::findOrFail($this->editingCollectionId);
+
+        $item = $service->addItem($collection, $card->tcgdex_id, ['condition' => 'NM', 'quantity' => 1]);
+
+        $existingIndex = collect($this->editingRows)->search(fn ($row) => $row['id'] === $item->id);
+
+        if ($existingIndex !== false) {
+            // addItem() merged into a row already open in this modal (an
+            // unspecified-variant/NM row already existed) — reflect its
+            // bumped quantity instead of silently doing nothing visible.
+            $this->editingRows[$existingIndex]['quantity'] = $item->quantity;
+
+            return;
+        }
+
+        $this->editingRows[] = [
+            'id' => $item->id,
+            'variant' => null,
+            'condition' => 'NM',
+            'quantity' => 1,
+            'grade_company' => null,
+            'grade_value' => null,
+            'notes' => null,
+            'showDetails' => false,
+        ];
     }
 
     protected function rules(): array

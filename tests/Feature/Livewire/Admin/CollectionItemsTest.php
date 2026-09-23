@@ -1249,3 +1249,42 @@ test('updateRow rejects a quantity below 1 without saving it', function () {
 
     expect($item->fresh()->quantity)->toBe(1);
 });
+
+test('adding a variant row creates a new item and appends it to the modal instantly', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+
+    $test = Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->call('addVariantRow');
+
+    expect($test->get('editingRows'))->toHaveCount(2);
+    expect(CollectionItem::where('card_id', $card->id)->count())->toBe(2);
+});
+
+test('adding a variant row that collides with one already open reflects the bumped quantity instead of silently doing nothing', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    // A row that's already the exact identity addVariantRow() creates
+    // (unspecified variant, NM) — CollectionService::addItem()'s existing
+    // merge-by-identity means the "new" row is really a quantity bump on
+    // this one.
+    $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $test = Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->call('addVariantRow');
+
+    expect($test->get('editingRows'))->toHaveCount(1);
+    expect($test->get('editingRows')[0]['quantity'])->toBe(2);
+    expect($item->fresh()->quantity)->toBe(2);
+});
