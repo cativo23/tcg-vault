@@ -60,6 +60,29 @@ final class CardPriceResolver
     }
 
     /**
+     * The card's price that makes no claim about WHICH print it is:
+     * cardmarket's 'default' row, stored for a card whose own `variants`
+     * flags were missing at sync time (see
+     * TcgdexCardCatalogProvider::extractPrices) and which therefore
+     * prices the card as a whole.
+     *
+     * This is the only honest fallback for a screen that prints a price
+     * beside a SPECIFIC variant name. resolve() is not: its chain
+     * prefers tcgplayer 'normal'/'holofoil', so a copy with no row of
+     * its own would show a different print's value under its own label —
+     * exactly the mislabelling resolveForVariant() exists to prevent.
+     * Null when the card has no variant-agnostic price, in which case
+     * the caller must show nothing rather than something wrong.
+     */
+    public function resolveCardWide(Card $card): ?CardPriceSnapshot
+    {
+        return $card->priceSnapshots
+            ->filter(fn (CardPriceSnapshot $s) => $s->variant === 'default')
+            ->sortByDesc('captured_on')
+            ->first();
+    }
+
+    /**
      * Same priority-order resolution as resolve(), but only considering
      * snapshots captured on or before $asOf — lets a caller ask "what
      * was the price as of THIS date," not just "the latest."

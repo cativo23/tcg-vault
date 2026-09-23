@@ -217,3 +217,25 @@ test('an added item whose exact variant has no snapshot still shows a price', fu
     $response->assertOk();
     $response->assertSee('€0.20');
 });
+
+test('the feed never prices one variant with a different print\'s snapshot', function () {
+    // The fallback for "no row matches this variant" must not reach a
+    // snapshot that names a DIFFERENT print. Here the only price is
+    // tcgplayer's normal print while the copy is reverse-holofoil:
+    // showing $0.05 under a "Reverse Holofoil" label is the exact
+    // mislabelling this component was fixed for. No honest price exists,
+    // so the row shows none.
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'Tropius', 'variants' => ['normal' => true, 'reverse' => true]]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-001', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5]);
+
+    $response = $this->get('/carlos/activity');
+
+    $response->assertOk();
+    $response->assertSee('Tropius');
+    $response->assertDontSee('$0.05');
+});
