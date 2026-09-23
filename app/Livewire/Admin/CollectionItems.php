@@ -14,7 +14,6 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
-use Livewire\Attributes\Validate;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
@@ -97,55 +96,6 @@ final class CollectionItems extends Component
      */
     public array $deletingSummary = [];
 
-    public ?int $editingItemId = null;
-
-    public string $editingNotes = '';
-
-    public ?int $editingQtyItemId = null;
-
-    #[Validate('required|integer|min:1')]
-    public int $editingQtyValue = 1;
-
-    public ?int $editingFullItemId = null;
-
-    #[Validate('required|in:NM,LP,MP,HP,DMG')]
-    public string $editingCondition = 'NM';
-
-    #[Validate('required|integer|min:1')]
-    public int $editingQuantity = 1;
-
-    #[Validate('nullable|in:normal,holofoil,reverse-holofoil')]
-    public ?string $editingVariant = null;
-
-    #[Validate('nullable|string|max:32')]
-    public ?string $editingGradeCompany = null;
-
-    #[Validate('nullable|string|max:16')]
-    public ?string $editingGradeValue = null;
-
-    /**
-     * The edit modal reuses the SAME $editingNotes property the inline
-     * table-cell edit (startEditingNotes/saveNotes above) already uses —
-     * the two flows never run at once (only one of editingItemId/
-     * editingFullItemId is ever set), so there's no real collision, and
-     * it means Notes behaves identically whether reached from the cell
-     * or the modal instead of tracking two independent copies of it.
-     */
-    #[Validate('nullable|image|mimes:jpeg,png,webp|max:5120')]
-    public $editingPhoto = null;
-
-    /**
-     * Not every card actually has all 3 known variants (some are
-     * holofoil-only, some never printed a reverse-holofoil, etc.), so the
-     * modal's Variant dropdown is narrowed to what's real for THIS item's
-     * card, sourced from its synced pricing snapshots. Falls back to just
-     * the item's current value (or nothing, if it has none) when the card
-     * was never synced with pricing rather than showing all 3 or crashing.
-     *
-     * @var array<int, string>
-     */
-    public array $editingAvailableVariants = [];
-
     private const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
 
     /**
@@ -183,40 +133,74 @@ final class CollectionItems extends Component
         return $item;
     }
 
-    public function startEditingNotes(int $itemId): void
-    {
-        $item = $this->ownedItemOrFail($itemId);
-        $this->editingItemId = $itemId;
-        $this->editingNotes = (string) $item->notes;
-    }
+    public ?int $editingCardId = null;
 
-    public function saveNotes(): void
+    /**
+     * @var array<int, array{id:int, variant:?string, condition:string, quantity:int, grade_company:?string, grade_value:?string, notes:?string, showDetails:bool}>
+     */
+    public array $editingRows = [];
+
+    /** @var array<int, string> */
+    public array $editingAvailableVariants = [];
+
+    /**
+     * Same IDOR posture as ownedItemOrFail() above, scoped to every item
+     * of one card instead of a single item ID — walks through Collection
+     * (which carries TenantScope) so a card_id with no items in the
+     * caller's OWN collection throws a 404, never a 403 that would
+     * confirm the card exists in someone else's.
+     */
+    private function ownedCardItemsOrFail(int $cardId): \Illuminate\Support\Collection
     {
-        if ($this->editingItemId === null) {
-            return;
+        $collectionIds = Collection::query()->pluck('id');
+        $items = CollectionItem::where('card_id', $cardId)
+            ->whereIn('collection_id', $collectionIds)
+            ->with('card')
+            ->get();
+
+        if ($items->isEmpty()) {
+            throw new NotFoundHttpException;
         }
 
-        $this->ownedItemOrFail($this->editingItemId)->update(['notes' => $this->editingNotes]);
-        $this->editingItemId = null;
+        return $items;
     }
 
-    public function startEditingQty(int $itemId): void
+    public function openCardEditor(int $cardId): void
     {
-        $item = $this->ownedItemOrFail($itemId);
-        $this->editingQtyItemId = $itemId;
-        $this->editingQtyValue = $item->quantity;
-    }
+        $items = $this->ownedCardItemsOrFail($cardId);
 
-    public function saveQty(): void
-    {
-        if ($this->editingQtyItemId === null) {
-            return;
+        $this->editingCardId = $cardId;
+        $this->editingRows = $items->map(fn (CollectionItem $i) => [
+            'id' => $i->id,
+            'variant' => $i->variant,
+            'condition' => $i->condition,
+            'quantity' => $i->quantity,
+            'grade_company' => $i->grade_company,
+            'grade_value' => $i->grade_value,
+            'notes' => $i->notes,
+            'showDetails' => false,
+        ])->values()->all();
+
+        $card = $items->first()->card;
+
+        // Same variant-sourcing priority as the old startEditingItem():
+        // the card's own tcgdex print flags first, synced pricing
+        // coverage only as a fallback for fixtures/pre-`variants` cards.
+        $variants = CardVariants::available($card->variants ?? []);
+        if ($variants === []) {
+            $variants = array_values(array_intersect(
+                self::KNOWN_VARIANTS,
+                CardPriceSnapshot::where('card_id', $card->id)->distinct()->pluck('variant')->all(),
+            ));
         }
+        $this->editingAvailableVariants = $variants;
+    }
 
-        $this->validate(['editingQtyValue' => 'required|integer|min:1']);
-
-        $this->ownedItemOrFail($this->editingQtyItemId)->update(['quantity' => $this->editingQtyValue]);
-        $this->editingQtyItemId = null;
+    public function closeCardEditor(): void
+    {
+        $this->editingCardId = null;
+        $this->editingRows = [];
+        $this->editingAvailableVariants = [];
     }
 
     public function confirmDelete(int $itemId): void
@@ -251,113 +235,6 @@ final class CollectionItems extends Component
 
         $item->delete();
         $this->confirmingDeleteItemId = null;
-    }
-
-    public function startEditingItem(int $itemId): void
-    {
-        $item = $this->ownedItemOrFail($itemId);
-        $this->editingFullItemId = $itemId;
-        $this->editingCondition = $item->condition;
-        $this->editingQuantity = $item->quantity;
-        $this->editingVariant = $item->variant;
-        $this->editingGradeCompany = $item->grade_company;
-        $this->editingGradeValue = $item->grade_value;
-        $this->editingNotes = (string) $item->notes;
-        $this->editingPhoto = null;
-
-        // The card's OWN print flags (from tcgdex, always synced) are the
-        // real source of truth for what variants exist — not which
-        // CardPriceSnapshot rows happen to be synced. The cardmarket
-        // importer names its only foil-tier price 'holofoil' regardless
-        // of whether the card has a straight holo print or only a
-        // reverse-holo one, which would otherwise silently narrow this
-        // dropdown to the wrong single option for a card that is normal +
-        // reverse-holofoil only.
-        $variants = CardVariants::available($item->card->variants ?? []);
-
-        // Fall back to synced pricing coverage only when the card has no
-        // real variant flags at all (never observed in production, but
-        // test fixtures and any card synced before `variants` existed
-        // may still hit this path).
-        if ($variants === []) {
-            $variants = array_values(array_intersect(
-                self::KNOWN_VARIANTS,
-                CardPriceSnapshot::where('card_id', $item->card_id)->distinct()->pluck('variant')->all(),
-            ));
-        }
-
-        $this->editingAvailableVariants = $variants !== []
-            ? $variants
-            : array_values(array_filter([$item->variant]));
-
-        // Only one real variant for this card and the item has no explicit
-        // choice yet — default to it instead of making the user pick from a
-        // single option. Never overrides an existing value.
-        if ($this->editingVariant === null && count($this->editingAvailableVariants) === 1) {
-            $this->editingVariant = $this->editingAvailableVariants[0];
-        }
-    }
-
-    /**
-     * The modal's photo preview needs the item's CURRENT stored photo,
-     * but the item being edited isn't guaranteed to still be on
-     * whatever page/sort $items currently renders (e.g. quantity or
-     * variant just changed the value-sort order) — look it up directly
-     * rather than searching the current page's collection.
-     */
-    public function getEditingItemPhotoPathProperty(): ?string
-    {
-        return $this->editingFullItemId !== null
-            ? $this->ownedItemOrFail($this->editingFullItemId)->photo_path
-            : null;
-    }
-
-    public function cancelEditingItem(): void
-    {
-        $this->editingFullItemId = null;
-        $this->editingPhoto = null;
-        $this->resetValidation();
-    }
-
-    public function saveItem(): void
-    {
-        if ($this->editingFullItemId === null) {
-            return;
-        }
-
-        $this->validate();
-
-        $item = $this->ownedItemOrFail($this->editingFullItemId);
-
-        $update = [
-            'condition' => $this->editingCondition,
-            'quantity' => $this->editingQuantity,
-            'variant' => $this->editingVariant,
-            'grade_company' => $this->editingGradeCompany,
-            'grade_value' => $this->editingGradeValue,
-            'notes' => $this->editingNotes,
-            // Assigning a real variant is exactly what resolves the
-            // ambiguity the importer flagged — never touched by editing
-            // any other field.
-            'needs_variant_review' => $this->editingVariant !== null ? false : $item->needs_variant_review,
-        ];
-
-        // Leaving the photo field untouched must keep the existing
-        // photo — only a NEW upload replaces it. Deleting the old file
-        // only after a new one is actually chosen, never just because
-        // the modal was opened, mirrors delete()'s own cleanup pattern.
-        if ($this->editingPhoto) {
-            if ($item->photo_path) {
-                Storage::disk('collection-photos')->delete($item->photo_path);
-            }
-
-            $update['photo_path'] = basename($this->editingPhoto->store('/', 'collection-photos'));
-        }
-
-        $item->update($update);
-
-        $this->editingFullItemId = null;
-        $this->editingPhoto = null;
     }
 
     public function sortBy(string $sort): void

@@ -113,74 +113,32 @@
         {{ $cardGroups->links() }}
     </div>
 
-    @if ($editingFullItemId !== null)
-        <div class="fixed inset-0 z-40 flex items-center justify-center p-4"
-             style="background: rgba(20,20,18,.5)"
-             wire:click.self="cancelEditingItem"
-             wire:keydown.escape.window="cancelEditingItem">
-            <div class="nw-card modal-in w-full max-w-md p-5">
-                <h2 class="text-lg font-semibold mb-4" style="color: var(--ink)">Edit item</h2>
-                <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr))">
+    @if ($editingCardId !== null)
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background: rgba(20,20,18,.55)" wire:click.self="closeCardEditor">
+            <div class="nw-card w-full" style="max-width: 640px; max-height: 90vh; overflow-y: auto;">
+                <div class="flex justify-between items-start p-5" style="border-bottom: 1px solid var(--hair)">
                     <div>
-                        <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Condition</label>
-                        <select wire:model="editingCondition" class="nw-input w-full">
-                            <option value="NM">Near Mint</option>
-                            <option value="LP">Lightly Played</option>
-                            <option value="MP">Moderately Played</option>
-                            <option value="HP">Heavily Played</option>
-                            <option value="DMG">Damaged</option>
-                        </select>
-                        @error('editingCondition') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
+                        <div class="text-lg font-bold">{{ $editingRows[0]['id'] ?? null ? \App\Modules\Collection\Models\CollectionItem::find($editingRows[0]['id'])?->card?->name : '' }}</div>
                     </div>
-                    <div>
-                        <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Quantity</label>
-                        <input type="number" min="1" wire:model="editingQuantity" class="nw-input w-full">
-                        @error('editingQuantity') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Variant</label>
-                        <select wire:model="editingVariant" class="nw-input w-full">
-                            <option value="">— not specified —</option>
-                            @foreach ($editingAvailableVariants as $v)
-                                <option value="{{ $v }}">{{ \Illuminate\Support\Str::headline($v) }}</option>
-                            @endforeach
-                        </select>
-                        @error('editingVariant') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Grading company</label>
-                        <input type="text" wire:model="editingGradeCompany" class="nw-input w-full" placeholder="PSA, BGS...">
-                        @error('editingGradeCompany') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Grade</label>
-                        <input type="text" wire:model="editingGradeValue" class="nw-input w-full">
-                        @error('editingGradeValue') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
-                    </div>
+                    <button wire:click="closeCardEditor" class="nw-row-btn" aria-label="Close">✕</button>
                 </div>
 
-                <div class="mt-3">
-                    <label class="block text-xs font-medium mb-1" style="color: var(--muted)">Notes</label>
-                    <textarea wire:model="editingNotes" rows="2" class="nw-input w-full"></textarea>
-                    @error('editingNotes') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
+                @foreach ($editingRows as $index => $row)
+                    @include('livewire.admin.partials.variant-row', [
+                        'namePrefix' => "editingRows.$index",
+                        'row' => $row,
+                        'availableVariants' => $editingAvailableVariants,
+                        'onRemove' => "removeVariantRow($index)",
+                        'onUpdate' => fn (string $field) => "updateRow($index, '$field')",
+                    ])
+                @endforeach
+
+                <div class="p-4 flex justify-center">
+                    <button wire:click="addVariantRow" class="nw-btn-secondary w-full" style="border-style: dashed;">+ Add another variant to this card</button>
                 </div>
 
-                <div class="mt-3">
-                    <label class="block text-xs font-medium mb-1" style="color: var(--muted)">
-                        {{ $this->editingItemPhotoPath ? 'Replace photo' : 'Add a photo' }}
-                    </label>
-                    @if ($editingPhoto)
-                        <img src="{{ $editingPhoto->temporaryUrl() }}" class="w-20 h-20 object-cover rounded mb-2">
-                    @elseif ($this->editingItemPhotoPath)
-                        <img src="{{ \Illuminate\Support\Facades\Storage::disk('collection-photos')->url($this->editingItemPhotoPath) }}" class="w-20 h-20 object-cover rounded mb-2">
-                    @endif
-                    <input type="file" wire:model="editingPhoto" accept="image/*" class="text-sm">
-                    @error('editingPhoto') <p class="text-xs mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
-                </div>
-
-                <div class="mt-4 flex gap-2">
-                    <button wire:click="saveItem" class="nw-btn-primary text-sm px-4 py-2">Save</button>
-                    <button wire:click="cancelEditingItem" class="text-sm px-4 py-2" style="color: var(--muted)">Cancel</button>
+                <div class="p-5 flex justify-end" style="border-top: 1px solid var(--hair)">
+                    <button wire:click="closeCardEditor" class="nw-btn-primary">Done</button>
                 </div>
             </div>
         </div>

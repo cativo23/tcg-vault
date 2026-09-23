@@ -1162,3 +1162,53 @@ test('a card row shows each owned variant as a chip with its quantity', function
         ->assertSee('Holofoil · LP')
         ->assertSee('×3', false);
 });
+
+test('opening the card editor lists every owned variant as an editable row', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $normal = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 2]);
+    $holo = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'holofoil', 'condition' => 'LP', 'quantity' => 1]);
+
+    $test = Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->assertSet('editingCardId', $card->id);
+
+    $rows = collect($test->get('editingRows'));
+    expect($rows->pluck('id')->sort()->values()->all())->toBe([$normal->id, $holo->id]);
+    expect($rows->firstWhere('id', $normal->id)['quantity'])->toBe(2);
+});
+
+test('a user cannot open another users card in the editor (IDOR)', function () {
+    $owner = User::factory()->create();
+    $stranger = User::factory()->create();
+    $this->actingAs($stranger);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($owner)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->assertStatus(404);
+});
+
+test('closing the card editor clears its state', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->call('closeCardEditor')
+        ->assertSet('editingCardId', null)
+        ->assertSet('editingRows', []);
+});
