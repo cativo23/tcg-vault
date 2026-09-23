@@ -176,7 +176,12 @@ test('an added item is priced at its own variant, not the card-level chain', fun
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'Tropius', 'variants' => ['normal' => true, 'reverse' => true]]);
-    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-001', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil']);
+    // Quantity 2 deliberately: the masthead total has ALWAYS resolved
+    // per-variant (Valuation::itemTotals), so with quantity 1 it would
+    // read "$0.22" too and assertSee could not tell a correct feed row
+    // apart from a missing one. At quantity 2 the total is $0.44 and
+    // $0.22 can only be the feed entry's own per-unit price.
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-001', 'condition' => 'NM', 'quantity' => 2, 'variant' => 'reverse-holofoil']);
 
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 22]);
@@ -184,6 +189,31 @@ test('an added item is priced at its own variant, not the card-level chain', fun
     $response = $this->get('/carlos/activity');
 
     $response->assertOk();
-    $response->assertSee('$0.22');
+    $response->assertSee('$0.44'); // the collection total
+    $response->assertSee('$0.22'); // the feed row, per unit
     $response->assertDontSee('$0.05');
+});
+
+test('an added item whose exact variant has no snapshot still shows a price', function () {
+    // resolveForVariant() matches the variant EXACTLY and returns null
+    // otherwise, so it cannot stand alone here. A cardmarket-only card
+    // with no usable `variants` flags stores its price under 'default'
+    // (TcgdexCardCatalogProvider::extractPrices), while the add form
+    // falls back to offering all three variants (AddCollectionItem's
+    // KNOWN_VARIANTS) — so the copy can legitimately be saved as
+    // 'normal' with no 'normal' row to match. Without the same
+    // card-level fallback Valuation::headlineSnapshot() already applies,
+    // the gallery tile would show a price while this feed row went blank.
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-037', 'set_id' => $set->id, 'local_id' => '037', 'name' => 'Lampent']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-037', 'condition' => 'NM', 'quantity' => 2, 'variant' => 'normal']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 20]);
+
+    $response = $this->get('/carlos/activity');
+
+    $response->assertOk();
+    $response->assertSee('€0.20');
 });

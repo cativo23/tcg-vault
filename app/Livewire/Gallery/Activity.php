@@ -78,7 +78,17 @@ final class Activity extends Component
                 // tcgplayer normal/holofoil — so a "Reverse Holofoil"
                 // entry would carry the normal print's price, which is a
                 // different card's value.
-                'snapshot' => $item->card ? $resolver->resolveForVariant($item->card, $item->variant) : null,
+                //
+                // The card-level chain still backstops it, matching
+                // Valuation::headlineSnapshot(): resolveForVariant()
+                // matches the variant EXACTLY and returns null when no
+                // row does, which a card priced only under cardmarket
+                // 'default' hits for any copy saved as 'normal'. Falling
+                // through keeps the tile and the feed showing the same
+                // price instead of blanking this row alone.
+                'snapshot' => $item->card
+                    ? $resolver->resolveForVariant($item->card, $item->variant) ?? $resolver->resolve($item->card)
+                    : null,
                 'at' => $item->created_at,
             ]);
 
