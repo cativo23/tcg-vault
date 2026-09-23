@@ -293,6 +293,36 @@ final class CollectionItems extends Component
         $this->dispatch('row-saved', index: $index);
     }
 
+    public ?int $confirmingRemoveRowIndex = null;
+
+    public function confirmRemoveRow(int $index): void
+    {
+        $this->confirmingRemoveRowIndex = $index;
+    }
+
+    public function cancelRemoveRow(): void
+    {
+        $this->confirmingRemoveRowIndex = null;
+    }
+
+    public function removeVariantRow(int $index): void
+    {
+        if (! isset($this->editingRows[$index])) {
+            return;
+        }
+
+        $item = $this->ownedItemOrFail($this->editingRows[$index]['id']);
+
+        if ($item->photo_path) {
+            Storage::disk('collection-photos')->delete($item->photo_path);
+        }
+        $item->delete();
+
+        unset($this->editingRows[$index]);
+        $this->editingRows = array_values($this->editingRows);
+        $this->confirmingRemoveRowIndex = null;
+    }
+
     public function toggleRowDetails(int $index): void
     {
         if (isset($this->editingRows[$index])) {

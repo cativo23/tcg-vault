@@ -129,7 +129,8 @@
                         'row' => $row,
                         'rowIndex' => $index,
                         'availableVariants' => $editingAvailableVariants,
-                        'onRemove' => "removeVariantRow($index)",
+                        'onRemove' => "confirmRemoveRow($index)",
+                        'confirmingRemoveRowIndex' => $confirmingRemoveRowIndex,
                         'onUpdate' => fn (string $field) => "updateRow($index, '$field')",
                     ])
                 @endforeach

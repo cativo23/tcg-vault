@@ -1288,3 +1288,31 @@ test('adding a variant row that collides with one already open reflects the bump
     expect($test->get('editingRows')[0]['quantity'])->toBe(2);
     expect($item->fresh()->quantity)->toBe(2);
 });
+
+test('removing a variant row deletes the item and its stored photo', function () {
+    Storage::fake('collection-photos');
+    Storage::disk('collection-photos')->put('card.jpg', 'fake-image-bytes');
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $normal = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'card.jpg']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'holofoil', 'condition' => 'NM', 'quantity' => 1]);
+
+    $test = Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id);
+
+    $normalIndex = collect($test->get('editingRows'))->search(fn ($r) => $r['id'] === $normal->id);
+
+    $test->call('confirmRemoveRow', $normalIndex)
+        ->assertSet('confirmingRemoveRowIndex', $normalIndex)
+        ->call('removeVariantRow', $normalIndex)
+        ->assertSet('confirmingRemoveRowIndex', null);
+
+    expect(CollectionItem::find($normal->id))->toBeNull();
+    Storage::disk('collection-photos')->assertMissing('card.jpg');
+    expect(collect($test->get('editingRows')))->toHaveCount(1);
+});
