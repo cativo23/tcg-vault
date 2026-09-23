@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- Gallery & card detail charts: hovering (or dragging a finger on touch)
+  now shows the exact date and value at the nearest point, with a guide
+  line and gridlines for scale — instead of only the start/end values.
+
 ## [0.2.0] - 2026-09-19
 
 ### Added

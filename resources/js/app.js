@@ -148,3 +148,77 @@ document.addEventListener('livewire:navigated', bindThemeToggle);
 // on every SPA navigation until the next hard reload. Re-apply it here,
 // same event bindThemeToggle already re-binds on.
 document.addEventListener('livewire:navigated', () => applyTheme(localStorage.getItem(THEME_KEY)));
+
+// Sparkline tooltip: nearest-point tracking on pointermove, matching the
+// x-sparkline component's own coordinate space (a fixed 600-wide viewBox
+// regardless of the rendered width) so we scale by clientWidth instead of
+// re-deriving points from the DOM.
+const bindSparklineTooltips = () => {
+    document.querySelectorAll('[data-sparkline]').forEach((wrap) => {
+        if (wrap.dataset.sparklineBound) return;
+        wrap.dataset.sparklineBound = '1';
+
+        let points;
+        try {
+            points = JSON.parse(wrap.dataset.sparkline);
+        } catch {
+            return;
+        }
+        if (!points.length) return;
+
+        const svg = wrap.querySelector('svg');
+        const guide = wrap.querySelector('[data-guide]');
+        const dot = wrap.querySelector('[data-hover-dot]');
+        const endDot = wrap.querySelector('[data-end-dot]');
+        const tip = wrap.querySelector('[data-tip]');
+        const tipDate = wrap.querySelector('[data-tip-date]');
+        const tipValue = wrap.querySelector('[data-tip-value]');
+        const viewboxWidth = svg.viewBox.baseVal.width || 600;
+
+        const nearest = (clientX) => {
+            const rect = svg.getBoundingClientRect();
+            const x = ((clientX - rect.left) / rect.width) * viewboxWidth;
+            let closest = points[0];
+            let closestDist = Infinity;
+            for (const p of points) {
+                const dist = Math.abs(p.x - x);
+                if (dist < closestDist) { closest = p; closestDist = dist; }
+            }
+            return { point: closest, rectWidth: rect.width };
+        };
+
+        const show = (clientX) => {
+            const { point, rectWidth } = nearest(clientX);
+            guide.setAttribute('x1', point.x);
+            guide.setAttribute('x2', point.x);
+            guide.setAttribute('opacity', '1');
+            dot.setAttribute('cx', point.x);
+            dot.setAttribute('cy', point.y);
+            dot.setAttribute('opacity', '1');
+            if (endDot) endDot.style.opacity = point.x === points[points.length - 1].x ? '1' : '0.35';
+
+            tipDate.textContent = point.date;
+            tipValue.textContent = point.value;
+            tip.hidden = false;
+            const tipWidth = tip.offsetWidth;
+            const scale = rectWidth / viewboxWidth;
+            let left = point.x * scale - tipWidth / 2;
+            left = Math.max(0, Math.min(rectWidth - tipWidth, left));
+            tip.style.left = `${left}px`;
+        };
+
+        const hide = () => {
+            guide.setAttribute('opacity', '0');
+            dot.setAttribute('opacity', '0');
+            if (endDot) endDot.style.opacity = '1';
+            tip.hidden = true;
+        };
+
+        svg.addEventListener('pointermove', (e) => show(e.clientX));
+        svg.addEventListener('pointerdown', (e) => show(e.clientX));
+        svg.addEventListener('pointerleave', hide);
+    });
+};
+
+document.addEventListener('DOMContentLoaded', bindSparklineTooltips);
+document.addEventListener('livewire:navigated', bindSparklineTooltips);
