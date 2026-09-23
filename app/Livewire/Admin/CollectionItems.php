@@ -397,11 +397,6 @@ final class CollectionItems extends Component
 
         $itemsQuery = CollectionItem::query()
             ->whereIn('collection_id', $collectionIds)
-            // card.priceSnapshots is eager-loaded here because
-            // CardPriceResolver::resolve() reads it as a property below —
-            // without this, resolving price for every row (up to
-            // VALUE_SORT_ROW_LIMIT on the default 'value' sort) triggers
-            // one query PER card instead of one query total.
             ->with(['card.set', 'card.priceSnapshots']);
 
         if ($this->search !== '') {
@@ -427,65 +422,68 @@ final class CollectionItems extends Component
             $itemsQuery->where('needs_variant_review', true);
         }
 
-        if ($this->sort === 'name') {
-            $itemsQuery->join('cards', 'cards.id', '=', 'collection_items.card_id')
-                ->orderBy('cards.name')
-                ->select('collection_items.*');
-        } elseif ($this->sort === 'newest') {
-            $itemsQuery->orderByDesc('collection_items.created_at');
-        }
-        // 'value' (default) is resolved in PHP below — market_minor lives on
-        // a separate priceSnapshots relation, not a joinable flat column,
-        // and CardPriceResolver's "pick the right source" logic can't be
-        // expressed as a single SQL ORDER BY.
-
-        $items = $itemsQuery->paginate($this->sort === 'value' ? self::VALUE_SORT_ROW_LIMIT : 24, page: $this->sort === 'value' ? 1 : null);
-
         $resolver = new CardPriceResolver;
 
-        if ($this->sort === 'value') {
-            // Resolve value once per item, sort in memory, then slice the
-            // requested page — CardPriceResolver's resolve() can't be
-            // expressed as a SQL ORDER BY (it walks a source-priority
-            // chain across a separate table). Bounded by a real personal
-            // collection's size (dozens–low hundreds), not thousands.
-            $withValue = $items->getCollection()->map(function (CollectionItem $item) use ($resolver) {
-                // resolveForVariant, not resolve(): this row IS a specific
-                // variant (or null, pending review) — resolve()'s
-                // card-level chain would ignore that and could pick a
-                // cheaper (or pricier) variant than the one this copy is.
+        // Bounded by a real personal collection's size (dozens–low
+        // hundreds) — same ceiling the old single-item 'value' sort
+        // already assumed. Grouping-then-paginating can't be expressed as
+        // a single SQL query here: market_minor lives on a separate
+        // priceSnapshots relation CardPriceResolver walks in PHP, so the
+        // aggregate a card-row sorts/pages by can only be computed after
+        // every matching item is loaded.
+        $allItems = $itemsQuery->limit(self::VALUE_SORT_ROW_LIMIT)->get();
+
+        $groups = $allItems->groupBy('card_id')->map(function ($items) use ($resolver) {
+            $valued = $items->map(function (CollectionItem $item) use ($resolver) {
+                // resolveForVariant, not resolve(): each item IS a
+                // specific variant — the card-level chain would price
+                // every item for this card identically regardless of
+                // which variant it actually is.
                 $snapshot = $resolver->resolveForVariant($item->card, $item->variant);
-                // _valueMinor is a transient, in-memory-only sort key — it
-                // is never persisted, so it must never be passed to save().
-                // Per-unit, matching what the Value column actually
-                // displays — sorting by a quantity-multiplied number the
-                // column no longer shows would order rows by a figure
-                // the admin can't see anywhere on the page.
-                $item->setAttribute('_valueMinor', $snapshot?->market_minor ?? -1);
+                $item->setAttribute('_valueMinor', $snapshot?->market_minor);
 
                 return $item;
-            })->sortByDesc('_valueMinor')->values();
+            });
 
-            $page = $this->getPage();
-            $perPage = 24;
-            $paged = $withValue->slice(($page - 1) * $perPage, $perPage)->values();
+            return (object) [
+                'card' => $valued->first()->card,
+                'items' => $valued->sortBy('variant')->values(),
+                'totalQuantity' => (int) $valued->sum('quantity'),
+                'totalValueMinor' => (int) $valued->sum(
+                    fn (CollectionItem $i) => ($i->_valueMinor ?? 0) * $i->quantity,
+                ),
+                'needsReview' => $valued->contains(fn (CollectionItem $i) => $i->needs_variant_review),
+                'newestAt' => $valued->max('created_at'),
+            ];
+        })->values();
 
-            $items = new LengthAwarePaginator(
-                $paged,
-                $withValue->count(),
-                $perPage,
-                $page,
-                // Without an explicit path, this fell back to whatever
-                // the default resolver could infer — which resolved to
-                // "/" rather than "/admin" in practice, so every "Next"
-                // link on the default (value) sort took you to the
-                // marketing home page instead of page 2 of your own
-                // collection. This route only ever renders this one
-                // component, so hardcode it rather than trust inference.
-                ['path' => route('admin.collection.index')],
-            );
-        }
+        $groups = (match ($this->sort) {
+            'name' => $groups->sortBy(fn ($g) => $g->card->name),
+            'newest' => $groups->sortByDesc('newestAt'),
+            default => $groups->sortByDesc('totalValueMinor'),
+        })->values();
 
-        return view('livewire.admin.collection-items', ['items' => $items, 'resolver' => $resolver]);
+        $perPage = 24;
+        $page = $this->getPage();
+        $paged = $groups->slice(($page - 1) * $perPage, $perPage)->values();
+
+        $cardGroups = new LengthAwarePaginator(
+            $paged,
+            $groups->count(),
+            $perPage,
+            $page,
+            // This route only ever renders this one component — hardcode
+            // it rather than trust the paginator's default path
+            // inference, which resolved to "/" instead of "/admin" here.
+            ['path' => route('admin.collection.index')],
+        );
+
+        return view('livewire.admin.collection-items', [
+            'cardGroups' => $cardGroups,
+            'totalCards' => $groups->count(),
+            'totalCopies' => (int) $groups->sum('totalQuantity'),
+            'resolver' => $resolver,
+            'items' => $cardGroups, // Compatibility for Task 2: view still expects $items
+        ]);
     }
 }
