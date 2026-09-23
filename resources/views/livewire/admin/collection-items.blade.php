@@ -118,7 +118,7 @@
             <div class="nw-card w-full" style="max-width: 640px; max-height: 90vh; overflow-y: auto;">
                 <div class="flex justify-between items-start p-5" style="border-bottom: 1px solid var(--hair)">
                     <div>
-                        <div class="text-lg font-bold">{{ $editingRows[0]['id'] ?? null ? \App\Modules\Collection\Models\CollectionItem::find($editingRows[0]['id'])?->card?->name : '' }}</div>
+                        <div class="text-lg font-bold">{{ $editingCardName }}</div>
                     </div>
                     <button wire:click="closeCardEditor" class="nw-row-btn" aria-label="Close">✕</button>
                 </div>

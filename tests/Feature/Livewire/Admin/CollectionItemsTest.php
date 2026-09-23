@@ -1175,7 +1175,8 @@ test('opening the card editor lists every owned variant as an editable row', fun
 
     $test = Livewire::test(CollectionItems::class)
         ->call('openCardEditor', $card->id)
-        ->assertSet('editingCardId', $card->id);
+        ->assertSet('editingCardId', $card->id)
+        ->assertSet('editingCardName', 'Mega Darkrai ex');
 
     $rows = collect($test->get('editingRows'));
     expect($rows->pluck('id')->sort()->values()->all())->toBe([$normal->id, $holo->id]);

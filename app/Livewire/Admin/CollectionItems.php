@@ -135,6 +135,8 @@ final class CollectionItems extends Component
 
     public ?int $editingCardId = null;
 
+    public string $editingCardName = '';
+
     /**
      * @var array<int, array{id:int, variant:?string, condition:string, quantity:int, grade_company:?string, grade_value:?string, notes:?string, showDetails:bool}>
      */
@@ -182,6 +184,7 @@ final class CollectionItems extends Component
         ])->values()->all();
 
         $card = $items->first()->card;
+        $this->editingCardName = $card->name;
 
         // Same variant-sourcing priority as the old startEditingItem():
         // the card's own tcgdex print flags first, synced pricing
@@ -199,6 +202,7 @@ final class CollectionItems extends Component
     public function closeCardEditor(): void
     {
         $this->editingCardId = null;
+        $this->editingCardName = '';
         $this->editingRows = [];
         $this->editingAvailableVariants = [];
     }
