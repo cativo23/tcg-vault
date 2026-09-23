@@ -211,6 +211,7 @@ final class CollectionItems extends Component
         $this->editingCardName = '';
         $this->editingRows = [];
         $this->editingAvailableVariants = [];
+        $this->confirmingRemoveRowIndex = null;
     }
 
     public function addVariantRow(CollectionService $service): void

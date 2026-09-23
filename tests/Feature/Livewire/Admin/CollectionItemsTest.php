@@ -1316,3 +1316,26 @@ test('removing a variant row deletes the item and its stored photo', function ()
     Storage::disk('collection-photos')->assertMissing('card.jpg');
     expect(collect($test->get('editingRows')))->toHaveCount(1);
 });
+
+test('closing the card editor clears a pending remove confirmation so it does not bleed into the next card opened', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $cardA = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $cardB = Card::create(['tcgdex_id' => 'me05-015', 'set_id' => $set->id, 'local_id' => '015', 'name' => 'Wailmer']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $cardA->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $cardA->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'holofoil', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $cardB->id, 'card_tcgdex_id' => 'me05-015', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $cardB->id, 'card_tcgdex_id' => 'me05-015', 'variant' => 'holofoil', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $cardA->id)
+        ->call('confirmRemoveRow', 1)
+        ->assertSet('confirmingRemoveRowIndex', 1)
+        ->call('closeCardEditor')
+        ->call('openCardEditor', $cardB->id)
+        ->assertSet('confirmingRemoveRowIndex', null);
+});
