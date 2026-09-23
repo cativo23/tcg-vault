@@ -239,3 +239,53 @@ test('the feed never prices one variant with a different print\'s snapshot', fun
     $response->assertSee('Tropius');
     $response->assertDontSee('$0.05');
 });
+
+test('the value chart prices each copy by its own variant, not one price per card', function () {
+    // One normal + one reverse-holofoil copy, whose prints move
+    // independently. Pricing the card once and multiplying by the total
+    // quantity charts a collection the user does not own: 2x the normal
+    // print ($2.00 -> $4.00) instead of one of each ($1.10 -> $2.20).
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-037', 'set_id' => $set->id, 'local_id' => '037', 'name' => 'Lampent', 'variants' => ['normal' => true, 'reverse' => true]]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-037', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'normal']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-037', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 100]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 10]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 200]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 20]);
+
+    $response = $this->get('/carlos/activity');
+
+    $response->assertOk();
+    // The sparkline's accessible description carries both endpoints.
+    $response->assertSee('from $1.10 to $2.20');
+    // The chart's last point must agree with the headline total, which
+    // has always summed per variant — they price the same collection.
+    $response->assertSee('$2.20');
+});
+
+test('a price move is reported for the variant the collector actually owns', function () {
+    // The collector owns only the reverse-holofoil print, which moved
+    // +$0.02. The normal print moved +$1.00 over the same two days.
+    // Running the card-level chain reports the normal print's move for a
+    // card no normal copy of which is owned.
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'Tropius', 'variants' => ['normal' => true, 'reverse' => true]]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-001', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 100]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 10]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 200]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 12]);
+
+    $response = $this->get('/carlos/activity');
+
+    $response->assertOk();
+    $response->assertSee('+$0.02');
+    $response->assertDontSee('+$1.00');
+});
