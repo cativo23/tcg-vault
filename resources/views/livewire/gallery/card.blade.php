@@ -109,7 +109,9 @@
                             </div>
                         </div>
                         <div class="nw-chart">
-                            <x-sparkline :points="$history->pluck('market_minor')->all()" :up="$lastM > $first" :label="'Market price of '.$card->name.' over '.$history->count().' days, from '.Money::format($first, $history->first()->currency).' to '.Money::format($lastM, $history->last()->currency)" />
+                            <x-sparkline :points="$history->pluck('market_minor')->all()" :up="$lastM > $first"
+                                :dates="$history->pluck('captured_on')->all()" :currency="$history->last()->currency"
+                                :label="'Market price of '.$card->name.' over '.$history->count().' days, from '.Money::format($first, $history->first()->currency).' to '.Money::format($lastM, $history->last()->currency)" />
                         </div>
                     </div>
                 @endif

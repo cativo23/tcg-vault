@@ -880,6 +880,36 @@ body::before {
 .nw-chart { padding: 8px 12px 14px; }
 .nw-chart svg { width: 100%; height: auto; display: block; }
 
+.nw-chart-interactive { touch-action: pan-y; }
+.nw-chart-interactive svg { cursor: crosshair; }
+.nw-chart-axis-label {
+  font-family: 'Martian Mono', ui-monospace, monospace;
+  font-variation-settings: 'wdth' 87.5, 'wght' 600;
+  font-size: 9.5px;
+  fill: var(--muted);
+}
+.nw-chart-guide { transition: opacity 120ms var(--ease); }
+.nw-chart-interactive [data-hover-dot] { transition: opacity 120ms var(--ease); }
+.nw-chart-tip {
+  position: absolute;
+  top: 4px;
+  z-index: 2;
+  background: var(--ink);
+  color: var(--bone);
+  font-family: 'Martian Mono', ui-monospace, monospace;
+  font-variation-settings: 'wdth' 87.5, 'wght' 700;
+  letter-spacing: -.03em;
+  font-size: 10.5px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  pointer-events: none;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 8px 16px -6px rgba(20, 20, 18, .35);
+  transition: opacity 120ms var(--ease);
+}
+.nw-chart-tip .d { color: #b5b3a6; font-size: 9px; font-variation-settings: 'wdth' 87.5, 'wght' 600; letter-spacing: 0; }
+
 .nw-section-head {
   padding: 22px 0 8px;
   font-size: 9.5px;

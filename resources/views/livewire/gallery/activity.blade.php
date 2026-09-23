@@ -26,6 +26,7 @@
         <div class="nw-chart">
             @if ($series->count() >= 2)
                 <x-sparkline :points="$series->pluck('minor')->all()" :up="$last > $first" :height="150"
+                    :dates="$series->pluck('date')->all()" :currency="$primaryCurrency"
                     :label="'Collection value over '.$series->count().' days, from '.Money::format($first, $primaryCurrency).' to '.Money::format($last, $primaryCurrency)" />
             @else
                 <div class="h-16 flex items-center px-2 text-xs" style="color: var(--muted)">A value chart appears once two daily price snapshots exist.</div>
