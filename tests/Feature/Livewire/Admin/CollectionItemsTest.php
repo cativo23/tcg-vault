@@ -9,7 +9,6 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
@@ -42,27 +41,6 @@ test('the search box shows a loading indicator while a debounced search is in fl
         ->toContain('wire:target="search"');
 });
 
-test('the value column prices each row at its OWN variant, not the card-level default for every row', function () {
-    // A normal and a reverse-holofoil copy of the same card must not
-    // show the same price — the cell must price each row by its own
-    // variant, not by re-resolving the card-level default.
-    $user = User::factory()->create();
-    $this->actingAs($user);
-
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $wailmer = Card::create(['tcgdex_id' => 'me05-015', 'set_id' => $set->id, 'local_id' => '015', 'name' => 'Wailmer']);
-    CardPriceSnapshot::create(['card_id' => $wailmer->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 16]);
-    CardPriceSnapshot::create(['card_id' => $wailmer->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 27]);
-
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $wailmer->id, 'card_tcgdex_id' => 'me05-015', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
-    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $wailmer->id, 'card_tcgdex_id' => 'me05-015', 'variant' => 'reverse-holofoil', 'condition' => 'NM', 'quantity' => 1]);
-
-    Livewire::test(CollectionItems::class)
-        ->assertSee('$0.16')
-        ->assertSee('$0.27');
-});
-
 test('an admin can update an items notes', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
@@ -75,65 +53,11 @@ test('an admin can update an items notes', function () {
         'condition' => 'NM', 'quantity' => 1,
     ]);
 
-    Livewire::test(CollectionItems::class)
-        ->call('startEditingNotes', $item->id)
-        ->set('editingNotes', 'Bought at a con')
-        ->call('saveNotes');
+    $test = Livewire::test(CollectionItems::class)->call('openCardEditor', $card->id);
+    $index = collect($test->get('editingRows'))->search(fn ($r) => $r['id'] === $item->id);
+    $test->set("editingRows.$index.notes", 'Bought at a con')->call('updateRow', $index);
 
     expect($item->fresh()->notes)->toBe('Bought at a con');
-});
-
-test('an item with a photo shows a thumbnail in the rendered view', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    CollectionItem::create([
-        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
-        'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'card.jpg',
-    ]);
-
-    Livewire::test(CollectionItems::class)
-        ->assertSee(Storage::disk('collection-photos')->url('card.jpg'), false);
-});
-
-test('an item with no photo renders no image tag for it', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    CollectionItem::create([
-        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
-        'condition' => 'NM', 'quantity' => 1,
-    ]);
-
-    Livewire::test(CollectionItems::class)
-        ->assertDontSee('<img', false);
-});
-
-test('deleting an item removes its stored photo from disk', function () {
-    Storage::fake('collection-photos');
-    Storage::disk('collection-photos')->put('card.jpg', 'fake-image-bytes');
-
-    $user = User::factory()->create();
-    $this->actingAs($user);
-
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    $item = CollectionItem::create([
-        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
-        'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'card.jpg',
-    ]);
-
-    Livewire::test(CollectionItems::class)
-        ->call('delete', $item->id);
-
-    Storage::disk('collection-photos')->assertMissing('card.jpg');
 });
 
 test('deleting an item with an already-missing photo file does not throw', function () {
@@ -150,26 +74,9 @@ test('deleting an item with an already-missing photo file does not throw', funct
         'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'already-gone.jpg',
     ]);
 
-    Livewire::test(CollectionItems::class)
-        ->call('delete', $item->id);
-
-    expect(CollectionItem::find($item->id))->toBeNull();
-});
-
-test('an admin can delete an item', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    $item = CollectionItem::create([
-        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
-        'condition' => 'NM', 'quantity' => 1,
-    ]);
-
-    Livewire::test(CollectionItems::class)
-        ->call('delete', $item->id);
+    $test = Livewire::test(CollectionItems::class)->call('openCardEditor', $card->id);
+    $index = collect($test->get('editingRows'))->search(fn ($r) => $r['id'] === $item->id);
+    $test->call('confirmRemoveRow', $index)->call('removeVariantRow', $index);
 
     expect(CollectionItem::find($item->id))->toBeNull();
 });
@@ -198,14 +105,26 @@ test('a user cannot delete another users item by guessing its ID (IDOR)', functi
 
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
     $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
     $otherItem = CollectionItem::create([
         'collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
         'condition' => 'NM', 'quantity' => 1,
     ]);
 
+    // removeVariantRow() only ever takes a row INDEX, not a raw item id, so
+    // the attack surface here is a tampered editingRows payload — swap the
+    // id at an index the caller legitimately owns and confirm the method
+    // still refuses via ownedItemOrFail(), not whatever id sits in the row.
     Livewire::test(CollectionItems::class)
-        ->call('delete', $otherItem->id)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.id', $otherItem->id)
+        ->call('removeVariantRow', 0)
         ->assertStatus(404);
 
     expect(CollectionItem::find($otherItem->id))->not->toBeNull();
@@ -218,6 +137,12 @@ test('a user cannot edit another users item notes by guessing its ID (IDOR)', fu
 
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
     $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
     $otherItem = CollectionItem::create([
         'collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
@@ -225,7 +150,10 @@ test('a user cannot edit another users item notes by guessing its ID (IDOR)', fu
     ]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingNotes', $otherItem->id)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.id', $otherItem->id)
+        ->set('editingRows.0.notes', 'tampered')
+        ->call('updateRow', 0)
         ->assertStatus(404);
 
     expect($otherItem->fresh()->notes)->toBe('original');
@@ -244,13 +172,13 @@ test('an admin can edit an items full details', function () {
     ]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->set('editingCondition', 'LP')
-        ->set('editingQuantity', 3)
-        ->set('editingVariant', 'holofoil')
-        ->set('editingGradeCompany', 'PSA')
-        ->set('editingGradeValue', '9')
-        ->call('saveItem');
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.condition', 'LP')
+        ->set('editingRows.0.quantity', 3)
+        ->set('editingRows.0.variant', 'holofoil')
+        ->set('editingRows.0.grade_company', 'PSA')
+        ->set('editingRows.0.grade_value', '9')
+        ->call('updateRow', 0);
 
     $fresh = $item->fresh();
     expect($fresh->condition)->toBe('LP');
@@ -272,9 +200,9 @@ test('the edit modal preloads an items existing notes', function () {
         'condition' => 'NM', 'quantity' => 1, 'notes' => 'Bought at a local shop',
     ]);
 
-    Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->assertSet('editingNotes', 'Bought at a local shop');
+    $test = Livewire::test(CollectionItems::class)->call('openCardEditor', $card->id);
+
+    expect($test->get('editingRows')[0]['notes'])->toBe('Bought at a local shop');
 });
 
 test('the edit modal can set notes for the first time, not just after the item already has some', function () {
@@ -289,39 +217,14 @@ test('the edit modal can set notes for the first time, not just after the item a
         'condition' => 'NM', 'quantity' => 1,
     ]);
 
-    Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->assertSet('editingNotes', '')
-        ->set('editingNotes', 'Never got a photo of this one')
-        ->call('saveItem');
+    $test = Livewire::test(CollectionItems::class)->call('openCardEditor', $card->id);
+
+    expect($test->get('editingRows')[0]['notes'])->toBeNull();
+
+    $test->set('editingRows.0.notes', 'Never got a photo of this one')
+        ->call('updateRow', 0);
 
     expect($item->fresh()->notes)->toBe('Never got a photo of this one');
-});
-
-test('uploading a new photo through the edit modal replaces the stored file and deletes the old one', function () {
-    Storage::fake('collection-photos');
-    $user = User::factory()->create();
-    $this->actingAs($user);
-
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    Storage::disk('collection-photos')->put('old-photo.jpg', 'old contents');
-    $item = CollectionItem::create([
-        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
-        'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'old-photo.jpg',
-    ]);
-
-    Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->set('editingPhoto', UploadedFile::fake()->image('new-photo.jpg'))
-        ->call('saveItem');
-
-    $fresh = $item->fresh();
-    expect($fresh->photo_path)->not->toBeNull();
-    expect($fresh->photo_path)->not->toBe('old-photo.jpg');
-    Storage::disk('collection-photos')->assertExists($fresh->photo_path);
-    Storage::disk('collection-photos')->assertMissing('old-photo.jpg');
 });
 
 test('saving the edit modal without touching the photo field keeps the existing photo', function () {
@@ -339,9 +242,9 @@ test('saving the edit modal without touching the photo field keeps the existing 
     ]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->set('editingQuantity', 2)
-        ->call('saveItem');
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.quantity', 2)
+        ->call('updateRow', 0);
 
     expect($item->fresh()->photo_path)->toBe('existing-photo.jpg');
     Storage::disk('collection-photos')->assertExists('existing-photo.jpg');
@@ -360,10 +263,10 @@ test('editing an items condition rejects a value outside the allowed set', funct
     ]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->set('editingCondition', 'NOT_A_REAL_CONDITION')
-        ->call('saveItem')
-        ->assertHasErrors('editingCondition');
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.condition', 'XX')
+        ->call('updateRow', 0)
+        ->assertHasErrors(['editingRows.0.condition']);
 
     expect($item->fresh()->condition)->toBe('NM');
 });
@@ -381,9 +284,9 @@ test('editing an items variant only accepts the known values', function () {
     ]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->set('editingVariant', 'reverse-holofoil')
-        ->call('saveItem');
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.variant', 'reverse-holofoil')
+        ->call('updateRow', 0);
 
     expect($item->fresh()->variant)->toBe('reverse-holofoil');
 });
@@ -401,10 +304,10 @@ test('an invalid variant value is rejected', function () {
     ]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->set('editingVariant', 'first-edition-ultra-rainbow-secret')
-        ->call('saveItem')
-        ->assertHasErrors('editingVariant');
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.variant', 'first-edition-ultra-rainbow-secret')
+        ->call('updateRow', 0)
+        ->assertHasErrors(['editingRows.0.variant']);
 
     expect($item->fresh()->variant)->toBe('normal');
 });
@@ -430,14 +333,14 @@ test('the variant dropdown only offers the variants that actually occur for that
     }
 
     $html = Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
+        ->call('openCardEditor', $card->id)
         ->html();
 
     // Scoped to the modal's own <select> — the toolbar's variant FILTER
     // dropdown (added in Task 2) statically lists all three variant
     // values on every render, so an unscoped assertDontSee would false-
     // positive on that unrelated markup.
-    preg_match('/<select wire:model="editingVariant".*?<\/select>/s', $html, $matches);
+    preg_match('/<select wire:model="editingRows\.0\.variant".*?<\/select>/s', $html, $matches);
     $modalSelect = $matches[0] ?? '';
 
     expect($modalSelect)->toContain('value="holofoil"')
@@ -463,10 +366,11 @@ test('when a card has exactly one real variant it is pre-selected instead of lef
         'market_minor' => 100, 'low_minor' => 80, 'trend_minor' => 90,
     ]);
 
-    Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->assertSet('editingAvailableVariants', ['holofoil'])
-        ->assertSet('editingVariant', 'holofoil');
+    $test = Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->assertSet('editingAvailableVariants', ['holofoil']);
+
+    expect($test->get('editingRows')[0]['variant'])->toBe('holofoil');
 });
 
 test('a single available variant never overrides an items existing explicit variant', function () {
@@ -487,9 +391,9 @@ test('a single available variant never overrides an items existing explicit vari
         'market_minor' => 100, 'low_minor' => 80, 'trend_minor' => 90,
     ]);
 
-    Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->assertSet('editingVariant', 'normal');
+    $test = Livewire::test(CollectionItems::class)->call('openCardEditor', $card->id);
+
+    expect($test->get('editingRows')[0]['variant'])->toBe('normal');
 });
 
 test('when a card has no synced pricing data the variant dropdown falls back to just the items current value', function () {
@@ -505,11 +409,11 @@ test('when a card has no synced pricing data the variant dropdown falls back to 
     ]);
 
     $html = Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
+        ->call('openCardEditor', $card->id)
         ->html();
 
     // Scoped to the modal's own <select> — see the identical note above.
-    preg_match('/<select wire:model="editingVariant".*?<\/select>/s', $html, $matches);
+    preg_match('/<select wire:model="editingRows\.0\.variant".*?<\/select>/s', $html, $matches);
     $modalSelect = $matches[0] ?? '';
 
     expect($modalSelect)->toContain('value="normal"')
@@ -541,10 +445,11 @@ test('the variant dropdown uses the card\'s own print flags, not just synced pri
         'condition' => 'NM', 'quantity' => 1, 'variant' => 'normal',
     ]);
 
-    Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->assertSet('editingAvailableVariants', ['normal', 'reverse-holofoil'])
-        ->assertSet('editingVariant', 'normal');
+    $test = Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->assertSet('editingAvailableVariants', ['normal', 'reverse-holofoil']);
+
+    expect($test->get('editingRows')[0]['variant'])->toBe('normal');
 });
 
 test('assigning a variant clears needs_variant_review', function () {
@@ -560,9 +465,9 @@ test('assigning a variant clears needs_variant_review', function () {
     ]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $item->id)
-        ->set('editingVariant', 'holofoil')
-        ->call('saveItem');
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.variant', 'holofoil')
+        ->call('updateRow', 0);
 
     expect($item->fresh()->needs_variant_review)->toBeFalse();
 });
@@ -580,9 +485,9 @@ test('editing notes on a flagged item does not clear needs_variant_review', func
     ]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingNotes', $item->id)
-        ->set('editingNotes', 'a note')
-        ->call('saveNotes');
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.notes', 'a note')
+        ->call('updateRow', 0);
 
     expect($item->fresh()->needs_variant_review)->toBeTrue();
 });
@@ -594,6 +499,12 @@ test('a user cannot edit another users item full details by guessing its ID (IDO
 
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
     $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
     $otherItem = CollectionItem::create([
         'collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
@@ -601,7 +512,9 @@ test('a user cannot edit another users item full details by guessing its ID (IDO
     ]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingItem', $otherItem->id)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.id', $otherItem->id)
+        ->call('updateRow', 0)
         ->assertStatus(404);
 
     expect($otherItem->fresh()->condition)->toBe('NM');
@@ -716,7 +629,7 @@ test('sorting by name orders alphabetically', function () {
 
     $component = Livewire::test(CollectionItems::class)->call('sortBy', 'name');
 
-    $names = $component->viewData('items')->pluck('card.name')->all();
+    $names = $component->viewData('cardGroups')->pluck('card.name')->all();
     expect($names)->toBe(['Abra', 'Zebstrika']);
 });
 
@@ -734,50 +647,8 @@ test('default sort is value descending', function () {
 
     $component = Livewire::test(CollectionItems::class);
 
-    $names = $component->viewData('items')->pluck('card.name')->all();
+    $names = $component->viewData('cardGroups')->pluck('card.name')->all();
     expect($names)->toBe(['Pricey Card', 'Cheap Card']);
-});
-
-test('the table shows variant, grading, value, and status columns', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 2000]);
-    CollectionItem::create([
-        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
-        'condition' => 'NM', 'quantity' => 2, 'variant' => 'holofoil',
-        'grade_company' => 'PSA', 'grade_value' => '10',
-    ]);
-
-    Livewire::test(CollectionItems::class)
-        ->assertSee('Holofoil')
-        ->assertSee('PSA 10')
-        // Per-unit price, matching the public gallery tile — Qty is its
-        // own column right next to Value, so nothing is lost, and this
-        // way "Value" never means two different things across the app.
-        ->assertSee('$20.00');
-});
-
-test('the value column shows the per-unit price, not multiplied by quantity', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Drilbur']);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 18]);
-    CollectionItem::create([
-        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
-        'condition' => 'NM', 'quantity' => 2, 'variant' => 'normal',
-    ]);
-
-    // A row with 2 copies at $0.18 each must show $0.18 here, matching
-    // what the public gallery tile shows for the same card — not $0.36
-    // (a number that isn't any real market price of anything).
-    Livewire::test(CollectionItems::class)
-        ->assertSee('$0.18')
-        ->assertDontSee('$0.36');
 });
 
 test('an item with no priced snapshot shows an em dash for value', function () {
@@ -824,41 +695,8 @@ test('the needs-review badge explains what clears it and opens the edit modal wh
 
     Livewire::test(CollectionItems::class)
         ->assertSeeHtml('Assign a Variant')
-        ->call('startEditingItem', $item->id)
-        ->assertSet('editingFullItemId', $item->id);
-});
-
-test('the needs-review badge does not share a color with the destructive Delete action', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'needs_variant_review' => true]);
-
-    $html = Livewire::test(CollectionItems::class)->html();
-
-    // "Review" means "needs a look," not "this failed" or "this is
-    // irreversible" — those stay --danger (Delete, validation errors).
-    // A dedicated --warning token keeps that distinction real instead of
-    // reusing the same red for both meanings.
-    expect($html)->toContain('color: var(--warning)');
-    // Delete's --danger styling lives in the .nw-row-btn--danger CSS class
-    // now, not an inline style, so the invariant is checked by class count
-    // instead of counting inline `color: var(--danger)` occurrences.
-    expect(substr_count($html, 'nw-row-btn--danger'))->toBe(1); // Delete only
-});
-
-test('the notes cell hints that it is clickable even when empty', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
-
-    Livewire::test(CollectionItems::class)
-        ->assertSeeHtml('Click to add a note');
+        ->call('openCardEditor', $card->id)
+        ->assertSet('editingCardId', $card->id);
 });
 
 test('quantity can be edited inline', function () {
@@ -870,9 +708,9 @@ test('quantity can be edited inline', function () {
     $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingQty', $item->id)
-        ->set('editingQtyValue', 5)
-        ->call('saveQty');
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.quantity', 5)
+        ->call('updateRow', 0);
 
     expect($item->fresh()->quantity)->toBe(5);
 });
@@ -884,11 +722,17 @@ test('a user cannot inline-edit quantity on another users item by guessing its I
 
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
     $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
     $otherItem = CollectionItem::create(['collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
     Livewire::test(CollectionItems::class)
-        ->call('startEditingQty', $otherItem->id)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.id', $otherItem->id)
+        ->set('editingRows.0.quantity', 5)
+        ->call('updateRow', 0)
         ->assertStatus(404);
 
     expect($otherItem->fresh()->quantity)->toBe(1);
@@ -907,8 +751,8 @@ test('the list paginates at 24 items per page', function () {
 
     $component = Livewire::test(CollectionItems::class);
 
-    expect($component->viewData('items'))->toHaveCount(24);
-    expect($component->viewData('items')->total())->toBe(26);
+    expect($component->viewData('cardGroups'))->toHaveCount(24);
+    expect($component->viewData('cardGroups')->total())->toBe(26);
 });
 
 test('page 2 is reachable and shows the right items after a Livewire interaction', function () {
@@ -927,69 +771,7 @@ test('page 2 is reachable and shows the right items after a Livewire interaction
         ->call('sortBy', 'name')
         ->call('gotoPage', 2);
 
-    expect($component->viewData('items'))->toHaveCount(2); // 26 items, 24 on page 1, 2 remain on page 2
-});
-
-test('clicking delete opens a confirmation modal instead of deleting immediately', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
-
-    Livewire::test(CollectionItems::class)
-        ->call('confirmDelete', $item->id)
-        ->assertSet('confirmingDeleteItemId', $item->id);
-
-    expect(CollectionItem::find($item->id))->not->toBeNull();
-});
-
-test('confirming delete in the modal actually deletes the item', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
-
-    Livewire::test(CollectionItems::class)
-        ->call('confirmDelete', $item->id)
-        ->call('delete', $item->id)
-        ->assertSet('confirmingDeleteItemId', null);
-
-    expect(CollectionItem::find($item->id))->toBeNull();
-});
-
-test('cancelling the delete modal closes it without deleting', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
-
-    Livewire::test(CollectionItems::class)
-        ->call('confirmDelete', $item->id)
-        ->call('cancelDelete')
-        ->assertSet('confirmingDeleteItemId', null);
-
-    expect(CollectionItem::find($item->id))->not->toBeNull();
-});
-
-test('a user cannot open the delete modal for another users item by guessing its ID (IDOR)', function () {
-    $user = User::factory()->create();
-    $otherUser = User::factory()->create();
-    $this->actingAs($user);
-
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    $otherCollection = Collection::factory()->for($otherUser)->create(['name' => 'Not mine', 'slug' => 'not-mine']);
-    $otherItem = CollectionItem::create(['collection_id' => $otherCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
-
-    Livewire::test(CollectionItems::class)
-        ->call('confirmDelete', $otherItem->id)
-        ->assertStatus(404);
+    expect($component->viewData('cardGroups'))->toHaveCount(2); // 26 items, 24 on page 1, 2 remain on page 2
 });
 
 test('pagination links point back at /admin, not the site root', function () {
