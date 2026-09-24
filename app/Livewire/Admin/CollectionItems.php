@@ -429,6 +429,20 @@ final class CollectionItems extends Component
 
     public function render()
     {
+        // PERF: every Livewire action on this component — including ones
+        // that only touch the card-editor modal (toggleRowDetails,
+        // confirmRemoveRow, addVariantRow, updateRow) — re-runs this whole
+        // method, so the grouped query + per-item price resolution below
+        // (up to VALUE_SORT_ROW_LIMIT rows) reruns on every modal
+        // interaction, not just page loads/listing changes. There's no
+        // low-risk fix within this single component: Livewire re-renders
+        // the whole template every action, and the computed $cardGroups
+        // isn't a public property that could be memoized across requests.
+        // The real fix is extracting the card editor into its own nested
+        // Livewire component so its actions only re-render that child —
+        // out of scope here as a larger architectural change, not a
+        // targeted fix.
+
         // Reached only through Collection::items(), which is scoped via
         // Collection's TenantScope — never query CollectionItem::query()
         // directly here, that would bypass the tenant filter entirely.
