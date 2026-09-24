@@ -136,8 +136,8 @@ test('a logged-in admin can select a result and save it to the collection', func
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->call('selectCard', 'me05-116')
-        ->set('condition', 'NM')
-        ->set('quantity', 1)
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 1)
         ->call('save')
         ->assertRedirect();
 
@@ -161,10 +161,19 @@ test('an uploaded photo is stored and its path saved on the item', function () {
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+    $component = Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
         ->call('selectCard', 'me05-116')
-        ->set('condition', 'NM')
-        ->set('photo', UploadedFile::fake()->image('card.jpg'))
+        ->call('toggleRowDetails', 0);
+
+    // A real file input, not just a bound property with no way to reach
+    // it from the UI — this is what makes the assertions below a genuine
+    // regression test rather than one exercising dead wiring.
+    expect($component->html())->toContain('wire:model="rows.0.photo"')
+        ->toContain('type="file"');
+
+    $component
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.photo', UploadedFile::fake()->image('card.jpg'))
         ->call('save');
 
     $item = CollectionItem::where('card_tcgdex_id', 'me05-116')->firstOrFail();
@@ -192,7 +201,7 @@ test('selecting a card narrows the variant dropdown to what that card actually h
     Livewire::test(AddCollectionItem::class)
         ->call('selectCard', 'me05-116')
         ->assertSet('availableVariants', ['holofoil'])
-        ->assertSet('variant', 'holofoil');
+        ->assertSet('rows.0.variant', 'holofoil');
 });
 
 test('selecting a card uses its own print flags, not just synced pricing coverage', function () {
@@ -236,7 +245,58 @@ test('selecting a card falls back to the full known variant list when the catalo
     Livewire::test(AddCollectionItem::class)
         ->call('selectCard', 'me05-116')
         ->assertSet('availableVariants', ['normal', 'holofoil', 'reverse-holofoil'])
-        ->assertSet('variant', null);
+        ->assertSet('rows.0.variant', null);
+});
+
+test('re-selecting the same already-selected card does not discard rows the user already typed', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class)
+        ->call('selectCard', 'me05-116')
+        ->set('rows.0.notes', 'a note I typed for this card')
+        ->call('addRow')
+        ->set('rows.1.notes', 'a second row I also typed')
+        ->call('selectCard', 'me05-116')
+        ->assertCount('rows', 2)
+        ->assertSet('rows.0.notes', 'a note I typed for this card')
+        ->assertSet('rows.1.notes', 'a second row I also typed');
+});
+
+test('selecting a different card still resets rows typed for the previous one', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findCard')->with('me05-068')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-068', setTcgdexId: 'me05', localId: '068', name: 'Toucannon',
+        rarity: 'Common', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class)
+        ->call('selectCard', 'me05-116')
+        ->set('rows.0.notes', 'a note for the first card')
+        ->call('addRow')
+        ->call('selectCard', 'me05-068')
+        ->assertCount('rows', 1)
+        ->assertSet('rows.0.notes', null);
 });
 
 test('a malformed catalog search response shows a friendly error instead of crashing', function () {
@@ -593,8 +653,8 @@ test('a brand-new user with no Collection row can save a card, which creates one
 
     Livewire::test(AddCollectionItem::class)
         ->call('selectCard', 'me05-116')
-        ->set('condition', 'NM')
-        ->set('quantity', 1)
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 1)
         ->call('save')
         ->assertRedirect();
 
@@ -623,10 +683,236 @@ test('a user cannot save a card into another users collection by passing its ID 
 
     Livewire::test(AddCollectionItem::class, ['collectionId' => $otherUsersCollection->id])
         ->call('selectCard', 'me05-116')
-        ->set('condition', 'NM')
-        ->set('quantity', 1)
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 1)
         ->call('save')
         ->assertHasErrors('selectedTcgdexId');
+
+    expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();
+});
+
+test('submitting multiple rows for one card syncs the catalog card only once, not once per row', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    // ->twice(), not ->times(4) — one call from selectCard() (narrowing
+    // the Variant dropdown) plus exactly ONE call from save()'s catalog
+    // sync, no matter how many rows are in this submission. The whole
+    // point of this fix: every row is the same card, synced once.
+    $provider->shouldReceive('findCard')->with('sv05-050')->twice()->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->with('sv05')->once()->andReturn(new SetSummaryData(
+        tcgdexId: 'sv05', name: 'Temporal Forces', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050')
+        ->set('rows.0.variant', 'normal')
+        ->call('addRow')
+        ->set('rows.1.variant', 'holofoil')
+        ->call('addRow')
+        ->set('rows.2.variant', 'reverse-holofoil')
+        ->call('save')
+        ->assertRedirect();
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(3);
+});
+
+test('an uploaded photo from an earlier row is cleaned up when a later row fails and the submission rolls back', function () {
+    Storage::fake('collection-photos');
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
+        tcgdexId: 'sv05', name: 'Temporal Forces', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    // Quantity validation (rules()'s max:9999) now catches an overflowing
+    // value before it ever reaches the DB, so this test injects a real
+    // storage-level failure instead: the disk itself throws while storing
+    // the SECOND row's photo, after row 0's photo has already been stored
+    // (Storage isn't transactional, so a later failure of any kind must
+    // still clean up an earlier row's already-written file).
+    // Livewire's TemporaryUploadedFile::storeAs() calls the disk's put(),
+    // not the underlying UploadedFile::store()'s putFileAs() — the spy has
+    // to match the method Livewire's file-upload wiring actually calls.
+    $realDisk = Storage::disk('collection-photos');
+    $calls = 0;
+    $spy = Mockery::mock($realDisk)->makePartial();
+    $spy->shouldReceive('put')->andReturnUsing(function (...$args) use (&$calls, $realDisk) {
+        $calls++;
+        if ($calls === 2) {
+            throw new RuntimeException('Simulated disk failure on the second row');
+        }
+
+        return $realDisk->put(...$args);
+    });
+    Storage::set('collection-photos', $spy);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050')
+        ->set('rows.0.variant', 'normal')
+        ->set('rows.0.photo', UploadedFile::fake()->image('a.jpg'))
+        ->call('addRow')
+        ->set('rows.1.variant', 'holofoil')
+        ->set('rows.1.photo', UploadedFile::fake()->image('b.jpg'))
+        ->call('save')
+        ->assertHasErrors('selectedTcgdexId');
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(0);
+    expect(Storage::disk('collection-photos')->allFiles())->toBeEmpty();
+});
+
+test('a submission cannot carry more rows than the server-side cap allows', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $component = Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050');
+
+    // addRow() itself refuses to grow past the cap — not just the final
+    // rules() validation — since it's a public action a client could call
+    // directly and repeatedly regardless of what's rendered.
+    for ($i = 0; $i < 30; $i++) {
+        $component->call('addRow');
+    }
+
+    expect($component->get('rows'))->toHaveCount(25);
+});
+
+test('the rules() max-rows cap rejects a rows array built without addRow(), independent of the addRow() guard', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $blankRow = [
+        'variant' => null, 'condition' => 'NM', 'quantity' => 1,
+        'grade_company' => null, 'grade_value' => null, 'notes' => null,
+        'photo' => null, 'showDetails' => false,
+    ];
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050')
+        // Bypasses addRow()'s own cap entirely by assigning the array
+        // property directly — this is what rules()'s 'rows' => 'array|max:25'
+        // has to catch on its own.
+        ->set('rows', array_fill(0, 26, $blankRow))
+        ->call('save')
+        ->assertHasErrors(['rows']);
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(0);
+});
+
+test('submitting 3 rows for one new card creates 3 items in one request', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
+        tcgdexId: 'sv05', name: 'Temporal Forces', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050')
+        ->set('rows.0.variant', 'normal')
+        ->set('rows.0.quantity', 2)
+        ->call('addRow')
+        ->set('rows.1.variant', 'holofoil')
+        ->set('rows.1.quantity', 1)
+        ->call('save')
+        ->assertRedirect();
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(2);
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->where('variant', 'normal')->first()->quantity)->toBe(2);
+});
+
+test('two rows with the identical variant/condition in one submission fail validation and save nothing', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
+        tcgdexId: 'sv05', name: 'Temporal Forces', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $component = Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050')
+        ->set('rows.0.variant', 'normal')
+        ->call('addRow')
+        ->set('rows.1.variant', 'normal')
+        ->call('save')
+        ->assertHasErrors(['rows.1.variant']);
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(0);
+    // Not just assertHasErrors() — the "Save N variants" button otherwise
+    // looks completely dead on failure with no visible reason why.
+    expect($component->html())->toContain('This is the same variant/condition/grading as another row above — combine them into one row instead.');
+});
+
+test('a row quantity past the sane ceiling is rejected by validation instead of overflowing the DB column', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'me05-116')
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 5000000000)
+        ->call('save')
+        ->assertHasErrors(['rows.0.quantity']);
 
     expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();
 });
@@ -644,8 +930,8 @@ test('a catalog sync failure during save shows a friendly error and does not cre
 
     Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
         ->call('selectCard', 'me05-116')
-        ->set('condition', 'NM')
-        ->set('quantity', 1)
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 1)
         ->call('save')
         ->assertHasErrors('selectedTcgdexId');
 

@@ -67,54 +67,23 @@
             </div>
         @endif
 
-        <div class="grid grid-cols-2 gap-4 mb-4">
-            <div>
-                <x-input-label value="Condition" />
-                <select wire:model="condition" class="nw-input w-full">
-                    <option value="NM">Near Mint</option>
-                    <option value="LP">Lightly Played</option>
-                    <option value="MP">Moderately Played</option>
-                    <option value="HP">Heavily Played</option>
-                    <option value="DMG">Damaged</option>
-                </select>
-                @error('condition') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
-            </div>
-            <div>
-                <x-input-label value="Quantity" />
-                <input type="number" min="1" wire:model="quantity" class="nw-input w-full">
-                @error('quantity') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
-            </div>
-            <div>
-                <x-input-label value="Variant" />
-                <select wire:model="variant" class="nw-input w-full">
-                    <option value="">— not specified —</option>
-                    @foreach ($availableVariants as $v)
-                        <option value="{{ $v }}">{{ \Illuminate\Support\Str::headline($v) }}</option>
-                    @endforeach
-                </select>
-                @error('variant') <p class="text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
-            </div>
-            <div>
-                <x-input-label value="Grading company (optional)" />
-                <input type="text" wire:model="gradeCompany" class="nw-input w-full" placeholder="PSA, BGS...">
-            </div>
-            <div>
-                <x-input-label value="Grade (optional)" />
-                <input type="text" wire:model="gradeValue" class="nw-input w-full" placeholder="9, 10...">
-            </div>
-        </div>
+        @if ($selectedTcgdexId)
+            @foreach ($rows as $index => $row)
+                @include('livewire.admin.partials.variant-row', [
+                    'namePrefix' => "rows.$index",
+                    'row' => $row,
+                    'rowIndex' => $index,
+                    'availableVariants' => $availableVariants,
+                    'onRemove' => count($rows) > 1 ? "removeRow($index)" : null,
+                    'onUpdate' => null,
+                ])
+            @endforeach
 
-        <div class="mb-4">
-            <x-input-label value="Notes (optional)" />
-            <textarea wire:model="notes" rows="3" class="nw-input w-full"></textarea>
-        </div>
+            <div class="mb-4">
+                <button type="button" wire:click="addRow" class="nw-btn-secondary w-full" style="border-style: dashed;">+ Add another variant of this same card</button>
+            </div>
 
-        <div class="mb-6">
-            <x-input-label value="Your own photo (optional — falls back to tcgdex's official image)" />
-            <input type="file" wire:model="photo" accept="image/*">
-            @if ($photo) <img src="{{ $photo->temporaryUrl() }}" class="mt-2 w-32 rounded"> @endif
-        </div>
-
-        <button type="button" wire:click="save" class="nw-btn-primary">Save to collection</button>
+            <button type="button" wire:click="save" class="nw-btn-primary w-full">Save {{ count($rows) }} {{ \Illuminate\Support\Str::plural('variant', count($rows)) }} to collection</button>
+        @endif
     </div>
 </div>

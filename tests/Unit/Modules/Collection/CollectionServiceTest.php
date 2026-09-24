@@ -14,6 +14,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Spatie\LaravelData\DataCollection;
 
 test('addItem syncs the card into the Catalog and creates a CollectionItem', function () {
@@ -106,7 +107,7 @@ test('adding an identical printing again increments quantity instead of creating
     expect(CollectionItem::where('collection_id', $collection->id)->count())->toBe(1);
 });
 
-test('a quantity merge does not overwrite notes or photo_path from the original item', function () {
+test('a quantity merge does not overwrite notes from the original item', function () {
     Queue::fake();
 
     $user = User::factory()->create();
@@ -135,13 +136,87 @@ test('a quantity merge does not overwrite notes or photo_path from the original 
         'condition' => 'NM',
         'quantity' => 1,
         'notes' => 'Different notes from the second call',
-        'photo_path' => 'second-call-photo.jpg',
     ]);
 
     expect($second->id)->toBe($first->id);
     expect($first->fresh()->quantity)->toBe(2);
     expect($first->fresh()->notes)->toBe('Original notes');
-    expect($first->fresh()->photo_path)->toBeNull();
+});
+
+test('a quantity merge adopts the new photo_path when the existing item has none', function () {
+    Queue::fake();
+    Storage::fake('collection-photos');
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->twice()->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
+    ));
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Storage::disk('collection-photos')->put('new-photo.jpg', 'contents');
+
+    $service = app(CollectionService::class);
+    $first = $service->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
+    $second = $service->addItem($collection, 'me05-116', [
+        'condition' => 'NM',
+        'quantity' => 1,
+        'photo_path' => 'new-photo.jpg',
+    ]);
+
+    expect($second->id)->toBe($first->id);
+    expect($first->fresh()->quantity)->toBe(2);
+    expect($first->fresh()->photo_path)->toBe('new-photo.jpg');
+    Storage::disk('collection-photos')->assertExists('new-photo.jpg');
+});
+
+test('a quantity merge discards and deletes the new photo when the existing item already has one', function () {
+    Queue::fake();
+    Storage::fake('collection-photos');
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->twice()->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
+    ));
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Storage::disk('collection-photos')->put('original-photo.jpg', 'contents');
+    Storage::disk('collection-photos')->put('second-photo.jpg', 'contents');
+
+    $service = app(CollectionService::class);
+    $first = $service->addItem($collection, 'me05-116', [
+        'condition' => 'NM',
+        'quantity' => 1,
+        'photo_path' => 'original-photo.jpg',
+    ]);
+    $second = $service->addItem($collection, 'me05-116', [
+        'condition' => 'NM',
+        'quantity' => 1,
+        'photo_path' => 'second-photo.jpg',
+    ]);
+
+    expect($second->id)->toBe($first->id);
+    expect($first->fresh()->quantity)->toBe(2);
+    expect($first->fresh()->photo_path)->toBe('original-photo.jpg');
+    Storage::disk('collection-photos')->assertExists('original-photo.jpg');
+    Storage::disk('collection-photos')->assertMissing('second-photo.jpg');
 });
 
 test('a different variant or condition of the same card creates a separate row, not a merge', function () {

@@ -4,17 +4,18 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use App\Modules\Collection\Services\CollectionService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
-use Livewire\Attributes\Validate;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
@@ -86,66 +87,6 @@ final class CollectionItems extends Component
         $this->updateVisibility();
     }
 
-    public ?int $confirmingDeleteItemId = null;
-
-    /**
-     * Snapshot of the item being deleted, captured at confirmDelete() time
-     * so the confirmation modal keeps its card name/variant/qty context
-     * even if that row isn't on whatever page happens to be rendered.
-     *
-     * @var array{name?: string, variant?: ?string, quantity?: int}
-     */
-    public array $deletingSummary = [];
-
-    public ?int $editingItemId = null;
-
-    public string $editingNotes = '';
-
-    public ?int $editingQtyItemId = null;
-
-    #[Validate('required|integer|min:1')]
-    public int $editingQtyValue = 1;
-
-    public ?int $editingFullItemId = null;
-
-    #[Validate('required|in:NM,LP,MP,HP,DMG')]
-    public string $editingCondition = 'NM';
-
-    #[Validate('required|integer|min:1')]
-    public int $editingQuantity = 1;
-
-    #[Validate('nullable|in:normal,holofoil,reverse-holofoil')]
-    public ?string $editingVariant = null;
-
-    #[Validate('nullable|string|max:32')]
-    public ?string $editingGradeCompany = null;
-
-    #[Validate('nullable|string|max:16')]
-    public ?string $editingGradeValue = null;
-
-    /**
-     * The edit modal reuses the SAME $editingNotes property the inline
-     * table-cell edit (startEditingNotes/saveNotes above) already uses —
-     * the two flows never run at once (only one of editingItemId/
-     * editingFullItemId is ever set), so there's no real collision, and
-     * it means Notes behaves identically whether reached from the cell
-     * or the modal instead of tracking two independent copies of it.
-     */
-    #[Validate('nullable|image|mimes:jpeg,png,webp|max:5120')]
-    public $editingPhoto = null;
-
-    /**
-     * Not every card actually has all 3 known variants (some are
-     * holofoil-only, some never printed a reverse-holofoil, etc.), so the
-     * modal's Variant dropdown is narrowed to what's real for THIS item's
-     * card, sourced from its synced pricing snapshots. Falls back to just
-     * the item's current value (or nothing, if it has none) when the card
-     * was never synced with pricing rather than showing all 3 or crashing.
-     *
-     * @var array<int, string>
-     */
-    public array $editingAvailableVariants = [];
-
     private const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
 
     /**
@@ -183,181 +124,279 @@ final class CollectionItems extends Component
         return $item;
     }
 
-    public function startEditingNotes(int $itemId): void
-    {
-        $item = $this->ownedItemOrFail($itemId);
-        $this->editingItemId = $itemId;
-        $this->editingNotes = (string) $item->notes;
-    }
+    public ?int $editingCardId = null;
 
-    public function saveNotes(): void
+    public ?int $editingCollectionId = null;
+
+    public string $editingCardName = '';
+
+    /**
+     * @var array<int, array{id:int, variant:?string, condition:string, quantity:int, grade_company:?string, grade_value:?string, notes:?string, photo:mixed, photo_path:?string, showDetails:bool}>
+     */
+    public array $editingRows = [];
+
+    /** @var array<int, string> */
+    public array $editingAvailableVariants = [];
+
+    /**
+     * Same IDOR posture as ownedItemOrFail() above, scoped to every item
+     * of one card instead of a single item ID — walks through Collection
+     * (which carries TenantScope) so a card_id with no items in the
+     * caller's OWN collection throws a 404, never a 403 that would
+     * confirm the card exists in someone else's.
+     */
+    private function ownedCardItemsOrFail(int $cardId): \Illuminate\Support\Collection
     {
-        if ($this->editingItemId === null) {
-            return;
+        $collectionIds = Collection::query()->pluck('id');
+        $items = CollectionItem::where('card_id', $cardId)
+            ->whereIn('collection_id', $collectionIds)
+            ->with('card')
+            ->orderBy('id')
+            ->get();
+
+        if ($items->isEmpty()) {
+            throw new NotFoundHttpException;
         }
 
-        $this->ownedItemOrFail($this->editingItemId)->update(['notes' => $this->editingNotes]);
-        $this->editingItemId = null;
+        return $items;
     }
 
-    public function startEditingQty(int $itemId): void
+    public function openCardEditor(int $cardId): void
     {
-        $item = $this->ownedItemOrFail($itemId);
-        $this->editingQtyItemId = $itemId;
-        $this->editingQtyValue = $item->quantity;
-    }
+        // A previous card's stale error bag would otherwise bleed into this
+        // one — editingRows indexes reset per card, so an error on
+        // "editingRows.0.condition" from the last card would misleadingly
+        // reattach to row 0 of this one.
+        $this->resetValidation();
 
-    public function saveQty(): void
-    {
-        if ($this->editingQtyItemId === null) {
-            return;
-        }
+        $items = $this->ownedCardItemsOrFail($cardId);
 
-        $this->validate(['editingQtyValue' => 'required|integer|min:1']);
+        $this->editingCardId = $cardId;
+        $this->editingCollectionId = $items->first()->collection_id;
+        $this->editingRows = $items->map(fn (CollectionItem $i) => [
+            'id' => $i->id,
+            'variant' => $i->variant,
+            'condition' => $i->condition,
+            'quantity' => $i->quantity,
+            'grade_company' => $i->grade_company,
+            'grade_value' => $i->grade_value,
+            'notes' => $i->notes,
+            'photo' => null,
+            'photo_path' => $i->photo_path,
+            'showDetails' => false,
+        ])->values()->all();
 
-        $this->ownedItemOrFail($this->editingQtyItemId)->update(['quantity' => $this->editingQtyValue]);
-        $this->editingQtyItemId = null;
-    }
+        $card = $items->first()->card;
+        $this->editingCardName = $card->name;
 
-    public function confirmDelete(int $itemId): void
-    {
-        // ownedItemOrFail() throws (404) for another tenant's item before
-        // the modal ever opens — same IDOR posture as every other lookup
-        // in this class.
-        $item = $this->ownedItemOrFail($itemId);
-        $this->confirmingDeleteItemId = $itemId;
-        $this->deletingSummary = [
-            'name' => $item->card->name,
-            'variant' => $item->variant,
-            'quantity' => $item->quantity,
-        ];
-    }
-
-    public function cancelDelete(): void
-    {
-        $this->confirmingDeleteItemId = null;
-        $this->deletingSummary = [];
-    }
-
-    public function delete(int $itemId): void
-    {
-        $item = $this->ownedItemOrFail($itemId);
-
-        if ($item->photo_path) {
-            // Guarded: a file that's already gone (manual cleanup, a prior
-            // failed delete) must not block removing the row.
-            Storage::disk('collection-photos')->delete($item->photo_path);
-        }
-
-        $item->delete();
-        $this->confirmingDeleteItemId = null;
-    }
-
-    public function startEditingItem(int $itemId): void
-    {
-        $item = $this->ownedItemOrFail($itemId);
-        $this->editingFullItemId = $itemId;
-        $this->editingCondition = $item->condition;
-        $this->editingQuantity = $item->quantity;
-        $this->editingVariant = $item->variant;
-        $this->editingGradeCompany = $item->grade_company;
-        $this->editingGradeValue = $item->grade_value;
-        $this->editingNotes = (string) $item->notes;
-        $this->editingPhoto = null;
-
-        // The card's OWN print flags (from tcgdex, always synced) are the
-        // real source of truth for what variants exist — not which
-        // CardPriceSnapshot rows happen to be synced. The cardmarket
-        // importer names its only foil-tier price 'holofoil' regardless
-        // of whether the card has a straight holo print or only a
-        // reverse-holo one, which would otherwise silently narrow this
-        // dropdown to the wrong single option for a card that is normal +
-        // reverse-holofoil only.
-        $variants = CardVariants::available($item->card->variants ?? []);
-
-        // Fall back to synced pricing coverage only when the card has no
-        // real variant flags at all (never observed in production, but
-        // test fixtures and any card synced before `variants` existed
-        // may still hit this path).
+        // Same variant-sourcing priority as the old startEditingItem():
+        // the card's own tcgdex print flags first, synced pricing
+        // coverage only as a fallback for fixtures/pre-`variants` cards.
+        $variants = CardVariants::available($card->variants ?? []);
         if ($variants === []) {
             $variants = array_values(array_intersect(
                 self::KNOWN_VARIANTS,
-                CardPriceSnapshot::where('card_id', $item->card_id)->distinct()->pluck('variant')->all(),
+                CardPriceSnapshot::where('card_id', $card->id)->distinct()->pluck('variant')->all(),
             ));
         }
+        if ($variants === []) {
+            // No tcgdex print flags AND no synced pricing at all for this
+            // card — fall back to just the primary item's own already-set
+            // variant (same single-item fallback the old startEditingItem()
+            // had), not the union of every row's variant in this card
+            // group, so one row's choice never leaks into another row's
+            // dropdown as a selectable option.
+            $variants = array_values(array_filter([$items->first()->variant]));
+        }
+        $this->editingAvailableVariants = $variants;
 
-        $this->editingAvailableVariants = $variants !== []
-            ? $variants
-            : array_values(array_filter([$item->variant]));
-
-        // Only one real variant for this card and the item has no explicit
-        // choice yet — default to it instead of making the user pick from a
-        // single option. Never overrides an existing value.
-        if ($this->editingVariant === null && count($this->editingAvailableVariants) === 1) {
-            $this->editingVariant = $this->editingAvailableVariants[0];
+        // Only one real variant for this card and a row has no explicit
+        // choice yet — default it instead of leaving the dropdown blank.
+        // Never overrides a row's existing value.
+        if (count($this->editingAvailableVariants) === 1) {
+            foreach ($this->editingRows as $index => $row) {
+                if ($row['variant'] === null) {
+                    $this->editingRows[$index]['variant'] = $this->editingAvailableVariants[0];
+                }
+            }
         }
     }
 
-    /**
-     * The modal's photo preview needs the item's CURRENT stored photo,
-     * but the item being edited isn't guaranteed to still be on
-     * whatever page/sort $items currently renders (e.g. quantity or
-     * variant just changed the value-sort order) — look it up directly
-     * rather than searching the current page's collection.
-     */
-    public function getEditingItemPhotoPathProperty(): ?string
+    public function closeCardEditor(): void
     {
-        return $this->editingFullItemId !== null
-            ? $this->ownedItemOrFail($this->editingFullItemId)->photo_path
-            : null;
-    }
-
-    public function cancelEditingItem(): void
-    {
-        $this->editingFullItemId = null;
-        $this->editingPhoto = null;
         $this->resetValidation();
+        $this->editingCardId = null;
+        $this->editingCollectionId = null;
+        $this->editingCardName = '';
+        $this->editingRows = [];
+        $this->editingAvailableVariants = [];
+        $this->confirmingRemoveRowIndex = null;
     }
 
-    public function saveItem(): void
+    public function addVariantRow(CollectionService $service): void
     {
-        if ($this->editingFullItemId === null) {
+        if ($this->editingCardId === null || $this->editingCollectionId === null) {
             return;
         }
 
-        $this->validate();
+        // The Catalog is global and not tenant-scoped (CollectionService.php:23-24)
+        // — this is a straight lookup of catalog data, not a user's own
+        // record, so it doesn't go through ownedItemOrFail()/ownedCardItemsOrFail().
+        // Uses addItemForCard(), not addItem() — this card is already in the
+        // Catalog (it has existing items in this editor), so re-syncing it
+        // from tcgdex here would just be a redundant HTTP round-trip.
+        $card = Card::findOrFail($this->editingCardId);
+        $collection = Collection::findOrFail($this->editingCollectionId);
 
-        $item = $this->ownedItemOrFail($this->editingFullItemId);
+        $item = $service->addItemForCard($collection, $card, ['condition' => 'NM', 'quantity' => 1]);
+
+        $existingIndex = collect($this->editingRows)->search(fn ($row) => $row['id'] === $item->id);
+
+        if ($existingIndex !== false) {
+            // addItem() merged into a row already open in this modal (an
+            // unspecified-variant/NM row already existed) — reflect its
+            // bumped quantity instead of silently doing nothing visible.
+            $this->editingRows[$existingIndex]['quantity'] = $item->quantity;
+
+            return;
+        }
+
+        $this->editingRows[] = [
+            'id' => $item->id,
+            'variant' => null,
+            'condition' => 'NM',
+            'quantity' => 1,
+            'grade_company' => null,
+            'grade_value' => null,
+            'notes' => null,
+            'photo' => null,
+            'photo_path' => null,
+            'showDetails' => false,
+        ];
+    }
+
+    protected function rules(): array
+    {
+        return [
+            'editingRows.*.variant' => 'nullable|in:normal,holofoil,reverse-holofoil',
+            'editingRows.*.condition' => 'required|in:NM,LP,MP,HP,DMG',
+            'editingRows.*.quantity' => 'required|integer|min:1|max:9999',
+            'editingRows.*.grade_company' => 'nullable|string|max:32',
+            'editingRows.*.grade_value' => 'nullable|string|max:16',
+            'editingRows.*.notes' => 'nullable|string|max:2000',
+            'editingRows.*.photo' => 'nullable|image|mimes:jpeg,png,webp|max:5120',
+        ];
+    }
+
+    /**
+     * A file input can't autosave on wire:change the way the other
+     * fields do — Livewire's own JS uploads the file and only THEN
+     * assigns the bound property, so a wire:change fired at native
+     * selection time would race the upload and still see the old value.
+     * This generic hook instead fires after Livewire has finished
+     * assigning the property (upload included), so updateRow() only
+     * ever sees an already-uploaded file.
+     */
+    public function updated(string $name): void
+    {
+        if (preg_match('/^editingRows\.(\d+)\.photo$/', $name, $matches) && isset($this->editingRows[(int) $matches[1]]['photo'])) {
+            $this->updateRow((int) $matches[1]);
+        }
+    }
+
+    public function updateRow(int $index): void
+    {
+        if (! isset($this->editingRows[$index])) {
+            return;
+        }
+
+        $this->validateOnly("editingRows.$index.variant");
+        $this->validateOnly("editingRows.$index.condition");
+        $this->validateOnly("editingRows.$index.quantity");
+        $this->validateOnly("editingRows.$index.grade_company");
+        $this->validateOnly("editingRows.$index.grade_value");
+        $this->validateOnly("editingRows.$index.notes");
+        $this->validateOnly("editingRows.$index.photo");
+
+        $row = $this->editingRows[$index];
+        $item = $this->ownedItemOrFail($row['id']);
 
         $update = [
-            'condition' => $this->editingCondition,
-            'quantity' => $this->editingQuantity,
-            'variant' => $this->editingVariant,
-            'grade_company' => $this->editingGradeCompany,
-            'grade_value' => $this->editingGradeValue,
-            'notes' => $this->editingNotes,
-            // Assigning a real variant is exactly what resolves the
-            // ambiguity the importer flagged — never touched by editing
-            // any other field.
-            'needs_variant_review' => $this->editingVariant !== null ? false : $item->needs_variant_review,
+            'variant' => $row['variant'],
+            'condition' => $row['condition'],
+            'quantity' => $row['quantity'],
+            'grade_company' => $row['grade_company'],
+            'grade_value' => $row['grade_value'],
+            'notes' => $row['notes'],
+            // A row's variant is only ever ambiguous ("needs review") until
+            // it's given an explicit value — clearing the flag here, not
+            // when notes/quantity/etc change, and never re-flagging it once
+            // cleared.
+            'needs_variant_review' => $row['variant'] !== null ? false : $item->needs_variant_review,
         ];
 
-        // Leaving the photo field untouched must keep the existing
-        // photo — only a NEW upload replaces it. Deleting the old file
-        // only after a new one is actually chosen, never just because
-        // the modal was opened, mirrors delete()'s own cleanup pattern.
-        if ($this->editingPhoto) {
+        // A new upload replaces the stored file; not touching this field
+        // must leave the existing photo alone rather than nulling it out
+        // just because this particular save didn't carry a new one.
+        if ($row['photo'] !== null) {
             if ($item->photo_path) {
                 Storage::disk('collection-photos')->delete($item->photo_path);
             }
 
-            $update['photo_path'] = basename($this->editingPhoto->store('/', 'collection-photos'));
+            $newPath = basename($row['photo']->store('/', 'collection-photos'));
+            $update['photo_path'] = $newPath;
+            $this->editingRows[$index]['photo_path'] = $newPath;
+            $this->editingRows[$index]['photo'] = null;
         }
 
         $item->update($update);
 
-        $this->editingFullItemId = null;
-        $this->editingPhoto = null;
+        $this->dispatch('row-saved', index: $index);
+    }
+
+    public ?int $confirmingRemoveRowIndex = null;
+
+    public function confirmRemoveRow(int $index): void
+    {
+        $this->confirmingRemoveRowIndex = $index;
+    }
+
+    public function cancelRemoveRow(): void
+    {
+        $this->confirmingRemoveRowIndex = null;
+    }
+
+    public function removeVariantRow(int $index): void
+    {
+        if (! isset($this->editingRows[$index])) {
+            return;
+        }
+
+        $item = $this->ownedItemOrFail($this->editingRows[$index]['id']);
+
+        if ($item->photo_path) {
+            Storage::disk('collection-photos')->delete($item->photo_path);
+        }
+        $item->delete();
+
+        unset($this->editingRows[$index]);
+        $this->editingRows = array_values($this->editingRows);
+        $this->confirmingRemoveRowIndex = null;
+
+        // The card no longer has any items left in this collection once
+        // its last row is removed — leaving the modal open would show an
+        // empty editor for a card that, from the collection's point of
+        // view, doesn't exist anymore.
+        if ($this->editingRows === []) {
+            $this->closeCardEditor();
+        }
+    }
+
+    public function toggleRowDetails(int $index): void
+    {
+        if (isset($this->editingRows[$index])) {
+            $this->editingRows[$index]['showDetails'] = ! $this->editingRows[$index]['showDetails'];
+        }
     }
 
     public function sortBy(string $sort): void
@@ -390,6 +429,20 @@ final class CollectionItems extends Component
 
     public function render()
     {
+        // PERF: every Livewire action on this component — including ones
+        // that only touch the card-editor modal (toggleRowDetails,
+        // confirmRemoveRow, addVariantRow, updateRow) — re-runs this whole
+        // method, so the grouped query + per-item price resolution below
+        // (up to VALUE_SORT_ROW_LIMIT rows) reruns on every modal
+        // interaction, not just page loads/listing changes. There's no
+        // low-risk fix within this single component: Livewire re-renders
+        // the whole template every action, and the computed $cardGroups
+        // isn't a public property that could be memoized across requests.
+        // The real fix is extracting the card editor into its own nested
+        // Livewire component so its actions only re-render that child —
+        // out of scope here as a larger architectural change, not a
+        // targeted fix.
+
         // Reached only through Collection::items(), which is scoped via
         // Collection's TenantScope — never query CollectionItem::query()
         // directly here, that would bypass the tenant filter entirely.
@@ -397,11 +450,6 @@ final class CollectionItems extends Component
 
         $itemsQuery = CollectionItem::query()
             ->whereIn('collection_id', $collectionIds)
-            // card.priceSnapshots is eager-loaded here because
-            // CardPriceResolver::resolve() reads it as a property below —
-            // without this, resolving price for every row (up to
-            // VALUE_SORT_ROW_LIMIT on the default 'value' sort) triggers
-            // one query PER card instead of one query total.
             ->with(['card.set', 'card.priceSnapshots']);
 
         if ($this->search !== '') {
@@ -427,65 +475,111 @@ final class CollectionItems extends Component
             $itemsQuery->where('needs_variant_review', true);
         }
 
-        if ($this->sort === 'name') {
-            $itemsQuery->join('cards', 'cards.id', '=', 'collection_items.card_id')
-                ->orderBy('cards.name')
-                ->select('collection_items.*');
-        } elseif ($this->sort === 'newest') {
-            $itemsQuery->orderByDesc('collection_items.created_at');
-        }
-        // 'value' (default) is resolved in PHP below — market_minor lives on
-        // a separate priceSnapshots relation, not a joinable flat column,
-        // and CardPriceResolver's "pick the right source" logic can't be
-        // expressed as a single SQL ORDER BY.
-
-        $items = $itemsQuery->paginate($this->sort === 'value' ? self::VALUE_SORT_ROW_LIMIT : 24, page: $this->sort === 'value' ? 1 : null);
-
         $resolver = new CardPriceResolver;
 
-        if ($this->sort === 'value') {
-            // Resolve value once per item, sort in memory, then slice the
-            // requested page — CardPriceResolver's resolve() can't be
-            // expressed as a SQL ORDER BY (it walks a source-priority
-            // chain across a separate table). Bounded by a real personal
-            // collection's size (dozens–low hundreds), not thousands.
-            $withValue = $items->getCollection()->map(function (CollectionItem $item) use ($resolver) {
-                // resolveForVariant, not resolve(): this row IS a specific
-                // variant (or null, pending review) — resolve()'s
-                // card-level chain would ignore that and could pick a
-                // cheaper (or pricier) variant than the one this copy is.
+        // Bounded by a real personal collection's size (dozens–low
+        // hundreds) — same ceiling the old single-item 'value' sort
+        // already assumed. Grouping-then-paginating can't be expressed as
+        // a single SQL query here: market_minor lives on a separate
+        // priceSnapshots relation CardPriceResolver walks in PHP, so the
+        // aggregate a card-row sorts/pages by can only be computed after
+        // every matching item is loaded.
+        $allItems = $itemsQuery->orderBy('card_id')->orderBy('id')->limit(self::VALUE_SORT_ROW_LIMIT)->get();
+
+        // A count exactly at the ceiling means the query was almost
+        // certainly cut off mid-result (rather than the collection
+        // coincidentally having precisely this many matching rows) — the
+        // view uses this to surface an honest notice instead of silently
+        // dropping items, undercounting totals, or splitting a card's own
+        // item set mid-group.
+        $possiblyTruncated = $allItems->count() === self::VALUE_SORT_ROW_LIMIT;
+
+        $groups = $allItems->groupBy('card_id')->map(function ($items) use ($resolver) {
+            $valued = $items->map(function (CollectionItem $item) use ($resolver) {
+                // resolveForVariant, not resolve(): each item IS a
+                // specific variant — the card-level chain would price
+                // every item for this card identically regardless of
+                // which variant it actually is.
                 $snapshot = $resolver->resolveForVariant($item->card, $item->variant);
-                // _valueMinor is a transient, in-memory-only sort key — it
-                // is never persisted, so it must never be passed to save().
-                // Per-unit, matching what the Value column actually
-                // displays — sorting by a quantity-multiplied number the
-                // column no longer shows would order rows by a figure
-                // the admin can't see anywhere on the page.
-                $item->setAttribute('_valueMinor', $snapshot?->market_minor ?? -1);
+                // Transient, view-only attributes on a real Eloquent model —
+                // never pass this item to save()/update() after this point,
+                // it would try to persist these as real columns.
+                $item->setAttribute('_valueMinor', $snapshot?->market_minor);
+                $item->setAttribute('_currency', $snapshot?->currency);
 
                 return $item;
-            })->sortByDesc('_valueMinor')->values();
+            });
 
-            $page = $this->getPage();
-            $perPage = 24;
-            $paged = $withValue->slice(($page - 1) * $perPage, $perPage)->values();
+            $pricedItems = $valued->filter(fn (CollectionItem $i) => $i->_valueMinor !== null);
+            $currencies = $pricedItems->pluck('_currency')->unique();
 
-            $items = new LengthAwarePaginator(
-                $paged,
-                $withValue->count(),
-                $perPage,
-                $page,
-                // Without an explicit path, this fell back to whatever
-                // the default resolver could infer — which resolved to
-                // "/" rather than "/admin" in practice, so every "Next"
-                // link on the default (value) sort took you to the
-                // marketing home page instead of page 2 of your own
-                // collection. This route only ever renders this one
-                // component, so hardcode it rather than trust inference.
-                ['path' => route('admin.collection.index')],
-            );
-        }
+            // Summing minor units across items priced in different
+            // currencies (one USD variant, one EUR variant on the same
+            // card) is arithmetically meaningless — only produce a total
+            // when every priced item in the group shares one currency.
+            $totalCurrency = $currencies->count() === 1 ? $currencies->first() : null;
+            $totalValueMinor = $totalCurrency !== null
+                ? (int) $pricedItems->sum(fn (CollectionItem $i) => $i->_valueMinor * $i->quantity)
+                : null;
 
-        return view('livewire.admin.collection-items', ['items' => $items, 'resolver' => $resolver]);
+            return (object) [
+                'card' => $valued->first()->card,
+                'items' => $valued->sortBy('variant')->values(),
+                'totalQuantity' => (int) $valued->sum('quantity'),
+                'totalValueMinor' => $totalValueMinor,
+                'totalValueCurrency' => $totalCurrency,
+                'hasMixedCurrencyPricing' => $pricedItems->isNotEmpty() && $currencies->count() > 1,
+                'needsReview' => $valued->contains(fn (CollectionItem $i) => $i->needs_variant_review),
+                'newestAt' => $valued->max('created_at'),
+            ];
+        })->values();
+
+        $groups = (match ($this->sort) {
+            'name' => $groups->sortBy(fn ($g) => $g->card->name),
+            'newest' => $groups->sortByDesc('newestAt'),
+            // A group's totalValueMinor is only comparable against another
+            // group priced in the SAME currency — there's no live exchange
+            // rate here to convert fairly, so raw minor units are never
+            // compared across currencies. Sort by currency code first
+            // (null/mixed-currency groups, which have no single number to
+            // rank by, always last), then by amount descending within one
+            // currency.
+            default => $groups->sort(function ($a, $b) {
+                if ($a->totalValueCurrency !== $b->totalValueCurrency) {
+                    if ($a->totalValueCurrency === null) {
+                        return 1;
+                    }
+                    if ($b->totalValueCurrency === null) {
+                        return -1;
+                    }
+
+                    return $a->totalValueCurrency <=> $b->totalValueCurrency;
+                }
+
+                return ($b->totalValueMinor ?? 0) <=> ($a->totalValueMinor ?? 0);
+            }),
+        })->values();
+
+        $perPage = 24;
+        $page = $this->getPage();
+        $paged = $groups->slice(($page - 1) * $perPage, $perPage)->values();
+
+        $cardGroups = new LengthAwarePaginator(
+            $paged,
+            $groups->count(),
+            $perPage,
+            $page,
+            // This route only ever renders this one component — hardcode
+            // it rather than trust the paginator's default path
+            // inference, which resolved to "/" instead of "/admin" here.
+            ['path' => route('admin.collection.index')],
+        );
+
+        return view('livewire.admin.collection-items', [
+            'cardGroups' => $cardGroups,
+            'totalCards' => $groups->count(),
+            'totalCopies' => (int) $groups->sum('totalQuantity'),
+            'possiblyTruncated' => $possiblyTruncated,
+        ]);
     }
 }

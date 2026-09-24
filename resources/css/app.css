@@ -864,6 +864,13 @@ body::before {
 .nw-chip .t { font-variation-settings: 'wdth' 66, 'wght' 800; text-transform: uppercase; font-size: 12px; line-height: 1; }
 .nw-chip .n { font-family: 'Martian Mono', ui-monospace, monospace; font-variation-settings: 'wdth' 87.5, 'wght' 600; font-size: 10px; color: var(--muted); letter-spacing: -.03em; margin-top: 3px; }
 
+.autosave-tag {
+  position: absolute; right: 16px; top: 6px; font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--signal-deep); display: flex; align-items: center; gap: 4px;
+  transition: opacity 400ms var(--ease);
+}
+.autosave-tag::before { content: ''; width: 5px; height: 5px; border-radius: 999px; background: var(--signal-deep); }
+
 /* ─── panel + feed (Activity, detail sidebars) ─── */
 .nw-panel {
   background: var(--paper);
@@ -1119,6 +1126,12 @@ body::before {
 .nw-row-btn:hover { background: var(--bone-2); border-color: var(--ink); }
 .nw-row-btn--danger { color: var(--danger); }
 .nw-row-btn--danger:hover { border-color: var(--danger); }
+
+.nw-variant-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600;
+  background: var(--bone-2); border: 1px solid var(--hair); border-radius: 999px; padding: 4px 10px;
+  white-space: nowrap;
+}
 
 /* design.md focus rule — same visual weight as hover so keyboard users get
    full parity. The doubled selector intentionally ties @tailwindcss/forms'

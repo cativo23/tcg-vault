@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Collection\Services;
 
 use App\Jobs\ImportSetJob;
+use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Support\Facades\Storage;
 
 final class CollectionService
 {
@@ -18,21 +20,49 @@ final class CollectionService
      */
     public function addItem(Collection $collection, string $tcgdexCardId, array $itemData): CollectionItem
     {
+        $card = $this->syncCardAndQueueImport($tcgdexCardId);
+
+        return $this->addItemForCard($collection, $card, $itemData);
+    }
+
+    /**
+     * Syncs the Catalog card (and queues a full-set import when needed) —
+     * split out from addItem() so a caller adding MULTIPLE items for the
+     * SAME card in one request can sync once and reuse the result via
+     * addItemForCard(), instead of re-syncing (and re-dispatching
+     * ImportSetJob) once per item.
+     */
+    public function syncCardAndQueueImport(string $tcgdexCardId): Card
+    {
         $card = $this->catalogSyncService->syncCard($tcgdexCardId);
 
         // The Catalog is global, never tenant-scoped — a set only needs
-        // backfilling ONCE, ever, no matter which user's addItem() call
-        // triggers it. card_count is set on syncCard()'s first sync of a
-        // card from this set (via syncSet()'s findSet() call); a null
-        // card_count (tcgdex didn't report one) is treated as "unknown
-        // size," not "already complete," so it still gets queued rather
-        // than silently left partial forever.
+        // backfilling ONCE, ever, no matter which user's call triggers it.
+        // card_count is set on syncCard()'s first sync of a card from this
+        // set (via syncSet()'s findSet() call); a null card_count (tcgdex
+        // didn't report one) is treated as "unknown size," not "already
+        // complete," so it still gets queued rather than silently left
+        // partial forever.
         $set = $card->set;
 
         if ($set->card_count === null || $set->cards()->count() < $set->card_count) {
-            ImportSetJob::dispatch($set->tcgdex_id);
+            // afterCommit(): a caller may dispatch this from inside its own
+            // DB::transaction() (e.g. one wrapping several CollectionItem
+            // inserts) — this project's queue config has after_commit =>
+            // false and runs Horizon on Redis, so a worker could otherwise
+            // pick the job up before that transaction commits, referencing
+            // catalog rows a later rollback then removes.
+            ImportSetJob::dispatch($set->tcgdex_id)->afterCommit();
         }
 
+        return $card;
+    }
+
+    /**
+     * @param  array{variant?: ?string, condition: string, grade_company?: ?string, grade_value?: ?string, quantity?: int, notes?: ?string, photo_path?: ?string, needs_variant_review?: bool}  $itemData
+     */
+    public function addItemForCard(Collection $collection, Card $card, array $itemData): CollectionItem
+    {
         $variant = $itemData['variant'] ?? null;
         $condition = $itemData['condition'];
         $gradeCompany = $itemData['grade_company'] ?? null;
@@ -60,14 +90,29 @@ final class CollectionService
             ->first();
 
         if ($existingItem !== null) {
-            $existingItem->increment('quantity', $quantity);
+            $newPhotoPath = $itemData['photo_path'] ?? null;
+            $extra = [];
+
+            if ($newPhotoPath !== null) {
+                if ($existingItem->photo_path === null) {
+                    $extra['photo_path'] = $newPhotoPath;
+                } else {
+                    // The existing item already has a photo — the caller
+                    // already stored $newPhotoPath to disk before this call,
+                    // so it must be deleted here or it's orphaned forever.
+                    // We never guess which photo the user "meant" to keep.
+                    Storage::disk('collection-photos')->delete($newPhotoPath);
+                }
+            }
+
+            $existingItem->increment('quantity', $quantity, $extra);
 
             return $existingItem;
         }
 
         return $collection->items()->create([
             'card_id' => $card->id,
-            'card_tcgdex_id' => $tcgdexCardId,
+            'card_tcgdex_id' => $card->tcgdex_id,
             'variant' => $variant,
             'condition' => $condition,
             'grade_company' => $gradeCompany,
