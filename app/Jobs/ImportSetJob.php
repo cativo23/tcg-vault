@@ -20,8 +20,10 @@ use Illuminate\Queue\SerializesModels;
  * directly, not the whole set — there is no other path that imports a
  * set's other cards.
  *
- * Dispatched from CollectionService::addItem() whenever the just-synced
- * card's set isn't fully imported yet (cards()->count() < card_count).
+ * Dispatched from CollectionService::syncCardAndQueueImport() — called by
+ * both addItem() and AddCollectionItem::save() (which syncs once per
+ * submission rather than once per row) — whenever the just-synced card's
+ * set isn't fully imported yet (cards()->count() < card_count).
  * Idempotent: SyncCardPricingJob is updateOrCreate-based, so re-running
  * this for a set that's already complete just re-affirms/refreshes
  * existing rows, never duplicates.
