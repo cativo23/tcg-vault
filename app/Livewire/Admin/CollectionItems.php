@@ -131,7 +131,7 @@ final class CollectionItems extends Component
     public string $editingCardName = '';
 
     /**
-     * @var array<int, array{id:int, variant:?string, condition:string, quantity:int, grade_company:?string, grade_value:?string, notes:?string, showDetails:bool}>
+     * @var array<int, array{id:int, variant:?string, condition:string, quantity:int, grade_company:?string, grade_value:?string, notes:?string, photo:mixed, photo_path:?string, showDetails:bool}>
      */
     public array $editingRows = [];
 
@@ -151,6 +151,7 @@ final class CollectionItems extends Component
         $items = CollectionItem::where('card_id', $cardId)
             ->whereIn('collection_id', $collectionIds)
             ->with('card')
+            ->orderBy('id')
             ->get();
 
         if ($items->isEmpty()) {
@@ -174,6 +175,8 @@ final class CollectionItems extends Component
             'grade_company' => $i->grade_company,
             'grade_value' => $i->grade_value,
             'notes' => $i->notes,
+            'photo' => null,
+            'photo_path' => $i->photo_path,
             'showDetails' => false,
         ])->values()->all();
 
@@ -232,10 +235,13 @@ final class CollectionItems extends Component
         // The Catalog is global and not tenant-scoped (CollectionService.php:23-24)
         // — this is a straight lookup of catalog data, not a user's own
         // record, so it doesn't go through ownedItemOrFail()/ownedCardItemsOrFail().
+        // Uses addItemForCard(), not addItem() — this card is already in the
+        // Catalog (it has existing items in this editor), so re-syncing it
+        // from tcgdex here would just be a redundant HTTP round-trip.
         $card = Card::findOrFail($this->editingCardId);
         $collection = Collection::findOrFail($this->editingCollectionId);
 
-        $item = $service->addItem($collection, $card->tcgdex_id, ['condition' => 'NM', 'quantity' => 1]);
+        $item = $service->addItemForCard($collection, $card, ['condition' => 'NM', 'quantity' => 1]);
 
         $existingIndex = collect($this->editingRows)->search(fn ($row) => $row['id'] === $item->id);
 
@@ -256,6 +262,8 @@ final class CollectionItems extends Component
             'grade_company' => null,
             'grade_value' => null,
             'notes' => null,
+            'photo' => null,
+            'photo_path' => null,
             'showDetails' => false,
         ];
     }
@@ -269,7 +277,24 @@ final class CollectionItems extends Component
             'editingRows.*.grade_company' => 'nullable|string|max:32',
             'editingRows.*.grade_value' => 'nullable|string|max:16',
             'editingRows.*.notes' => 'nullable|string|max:2000',
+            'editingRows.*.photo' => 'nullable|image|mimes:jpeg,png,webp|max:5120',
         ];
+    }
+
+    /**
+     * A file input can't autosave on wire:change the way the other
+     * fields do — Livewire's own JS uploads the file and only THEN
+     * assigns the bound property, so a wire:change fired at native
+     * selection time would race the upload and still see the old value.
+     * This generic hook instead fires after Livewire has finished
+     * assigning the property (upload included), so updateRow() only
+     * ever sees an already-uploaded file.
+     */
+    public function updated(string $name): void
+    {
+        if (preg_match('/^editingRows\.(\d+)\.photo$/', $name, $matches) && isset($this->editingRows[(int) $matches[1]]['photo'])) {
+            $this->updateRow((int) $matches[1]);
+        }
     }
 
     public function updateRow(int $index): void
@@ -284,21 +309,40 @@ final class CollectionItems extends Component
         $this->validateOnly("editingRows.$index.grade_company");
         $this->validateOnly("editingRows.$index.grade_value");
         $this->validateOnly("editingRows.$index.notes");
+        $this->validateOnly("editingRows.$index.photo");
 
         $row = $this->editingRows[$index];
         $item = $this->ownedItemOrFail($row['id']);
 
-        $item->update([
+        $update = [
             'variant' => $row['variant'],
             'condition' => $row['condition'],
             'quantity' => $row['quantity'],
             'grade_company' => $row['grade_company'],
             'grade_value' => $row['grade_value'],
             'notes' => $row['notes'],
-            // Assigning a real variant resolves the importer's ambiguity
-            // flag — same rule as the old saveItem() (CollectionItems.php:342).
+            // A row's variant is only ever ambiguous ("needs review") until
+            // it's given an explicit value — clearing the flag here, not
+            // when notes/quantity/etc change, and never re-flagging it once
+            // cleared.
             'needs_variant_review' => $row['variant'] !== null ? false : $item->needs_variant_review,
-        ]);
+        ];
+
+        // A new upload replaces the stored file; not touching this field
+        // must leave the existing photo alone rather than nulling it out
+        // just because this particular save didn't carry a new one.
+        if ($row['photo'] !== null) {
+            if ($item->photo_path) {
+                Storage::disk('collection-photos')->delete($item->photo_path);
+            }
+
+            $newPath = basename($row['photo']->store('/', 'collection-photos'));
+            $update['photo_path'] = $newPath;
+            $this->editingRows[$index]['photo_path'] = $newPath;
+            $this->editingRows[$index]['photo'] = null;
+        }
+
+        $item->update($update);
 
         $this->dispatch('row-saved', index: $index);
     }
@@ -331,6 +375,14 @@ final class CollectionItems extends Component
         unset($this->editingRows[$index]);
         $this->editingRows = array_values($this->editingRows);
         $this->confirmingRemoveRowIndex = null;
+
+        // The card no longer has any items left in this collection once
+        // its last row is removed — leaving the modal open would show an
+        // empty editor for a card that, from the collection's point of
+        // view, doesn't exist anymore.
+        if ($this->editingRows === []) {
+            $this->closeCardEditor();
+        }
     }
 
     public function toggleRowDetails(int $index): void
@@ -411,7 +463,7 @@ final class CollectionItems extends Component
         // priceSnapshots relation CardPriceResolver walks in PHP, so the
         // aggregate a card-row sorts/pages by can only be computed after
         // every matching item is loaded.
-        $allItems = $itemsQuery->limit(self::VALUE_SORT_ROW_LIMIT)->get();
+        $allItems = $itemsQuery->orderBy('card_id')->orderBy('id')->limit(self::VALUE_SORT_ROW_LIMIT)->get();
 
         $groups = $allItems->groupBy('card_id')->map(function ($items) use ($resolver) {
             $valued = $items->map(function (CollectionItem $item) use ($resolver) {
@@ -421,17 +473,30 @@ final class CollectionItems extends Component
                 // which variant it actually is.
                 $snapshot = $resolver->resolveForVariant($item->card, $item->variant);
                 $item->setAttribute('_valueMinor', $snapshot?->market_minor);
+                $item->setAttribute('_currency', $snapshot?->currency);
 
                 return $item;
             });
+
+            $pricedItems = $valued->filter(fn (CollectionItem $i) => $i->_valueMinor !== null);
+            $currencies = $pricedItems->pluck('_currency')->unique();
+
+            // Summing minor units across items priced in different
+            // currencies (one USD variant, one EUR variant on the same
+            // card) is arithmetically meaningless — only produce a total
+            // when every priced item in the group shares one currency.
+            $totalCurrency = $currencies->count() === 1 ? $currencies->first() : null;
+            $totalValueMinor = $totalCurrency !== null
+                ? (int) $pricedItems->sum(fn (CollectionItem $i) => $i->_valueMinor * $i->quantity)
+                : null;
 
             return (object) [
                 'card' => $valued->first()->card,
                 'items' => $valued->sortBy('variant')->values(),
                 'totalQuantity' => (int) $valued->sum('quantity'),
-                'totalValueMinor' => (int) $valued->sum(
-                    fn (CollectionItem $i) => ($i->_valueMinor ?? 0) * $i->quantity,
-                ),
+                'totalValueMinor' => $totalValueMinor,
+                'totalValueCurrency' => $totalCurrency,
+                'hasMixedCurrencyPricing' => $pricedItems->isNotEmpty() && $currencies->count() > 1,
                 'needsReview' => $valued->contains(fn (CollectionItem $i) => $i->needs_variant_review),
                 'newestAt' => $valued->max('created_at'),
             ];
@@ -440,7 +505,7 @@ final class CollectionItems extends Component
         $groups = (match ($this->sort) {
             'name' => $groups->sortBy(fn ($g) => $g->card->name),
             'newest' => $groups->sortByDesc('newestAt'),
-            default => $groups->sortByDesc('totalValueMinor'),
+            default => $groups->sortByDesc(fn ($g) => $g->totalValueMinor ?? -1),
         })->values();
 
         $perPage = 24;

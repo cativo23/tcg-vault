@@ -3,12 +3,15 @@
     // lets the same markup back both wire:model targets. $onUpdate/$onRemove
     // are the exact wire:click/wire:blur action strings each caller wants;
     // Crear passes null for $onUpdate (Task 8 saves the whole batch once,
-    // not per-field) and a different remove action.
+    // not per-field) and a different remove action. $onUpdate is the same
+    // action string for every field in this row — updateRow() re-validates
+    // and re-saves the whole row regardless of which field changed, so
+    // there's nothing per-field for it to select.
 @endphp
 <div class="p-4" style="border-bottom: 1px solid var(--hair); display: grid; grid-template-columns: 1fr 1fr 70px auto; gap: 10px; align-items: end; position: relative;" wire:key="{{ $namePrefix }}">
-    <div wire:loading.class="opacity-50" wire:target="{{ $onUpdate ? $onUpdate('variant') : $namePrefix }}">
+    <div wire:loading.class="opacity-50" wire:target="{{ $onUpdate ?: $namePrefix }}">
         <label class="nw-label block mb-1">Variant</label>
-        <select wire:model="{{ $namePrefix }}.variant" @if($onUpdate) wire:change="{{ $onUpdate('variant') }}" @endif class="nw-input w-full">
+        <select wire:model="{{ $namePrefix }}.variant" @if($onUpdate) wire:change="{{ $onUpdate }}" @endif class="nw-input w-full">
             <option value="">— not specified —</option>
             @foreach ($availableVariants as $v)
                 <option value="{{ $v }}">{{ \Illuminate\Support\Str::headline($v) }}</option>
@@ -17,7 +20,7 @@
     </div>
     <div>
         <label class="nw-label block mb-1">Condition</label>
-        <select wire:model="{{ $namePrefix }}.condition" @if($onUpdate) wire:change="{{ $onUpdate('condition') }}" @endif class="nw-input w-full">
+        <select wire:model="{{ $namePrefix }}.condition" @if($onUpdate) wire:change="{{ $onUpdate }}" @endif class="nw-input w-full">
             <option value="NM">Near Mint</option>
             <option value="LP">Lightly Played</option>
             <option value="MP">Moderately Played</option>
@@ -27,15 +30,15 @@
     </div>
     <div>
         <label class="nw-label block mb-1">Qty</label>
-        <input type="number" min="1" wire:model="{{ $namePrefix }}.quantity" @if($onUpdate) wire:blur="{{ $onUpdate('quantity') }}" @endif class="nw-input w-full">
+        <input type="number" min="1" wire:model="{{ $namePrefix }}.quantity" @if($onUpdate) wire:blur="{{ $onUpdate }}" @endif class="nw-input w-full">
     </div>
     @if (($confirmingRemoveRowIndex ?? null) === $rowIndex)
         <div style="display:flex; gap:4px;">
             <button type="button" wire:click="removeVariantRow({{ $rowIndex }})" class="nw-row-btn nw-row-btn--danger" style="height: 34px;">Confirm</button>
             <button type="button" wire:click="cancelRemoveRow" class="nw-row-btn" style="height: 34px;">✕</button>
         </div>
-    @else
-        <button type="button" @if($onRemove) wire:click="{{ $onRemove }}" @endif class="nw-row-btn nw-row-btn--danger" title="Remove this variant" style="height: 34px;">✕</button>
+    @elseif ($onRemove)
+        <button type="button" wire:click="{{ $onRemove }}" class="nw-row-btn nw-row-btn--danger" title="Remove this variant" style="height: 34px;">✕</button>
     @endif
 
     <div style="grid-column: 1 / -1;">
@@ -48,15 +51,24 @@
         <div style="grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px;">
             <div>
                 <label class="nw-label block mb-1">Grading company</label>
-                <input type="text" wire:model="{{ $namePrefix }}.grade_company" @if($onUpdate) wire:blur="{{ $onUpdate('grade_company') }}" @endif class="nw-input w-full" placeholder="PSA, BGS...">
+                <input type="text" wire:model="{{ $namePrefix }}.grade_company" @if($onUpdate) wire:blur="{{ $onUpdate }}" @endif class="nw-input w-full" placeholder="PSA, BGS...">
             </div>
             <div>
                 <label class="nw-label block mb-1">Grade</label>
-                <input type="text" wire:model="{{ $namePrefix }}.grade_value" @if($onUpdate) wire:blur="{{ $onUpdate('grade_value') }}" @endif class="nw-input w-full" placeholder="9, 10...">
+                <input type="text" wire:model="{{ $namePrefix }}.grade_value" @if($onUpdate) wire:blur="{{ $onUpdate }}" @endif class="nw-input w-full" placeholder="9, 10...">
             </div>
             <div style="grid-column: 1 / -1;">
                 <label class="nw-label block mb-1">Notes</label>
-                <textarea wire:model="{{ $namePrefix }}.notes" @if($onUpdate) wire:blur="{{ $onUpdate('notes') }}" @endif rows="2" class="nw-input w-full"></textarea>
+                <textarea wire:model="{{ $namePrefix }}.notes" @if($onUpdate) wire:blur="{{ $onUpdate }}" @endif rows="2" class="nw-input w-full"></textarea>
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <label class="nw-label block mb-1">Your own photo (optional — falls back to tcgdex's official image)</label>
+                <input type="file" wire:model="{{ $namePrefix }}.photo" accept="image/*">
+                @if ($row['photo'] ?? null)
+                    <img src="{{ $row['photo']->temporaryUrl() }}" class="mt-2 w-32 rounded" alt="">
+                @elseif ($row['photo_path'] ?? null)
+                    <img src="{{ \Illuminate\Support\Facades\Storage::disk('collection-photos')->url($row['photo_path']) }}" class="mt-2 w-32 rounded" alt="">
+                @endif
             </div>
         </div>
     @endif

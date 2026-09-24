@@ -9,6 +9,8 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
@@ -916,6 +918,69 @@ test('a card with 3 items across 2 conditions groups into one row with the right
     expect($test->viewData('totalCopies'))->toBe(6);
 });
 
+test('a cardmarket-only card group shows its total in EUR, not mislabeled as USD', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 500]);
+
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = Livewire::test(CollectionItems::class)->html();
+
+    expect($html)->toContain('€5.00');
+    expect($html)->not->toMatch('/\$5\.00/');
+});
+
+test('a card group with items priced in different currencies shows no single summed total', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 100]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 900]);
+
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'holofoil', 'condition' => 'NM', 'quantity' => 1]);
+
+    $test = Livewire::test(CollectionItems::class);
+    $group = $test->viewData('cardGroups')->first();
+
+    expect($group->totalValueMinor)->toBeNull();
+    expect($group->hasMixedCurrencyPricing)->toBeTrue();
+    expect($test->html())->toContain('Mixed currencies');
+});
+
+test('the grouped query orders deterministically before its row-count ceiling applies', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $queries = [];
+    DB::listen(function ($query) use (&$queries) {
+        $queries[] = $query->sql;
+    });
+
+    Livewire::test(CollectionItems::class);
+
+    $limitedQuery = collect($queries)->first(
+        fn ($sql) => str_contains($sql, 'limit') && str_contains($sql, 'collection_items'),
+    );
+
+    expect($limitedQuery)->not->toBeNull();
+    expect($limitedQuery)->toContain('order by');
+    expect($limitedQuery)->toContain('"card_id" asc');
+});
+
 test('two different cards each with one item produce two separate groups', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
@@ -1096,6 +1161,37 @@ test('adding a variant row that collides with one already open reflects the bump
     expect($item->fresh()->quantity)->toBe(2);
 });
 
+test('uploading a new photo in the card editor replaces the old file and deletes it from disk', function () {
+    Storage::fake('collection-photos');
+    Storage::disk('collection-photos')->put('old-photo.jpg', 'old-bytes');
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'old-photo.jpg',
+    ]);
+
+    $component = Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->call('toggleRowDetails', 0);
+
+    expect($component->html())->toContain('wire:model="editingRows.0.photo"')
+        ->toContain('type="file"');
+
+    $component->set('editingRows.0.photo', UploadedFile::fake()->image('new.jpg'));
+
+    $fresh = $item->fresh();
+    expect($fresh->photo_path)->not->toBeNull();
+    expect($fresh->photo_path)->not->toBe('old-photo.jpg');
+    Storage::disk('collection-photos')->assertExists($fresh->photo_path);
+    Storage::disk('collection-photos')->assertMissing('old-photo.jpg');
+});
+
 test('removing a variant row deletes the item and its stored photo', function () {
     Storage::fake('collection-photos');
     Storage::disk('collection-photos')->put('card.jpg', 'fake-image-bytes');
@@ -1145,4 +1241,21 @@ test('closing the card editor clears a pending remove confirmation so it does no
         ->call('closeCardEditor')
         ->call('openCardEditor', $cardB->id)
         ->assertSet('confirmingRemoveRowIndex', null);
+});
+
+test('removing the last variant row in the editor closes it instead of leaving a phantom empty modal', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->call('confirmRemoveRow', 0)
+        ->call('removeVariantRow', 0)
+        ->assertSet('editingCardId', null)
+        ->assertSet('editingRows', []);
 });

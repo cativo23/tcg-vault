@@ -88,7 +88,7 @@
                         <td class="p-3" data-label="Variants owned">
                             <div class="flex flex-wrap gap-1.5">
                                 @foreach ($group->items as $item)
-                                    <span class="nw-chip">
+                                    <span class="nw-variant-chip">
                                         {{ $item->variant ? \Illuminate\Support\Str::headline($item->variant) : '— unspecified' }} · {{ $item->condition }}
                                         <span class="mono" style="color: var(--muted)">×{{ $item->quantity }}</span>
                                     </span>
@@ -96,8 +96,10 @@
                             </div>
                         </td>
                         <td class="p-3 mono" data-label="Total value">
-                            @if ($group->totalValueMinor > 0)
-                                {{ \App\Support\Money::format($group->totalValueMinor, 'USD') }}
+                            @if ($group->totalValueMinor !== null)
+                                {{ \App\Support\Money::format($group->totalValueMinor, $group->totalValueCurrency) }}
+                            @elseif ($group->hasMixedCurrencyPricing)
+                                <span title="This card's variants are priced in different currencies — no single total shown">Mixed currencies</span>
                             @else
                                 <span title="No price data synced for this card/variant yet">—</span>
                             @endif
@@ -118,8 +120,8 @@
     </div>
 
     @if ($editingCardId !== null)
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background: rgba(20,20,18,.55)" wire:click.self="closeCardEditor">
-            <div class="nw-card w-full" style="max-width: 640px; max-height: 90vh; overflow-y: auto;">
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background: rgba(20,20,18,.55)" wire:click.self="closeCardEditor" wire:keydown.escape.window="closeCardEditor">
+            <div class="nw-card modal-in w-full" style="max-width: 640px; max-height: 90vh; overflow-y: auto;">
                 <div class="flex justify-between items-start p-5" style="border-bottom: 1px solid var(--hair)">
                     <div>
                         <div class="text-lg font-bold">{{ $editingCardName }}</div>
@@ -135,7 +137,7 @@
                         'availableVariants' => $editingAvailableVariants,
                         'onRemove' => "confirmRemoveRow($index)",
                         'confirmingRemoveRowIndex' => $confirmingRemoveRowIndex,
-                        'onUpdate' => fn (string $field) => "updateRow($index, '$field')",
+                        'onUpdate' => "updateRow($index)",
                     ])
                 @endforeach
 
