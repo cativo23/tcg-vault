@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
@@ -90,9 +91,6 @@ final class AddCollectionItem extends Component
 
     public ?string $selectedName = null;
 
-    #[Validate('nullable|in:normal,holofoil,reverse-holofoil')]
-    public ?string $variant = null;
-
     /**
      * Populated in selectCard() from the selected card's actual pricing data
      * — not every card has all 3 known variant values (some are holofoil-only,
@@ -106,27 +104,68 @@ final class AddCollectionItem extends Component
 
     private const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
 
-    #[Validate('required|string|max:16')]
-    public string $condition = 'NM';
+    /**
+     * One row per variant/condition/grading combo being added for the
+     * selected card in this single submission — @see save(). Same shape
+     * as CollectionItems::$editingRows, minus `id` (nothing here is
+     * persisted yet).
+     *
+     * @var array<int, array{variant: ?string, condition: string, quantity: int, grade_company: ?string, grade_value: ?string, notes: ?string, photo: mixed, showDetails: bool}>
+     */
+    public array $rows = [];
 
-    #[Validate('nullable|string|max:32')]
-    public ?string $gradeCompany = null;
+    private function blankRow(): array
+    {
+        return [
+            'variant' => null,
+            'condition' => 'NM',
+            'quantity' => 1,
+            'grade_company' => null,
+            'grade_value' => null,
+            'notes' => null,
+            'photo' => null,
+            'showDetails' => false,
+        ];
+    }
 
-    #[Validate('nullable|string|max:16')]
-    public ?string $gradeValue = null;
+    protected function rules(): array
+    {
+        return [
+            'rows.*.variant' => 'nullable|in:normal,holofoil,reverse-holofoil',
+            'rows.*.condition' => 'required|string|max:16',
+            'rows.*.quantity' => 'required|integer|min:1',
+            'rows.*.grade_company' => 'nullable|string|max:32',
+            'rows.*.grade_value' => 'nullable|string|max:16',
+            'rows.*.notes' => 'nullable|string|max:2000',
+            'rows.*.photo' => 'nullable|image|mimes:jpeg,png,webp|max:5120',
+        ];
+    }
 
-    #[Validate('required|integer|min:1')]
-    public int $quantity = 1;
+    public function addRow(): void
+    {
+        $this->rows[] = $this->blankRow();
+    }
 
-    #[Validate('nullable|string|max:2000')]
-    public ?string $notes = null;
+    public function removeRow(int $index): void
+    {
+        if (count($this->rows) <= 1 || ! isset($this->rows[$index])) {
+            return;
+        }
+        unset($this->rows[$index]);
+        $this->rows = array_values($this->rows);
+    }
 
-    #[Validate('nullable|image|mimes:jpeg,png,webp|max:5120')]
-    public $photo = null;
+    public function toggleRowDetails(int $index): void
+    {
+        if (isset($this->rows[$index])) {
+            $this->rows[$index]['showDetails'] = ! $this->rows[$index]['showDetails'];
+        }
+    }
 
     public function mount(): void
     {
         $this->availableSets = Set::orderBy('name')->pluck('name', 'tcgdex_id')->all();
+        $this->rows = [$this->blankRow()];
     }
 
     public function runSearch(CardCatalogProvider $provider): void
@@ -250,11 +289,12 @@ final class AddCollectionItem extends Component
             $this->availableVariants = self::KNOWN_VARIANTS;
         }
 
-        // Only one real variant for this card and nothing chosen yet —
-        // default to it instead of making the user pick from a single
-        // option. Never overrides an existing value.
-        if ($this->variant === null && count($this->availableVariants) === 1) {
-            $this->variant = $this->availableVariants[0];
+        // A newly-selected card starts a fresh single row — rows typed
+        // for whatever card was selected before must not carry over.
+        $this->rows = [$this->blankRow()];
+
+        if (count($this->availableVariants) === 1) {
+            $this->rows[0]['variant'] = $this->availableVariants[0];
         }
     }
 
@@ -266,6 +306,21 @@ final class AddCollectionItem extends Component
             $this->addError('selectedTcgdexId', 'Choose a card from the search results first.');
 
             return null;
+        }
+
+        // Reject two rows in this submission that would collide on the
+        // same identity CollectionService::addItem() merges on — silently
+        // merging two rows the user typed side by side would drop one of
+        // them with no visible error.
+        $seen = [];
+        foreach ($this->rows as $index => $row) {
+            $key = implode('|', [$row['variant'] ?? '', $row['condition'], $row['grade_company'] ?? '', $row['grade_value'] ?? '']);
+            if (isset($seen[$key])) {
+                $this->addError("rows.$index.variant", 'This is the same variant/condition/grading as another row above — combine them into one row instead.');
+
+                return null;
+            }
+            $seen[$key] = true;
         }
 
         try {
@@ -282,21 +337,24 @@ final class AddCollectionItem extends Component
                     ['name' => 'My Collection', 'is_public' => false],
                 );
 
-            $photoPath = null;
-            if ($this->photo) {
-                $storedPath = $this->photo->store('/', 'collection-photos');
-                $photoPath = basename($storedPath);
-            }
+            DB::transaction(function () use ($service, $collection): void {
+                foreach ($this->rows as $row) {
+                    $photoPath = null;
+                    if ($row['photo']) {
+                        $photoPath = basename($row['photo']->store('/', 'collection-photos'));
+                    }
 
-            $service->addItem($collection, $this->selectedTcgdexId, [
-                'variant' => $this->variant,
-                'condition' => $this->condition,
-                'grade_company' => $this->gradeCompany,
-                'grade_value' => $this->gradeValue,
-                'quantity' => $this->quantity,
-                'notes' => $this->notes,
-                'photo_path' => $photoPath,
-            ]);
+                    $service->addItem($collection, $this->selectedTcgdexId, [
+                        'variant' => $row['variant'],
+                        'condition' => $row['condition'],
+                        'grade_company' => $row['grade_company'],
+                        'grade_value' => $row['grade_value'],
+                        'quantity' => $row['quantity'],
+                        'notes' => $row['notes'],
+                        'photo_path' => $photoPath,
+                    ]);
+                }
+            });
         } catch (Throwable $e) {
             report($e);
 

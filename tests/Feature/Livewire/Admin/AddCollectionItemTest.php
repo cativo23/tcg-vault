@@ -631,6 +631,63 @@ test('a user cannot save a card into another users collection by passing its ID 
     expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();
 });
 
+test('submitting 3 rows for one new card creates 3 items in one request', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
+        tcgdexId: 'sv05', name: 'Temporal Forces', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050')
+        ->set('rows.0.variant', 'normal')
+        ->set('rows.0.quantity', 2)
+        ->call('addRow')
+        ->set('rows.1.variant', 'holofoil')
+        ->set('rows.1.quantity', 1)
+        ->call('save')
+        ->assertRedirect();
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(2);
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->where('variant', 'normal')->first()->quantity)->toBe(2);
+});
+
+test('two rows with the identical variant/condition in one submission fail validation and save nothing', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
+        tcgdexId: 'sv05', name: 'Temporal Forces', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050')
+        ->set('rows.0.variant', 'normal')
+        ->call('addRow')
+        ->set('rows.1.variant', 'normal')
+        ->call('save')
+        ->assertHasErrors(['rows.1.variant']);
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(0);
+});
+
 test('a catalog sync failure during save shows a friendly error and does not create an item', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
