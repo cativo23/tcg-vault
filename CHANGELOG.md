@@ -6,6 +6,30 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-24
+
+### Added
+
+- Admin: "Manage collection" now groups by card instead of by individual
+  variant — one row per Pokémon with its owned variants shown as chips,
+  instead of a repeated row per variant/condition combo.
+- Admin: editing a card opens one modal listing every variant you own as
+  an editable row, with autosave per field and instant add/remove.
+- Admin: adding a new card lets you add several variants in one
+  submission (e.g. 2 normal + 1 holofoil from one booster) instead of
+  repeating the search per variant.
+
+### Fixed
+
+- Admin: a stale `condition` validation rule, two missing variant-selection
+  fallbacks, and dead per-item delete code left over from an earlier pass
+  at this feature.
+- Public gallery: a CSS class collision from the admin rewrite was
+  regressing the set-rail chip's spacing and border.
+- A card's total collection value could render EUR pricing labeled with a
+  `$` sign; now shows the correct currency, or "Mixed currencies" when a
+  card's variants don't share one.
+
 ## [0.3.1] - 2026-09-23
 
 ### Fixed
