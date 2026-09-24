@@ -190,7 +190,25 @@ final class CollectionItems extends Component
                 CardPriceSnapshot::where('card_id', $card->id)->distinct()->pluck('variant')->all(),
             ));
         }
+        if ($variants === []) {
+            // No tcgdex print flags AND no synced pricing at all for this
+            // card — fall back to whatever variant(s) the owned rows
+            // already have, so an item's own existing choice never
+            // disappears from its own dropdown.
+            $variants = collect($this->editingRows)->pluck('variant')->filter()->unique()->values()->all();
+        }
         $this->editingAvailableVariants = $variants;
+
+        // Only one real variant for this card and a row has no explicit
+        // choice yet — default it instead of leaving the dropdown blank.
+        // Never overrides a row's existing value.
+        if (count($this->editingAvailableVariants) === 1) {
+            foreach ($this->editingRows as $index => $row) {
+                if ($row['variant'] === null) {
+                    $this->editingRows[$index]['variant'] = $this->editingAvailableVariants[0];
+                }
+            }
+        }
     }
 
     public function closeCardEditor(): void
@@ -244,7 +262,7 @@ final class CollectionItems extends Component
     {
         return [
             'editingRows.*.variant' => 'nullable|in:normal,holofoil,reverse-holofoil',
-            'editingRows.*.condition' => 'required|string|max:16',
+            'editingRows.*.condition' => 'required|in:NM,LP,MP,HP,DMG',
             'editingRows.*.quantity' => 'required|integer|min:1',
             'editingRows.*.grade_company' => 'nullable|string|max:32',
             'editingRows.*.grade_value' => 'nullable|string|max:16',

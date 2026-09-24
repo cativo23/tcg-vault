@@ -81,7 +81,7 @@
                         <td class="p-3 font-medium nw-tcell-name" data-label="">
                             {{ $group->card->name }}
                             @if ($group->needsReview)
-                                <span class="text-xs font-medium ml-2" style="color: var(--warning)" title="One or more variants need review">Review</span>
+                                <span class="text-xs font-medium ml-2" style="color: var(--warning)" title="One or more variants need review — Assign a Variant in the card editor to clear this">Review</span>
                             @endif
                         </td>
                         <td class="p-3" style="color: var(--muted)" data-label="Set">{{ $group->card->set->name }}</td>
@@ -96,7 +96,11 @@
                             </div>
                         </td>
                         <td class="p-3 mono" data-label="Total value">
-                            {{ $group->totalValueMinor > 0 ? \App\Support\Money::format($group->totalValueMinor, 'USD') : '—' }}
+                            @if ($group->totalValueMinor > 0)
+                                {{ \App\Support\Money::format($group->totalValueMinor, 'USD') }}
+                            @else
+                                <span title="No price data synced for this card/variant yet">—</span>
+                            @endif
                         </td>
                         <td class="p-3 text-right nw-tcell-actions" data-label="" onclick="event.stopPropagation()">
                             <button wire:click="openCardEditor({{ $group->card->id }})" class="nw-row-btn">Edit</button>
