@@ -9,6 +9,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Support\Facades\Storage;
 
 final class CollectionService
 {
@@ -89,7 +90,22 @@ final class CollectionService
             ->first();
 
         if ($existingItem !== null) {
-            $existingItem->increment('quantity', $quantity);
+            $newPhotoPath = $itemData['photo_path'] ?? null;
+            $extra = [];
+
+            if ($newPhotoPath !== null) {
+                if ($existingItem->photo_path === null) {
+                    $extra['photo_path'] = $newPhotoPath;
+                } else {
+                    // The existing item already has a photo — the caller
+                    // already stored $newPhotoPath to disk before this call,
+                    // so it must be deleted here or it's orphaned forever.
+                    // We never guess which photo the user "meant" to keep.
+                    Storage::disk('collection-photos')->delete($newPhotoPath);
+                }
+            }
+
+            $existingItem->increment('quantity', $quantity, $extra);
 
             return $existingItem;
         }
