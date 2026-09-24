@@ -880,7 +880,7 @@ test('two rows with the identical variant/condition in one submission fail valid
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+    $component = Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
         ->call('selectCard', 'sv05-050')
         ->set('rows.0.variant', 'normal')
         ->call('addRow')
@@ -889,6 +889,9 @@ test('two rows with the identical variant/condition in one submission fail valid
         ->assertHasErrors(['rows.1.variant']);
 
     expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(0);
+    // Not just assertHasErrors() — the "Save N variants" button otherwise
+    // looks completely dead on failure with no visible reason why.
+    expect($component->html())->toContain('This is the same variant/condition/grading as another row above — combine them into one row instead.');
 });
 
 test('a row quantity past the sane ceiling is rejected by validation instead of overflowing the DB column', function () {

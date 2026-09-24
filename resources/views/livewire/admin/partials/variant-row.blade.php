@@ -17,6 +17,7 @@
                 <option value="{{ $v }}">{{ \Illuminate\Support\Str::headline($v) }}</option>
             @endforeach
         </select>
+        @error("{$namePrefix}.variant") <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
     </div>
     <div>
         <label class="nw-label block mb-1">Condition</label>
@@ -27,10 +28,12 @@
             <option value="HP">Heavily Played</option>
             <option value="DMG">Damaged</option>
         </select>
+        @error("{$namePrefix}.condition") <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
     </div>
     <div>
         <label class="nw-label block mb-1">Qty</label>
         <input type="number" min="1" wire:model="{{ $namePrefix }}.quantity" @if($onUpdate) wire:blur="{{ $onUpdate }}" @endif class="nw-input w-full">
+        @error("{$namePrefix}.quantity") <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
     </div>
     @if (($confirmingRemoveRowIndex ?? null) === $rowIndex)
         <div style="display:flex; gap:4px;">
@@ -47,23 +50,30 @@
         </button>
     </div>
 
-    @if ($row['showDetails'])
+    {{-- Auto-expand on a hidden-field error too — a failed validation on
+         grade_company/grade_value/notes/photo must be visible even when
+         the user never opened this collapsible section. --}}
+    @if ($row['showDetails'] || $errors->hasAny(["{$namePrefix}.grade_company", "{$namePrefix}.grade_value", "{$namePrefix}.notes", "{$namePrefix}.photo"]))
         <div style="grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px;">
             <div>
                 <label class="nw-label block mb-1">Grading company</label>
                 <input type="text" wire:model="{{ $namePrefix }}.grade_company" @if($onUpdate) wire:blur="{{ $onUpdate }}" @endif class="nw-input w-full" placeholder="PSA, BGS...">
+                @error("{$namePrefix}.grade_company") <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label class="nw-label block mb-1">Grade</label>
                 <input type="text" wire:model="{{ $namePrefix }}.grade_value" @if($onUpdate) wire:blur="{{ $onUpdate }}" @endif class="nw-input w-full" placeholder="9, 10...">
+                @error("{$namePrefix}.grade_value") <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
             </div>
             <div style="grid-column: 1 / -1;">
                 <label class="nw-label block mb-1">Notes</label>
                 <textarea wire:model="{{ $namePrefix }}.notes" @if($onUpdate) wire:blur="{{ $onUpdate }}" @endif rows="2" class="nw-input w-full"></textarea>
+                @error("{$namePrefix}.notes") <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
             </div>
             <div style="grid-column: 1 / -1;">
                 <label class="nw-label block mb-1">Your own photo (optional — falls back to tcgdex's official image)</label>
                 <input type="file" wire:model="{{ $namePrefix }}.photo" accept="image/*">
+                @error("{$namePrefix}.photo") <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                 @if ($row['photo'] ?? null)
                     <img src="{{ $row['photo']->temporaryUrl() }}" class="mt-2 w-32 rounded" alt="">
                 @elseif ($row['photo_path'] ?? null)

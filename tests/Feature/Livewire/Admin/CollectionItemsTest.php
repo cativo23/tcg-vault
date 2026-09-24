@@ -294,6 +294,28 @@ test('editing an items quantity rejects a value past the sane ceiling instead of
     expect($item->fresh()->quantity)->toBe(1);
 });
 
+test('an invalid quantity in the edit modal renders a visible error message, not just a silent failed save', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    $html = Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.quantity', 5000000000)
+        ->call('updateRow', 0)
+        ->html();
+
+    expect($html)->toContain('must not be greater than 9999');
+    expect($item->fresh()->quantity)->toBe(1);
+});
+
 test('editing an items variant only accepts the known values', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
