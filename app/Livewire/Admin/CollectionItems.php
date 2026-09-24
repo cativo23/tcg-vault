@@ -163,6 +163,12 @@ final class CollectionItems extends Component
 
     public function openCardEditor(int $cardId): void
     {
+        // A previous card's stale error bag would otherwise bleed into this
+        // one — editingRows indexes reset per card, so an error on
+        // "editingRows.0.condition" from the last card would misleadingly
+        // reattach to row 0 of this one.
+        $this->resetValidation();
+
         $items = $this->ownedCardItemsOrFail($cardId);
 
         $this->editingCardId = $cardId;
@@ -218,6 +224,7 @@ final class CollectionItems extends Component
 
     public function closeCardEditor(): void
     {
+        $this->resetValidation();
         $this->editingCardId = null;
         $this->editingCollectionId = null;
         $this->editingCardName = '';
@@ -273,7 +280,7 @@ final class CollectionItems extends Component
         return [
             'editingRows.*.variant' => 'nullable|in:normal,holofoil,reverse-holofoil',
             'editingRows.*.condition' => 'required|in:NM,LP,MP,HP,DMG',
-            'editingRows.*.quantity' => 'required|integer|min:1',
+            'editingRows.*.quantity' => 'required|integer|min:1|max:9999',
             'editingRows.*.grade_company' => 'nullable|string|max:32',
             'editingRows.*.grade_value' => 'nullable|string|max:16',
             'editingRows.*.notes' => 'nullable|string|max:2000',
@@ -472,6 +479,9 @@ final class CollectionItems extends Component
                 // every item for this card identically regardless of
                 // which variant it actually is.
                 $snapshot = $resolver->resolveForVariant($item->card, $item->variant);
+                // Transient, view-only attributes on a real Eloquent model —
+                // never pass this item to save()/update() after this point,
+                // it would try to persist these as real columns.
                 $item->setAttribute('_valueMinor', $snapshot?->market_minor);
                 $item->setAttribute('_currency', $snapshot?->currency);
 
@@ -547,7 +557,6 @@ final class CollectionItems extends Component
             'cardGroups' => $cardGroups,
             'totalCards' => $groups->count(),
             'totalCopies' => (int) $groups->sum('totalQuantity'),
-            'resolver' => $resolver,
         ]);
     }
 }

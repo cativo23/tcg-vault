@@ -248,6 +248,57 @@ test('selecting a card falls back to the full known variant list when the catalo
         ->assertSet('rows.0.variant', null);
 });
 
+test('re-selecting the same already-selected card does not discard rows the user already typed', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class)
+        ->call('selectCard', 'me05-116')
+        ->set('rows.0.notes', 'a note I typed for this card')
+        ->call('addRow')
+        ->set('rows.1.notes', 'a second row I also typed')
+        ->call('selectCard', 'me05-116')
+        ->assertCount('rows', 2)
+        ->assertSet('rows.0.notes', 'a note I typed for this card')
+        ->assertSet('rows.1.notes', 'a second row I also typed');
+});
+
+test('selecting a different card still resets rows typed for the previous one', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findCard')->with('me05-068')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-068', setTcgdexId: 'me05', localId: '068', name: 'Toucannon',
+        rarity: 'Common', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class)
+        ->call('selectCard', 'me05-116')
+        ->set('rows.0.notes', 'a note for the first card')
+        ->call('addRow')
+        ->call('selectCard', 'me05-068')
+        ->assertCount('rows', 1)
+        ->assertSet('rows.0.notes', null);
+});
+
 test('a malformed catalog search response shows a friendly error instead of crashing', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
@@ -690,17 +741,35 @@ test('an uploaded photo from an earlier row is cleaned up when a later row fails
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
 
+    // Quantity validation (rules()'s max:9999) now catches an overflowing
+    // value before it ever reaches the DB, so this test injects a real
+    // storage-level failure instead: the disk itself throws while storing
+    // the SECOND row's photo, after row 0's photo has already been stored
+    // (Storage isn't transactional, so a later failure of any kind must
+    // still clean up an earlier row's already-written file).
+    // Livewire's TemporaryUploadedFile::storeAs() calls the disk's put(),
+    // not the underlying UploadedFile::store()'s putFileAs() — the spy has
+    // to match the method Livewire's file-upload wiring actually calls.
+    $realDisk = Storage::disk('collection-photos');
+    $calls = 0;
+    $spy = Mockery::mock($realDisk)->makePartial();
+    $spy->shouldReceive('put')->andReturnUsing(function (...$args) use (&$calls, $realDisk) {
+        $calls++;
+        if ($calls === 2) {
+            throw new RuntimeException('Simulated disk failure on the second row');
+        }
+
+        return $realDisk->put(...$args);
+    });
+    Storage::set('collection-photos', $spy);
+
     Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
         ->call('selectCard', 'sv05-050')
         ->set('rows.0.variant', 'normal')
         ->set('rows.0.photo', UploadedFile::fake()->image('a.jpg'))
         ->call('addRow')
         ->set('rows.1.variant', 'holofoil')
-        // A quantity this large overflows the DB column at INSERT time —
-        // valid per the 'integer' validation rule, but a genuine failure
-        // deep inside the per-row transaction, after row 0's photo has
-        // already been stored to disk (Storage isn't transactional).
-        ->set('rows.1.quantity', 5000000000)
+        ->set('rows.1.photo', UploadedFile::fake()->image('b.jpg'))
         ->call('save')
         ->assertHasErrors('selectedTcgdexId');
 
@@ -820,6 +889,29 @@ test('two rows with the identical variant/condition in one submission fail valid
         ->assertHasErrors(['rows.1.variant']);
 
     expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(0);
+});
+
+test('a row quantity past the sane ceiling is rejected by validation instead of overflowing the DB column', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'me05-116')
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 5000000000)
+        ->call('save')
+        ->assertHasErrors(['rows.0.quantity']);
+
+    expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();
 });
 
 test('a catalog sync failure during save shows a friendly error and does not create an item', function () {

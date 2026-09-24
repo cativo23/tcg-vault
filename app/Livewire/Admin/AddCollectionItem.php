@@ -147,7 +147,7 @@ final class AddCollectionItem extends Component
             'rows' => 'array|max:'.self::MAX_ROWS,
             'rows.*.variant' => 'nullable|in:normal,holofoil,reverse-holofoil',
             'rows.*.condition' => 'required|string|max:16',
-            'rows.*.quantity' => 'required|integer|min:1',
+            'rows.*.quantity' => 'required|integer|min:1|max:9999',
             'rows.*.grade_company' => 'nullable|string|max:32',
             'rows.*.grade_value' => 'nullable|string|max:16',
             'rows.*.notes' => 'nullable|string|max:2000',
@@ -275,6 +275,7 @@ final class AddCollectionItem extends Component
 
     public function selectCard(string $tcgdexId, CardCatalogProvider $provider): void
     {
+        $previousTcgdexId = $this->selectedTcgdexId;
         $this->selectedTcgdexId = $tcgdexId;
         $match = collect($this->results)->first(fn (CardSummaryData $c) => $c->tcgdexId === $tcgdexId);
         $this->selectedName = $match?->name;
@@ -308,11 +309,16 @@ final class AddCollectionItem extends Component
         }
 
         // A newly-selected card starts a fresh single row — rows typed
-        // for whatever card was selected before must not carry over.
-        $this->rows = [$this->blankRow()];
+        // for whatever card was selected before must not carry over. But
+        // re-clicking the SAME already-selected tile (the common case: a
+        // user re-confirming their choice) must not silently wipe rows
+        // they already typed for it.
+        if ($this->selectedTcgdexId !== $previousTcgdexId) {
+            $this->rows = [$this->blankRow()];
 
-        if (count($this->availableVariants) === 1) {
-            $this->rows[0]['variant'] = $this->availableVariants[0];
+            if (count($this->availableVariants) === 1) {
+                $this->rows[0]['variant'] = $this->availableVariants[0];
+            }
         }
     }
 
@@ -341,14 +347,6 @@ final class AddCollectionItem extends Component
             $seen[$key] = true;
         }
 
-        // Every row in this submission is the SAME card (selectedTcgdexId
-        // doesn't change per row) — synced once here, outside the
-        // per-item transaction below, rather than once per row inside it.
-        // CatalogSyncService::syncCard() commits its own Card/Set/price-
-        // snapshot writes independently; nesting N redundant calls to it
-        // inside the CollectionItem transaction would mean a later row's
-        // failure rolls back that GLOBAL, shared catalog data too, not
-        // just this submission's own items.
         $storedPhotoPaths = [];
 
         try {
@@ -365,6 +363,14 @@ final class AddCollectionItem extends Component
                     ['name' => 'My Collection', 'is_public' => false],
                 );
 
+            // Every row in this submission is the SAME card (selectedTcgdexId
+            // doesn't change per row) — synced once here, outside the
+            // per-item transaction below, rather than once per row inside it.
+            // CatalogSyncService::syncCard() commits its own Card/Set/price-
+            // snapshot writes independently; nesting N redundant calls to it
+            // inside the CollectionItem transaction would mean a later row's
+            // failure rolls back that GLOBAL, shared catalog data too, not
+            // just this submission's own items.
             $card = $service->syncCardAndQueueImport($this->selectedTcgdexId);
 
             DB::transaction(function () use ($service, $collection, $card, &$storedPhotoPaths): void {

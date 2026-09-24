@@ -273,6 +273,27 @@ test('editing an items condition rejects a value outside the allowed set', funct
     expect($item->fresh()->condition)->toBe('NM');
 });
 
+test('editing an items quantity rejects a value past the sane ceiling instead of overflowing the DB column', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.quantity', 5000000000)
+        ->call('updateRow', 0)
+        ->assertHasErrors(['editingRows.0.quantity']);
+
+    expect($item->fresh()->quantity)->toBe(1);
+});
+
 test('editing an items variant only accepts the known values', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
@@ -312,6 +333,34 @@ test('an invalid variant value is rejected', function () {
         ->assertHasErrors(['editingRows.0.variant']);
 
     expect($item->fresh()->variant)->toBe('normal');
+});
+
+test('a validation error on one card does not bleed into the next cards editor after switching', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+
+    $cardA = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $cardA->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    $cardB = Card::create(['tcgdex_id' => 'me05-068', 'set_id' => $set->id, 'local_id' => '068', 'name' => 'Toucannon']);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $cardB->id, 'card_tcgdex_id' => 'me05-068',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $cardA->id)
+        ->set('editingRows.0.condition', 'XX')
+        ->call('updateRow', 0)
+        ->assertHasErrors(['editingRows.0.condition'])
+        ->call('closeCardEditor')
+        ->call('openCardEditor', $cardB->id)
+        ->assertHasNoErrors(['editingRows.0.condition']);
 });
 
 test('the variant dropdown only offers the variants that actually occur for that card', function () {
