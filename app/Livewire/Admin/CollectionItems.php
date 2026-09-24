@@ -505,7 +505,27 @@ final class CollectionItems extends Component
         $groups = (match ($this->sort) {
             'name' => $groups->sortBy(fn ($g) => $g->card->name),
             'newest' => $groups->sortByDesc('newestAt'),
-            default => $groups->sortByDesc(fn ($g) => $g->totalValueMinor ?? -1),
+            // A group's totalValueMinor is only comparable against another
+            // group priced in the SAME currency — there's no live exchange
+            // rate here to convert fairly, so raw minor units are never
+            // compared across currencies. Sort by currency code first
+            // (null/mixed-currency groups, which have no single number to
+            // rank by, always last), then by amount descending within one
+            // currency.
+            default => $groups->sort(function ($a, $b) {
+                if ($a->totalValueCurrency !== $b->totalValueCurrency) {
+                    if ($a->totalValueCurrency === null) {
+                        return 1;
+                    }
+                    if ($b->totalValueCurrency === null) {
+                        return -1;
+                    }
+
+                    return $a->totalValueCurrency <=> $b->totalValueCurrency;
+                }
+
+                return ($b->totalValueMinor ?? 0) <=> ($a->totalValueMinor ?? 0);
+            }),
         })->values();
 
         $perPage = 24;

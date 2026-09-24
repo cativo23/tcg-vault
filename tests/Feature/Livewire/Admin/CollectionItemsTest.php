@@ -956,6 +956,35 @@ test('a card group with items priced in different currencies shows no single sum
     expect($test->html())->toContain('Mixed currencies');
 });
 
+test('the default value sort never compares raw amounts across different currencies', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    // USD group's raw minor units (1000) are larger than the EUR group's
+    // (500) — a naive cross-currency comparison would rank USD first.
+    // There's no live exchange rate to convert fairly, so groups are
+    // ordered by currency code first instead, EUR ('E') before USD ('U').
+    $usdCard = Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'Tropius']);
+    CardPriceSnapshot::create(['card_id' => $usdCard->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1000]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $usdCard->id, 'card_tcgdex_id' => 'me05-001', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+
+    $eurCard = Card::create(['tcgdex_id' => 'me05-002', 'set_id' => $set->id, 'local_id' => '002', 'name' => 'Grubbin']);
+    CardPriceSnapshot::create(['card_id' => $eurCard->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 500]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $eurCard->id, 'card_tcgdex_id' => 'me05-002', 'condition' => 'NM', 'quantity' => 1]);
+
+    $test = Livewire::test(CollectionItems::class);
+    $groups = $test->viewData('cardGroups');
+
+    expect($groups)->toHaveCount(2);
+    expect($groups[0]->card->id)->toBe($eurCard->id);
+    expect($groups[0]->totalValueCurrency)->toBe('EUR');
+    expect($groups[1]->card->id)->toBe($usdCard->id);
+    expect($groups[1]->totalValueCurrency)->toBe('USD');
+});
+
 test('the grouped query orders deterministically before its row-count ceiling applies', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
