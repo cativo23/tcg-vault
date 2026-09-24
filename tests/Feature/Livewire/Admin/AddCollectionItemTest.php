@@ -734,6 +734,37 @@ test('a submission cannot carry more rows than the server-side cap allows', func
     expect($component->get('rows'))->toHaveCount(25);
 });
 
+test('the rules() max-rows cap rejects a rows array built without addRow(), independent of the addRow() guard', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $blankRow = [
+        'variant' => null, 'condition' => 'NM', 'quantity' => 1,
+        'grade_company' => null, 'grade_value' => null, 'notes' => null,
+        'photo' => null, 'showDetails' => false,
+    ];
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050')
+        // Bypasses addRow()'s own cap entirely by assigning the array
+        // property directly — this is what rules()'s 'rows' => 'array|max:25'
+        // has to catch on its own.
+        ->set('rows', array_fill(0, 26, $blankRow))
+        ->call('save')
+        ->assertHasErrors(['rows']);
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(0);
+});
+
 test('submitting 3 rows for one new card creates 3 items in one request', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
