@@ -136,8 +136,8 @@ test('a logged-in admin can select a result and save it to the collection', func
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->call('selectCard', 'me05-116')
-        ->set('condition', 'NM')
-        ->set('quantity', 1)
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 1)
         ->call('save')
         ->assertRedirect();
 
@@ -163,8 +163,8 @@ test('an uploaded photo is stored and its path saved on the item', function () {
 
     Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
         ->call('selectCard', 'me05-116')
-        ->set('condition', 'NM')
-        ->set('photo', UploadedFile::fake()->image('card.jpg'))
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.photo', UploadedFile::fake()->image('card.jpg'))
         ->call('save');
 
     $item = CollectionItem::where('card_tcgdex_id', 'me05-116')->firstOrFail();
@@ -192,7 +192,7 @@ test('selecting a card narrows the variant dropdown to what that card actually h
     Livewire::test(AddCollectionItem::class)
         ->call('selectCard', 'me05-116')
         ->assertSet('availableVariants', ['holofoil'])
-        ->assertSet('variant', 'holofoil');
+        ->assertSet('rows.0.variant', 'holofoil');
 });
 
 test('selecting a card uses its own print flags, not just synced pricing coverage', function () {
@@ -236,7 +236,7 @@ test('selecting a card falls back to the full known variant list when the catalo
     Livewire::test(AddCollectionItem::class)
         ->call('selectCard', 'me05-116')
         ->assertSet('availableVariants', ['normal', 'holofoil', 'reverse-holofoil'])
-        ->assertSet('variant', null);
+        ->assertSet('rows.0.variant', null);
 });
 
 test('a malformed catalog search response shows a friendly error instead of crashing', function () {
@@ -593,8 +593,8 @@ test('a brand-new user with no Collection row can save a card, which creates one
 
     Livewire::test(AddCollectionItem::class)
         ->call('selectCard', 'me05-116')
-        ->set('condition', 'NM')
-        ->set('quantity', 1)
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 1)
         ->call('save')
         ->assertRedirect();
 
@@ -623,8 +623,8 @@ test('a user cannot save a card into another users collection by passing its ID 
 
     Livewire::test(AddCollectionItem::class, ['collectionId' => $otherUsersCollection->id])
         ->call('selectCard', 'me05-116')
-        ->set('condition', 'NM')
-        ->set('quantity', 1)
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 1)
         ->call('save')
         ->assertHasErrors('selectedTcgdexId');
 
@@ -701,8 +701,8 @@ test('a catalog sync failure during save shows a friendly error and does not cre
 
     Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
         ->call('selectCard', 'me05-116')
-        ->set('condition', 'NM')
-        ->set('quantity', 1)
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 1)
         ->call('save')
         ->assertHasErrors('selectedTcgdexId');
 
