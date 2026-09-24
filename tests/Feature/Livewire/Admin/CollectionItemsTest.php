@@ -853,6 +853,44 @@ test('the list paginates at 24 items per page', function () {
     expect($component->viewData('cardGroups')->total())->toBe(26);
 });
 
+test('hitting the row-fetch ceiling shows an honest truncation notice instead of silently dropping items', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+
+    $now = now();
+    $rowLimit = 1000;
+    $cardRows = [];
+    $itemRows = [];
+    for ($i = 1; $i <= $rowLimit; $i++) {
+        $cardRows[] = ['tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card {$i}", 'created_at' => $now, 'updated_at' => $now];
+    }
+    Card::insert($cardRows);
+    $cardIds = Card::where('set_id', $set->id)->pluck('id', 'tcgdex_id');
+    foreach ($cardIds as $tcgdexId => $cardId) {
+        $itemRows[] = ['collection_id' => $collection->id, 'card_id' => $cardId, 'card_tcgdex_id' => $tcgdexId, 'condition' => 'NM', 'quantity' => 1, 'created_at' => $now, 'updated_at' => $now];
+    }
+    CollectionItem::insert($itemRows);
+
+    $html = Livewire::test(CollectionItems::class)->html();
+
+    expect($html)->toContain('Showing the first 1,000 items');
+});
+
+test('a collection under the row-fetch ceiling shows no truncation notice', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-1', 'set_id' => $set->id, 'local_id' => '1', 'name' => 'Card 1']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-1', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = Livewire::test(CollectionItems::class)->html();
+
+    expect($html)->not->toContain('Showing the first');
+});
+
 test('page 2 is reachable and shows the right items after a Livewire interaction', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

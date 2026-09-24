@@ -472,6 +472,14 @@ final class CollectionItems extends Component
         // every matching item is loaded.
         $allItems = $itemsQuery->orderBy('card_id')->orderBy('id')->limit(self::VALUE_SORT_ROW_LIMIT)->get();
 
+        // A count exactly at the ceiling means the query was almost
+        // certainly cut off mid-result (rather than the collection
+        // coincidentally having precisely this many matching rows) — the
+        // view uses this to surface an honest notice instead of silently
+        // dropping items, undercounting totals, or splitting a card's own
+        // item set mid-group.
+        $possiblyTruncated = $allItems->count() === self::VALUE_SORT_ROW_LIMIT;
+
         $groups = $allItems->groupBy('card_id')->map(function ($items) use ($resolver) {
             $valued = $items->map(function (CollectionItem $item) use ($resolver) {
                 // resolveForVariant, not resolve(): each item IS a
@@ -557,6 +565,7 @@ final class CollectionItems extends Component
             'cardGroups' => $cardGroups,
             'totalCards' => $groups->count(),
             'totalCopies' => (int) $groups->sum('totalQuantity'),
+            'possiblyTruncated' => $possiblyTruncated,
         ]);
     }
 }
