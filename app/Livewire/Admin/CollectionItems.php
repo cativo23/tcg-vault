@@ -192,10 +192,12 @@ final class CollectionItems extends Component
         }
         if ($variants === []) {
             // No tcgdex print flags AND no synced pricing at all for this
-            // card — fall back to whatever variant(s) the owned rows
-            // already have, so an item's own existing choice never
-            // disappears from its own dropdown.
-            $variants = collect($this->editingRows)->pluck('variant')->filter()->unique()->values()->all();
+            // card — fall back to just the primary item's own already-set
+            // variant (same single-item fallback the old startEditingItem()
+            // had), not the union of every row's variant in this card
+            // group, so one row's choice never leaks into another row's
+            // dropdown as a selectable option.
+            $variants = array_values(array_filter([$items->first()->variant]));
         }
         $this->editingAvailableVariants = $variants;
 

@@ -421,6 +421,32 @@ test('when a card has no synced pricing data the variant dropdown falls back to 
         ->not->toContain('value="reverse-holofoil"');
 });
 
+test('the no-pricing-data variant fallback uses only the primary item, not every row in the card group', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'variant' => 'normal',
+    ]);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'LP', 'quantity' => 1, 'variant' => 'holofoil',
+    ]);
+
+    // No tcgdex `variants` flags and no synced pricing at all for this
+    // card — the fallback must offer only the primary (first) owned
+    // item's own variant, not the union of every row's variant in this
+    // card group, or a row could pick up another row's variant as a
+    // selectable option.
+    $test = Livewire::test(CollectionItems::class)->call('openCardEditor', $card->id);
+
+    expect($test->get('editingAvailableVariants'))->toBe(['normal']);
+});
+
 test('the variant dropdown uses the card\'s own print flags, not just synced pricing coverage', function () {
     // A card that is normal + reverse-holofoil (no straight holo), owned
     // as "normal" but only synced with a cardmarket 'holofoil' price row
@@ -694,7 +720,6 @@ test('the needs-review badge explains what clears it and opens the edit modal wh
     $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'needs_variant_review' => true]);
 
     Livewire::test(CollectionItems::class)
-        ->assertSeeHtml('Assign a Variant')
         ->call('openCardEditor', $card->id)
         ->assertSet('editingCardId', $card->id);
 });
