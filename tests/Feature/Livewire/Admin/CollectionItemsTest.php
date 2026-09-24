@@ -1397,3 +1397,29 @@ test('removing the last variant row in the editor closes it instead of leaving a
         ->assertSet('editingCardId', null)
         ->assertSet('editingRows', []);
 });
+
+test('validation errors on hidden detail fields auto-expands the details section', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1,
+    ]);
+
+    // Open card editor with showDetails false (default). Trigger a validation error
+    // on a hidden detail field by setting grade_company over the max:32 limit.
+    $html = Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.grade_company', 'This is a very long grading company name that exceeds the limit')
+        ->call('updateRow', 0)
+        ->html();
+
+    // The Details section auto-expanded due to the validation error. Assert the
+    // error message and grading inputs are now visible in the rendered HTML.
+    expect($html)->toContain('must not be greater than 32');
+    expect($html)->toContain('Grading company');
+});
