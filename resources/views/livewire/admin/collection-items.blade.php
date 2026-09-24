@@ -145,26 +145,4 @@
             </div>
         </div>
     @endif
-
-    @if ($confirmingDeleteItemId !== null)
-        <div class="fixed inset-0 z-40 flex items-center justify-center p-4"
-             style="background: rgba(20,20,18,.5)"
-             wire:click.self="cancelDelete"
-             wire:keydown.escape.window="cancelDelete">
-            <div class="nw-card modal-in w-full max-w-sm p-5">
-                <h2 class="text-lg font-semibold mb-2" style="color: var(--ink)">Remove this card?</h2>
-                @if ($deletingSummary !== [])
-                    <p class="text-sm mb-4" style="color: var(--muted)">
-                        {{ $deletingSummary['name'] }}
-                        @if ($deletingSummary['variant']) &middot; {{ \Illuminate\Support\Str::headline($deletingSummary['variant']) }} @endif
-                        &middot; qty {{ $deletingSummary['quantity'] }}
-                    </p>
-                @endif
-                <div class="flex gap-2">
-                    <button wire:click="delete({{ $confirmingDeleteItemId }})" class="nw-btn-danger text-sm px-4 py-2">Delete</button>
-                    <button wire:click="cancelDelete" class="text-sm px-4 py-2" style="color: var(--muted)">Cancel</button>
-                </div>
-            </div>
-        </div>
-    @endif
 </div>

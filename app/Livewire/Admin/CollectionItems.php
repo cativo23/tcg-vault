@@ -87,17 +87,6 @@ final class CollectionItems extends Component
         $this->updateVisibility();
     }
 
-    public ?int $confirmingDeleteItemId = null;
-
-    /**
-     * Snapshot of the item being deleted, captured at confirmDelete() time
-     * so the confirmation modal keeps its card name/variant/qty context
-     * even if that row isn't on whatever page happens to be rendered.
-     *
-     * @var array{name?: string, variant?: ?string, quantity?: int}
-     */
-    public array $deletingSummary = [];
-
     private const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
 
     /**
@@ -329,40 +318,6 @@ final class CollectionItems extends Component
         if (isset($this->editingRows[$index])) {
             $this->editingRows[$index]['showDetails'] = ! $this->editingRows[$index]['showDetails'];
         }
-    }
-
-    public function confirmDelete(int $itemId): void
-    {
-        // ownedItemOrFail() throws (404) for another tenant's item before
-        // the modal ever opens — same IDOR posture as every other lookup
-        // in this class.
-        $item = $this->ownedItemOrFail($itemId);
-        $this->confirmingDeleteItemId = $itemId;
-        $this->deletingSummary = [
-            'name' => $item->card->name,
-            'variant' => $item->variant,
-            'quantity' => $item->quantity,
-        ];
-    }
-
-    public function cancelDelete(): void
-    {
-        $this->confirmingDeleteItemId = null;
-        $this->deletingSummary = [];
-    }
-
-    public function delete(int $itemId): void
-    {
-        $item = $this->ownedItemOrFail($itemId);
-
-        if ($item->photo_path) {
-            // Guarded: a file that's already gone (manual cleanup, a prior
-            // failed delete) must not block removing the row.
-            Storage::disk('collection-photos')->delete($item->photo_path);
-        }
-
-        $item->delete();
-        $this->confirmingDeleteItemId = null;
     }
 
     public function sortBy(string $sort): void
