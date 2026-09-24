@@ -161,8 +161,17 @@ test('an uploaded photo is stored and its path saved on the item', function () {
     ));
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+    $component = Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
         ->call('selectCard', 'me05-116')
+        ->call('toggleRowDetails', 0);
+
+    // A real file input, not just a bound property with no way to reach
+    // it from the UI — this is what makes the assertions below a genuine
+    // regression test rather than one exercising dead wiring.
+    expect($component->html())->toContain('wire:model="rows.0.photo"')
+        ->toContain('type="file"');
+
+    $component
         ->set('rows.0.condition', 'NM')
         ->set('rows.0.photo', UploadedFile::fake()->image('card.jpg'))
         ->call('save');
@@ -629,6 +638,100 @@ test('a user cannot save a card into another users collection by passing its ID 
         ->assertHasErrors('selectedTcgdexId');
 
     expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();
+});
+
+test('submitting multiple rows for one card syncs the catalog card only once, not once per row', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    // ->twice(), not ->times(4) — one call from selectCard() (narrowing
+    // the Variant dropdown) plus exactly ONE call from save()'s catalog
+    // sync, no matter how many rows are in this submission. The whole
+    // point of this fix: every row is the same card, synced once.
+    $provider->shouldReceive('findCard')->with('sv05-050')->twice()->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->with('sv05')->once()->andReturn(new SetSummaryData(
+        tcgdexId: 'sv05', name: 'Temporal Forces', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050')
+        ->set('rows.0.variant', 'normal')
+        ->call('addRow')
+        ->set('rows.1.variant', 'holofoil')
+        ->call('addRow')
+        ->set('rows.2.variant', 'reverse-holofoil')
+        ->call('save')
+        ->assertRedirect();
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(3);
+});
+
+test('an uploaded photo from an earlier row is cleaned up when a later row fails and the submission rolls back', function () {
+    Storage::fake('collection-photos');
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
+        tcgdexId: 'sv05', name: 'Temporal Forces', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050')
+        ->set('rows.0.variant', 'normal')
+        ->set('rows.0.photo', UploadedFile::fake()->image('a.jpg'))
+        ->call('addRow')
+        ->set('rows.1.variant', 'holofoil')
+        // A quantity this large overflows the DB column at INSERT time —
+        // valid per the 'integer' validation rule, but a genuine failure
+        // deep inside the per-row transaction, after row 0's photo has
+        // already been stored to disk (Storage isn't transactional).
+        ->set('rows.1.quantity', 5000000000)
+        ->call('save')
+        ->assertHasErrors('selectedTcgdexId');
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv05-050')->count())->toBe(0);
+    expect(Storage::disk('collection-photos')->allFiles())->toBeEmpty();
+});
+
+test('a submission cannot carry more rows than the server-side cap allows', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'sv05-050', setTcgdexId: 'sv05', localId: '050', name: 'Iron Hands ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $component = Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv05-050');
+
+    // addRow() itself refuses to grow past the cap — not just the final
+    // rules() validation — since it's a public action a client could call
+    // directly and repeatedly regardless of what's rendered.
+    for ($i = 0; $i < 30; $i++) {
+        $component->call('addRow');
+    }
+
+    expect($component->get('rows'))->toHaveCount(25);
 });
 
 test('submitting 3 rows for one new card creates 3 items in one request', function () {

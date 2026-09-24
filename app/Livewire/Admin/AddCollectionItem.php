@@ -11,6 +11,7 @@ use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
 use Livewire\Component;
@@ -114,6 +115,18 @@ final class AddCollectionItem extends Component
      */
     public array $rows = [];
 
+    /**
+     * Ceiling on how many rows a single Crear submission can carry.
+     * addRow() is a public Livewire action a client can invoke directly
+     * regardless of what's rendered, so this is enforced there too — not
+     * just as a `rules()` cap on the final submitted array, which a
+     * client manipulating the wire:model payload directly could bypass.
+     * Each row triggers its own tcgdex-backed CollectionItem write, so an
+     * unbounded array is a resource-exhaustion vector, not just a UI
+     * nuisance.
+     */
+    private const MAX_ROWS = 25;
+
     private function blankRow(): array
     {
         return [
@@ -131,6 +144,7 @@ final class AddCollectionItem extends Component
     protected function rules(): array
     {
         return [
+            'rows' => 'array|max:'.self::MAX_ROWS,
             'rows.*.variant' => 'nullable|in:normal,holofoil,reverse-holofoil',
             'rows.*.condition' => 'required|string|max:16',
             'rows.*.quantity' => 'required|integer|min:1',
@@ -143,6 +157,10 @@ final class AddCollectionItem extends Component
 
     public function addRow(): void
     {
+        if (count($this->rows) >= self::MAX_ROWS) {
+            return;
+        }
+
         $this->rows[] = $this->blankRow();
     }
 
@@ -323,6 +341,16 @@ final class AddCollectionItem extends Component
             $seen[$key] = true;
         }
 
+        // Every row in this submission is the SAME card (selectedTcgdexId
+        // doesn't change per row) — synced once here, outside the
+        // per-item transaction below, rather than once per row inside it.
+        // CatalogSyncService::syncCard() commits its own Card/Set/price-
+        // snapshot writes independently; nesting N redundant calls to it
+        // inside the CollectionItem transaction would mean a later row's
+        // failure rolls back that GLOBAL, shared catalog data too, not
+        // just this submission's own items.
+        $storedPhotoPaths = [];
+
         try {
             // Collection resolution lives inside this try too: $collectionId
             // is a public Livewire property, so it's client-settable. A
@@ -337,14 +365,17 @@ final class AddCollectionItem extends Component
                     ['name' => 'My Collection', 'is_public' => false],
                 );
 
-            DB::transaction(function () use ($service, $collection): void {
+            $card = $service->syncCardAndQueueImport($this->selectedTcgdexId);
+
+            DB::transaction(function () use ($service, $collection, $card, &$storedPhotoPaths): void {
                 foreach ($this->rows as $row) {
                     $photoPath = null;
                     if ($row['photo']) {
                         $photoPath = basename($row['photo']->store('/', 'collection-photos'));
+                        $storedPhotoPaths[] = $photoPath;
                     }
 
-                    $service->addItem($collection, $this->selectedTcgdexId, [
+                    $service->addItemForCard($collection, $card, [
                         'variant' => $row['variant'],
                         'condition' => $row['condition'],
                         'grade_company' => $row['grade_company'],
@@ -357,6 +388,14 @@ final class AddCollectionItem extends Component
             });
         } catch (Throwable $e) {
             report($e);
+
+            // Storage::store() isn't transactional — a later row's DB
+            // failure rolling back the transaction above wouldn't undo
+            // earlier rows' already-stored photo files, leaking them on
+            // disk forever if they're not cleaned up here.
+            foreach ($storedPhotoPaths as $path) {
+                Storage::disk('collection-photos')->delete($path);
+            }
 
             $this->addError('selectedTcgdexId', 'Could not add this card right now. Please try again.');
 
