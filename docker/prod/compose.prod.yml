@@ -60,8 +60,13 @@ services:
         # the full Laravel framework loaded has real baseline overhead
         # regardless of Horizon's own 48MB per-worker graceful-restart
         # threshold (config/horizon.php), which bounds growth from
-        # processing jobs, not the framework's own boot footprint.
-        limits: { cpus: '0.5', memory: 192M }
+        # processing jobs, not the framework's own boot footprint. 192M
+        # left only ~65M of shared headroom for both workers to grow
+        # into at once (idle baseline already ~66% of the cap), and the
+        # container has hit that limit repeatedly. 256M brings idle
+        # baseline down to ~50% and gives both workers real room during
+        # the nightly catalog:refresh-prices drain.
+        limits: { cpus: '0.5', memory: 256M }
         reservations: { cpus: '0.1', memory: 96M }
 
   scheduler:

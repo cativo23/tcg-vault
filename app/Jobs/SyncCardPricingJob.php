@@ -48,12 +48,17 @@ final class SyncCardPricingJob implements ShouldQueue
      * defeat the job's own retry budget. retryUntil() is a wall-clock
      * deadline that supersedes $tries-based exhaustion, so throttling
      * delay alone can never burn through this job's genuine retry
-     * allowance; 1 hour comfortably covers the worst-case drain time for
-     * the full catalog at this rate.
+     * allowance. The deadline is fixed at dispatch time, so the whole
+     * nightly catalog:refresh-prices fan-out shares one expiry — real
+     * worker throughput has been observed well under the rate-limit
+     * ceiling, leaving a remainder of jobs unprocessed when a 1-hour
+     * deadline expired. 3 hours is roughly 4x the rate-limit floor for
+     * the current catalog size, leaving room for that gap and for
+     * catalog growth.
      */
     public function retryUntil(): \DateTimeInterface
     {
-        return now()->addHour();
+        return now()->addHours(3);
     }
 
     /**

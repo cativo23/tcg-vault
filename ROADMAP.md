@@ -54,12 +54,19 @@ roadmap safe to attempt.
   newest price snapshot older than 26h. `DISCORD_ALERT_WEBHOOK_URL` is
   already set on polaris2 (reusing the same webhook `alertmanager-discord`
   posts host-level infra alerts to) and confirmed delivering.
-- **Clear the `failed_jobs` backlog from the 2026-09-24/25 incident**
-  (in progress). ~5,341 rows, mostly `SyncCardPricingJob` failures from
-  the redis crash loop — being classified into retryable-now-that-redis-
-  is-stable vs. genuinely permanent, with a full backup taken before
-  anything is pruned. One-time cleanup, not durable roadmap work; listed
-  here only until it's actually done.
+- ~~**Clear the `failed_jobs` backlog**~~ — done. 3,098 rows, all
+  `MaxAttemptsExceededException` (mostly `SyncCardPricingJob`, a handful
+  of Telescope's `ProcessPendingUpdates`), none of the job's own
+  "permanent" business exceptions — those are caught and logged inside
+  `handle()` and never reach `failed_jobs`. Root cause turned out to be
+  broader than the 2026-09-24/25 Redis incident: Horizon's
+  `balance: auto` was starving the `default` queue to a single worker
+  every night regardless of Redis health, so a remainder of the nightly
+  `catalog:refresh-prices` fan-out routinely missed `retryUntil()` —
+  fixed separately (`balance: 'off'`, `retryUntil()` 1h → 3h, horizon
+  container memory 192M → 256M). Backed up in full before pruning;
+  `catalog:refresh-prices` re-dispatches every card daily regardless, so
+  no manual re-sync was needed.
 - **Schedule `telescope:prune`** in `routes/console.php`. Telescope's
   driver is `database` with no retention job; the table grows until the
   disk does not.
