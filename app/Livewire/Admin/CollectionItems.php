@@ -226,6 +226,13 @@ final class CollectionItems extends Component
 
     public function closeCardEditor(): void
     {
+        // The modal's whole subtree — including whatever inside it held
+        // focus — is removed from the DOM by this method returning, not
+        // just hidden. Without telling the page which row opened it,
+        // focus silently drops to <body> and a keyboard/screen-reader
+        // user loses their place in the table entirely.
+        $triggerId = $this->editingCardId !== null ? "card-editor-trigger-{$this->editingCardId}" : null;
+
         $this->resetValidation();
         $this->editingCardId = null;
         $this->editingCollectionId = null;
@@ -233,6 +240,10 @@ final class CollectionItems extends Component
         $this->editingRows = [];
         $this->editingAvailableVariants = [];
         $this->confirmingRemoveRowIndex = null;
+
+        if ($triggerId !== null) {
+            $this->dispatch('card-editor-closed', triggerId: $triggerId);
+        }
     }
 
     public function addVariantRow(CollectionService $service): void
