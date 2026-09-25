@@ -14,6 +14,7 @@ services:
       start_period: 30s
     volumes:
       - collection-photos-data:/var/www/html/storage/app/public/collection-photos
+      - app-logs:/var/www/html/storage/logs
     networks: [space-server_web, tcgvault-internal]
     deploy:
       resources:
@@ -43,6 +44,8 @@ services:
     # actually working fine. Disable it explicitly rather than let it lie.
     healthcheck:
       disable: true
+    volumes:
+      - app-logs:/var/www/html/storage/logs
     # Queued jobs (SyncCardPricingJob, ImportSetJob) call tcgdex's API from
     # inside this container — needs real internet egress, not just
     # tcgvault-internal (which Docker blocks from routing out). Uses its
@@ -80,6 +83,8 @@ services:
     # Same reasoning as horizon above — no HTTP server in this container.
     healthcheck:
       disable: true
+    volumes:
+      - app-logs:/var/www/html/storage/logs
     networks: [tcgvault-internal]
     deploy:
       resources:
@@ -167,4 +172,6 @@ volumes:
   redis-data:
     driver: local
   collection-photos-data:
+    driver: local
+  app-logs:
     driver: local

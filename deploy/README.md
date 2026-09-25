@@ -114,6 +114,9 @@ docker compose -f compose.prod.yml exec app php artisan db:seed
 ```
 
 ## Acceptance checklist (first deploy)
+- [ ] `.env` on the server has `APP_DEBUG=false` and `SESSION_SECURE_COOKIE=true`
+      — both are correct in `docker/prod/.env.production.example`, but that's a
+      template, not what's actually loaded; confirm the real `.env`.
 - [ ] `https://tcgvault.cativo.dev` loads over HTTPS with a valid Let's Encrypt cert.
 - [ ] `/up` → 200.
 - [ ] Login works as the seeded admin (`TCGVAULT_ADMIN_USERNAME`); session cookie is

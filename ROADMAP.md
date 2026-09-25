@@ -35,11 +35,12 @@ roadmap safe to attempt.
   limit raised 256M → 384M for `BGREWRITEAOF`'s fork/copy-on-write
   headroom on top of Horizon's own ~160M telemetry floor; confirmed
   against live polaris2 usage (3.7GB free host RAM) before sizing it.
-- **Persist `storage/logs`** on a named volume in
-  `docker/prod/compose.prod.yml`, and set `LOG_CHANNEL=daily` with an
-  explicit retention window. Today the logs live in the container's
-  writable layer and go away with it on every deploy — the incident and
-  the evidence for it are lost in the same motion.
+- ~~**Persist `storage/logs`**~~ — done. `app-logs` named volume shared
+  across `app`/`horizon`/`scheduler` (they all write to the same
+  `storage_path('logs/laravel.log')`), `LOG_CHANNEL=daily` with 14-day
+  retention. Previously the logs lived in the container's writable layer
+  and went away with it on every deploy — the incident and the evidence
+  for it lost in the same motion.
 - **Error tracking** (Sentry or equivalent). Without it, and with the
   log lifetime above, a production exception leaves no trace at all.
 - ~~**Queue failure alerting**~~ — shipped in v0.5.0, ahead of this
@@ -63,13 +64,12 @@ roadmap safe to attempt.
   container memory 192M → 256M). Backed up in full before pruning;
   `catalog:refresh-prices` re-dispatches every card daily regardless, so
   no manual re-sync was needed.
-- **Schedule `telescope:prune`** in `routes/console.php`. Telescope's
-  driver is `database` with no retention job; the table grows until the
-  disk does not.
-- **Verify the production environment**: `APP_DEBUG=false`,
-  `SESSION_SECURE_COOKIE=true`. Both are correct in
-  `docker/prod/.env.production.example`; neither is currently an explicit
-  line in `deploy/README.md`'s acceptance checklist. Add them.
+- ~~**Schedule `telescope:prune`**~~ — done. Daily, `--hours=48`, matching
+  this project's other short-lived operational data retention.
+- ~~**Verify the production environment**~~ — done. `APP_DEBUG=false` and
+  `SESSION_SECURE_COOKIE=true` confirmed live on polaris2's actual `.env`
+  (not just the template), and added as an explicit line in
+  `deploy/README.md`'s acceptance checklist.
 - **Off-host database backups**, with one restore actually performed and
   documented. `pgdata` is a local Docker volume on a single VPS; a
   restore that has never been run is not a backup. Covers the

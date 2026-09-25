@@ -71,6 +71,11 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'max_files' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+            // app, horizon and scheduler all write to this same file on
+            // the shared app-logs volume — without locking, a write from
+            // one process can interleave with another's, or race a
+            // midnight rotation, corrupting or dropping entries.
+            'locking' => true,
         ],
 
         'monthly' => [

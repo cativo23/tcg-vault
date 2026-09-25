@@ -24,3 +24,8 @@ Schedule::command('catalog:refresh-prices')
 // day's worth of jobs takes to drain — see CheckPricingFreshness's own
 // docblock for the staleness threshold and why it exists.
 Schedule::command('catalog:check-pricing-freshness')->dailyAt('04:00');
+
+// Telescope's storage driver is `database` with no retention of its own —
+// the table grows until the disk does not. 48h matches this project's
+// other short-lived operational data (Horizon's failed-job retention).
+Schedule::command('telescope:prune --hours=48')->daily();
