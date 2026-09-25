@@ -45,7 +45,7 @@
     </section>
 
     <div class="nw-toolbar">
-        <div class="nw-count">Showing <b>{{ $entries->count() }}</b> {{ Str::plural('card', $entries->count()) }}</div>
+        <div class="nw-count" role="status">Showing <b>{{ $entries->count() }}</b> {{ Str::plural('card', $entries->count()) }}</div>
 
         <div class="nw-toolbar-group">
             <label class="sr-only" for="set-search">Search this set</label>

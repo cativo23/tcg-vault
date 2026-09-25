@@ -40,7 +40,11 @@ test('a logged-in admin can search tcgdex and see results', function () {
     Livewire::test(AddCollectionItem::class)
         ->set('search', 'Darkrai')
         ->call('runSearch')
-        ->assertSet('results.0.name', 'Mega Darkrai ex');
+        ->assertSet('results.0.name', 'Mega Darkrai ex')
+        // Swapping the result tiles with no announcement told assistive
+        // tech nothing happened when a search actually returned results.
+        ->assertSeeHtml('role="status"')
+        ->assertSee('1 result');
 });
 
 test('the search box shows a loading indicator while a debounced search is in flight', function () {

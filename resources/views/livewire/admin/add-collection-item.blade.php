@@ -20,6 +20,15 @@
                 <span wire:loading wire:target="search,runSearch" class="nw-search-loading" aria-hidden="true"></span>
             </span>
             @error('search') <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
+            {{-- Always rendered (even empty before a search) so assistive
+                 tech is already watching this region when a result count
+                 first lands — a live region added to the DOM at the same
+                 moment its content changes can miss the announcement. --}}
+            <p class="text-xs mt-1" style="color: var(--muted)" role="status">
+                @if ($search !== '')
+                    {{ count($results) }} {{ Str::plural('result', count($results)) }}
+                @endif
+            </p>
         </div>
 
         @if (count($results) > 0)
