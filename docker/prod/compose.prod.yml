@@ -109,7 +109,12 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD?Missing REDIS_PASSWORD}"]
+    # AOF persistence: without it, Horizon's queued jobs live only in RAM.
+    # Confirmed live — recreating this container to raise its memory limit
+    # silently dropped a 2,952-job `catalog:refresh-prices` dispatch that
+    # hadn't been picked up yet, with no error anywhere. `everysec` caps
+    # the loss window at ~1s instead of "whatever wasn't yet snapshotted."
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD?Missing REDIS_PASSWORD}", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes: [redis-data:/data]
     networks: [tcgvault-internal]
     healthcheck:
@@ -132,7 +137,13 @@ services:
         # over 160M — independent of the actual queue backlog. A single
         # bad day's worth of job-failure storm is enough to blow past
         # 128M on Horizon's telemetry alone, before any real queue data.
-        limits: { cpus: '0.5', memory: 256M }
+        #
+        # 384M with AOF on: BGREWRITEAOF forks and copy-on-writes the
+        # whole dataset, so a rewrite during a write-heavy moment (the
+        # nightly catalog:refresh-prices fan-out) can transiently need
+        # close to 2x used_memory. 256M left no headroom for that on top
+        # of the >160M telemetry floor above.
+        limits: { cpus: '0.5', memory: 384M }
         reservations: { cpus: '0.05', memory: 96M }
 
 networks:
