@@ -52,9 +52,9 @@ services:
     # own tcgvault-egress bridge for that rather than relying on
     # space-server_web for it.
     #
-    # Also on space-server_web (unlike before Sentry/Bugsink) to reach
-    # http://bugsink:8000 directly — a queued job's unhandled exception is
-    # exactly the kind of failure this exists to catch.
+    # Also on space-server_web to reach http://bugsink:8000 directly — a
+    # queued job's unhandled exception is exactly the kind of failure this
+    # exists to catch.
     networks: [tcgvault-egress, tcgvault-internal, space-server_web]
     deploy:
       resources:
