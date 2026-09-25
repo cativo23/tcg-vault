@@ -1,4 +1,8 @@
-<div class="nw-wrap py-10">
+<div
+    class="nw-wrap py-10"
+    x-data
+    x-on:card-editor-closed.window="$nextTick(() => document.getElementById($event.detail.triggerId)?.focus())"
+>
     {{-- flex-wrap, not a fixed row: .nw-h1's overflow-wrap:anywhere (needed
          elsewhere for long usernames) breaks text letter-by-letter once a
          flex sibling squeezes it below one word's width — happened here
@@ -111,7 +115,7 @@
                             @endif
                         </td>
                         <td class="p-3 text-right nw-tcell-actions" data-label="" onclick="event.stopPropagation()">
-                            <button wire:click="openCardEditor({{ $group->card->id }})" class="nw-row-btn">Edit</button>
+                            <button id="card-editor-trigger-{{ $group->card->id }}" wire:click="openCardEditor({{ $group->card->id }})" class="nw-row-btn">Edit</button>
                         </td>
                     </tr>
                 @empty
@@ -151,8 +155,8 @@
                     prevFocusableIndex() { return Math.max(0, this.focusables().indexOf(document.activeElement)) - 1 },
                 }"
                 x-init="$nextTick(() => firstFocusable()?.focus())"
-                x-on:keydown.tab.prevent="$event.shiftKey || nextFocusable().focus()"
-                x-on:keydown.shift.tab.prevent="prevFocusable().focus()"
+                x-on:keydown.tab.window.prevent="$event.shiftKey || nextFocusable().focus()"
+                x-on:keydown.shift.tab.window.prevent="prevFocusable().focus()"
             >
                 <div class="flex justify-between items-start p-5" style="border-bottom: 1px solid var(--hair)">
                     <div>

@@ -1304,6 +1304,25 @@ test('the card editor modal has dialog semantics', function () {
         ->toContain('id="card-editor-title"');
 });
 
+test('closing the card editor dispatches an event to return focus to the row that opened it', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    // Closing removes the modal's whole subtree — including whatever
+    // inside it held focus — rather than just hiding it, so without this
+    // a keyboard/screen-reader user's focus silently drops to <body> and
+    // they lose their place in the table.
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->call('closeCardEditor')
+        ->assertDispatched('card-editor-closed', triggerId: "card-editor-trigger-{$card->id}");
+});
+
 test('adding a variant row creates a new item and appends it to the modal instantly', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

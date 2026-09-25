@@ -103,7 +103,12 @@ roadmap safe to attempt.
   trapped inside — the same Alpine focus-trap shape as
   `components/modal.blade.php`, duplicated rather than shared since this
   modal is a Livewire property re-rendering the whole subtree, not that
-  component's `show`/`x-show` toggle.
+  component's `show`/`x-show` toggle. Trap listens on `window`, not the
+  panel, so it recovers even if a Livewire re-render inside the modal
+  (e.g. the remove-row confirm swap) drops focus to `<body>`. Closing
+  also dispatches an event to return focus to the row's own Edit button
+  — the modal's whole subtree, including whatever held focus, is removed
+  from the DOM on close, not just hidden.
 - **`aria-live` on Livewire search results.** Gallery search, collection
   search and card search all swap their result grid with the loading
   spinner marked `aria-hidden`, so assistive tech is told nothing
