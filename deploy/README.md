@@ -75,6 +75,21 @@ docker push cativo23/tcg-vault:latest
 ```
 
 ## Deploy / redeploy (server)
+
+**One-time step for the release that adds `--appendonly yes` to Redis's
+command** (confirmed live: enabling AOF via the command line does *not*
+fall back to loading the existing `dump.rdb` when no `appendonlydir` is
+present yet — Redis just starts empty, silently dropping whatever the
+running instance still holds). Run this against the *currently running*
+`redis` container, before `pull`/`up -d` recreate it with the new command:
+```bash
+ssh polaris2
+cd ~/deploy/tcg-vault
+docker compose -f compose.prod.yml exec redis redis-cli -a "$REDIS_PASSWORD" CONFIG SET appendonly yes
+# triggers a BGREWRITEAOF from the live in-memory dataset, so appendonlydir
+# already exists and is correct by the time the container is recreated below
+```
+
 ```bash
 ssh polaris2
 cd ~/deploy/tcg-vault
