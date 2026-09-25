@@ -323,15 +323,14 @@ final class CollectionItems extends Component
         $row = $this->editingRows[$index];
         $item = $this->ownedItemOrFail($row['id']);
 
-        // Livewire skips ConvertEmptyStringsToNull, so a cleared <select>
-        // or text input arrives here as '' rather than null — normalize
-        // before storing, or this row silently stops matching
-        // CollectionService's own null-based identity comparisons (and
-        // the collection_items_identity_unique index, which treats null
-        // and '' as different values unless both sides agree on one).
-        $variant = $row['variant'] === '' ? null : $row['variant'];
-        $gradeCompany = $row['grade_company'] === '' ? null : $row['grade_company'];
-        $gradeValue = $row['grade_value'] === '' ? null : $row['grade_value'];
+        // See CollectionService::nullIfEmpty() — normalize before
+        // storing, or this row silently stops matching that service's
+        // own null-based identity comparisons (and the
+        // collection_items_identity_unique index, which treats null and
+        // '' as different values unless both sides agree on one).
+        $variant = CollectionService::nullIfEmpty($row['variant']);
+        $gradeCompany = CollectionService::nullIfEmpty($row['grade_company']);
+        $gradeValue = CollectionService::nullIfEmpty($row['grade_value']);
 
         $update = [
             'variant' => $variant,
