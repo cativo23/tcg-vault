@@ -125,8 +125,15 @@ services:
         # Redis's own footprint plus glibc/malloc overhead didn't fit.
         # Every dependent container blocks on redis's healthcheck, so a
         # crash-looping redis takes Horizon's queue down with it.
-        limits: { cpus: '0.5', memory: 128M }
-        reservations: { cpus: '0.05', memory: 64M }
+        #
+        # 128M still wasn't enough: Horizon's own bookkeeping (job tags,
+        # metrics, its 7-day failed-job retention in config/horizon.php)
+        # dominates this dataset — 25,831 of 27,708 keys, `used_memory`
+        # over 160M — independent of the actual queue backlog. A single
+        # bad day's worth of job-failure storm is enough to blow past
+        # 128M on Horizon's telemetry alone, before any real queue data.
+        limits: { cpus: '0.5', memory: 256M }
+        reservations: { cpus: '0.05', memory: 96M }
 
 networks:
   space-server_web:
