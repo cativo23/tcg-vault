@@ -83,7 +83,7 @@
                 <button type="button" wire:click="addRow" class="nw-btn-secondary w-full" style="border-style: dashed;">+ Add another variant of this same card</button>
             </div>
 
-            <button type="button" wire:click="save" class="nw-btn-primary w-full">Save {{ count($rows) }} {{ \Illuminate\Support\Str::plural('variant', count($rows)) }} to collection</button>
+            <button type="button" wire:click="save" wire:loading.attr="disabled" wire:target="save" class="nw-btn-primary w-full">Save {{ count($rows) }} {{ \Illuminate\Support\Str::plural('variant', count($rows)) }} to collection</button>
         @endif
     </div>
 </div>

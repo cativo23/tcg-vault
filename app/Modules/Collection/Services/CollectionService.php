@@ -9,6 +9,8 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 final class CollectionService
@@ -76,7 +78,7 @@ final class CollectionService
             'grade_value' => $gradeValue,
         ];
 
-        $existingItem = $collection->items()
+        $findExisting = fn () => $collection->items()
             ->where('card_id', $card->id)
             ->where(function ($query) use ($identityColumns): void {
                 foreach ($identityColumns as $column => $value) {
@@ -89,38 +91,71 @@ final class CollectionService
             })
             ->first();
 
+        $existingItem = $findExisting();
+
         if ($existingItem !== null) {
-            $newPhotoPath = $itemData['photo_path'] ?? null;
-            $extra = [];
-
-            if ($newPhotoPath !== null) {
-                if ($existingItem->photo_path === null) {
-                    $extra['photo_path'] = $newPhotoPath;
-                } else {
-                    // The existing item already has a photo — the caller
-                    // already stored $newPhotoPath to disk before this call,
-                    // so it must be deleted here or it's orphaned forever.
-                    // We never guess which photo the user "meant" to keep.
-                    Storage::disk('collection-photos')->delete($newPhotoPath);
-                }
-            }
-
-            $existingItem->increment('quantity', $quantity, $extra);
-
-            return $existingItem;
+            return $this->mergeIntoExistingItem($existingItem, $itemData, $quantity);
         }
 
-        return $collection->items()->create([
-            'card_id' => $card->id,
-            'card_tcgdex_id' => $card->tcgdex_id,
-            'variant' => $variant,
-            'condition' => $condition,
-            'grade_company' => $gradeCompany,
-            'grade_value' => $gradeValue,
-            'quantity' => $quantity,
-            'notes' => $itemData['notes'] ?? null,
-            'photo_path' => $itemData['photo_path'] ?? null,
-            'needs_variant_review' => $itemData['needs_variant_review'] ?? false,
-        ]);
+        try {
+            // Wrapped explicitly so a violation only rolls back THIS
+            // statement (via a savepoint when nested inside a wider
+            // transaction, e.g. under RefreshDatabase in tests) — same
+            // shape as InviteManager::createInvite().
+            return DB::transaction(fn () => $collection->items()->create([
+                'card_id' => $card->id,
+                'card_tcgdex_id' => $card->tcgdex_id,
+                'variant' => $variant,
+                'condition' => $condition,
+                'grade_company' => $gradeCompany,
+                'grade_value' => $gradeValue,
+                'quantity' => $quantity,
+                'notes' => $itemData['notes'] ?? null,
+                'photo_path' => $itemData['photo_path'] ?? null,
+                'needs_variant_review' => $itemData['needs_variant_review'] ?? false,
+            ]));
+        } catch (QueryException $exception) {
+            // The SELECT above already covers the common sequential case;
+            // this catches the genuine race it can't (two concurrent adds
+            // of the same identity both missing the existing row before
+            // either commits) — the database's own unique index (see the
+            // collection_items migration) is the real guarantee.
+            if (! str_contains($exception->getMessage(), 'collection_items_identity_unique')) {
+                throw $exception;
+            }
+
+            $existingItem = $findExisting();
+
+            if ($existingItem === null) {
+                throw $exception;
+            }
+
+            return $this->mergeIntoExistingItem($existingItem, $itemData, $quantity);
+        }
+    }
+
+    /**
+     * @param  array{photo_path?: ?string}  $itemData
+     */
+    private function mergeIntoExistingItem(CollectionItem $existingItem, array $itemData, int $quantity): CollectionItem
+    {
+        $newPhotoPath = $itemData['photo_path'] ?? null;
+        $extra = [];
+
+        if ($newPhotoPath !== null) {
+            if ($existingItem->photo_path === null) {
+                $extra['photo_path'] = $newPhotoPath;
+            } else {
+                // The existing item already has a photo — the caller
+                // already stored $newPhotoPath to disk before this call,
+                // so it must be deleted here or it's orphaned forever. We
+                // never guess which photo the user "meant" to keep.
+                Storage::disk('collection-photos')->delete($newPhotoPath);
+            }
+        }
+
+        $existingItem->increment('quantity', $quantity, $extra);
+
+        return $existingItem;
     }
 }

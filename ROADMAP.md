@@ -83,21 +83,20 @@ roadmap safe to attempt.
 
 ## v0.7.0 — Correctness and accessibility
 
-- **Duplicate collection items on concurrent add.**
-  `CollectionService::addItemForCard()` (`app/Modules/Collection/Services/CollectionService.php:56`)
-  is check-then-act with no lock, and the migration backs
-  `[collection_id, card_id]` with a plain index rather than a unique
-  constraint. Two near-simultaneous adds of the same card identity both
-  miss the existing row and both insert, silently splitting quantity.
-  Fix both layers: a unique constraint on the identity tuple plus
-  `lockForUpdate()` inside a transaction — the same shape
-  `InviteRegistration::register()` already uses correctly.
-- **Double-submittable save button.**
-  `resources/views/livewire/admin/add-collection-item.blade.php:86` has no
-  `wire:loading.attr="disabled" wire:target="save"`, unlike every other
-  write action in that file. This is the front-end half of the bug above;
-  guarding the button without the constraint leaves the hole open, and
-  the constraint without the guard leaves a confusing error in its place.
+- ~~**Duplicate collection items on concurrent add.**~~ — done. A
+  Postgres unique index on the identity tuple (`collection_id, card_id,
+  COALESCE(variant,''), condition, COALESCE(grade_company,''),
+  COALESCE(grade_value,'')` — plain unique would've let two
+  both-ungraded rows past, since Postgres treats each NULL as distinct)
+  closes what `addItemForCard()`'s check-then-act alone couldn't.
+  Deviated from the roadmap's original `lockForUpdate()` plan: this
+  codebase already has a closer precedent for exactly this
+  shape — `InviteManager::createInvite()` catches the unique-violation
+  and merges into the winning row, rather than locking a parent row
+  that doesn't exist yet to lock at check time.
+- ~~**Double-submittable save button.**~~ — done. Added
+  `wire:loading.attr="disabled" wire:target="save"`, matching every
+  other write action in that file.
 - **Modal dialog semantics.** The variant editor
   (`resources/views/livewire/admin/collection-items.blade.php:129`)
   handles Esc and click-outside but has no `role="dialog"`,

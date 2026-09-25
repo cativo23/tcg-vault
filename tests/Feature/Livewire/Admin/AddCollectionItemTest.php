@@ -144,6 +144,39 @@ test('a logged-in admin can select a result and save it to the collection', func
     expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeTrue();
 });
 
+test('the save button disables itself while a save is in flight', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: null),
+    ]);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->with('me05')->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    // A double-click on this button before the constraint from
+    // CollectionServiceTest's identity index existed used to split one
+    // add into two rows — this is the front-end half of that same fix.
+    $html = Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->set('search', 'Darkrai')
+        ->call('runSearch')
+        ->call('selectCard', 'me05-116')
+        ->html();
+
+    expect($html)->toContain('wire:click="save"')
+        ->toContain('wire:loading.attr="disabled"')
+        ->toContain('wire:target="save"');
+});
+
 test('an uploaded photo is stored and its path saved on the item', function () {
     Storage::fake('collection-photos');
     $user = User::factory()->create();
