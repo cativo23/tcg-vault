@@ -13,6 +13,8 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Spatie\LaravelData\DataCollection;
@@ -346,4 +348,105 @@ test('adding a card from a set that is already fully imported does not dispatch 
     app(CollectionService::class)->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
 
     Queue::assertNotPushed(ImportSetJob::class);
+});
+
+test('the database rejects a second row with an identical identity, including when the nullable columns are null', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->create();
+
+    CollectionItem::create([
+        'collection_id' => $collection->id,
+        'card_id' => $card->id,
+        'card_tcgdex_id' => $card->tcgdex_id,
+        'variant' => null,
+        'condition' => 'NM',
+        'grade_company' => null,
+        'grade_value' => null,
+        'quantity' => 1,
+    ]);
+
+    expect(fn () => CollectionItem::create([
+        'collection_id' => $collection->id,
+        'card_id' => $card->id,
+        'card_tcgdex_id' => $card->tcgdex_id,
+        'variant' => null,
+        'condition' => 'NM',
+        'grade_company' => null,
+        'grade_value' => null,
+        'quantity' => 1,
+    ]))->toThrow(QueryException::class);
+});
+
+test('an empty-string identity value from a cleared form field merges with an existing null identity', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->create();
+
+    $existing = CollectionItem::create([
+        'collection_id' => $collection->id,
+        'card_id' => $card->id,
+        'card_tcgdex_id' => $card->tcgdex_id,
+        'variant' => null,
+        'condition' => 'NM',
+        'grade_company' => null,
+        'grade_value' => null,
+        'quantity' => 1,
+    ]);
+
+    // Livewire skips ConvertEmptyStringsToNull, so a cleared <select> or
+    // text input arrives here as '' rather than null — without
+    // normalizing it, this would miss the existing row above (its
+    // whereNull('grade_company') wouldn't match '') and either create a
+    // second row or, worse, hit the new unique index and throw.
+    $item = app(CollectionService::class)->addItemForCard($collection, $card, [
+        'variant' => '',
+        'condition' => 'NM',
+        'grade_company' => '',
+        'grade_value' => '',
+        'quantity' => 1,
+    ]);
+
+    expect($item->id)->toBe($existing->id);
+    expect(CollectionItem::where('collection_id', $collection->id)->count())->toBe(1);
+    expect($item->fresh()->quantity)->toBe(2);
+});
+
+test('a genuine insert race for the same identity merges into the winning row instead of erroring', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->create();
+
+    // Simulates a concurrent request's INSERT landing in the exact gap
+    // between this call's own SELECT (which finds nothing) and its
+    // INSERT — the DB::listen callback runs synchronously right after
+    // that SELECT executes, so by the time addItemForCard() tries its
+    // own INSERT, a colliding row already exists and the new unique
+    // index rejects it.
+    $listenerFired = false;
+    DB::listen(function ($query) use (&$listenerFired, $collection, $card): void {
+        if ($listenerFired || ! str_contains($query->sql, 'collection_items') || ! str_contains($query->sql, 'card_id')) {
+            return;
+        }
+
+        $listenerFired = true;
+
+        DB::table('collection_items')->insert([
+            'collection_id' => $collection->id,
+            'card_id' => $card->id,
+            'card_tcgdex_id' => $card->tcgdex_id,
+            'variant' => null,
+            'condition' => 'NM',
+            'grade_company' => null,
+            'grade_value' => null,
+            'quantity' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    $item = app(CollectionService::class)->addItemForCard($collection, $card, ['condition' => 'NM', 'quantity' => 1]);
+
+    expect(CollectionItem::where('collection_id', $collection->id)->count())->toBe(1);
+    expect($item->fresh()->quantity)->toBe(2);
 });

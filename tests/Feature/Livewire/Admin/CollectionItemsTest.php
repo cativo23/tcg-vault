@@ -1260,6 +1260,31 @@ test('updateRow rejects a quantity below 1 without saving it', function () {
     expect($item->fresh()->quantity)->toBe(1);
 });
 
+test('updateRow rejects an edit that would collide with a sibling row instead of crashing', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $normal = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    $holo = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'holofoil', 'condition' => 'NM', 'quantity' => 1]);
+
+    // Editing the "normal" row's variant to "holofoil" would collide with
+    // the other row's identity — the collection_items_identity_unique
+    // index (added to close the concurrent-add race) now rejects the
+    // UPDATE outright, since updateRow() writes directly and never went
+    // through CollectionService's own merge-on-collision handling.
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.variant', 'holofoil')
+        ->call('updateRow', 0)
+        ->assertHasErrors(['editingRows.0.variant']);
+
+    expect($normal->fresh()->variant)->toBe('normal');
+    expect($holo->fresh()->quantity)->toBe(1);
+});
+
 test('adding a variant row creates a new item and appends it to the modal instantly', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
