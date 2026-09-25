@@ -6,10 +6,23 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- Ops: a Discord alert now fires if the daily pricing sync's dispatch
+  command errors outright, or if the newest price snapshot is older
+  than expected — the exact silent-stall failure mode from the
+  2026-09-24/25 incident below, which went unnoticed for 30 hours
+  because nothing was watching for it.
+
 ## [0.4.1] - 2026-09-25
 
 ### Fixed
 
+- `redis` and `scheduler`'s Docker memory limits (64M each) were too
+  tight for the current catalog size — `scheduler` was OOM-killed
+  mid-dispatch of the daily pricing sync, and `redis` crash-looped
+  under its own memory pressure, stalling that sync silently for
+  ~30 hours. Raised to 256M and 128M respectively.
 - Horizon's failed-job telemetry was kept for a full week by default;
   a single day's worth of it was enough to outgrow the queue container's
   memory and take the daily pricing sync down with it. Trimmed to 48h.

@@ -47,10 +47,13 @@ roadmap safe to attempt.
   the evidence for it are lost in the same motion.
 - **Error tracking** (Sentry or equivalent). Without it, and with the
   log lifetime above, a production exception leaves no trace at all.
-- **Queue failure alerting** — `Horizon::routeSlackNotificationsTo()` in
-  `app/Providers/HorizonServiceProvider.php` is commented out, and the
-  daily `catalog:refresh-prices` schedule has no failure hook. A price
-  sync that stops running should page someone, not wait to be noticed.
+- ~~**Queue failure alerting**~~ — done ahead of schedule, prompted by
+  the incident that motivated this roadmap in the first place: a Discord
+  alert (`App\Support\DiscordAlerter`, no Slack workspace to route to)
+  now fires if `catalog:refresh-prices` itself errors, or if
+  `catalog:check-pricing-freshness` finds the newest price snapshot
+  older than 26h. Set `DISCORD_ALERT_WEBHOOK_URL` on the server to turn
+  it on — unset, it stays silently off rather than erroring.
 - **Schedule `telescope:prune`** in `routes/console.php`. Telescope's
   driver is `database` with no retention job; the table grows until the
   disk does not.

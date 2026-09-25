@@ -37,6 +37,10 @@ uses(TestCase::class, RefreshDatabase::class)->in('Unit/Modules/Collection');
 // so they need the container and a real database too.
 uses(TestCase::class, RefreshDatabase::class)->in('Unit/Jobs');
 
+// Unit/Support tests need the Laravel container for config()/Http::fake()
+// (DiscordAlerter), no database — same rationale as Unit/Providers below.
+uses(TestCase::class)->in('Unit/Support');
+
 // Unit/Providers tests boot a real service provider instance against the
 // container (config(), URL facade), no database needed.
 uses(TestCase::class)->in('Unit/Providers');
