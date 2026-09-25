@@ -35,4 +35,14 @@ return [
         ],
     ],
 
+    // A Discord webhook URL for operational alerts (a stalled daily
+    // pricing sync, a scheduled command that errored outright) — see
+    // App\Support\DiscordAlerter. Deliberately not Horizon's own
+    // routeSlackNotificationsTo(): this project has no Slack workspace,
+    // and Horizon doesn't ship a Discord notification channel. Left
+    // empty, alerting is silently off rather than erroring.
+    'discord' => [
+        'alert_webhook_url' => env('DISCORD_ALERT_WEBHOOK_URL'),
+    ],
+
 ];

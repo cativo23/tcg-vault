@@ -60,6 +60,13 @@ chmod 600 ~/deploy/tcg-vault/.env
 Required `.env` values to fill: `APP_KEY`, `DB_PASSWORD`, `REDIS_PASSWORD`, `RESEND_KEY`
 (the rest are pre-filled in the template).
 
+Optional: `DISCORD_ALERT_WEBHOOK_URL` — a Discord webhook URL for
+operational alerts (see `App\Support\DiscordAlerter`). Left unset,
+alerting is silently off rather than erroring; nothing else depends on
+it. Not the same webhook as `alertmanager-discord`'s — that one is
+host-level infra alerting (CPU, disk), this one is app-level (a stalled
+daily job).
+
 ## Build & push (local, repo root)
 ```bash
 docker login                                # Docker Hub, user cativo23
