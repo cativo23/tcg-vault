@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-26
+
+### Fixed
+
+- Collection: two near-simultaneous adds of the same card identity
+  (e.g. a double-clicked save button) could both miss an existing row
+  and both insert, silently splitting one quantity across two rows. A
+  Postgres unique index on the identity tuple now closes the race;
+  `CollectionService::addItemForCard()` catches the violation and
+  merges into the winning row instead of erroring. Also normalizes `''`
+  vs `null` for variant/grade fields (Livewire skips
+  `ConvertEmptyStringsToNull`) and guards the save button against a
+  double-click.
+
 ## [0.6.0] - 2026-09-25
 
 ### Added
