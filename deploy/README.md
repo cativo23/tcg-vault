@@ -57,7 +57,9 @@ php artisan key:generate --show            # copy the base64:... value into .env
 # on the server:
 chmod 600 ~/deploy/tcg-vault/.env
 ```
-Required `.env` values to fill: `APP_KEY`, `DB_PASSWORD`, `REDIS_PASSWORD`, `RESEND_KEY`
+Required `.env` values to fill: `APP_KEY`, `DB_PASSWORD`, `REDIS_PASSWORD`, `RESEND_KEY`,
+and the key in `SENTRY_LARAVEL_DSN` (from the `tcg-vault` project's settings in the
+Bugsink dashboard at `errors.cativo.dev` — VPN required)
 (the rest are pre-filled in the template).
 
 Optional: `DISCORD_ALERT_WEBHOOK_URL` — a Discord webhook URL for

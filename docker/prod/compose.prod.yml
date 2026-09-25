@@ -49,12 +49,13 @@ services:
     # Queued jobs (SyncCardPricingJob, ImportSetJob) call tcgdex's API from
     # inside this container — needs real internet egress, not just
     # tcgvault-internal (which Docker blocks from routing out). Uses its
-    # own tcgvault-egress bridge for that, not space-server_web: horizon
-    # exposes no port or service, so it has nothing to gain from sitting
-    # on the same shared network as every other app on this VPS — a
-    # dedicated egress-only network gets the same outbound route without
-    # that exposure.
-    networks: [tcgvault-egress, tcgvault-internal]
+    # own tcgvault-egress bridge for that rather than relying on
+    # space-server_web for it.
+    #
+    # Also on space-server_web to reach http://bugsink:8000 directly — a
+    # queued job's unhandled exception is exactly the kind of failure this
+    # exists to catch.
+    networks: [tcgvault-egress, tcgvault-internal, space-server_web]
     deploy:
       resources:
         # 128M was too tight: verified live post-deploy that the master
@@ -85,7 +86,10 @@ services:
       disable: true
     volumes:
       - app-logs:/var/www/html/storage/logs
-    networks: [tcgvault-internal]
+    # Also on space-server_web to reach http://bugsink:8000 — an uncaught
+    # exception in a scheduled command should get reported same as any
+    # other.
+    networks: [tcgvault-internal, space-server_web]
     deploy:
       resources:
         # 64M was too tight: dispatching the daily catalog:refresh-prices

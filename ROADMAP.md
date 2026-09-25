@@ -41,8 +41,12 @@ roadmap safe to attempt.
   retention. Previously the logs lived in the container's writable layer
   and went away with it on every deploy — the incident and the evidence
   for it lost in the same motion.
-- **Error tracking** (Sentry or equivalent). Without it, and with the
-  log lifetime above, a production exception leaves no trace at all.
+- ~~**Error tracking**~~ — done. Self-hosted Bugsink (Sentry-protocol-
+  compatible) on `space-server`, at `errors.cativo.dev` (VPN-gated
+  dashboard). `app`/`horizon`/`scheduler` all reach it internally as
+  `http://bugsink:8000` over `space-server_web` — an exception never
+  needs to leave the host network to get reported, and never needs to
+  clear `internal-only`'s VPN gate either.
 - ~~**Queue failure alerting**~~ — shipped in v0.5.0, ahead of this
   milestone, prompted by the incident that motivated this roadmap in
   the first place: a Discord alert (`App\Support\DiscordAlerter`, no
