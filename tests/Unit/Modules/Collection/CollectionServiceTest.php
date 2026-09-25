@@ -378,6 +378,40 @@ test('the database rejects a second row with an identical identity, including wh
     ]))->toThrow(QueryException::class);
 });
 
+test('an empty-string identity value from a cleared form field merges with an existing null identity', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->create();
+
+    $existing = CollectionItem::create([
+        'collection_id' => $collection->id,
+        'card_id' => $card->id,
+        'card_tcgdex_id' => $card->tcgdex_id,
+        'variant' => null,
+        'condition' => 'NM',
+        'grade_company' => null,
+        'grade_value' => null,
+        'quantity' => 1,
+    ]);
+
+    // Livewire skips ConvertEmptyStringsToNull, so a cleared <select> or
+    // text input arrives here as '' rather than null — without
+    // normalizing it, this would miss the existing row above (its
+    // whereNull('grade_company') wouldn't match '') and either create a
+    // second row or, worse, hit the new unique index and throw.
+    $item = app(CollectionService::class)->addItemForCard($collection, $card, [
+        'variant' => '',
+        'condition' => 'NM',
+        'grade_company' => '',
+        'grade_value' => '',
+        'quantity' => 1,
+    ]);
+
+    expect($item->id)->toBe($existing->id);
+    expect(CollectionItem::where('collection_id', $collection->id)->count())->toBe(1);
+    expect($item->fresh()->quantity)->toBe(2);
+});
+
 test('a genuine insert race for the same identity merges into the winning row instead of erroring', function () {
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);

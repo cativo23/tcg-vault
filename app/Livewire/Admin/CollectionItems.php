@@ -12,7 +12,9 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
@@ -321,18 +323,28 @@ final class CollectionItems extends Component
         $row = $this->editingRows[$index];
         $item = $this->ownedItemOrFail($row['id']);
 
+        // Livewire skips ConvertEmptyStringsToNull, so a cleared <select>
+        // or text input arrives here as '' rather than null — normalize
+        // before storing, or this row silently stops matching
+        // CollectionService's own null-based identity comparisons (and
+        // the collection_items_identity_unique index, which treats null
+        // and '' as different values unless both sides agree on one).
+        $variant = $row['variant'] === '' ? null : $row['variant'];
+        $gradeCompany = $row['grade_company'] === '' ? null : $row['grade_company'];
+        $gradeValue = $row['grade_value'] === '' ? null : $row['grade_value'];
+
         $update = [
-            'variant' => $row['variant'],
+            'variant' => $variant,
             'condition' => $row['condition'],
             'quantity' => $row['quantity'],
-            'grade_company' => $row['grade_company'],
-            'grade_value' => $row['grade_value'],
+            'grade_company' => $gradeCompany,
+            'grade_value' => $gradeValue,
             'notes' => $row['notes'],
             // A row's variant is only ever ambiguous ("needs review") until
             // it's given an explicit value — clearing the flag here, not
             // when notes/quantity/etc change, and never re-flagging it once
             // cleared.
-            'needs_variant_review' => $row['variant'] !== null ? false : $item->needs_variant_review,
+            'needs_variant_review' => $variant !== null ? false : $item->needs_variant_review,
         ];
 
         // A new upload replaces the stored file; not touching this field
@@ -349,7 +361,27 @@ final class CollectionItems extends Component
             $this->editingRows[$index]['photo'] = null;
         }
 
-        $item->update($update);
+        try {
+            // Wrapped explicitly so a violation only rolls back THIS
+            // statement (via a savepoint when nested inside a wider
+            // transaction, e.g. under RefreshDatabase in tests) — without
+            // this, a failed UPDATE poisons every later query in an
+            // enclosing transaction, same shape as
+            // InviteManager::createInvite().
+            DB::transaction(fn () => $item->update($update));
+        } catch (QueryException $e) {
+            // The edit didn't go through CollectionService, so it has no
+            // merge-on-collision handling of its own — the identity index
+            // (added to close the concurrent-add race) is what's actually
+            // catching this, same as it would a raw duplicate insert.
+            if (! str_contains($e->getMessage(), 'collection_items_identity_unique')) {
+                throw $e;
+            }
+
+            $this->addError("editingRows.$index.variant", 'This matches another row for this card — remove or adjust one of them instead.');
+
+            return;
+        }
 
         $this->dispatch('row-saved', index: $index);
     }

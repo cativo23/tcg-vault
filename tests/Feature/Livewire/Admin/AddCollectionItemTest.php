@@ -172,9 +172,10 @@ test('the save button disables itself while a save is in flight', function () {
         ->call('selectCard', 'me05-116')
         ->html();
 
-    expect($html)->toContain('wire:click="save"')
-        ->toContain('wire:loading.attr="disabled"')
-        ->toContain('wire:target="save"');
+    // A single toContain() on the whole opening tag, not three separate
+    // ones — those could each independently match unrelated elements on
+    // the page and pass without the guard actually being on this button.
+    expect($html)->toContain('wire:click="save" wire:loading.attr="disabled" wire:target="save"');
 });
 
 test('an uploaded photo is stored and its path saved on the item', function () {

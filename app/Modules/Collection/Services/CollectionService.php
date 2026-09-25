@@ -65,10 +65,17 @@ final class CollectionService
      */
     public function addItemForCard(Collection $collection, Card $card, array $itemData): CollectionItem
     {
-        $variant = $itemData['variant'] ?? null;
+        // Livewire skips ConvertEmptyStringsToNull, so a cleared <select>
+        // or text input arrives here as '' rather than null (the "All
+        // sets" filter round-trips the same way — see
+        // AddCollectionItem::updatedSetFilter()'s comment). Both the
+        // identity match below and the identity_unique index treat null
+        // and '' as different values unless normalized to the same one
+        // here, first.
+        $variant = self::nullIfEmpty($itemData['variant'] ?? null);
         $condition = $itemData['condition'];
-        $gradeCompany = $itemData['grade_company'] ?? null;
-        $gradeValue = $itemData['grade_value'] ?? null;
+        $gradeCompany = self::nullIfEmpty($itemData['grade_company'] ?? null);
+        $gradeValue = self::nullIfEmpty($itemData['grade_value'] ?? null);
         $quantity = $itemData['quantity'] ?? 1;
 
         $identityColumns = [
@@ -157,5 +164,10 @@ final class CollectionService
         $existingItem->increment('quantity', $quantity, $extra);
 
         return $existingItem;
+    }
+
+    private static function nullIfEmpty(?string $value): ?string
+    {
+        return $value === '' ? null : $value;
     }
 }
