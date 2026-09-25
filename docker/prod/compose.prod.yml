@@ -78,8 +78,12 @@ services:
     networks: [tcgvault-internal]
     deploy:
       resources:
-        limits: { cpus: '0.25', memory: 64M }
-        reservations: { cpus: '0.05', memory: 32M }
+        # 64M was too tight: dispatching the daily catalog:refresh-prices
+        # job loop against the current catalog size got OOM-killed by the
+        # kernel mid-run — same framework-boot-overhead reasoning as
+        # horizon's own 128M→192M bump above, just discovered later.
+        limits: { cpus: '0.25', memory: 128M }
+        reservations: { cpus: '0.05', memory: 64M }
 
   postgres:
     image: postgres:17-alpine
@@ -116,8 +120,13 @@ services:
       start_period: 5s
     deploy:
       resources:
-        limits: { cpus: '0.5', memory: 64M }
-        reservations: { cpus: '0.05', memory: 32M }
+        # 64M crash-looped under real memory pressure (OOM-killed and
+        # restarted repeatedly per `docker inspect`'s RestartCount) —
+        # Redis's own footprint plus glibc/malloc overhead didn't fit.
+        # Every dependent container blocks on redis's healthcheck, so a
+        # crash-looping redis takes Horizon's queue down with it.
+        limits: { cpus: '0.5', memory: 128M }
+        reservations: { cpus: '0.05', memory: 64M }
 
 networks:
   space-server_web:
