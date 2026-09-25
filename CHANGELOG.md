@@ -6,6 +6,36 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-25
+
+### Added
+
+- Ops: self-hosted error tracking via Bugsink (Sentry-protocol-compatible),
+  reached internally over `space-server_web` — an exception never needs
+  to leave the host network or clear the dashboard's VPN gate to get
+  reported.
+- Ops: `storage/logs` persists on a named volume across deploys instead
+  of disappearing with the container's writable layer, on a `daily`
+  channel with 14-day retention and file locking (three processes write
+  the same file).
+- Ops: `telescope:prune` runs daily with 48h retention — Telescope's
+  `database` driver had none of its own.
+
+### Fixed
+
+- Ops: Horizon's `balance: auto` was starving the `default` queue to a
+  single worker every night regardless of Redis health, causing a
+  recurring `MaxAttemptsExceededException` backlog independent of the
+  2026-09-24/25 Redis incident. Fixed with `balance: 'off'`,
+  `retryUntil()` 1h → 3h, and the horizon container's memory limit
+  192M → 256M.
+
+### Docs
+
+- `deploy/README.md`'s acceptance checklist now explicitly checks
+  `APP_DEBUG=false`/`SESSION_SECURE_COOKIE=true` on the server's real
+  `.env`, not just the template.
+
 ## [0.5.1] - 2026-09-25
 
 ### Fixed
