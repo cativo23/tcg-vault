@@ -148,6 +148,13 @@ interesting it is to build.
 - Deck lists
 - Trade and sale tracking
 - Usage analytics
+- **Move `CACHE_STORE` off Postgres onto a dedicated Redis instance**,
+  separate from the Horizon queue Redis — they need conflicting
+  `maxmemory-policy` values (`noeviction` for queue data, `allkeys-lru`
+  for cache), so they can't share a process regardless of memory sizing.
+  Deliberately last: evaluate alongside centralizing Redis across other
+  projects on the same host rather than standing up a second one-off
+  instance here.
 
 ## Not on the roadmap
 
