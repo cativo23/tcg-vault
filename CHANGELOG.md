@@ -6,6 +6,16 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-25
+
+### Fixed
+
+- Ops: Redis now persists queued jobs to disk (`appendonly yes`,
+  `appendfsync everysec`) instead of holding them only in RAM — a
+  container restart no longer silently drops whatever Horizon hasn't
+  picked up yet. Memory limit raised 256M → 384M for the rewrite
+  headroom this needs.
+
 ## [0.5.0] - 2026-09-25
 
 ### Added
