@@ -28,10 +28,6 @@ coming back to.
 Nothing here is user-visible. All of it is what makes the rest of the
 roadmap safe to attempt.
 
-- **Off-host database backups**, with one restore actually performed and
-  documented. `pgdata` is a local Docker volume on a single VPS; a
-  restore that has never been run is not a backup. Covers the
-  `collection-photos-data` volume too.
 - ~~**Redis persistence**~~ — done. `--appendonly yes --appendfsync
   everysec` caps the loss window at ~1s instead of losing everything
   since the last restart, the same failure that dropped a 2,952-job
@@ -74,6 +70,12 @@ roadmap safe to attempt.
   `SESSION_SECURE_COOKIE=true`. Both are correct in
   `docker/prod/.env.production.example`; neither is currently an explicit
   line in `deploy/README.md`'s acceptance checklist. Add them.
+- **Off-host database backups**, with one restore actually performed and
+  documented. `pgdata` is a local Docker volume on a single VPS; a
+  restore that has never been run is not a backup. Covers the
+  `collection-photos-data` volume too. Deliberately last in this
+  milestone: the free tier (Cloudflare R2, 10GB) needs billing enabled on
+  the Cloudflare account first, on hold until that card is added.
 
 ## v0.7.0 — Correctness and accessibility
 
