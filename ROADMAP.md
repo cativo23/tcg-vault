@@ -1,6 +1,6 @@
 # Roadmap
 
-The path from v0.4.0 to a v1.0 beta. Scope and ordering follow one rule:
+The path from v0.5.0 to a v1.0 beta. Scope and ordering follow one rule:
 **irreversible risk first, then correctness, then the things a stranger
 sees.** A bug can be fixed after the fact; a lost database cannot.
 
@@ -23,7 +23,7 @@ emails, passwords and photos are already being stored, the third because
 an invited collector who lands on an empty vault has seen nothing worth
 coming back to.
 
-## v0.5.0 — Durability
+## v0.6.0 — Durability
 
 Nothing here is user-visible. All of it is what makes the rest of the
 roadmap safe to attempt.
@@ -47,13 +47,20 @@ roadmap safe to attempt.
   the evidence for it are lost in the same motion.
 - **Error tracking** (Sentry or equivalent). Without it, and with the
   log lifetime above, a production exception leaves no trace at all.
-- ~~**Queue failure alerting**~~ — done ahead of schedule, prompted by
-  the incident that motivated this roadmap in the first place: a Discord
-  alert (`App\Support\DiscordAlerter`, no Slack workspace to route to)
-  now fires if `catalog:refresh-prices` itself errors, or if
-  `catalog:check-pricing-freshness` finds the newest price snapshot
-  older than 26h. Set `DISCORD_ALERT_WEBHOOK_URL` on the server to turn
-  it on — unset, it stays silently off rather than erroring.
+- ~~**Queue failure alerting**~~ — shipped in v0.5.0, ahead of this
+  milestone, prompted by the incident that motivated this roadmap in
+  the first place: a Discord alert (`App\Support\DiscordAlerter`, no
+  Slack workspace to route to) now fires if `catalog:refresh-prices`
+  itself errors, or if `catalog:check-pricing-freshness` finds the
+  newest price snapshot older than 26h. `DISCORD_ALERT_WEBHOOK_URL` is
+  already set on polaris2 (reusing the same webhook `alertmanager-discord`
+  posts host-level infra alerts to) and confirmed delivering.
+- **Clear the `failed_jobs` backlog from the 2026-09-24/25 incident**
+  (in progress). ~5,341 rows, mostly `SyncCardPricingJob` failures from
+  the redis crash loop — being classified into retryable-now-that-redis-
+  is-stable vs. genuinely permanent, with a full backup taken before
+  anything is pruned. One-time cleanup, not durable roadmap work; listed
+  here only until it's actually done.
 - **Schedule `telescope:prune`** in `routes/console.php`. Telescope's
   driver is `database` with no retention job; the table grows until the
   disk does not.
@@ -62,7 +69,7 @@ roadmap safe to attempt.
   `docker/prod/.env.production.example`; neither is currently an explicit
   line in `deploy/README.md`'s acceptance checklist. Add them.
 
-## v0.6.0 — Correctness and accessibility
+## v0.7.0 — Correctness and accessibility
 
 - **Duplicate collection items on concurrent add.**
   `CollectionService::addItemForCard()` (`app/Modules/Collection/Services/CollectionService.php:56`)
@@ -98,7 +105,7 @@ roadmap safe to attempt.
   `TcgplayerImportParser.php:88` runs a card lookup and a variant count
   per parsed line. Batch both.
 
-## v0.7.0 — Ready for someone else's eyes
+## v0.8.0 — Ready for someone else's eyes
 
 - **A live example gallery**, linked from the landing page. Today the
   product's actual value — daily pricing, set completion, activity
@@ -117,7 +124,7 @@ roadmap safe to attempt.
   column semantics; the reverse direction is bounded work, and a
   collection tracker with no way out of it is a hard sell.
 
-## v0.8.0 — Pipeline hardening
+## v0.9.0 — Pipeline hardening
 
 - **Static analysis** (larastan) in `ci.yml`. Pint and Pest both pass
   today; neither catches a type or logic error.
