@@ -32,6 +32,19 @@ test('a rate-limit release cannot exhaust the job\'s retries before it ever actu
     expect($job->retryUntil())->toBeGreaterThan(now()->addMinutes(30));
 });
 
+test('the deadline covers a slow nightly drain, not just the rate-limit floor', function () {
+    // The whole catalog:refresh-prices fan-out shares one retryUntil()
+    // deadline set at dispatch time, and real worker throughput has been
+    // observed well under the tcgdex-default rate-limit ceiling (CPU
+    // throttling, rate-limit releases). 1 hour left a nightly remainder
+    // of jobs unprocessed when it expired; 3 hours is roughly 4x the
+    // rate-limit floor for the current catalog size and covers both that
+    // slack and catalog growth.
+    $job = new SyncCardPricingJob('me05-116');
+
+    expect($job->retryUntil())->toBeGreaterThan(now()->addHours(2)->addMinutes(55));
+});
+
 test('the job uses a separate, smaller rate limit when running on the imports queue than on default', function () {
     $onDefault = new SyncCardPricingJob('me05-116');
     $onImports = new SyncCardPricingJob('me05-116');

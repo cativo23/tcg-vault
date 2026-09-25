@@ -206,23 +206,21 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            // Listed in PRIORITY order — a worker only pulls from
-            // 'imports' once 'default' is empty. Found by an automated
-            // security review (2026-09-16): ImportSetJob dispatches one
-            // SyncCardPricingJob per card (up to 200+ at once) onto the
-            // same shared 'tcgdex'-rate-limited queue an ordinary user
-            // triggers just by adding a card from a not-yet-imported
-            // set. Without this priority split, that fan-out could
-            // crowd out the scheduled daily pricing refresh (or another
-            // user's own pending work) behind a 3-req/sec shared budget
-            // for a long time. SyncCardPricingJob dispatched FROM
-            // ImportSetJob goes on 'imports' specifically for this
-            // (see App\Jobs\ImportSetJob); every other dispatch (the
-            // scheduled refresh, this app's normal path) stays on
-            // 'default' and always wins the race.
+            // Listed in PRIORITY order: every worker checks 'default'
+            // before 'imports'. This only holds with balancing OFF —
+            // under 'auto'/'simple' Horizon builds one process pool PER
+            // queue, each floored at minProcesses=1, so with
+            // maxProcesses=2 'default' was capped at a single worker
+            // regardless of 'imports' activity. One worker can't drain
+            // the nightly catalog:refresh-prices fan-out fast enough for
+            // SyncCardPricingJob::retryUntil() to hold. A single
+            // unbalanced pool restores the actual priority: every idle
+            // worker takes from 'default' first, and ImportSetJob's own
+            // SyncCardPricingJob dispatches stay on 'imports' (see
+            // App\Jobs\ImportSetJob) so a set import can't crowd out the
+            // scheduled refresh or another user's own pending work.
             'queue' => ['default', 'imports'],
-            'balance' => 'auto',
-            'autoScalingStrategy' => 'time',
+            'balance' => 'off',
             'maxProcesses' => 1,
             'maxTime' => 0,
             'maxJobs' => 0,
