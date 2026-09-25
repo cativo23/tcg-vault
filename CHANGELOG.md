@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-25
+
+### Fixed
+
+- Horizon's failed-job telemetry was kept for a full week by default;
+  a single day's worth of it was enough to outgrow the queue container's
+  memory and take the daily pricing sync down with it. Trimmed to 48h.
+
 ## [0.4.0] - 2026-09-24
 
 ### Added
