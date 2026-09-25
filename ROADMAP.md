@@ -35,11 +35,12 @@ roadmap safe to attempt.
   limit raised 256M → 384M for `BGREWRITEAOF`'s fork/copy-on-write
   headroom on top of Horizon's own ~160M telemetry floor; confirmed
   against live polaris2 usage (3.7GB free host RAM) before sizing it.
-- **Persist `storage/logs`** on a named volume in
-  `docker/prod/compose.prod.yml`, and set `LOG_CHANNEL=daily` with an
-  explicit retention window. Today the logs live in the container's
-  writable layer and go away with it on every deploy — the incident and
-  the evidence for it are lost in the same motion.
+- ~~**Persist `storage/logs`**~~ — done. `app-logs` named volume shared
+  across `app`/`horizon`/`scheduler` (they all write to the same
+  `storage_path('logs/laravel.log')`), `LOG_CHANNEL=daily` with 14-day
+  retention. Previously the logs lived in the container's writable layer
+  and went away with it on every deploy — the incident and the evidence
+  for it lost in the same motion.
 - **Error tracking** (Sentry or equivalent). Without it, and with the
   log lifetime above, a production exception leaves no trace at all.
 - ~~**Queue failure alerting**~~ — shipped in v0.5.0, ahead of this
