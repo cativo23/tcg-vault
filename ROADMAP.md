@@ -64,13 +64,12 @@ roadmap safe to attempt.
   container memory 192M → 256M). Backed up in full before pruning;
   `catalog:refresh-prices` re-dispatches every card daily regardless, so
   no manual re-sync was needed.
-- **Schedule `telescope:prune`** in `routes/console.php`. Telescope's
-  driver is `database` with no retention job; the table grows until the
-  disk does not.
-- **Verify the production environment**: `APP_DEBUG=false`,
-  `SESSION_SECURE_COOKIE=true`. Both are correct in
-  `docker/prod/.env.production.example`; neither is currently an explicit
-  line in `deploy/README.md`'s acceptance checklist. Add them.
+- ~~**Schedule `telescope:prune`**~~ — done. Daily, `--hours=48`, matching
+  this project's other short-lived operational data retention.
+- ~~**Verify the production environment**~~ — done. `APP_DEBUG=false` and
+  `SESSION_SECURE_COOKIE=true` confirmed live on polaris2's actual `.env`
+  (not just the template), and added as an explicit line in
+  `deploy/README.md`'s acceptance checklist.
 - **Off-host database backups**, with one restore actually performed and
   documented. `pgdata` is a local Docker volume on a single VPS; a
   restore that has never been run is not a backup. Covers the
