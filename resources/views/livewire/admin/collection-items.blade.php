@@ -127,10 +127,36 @@
 
     @if ($editingCardId !== null)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background: rgba(20,20,18,.55)" wire:click.self="closeCardEditor" wire:keydown.escape.window="closeCardEditor">
-            <div class="nw-card modal-in w-full" style="max-width: 640px; max-height: 90vh; overflow-y: auto;">
+            <div
+                class="nw-card modal-in w-full"
+                style="max-width: 640px; max-height: 90vh; overflow-y: auto;"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="card-editor-title"
+                x-data="{
+                    // Same focus-trap shape as the modal component in
+                    // resources/views/components/modal.blade.php —
+                    // duplicated rather than shared, since this modal is
+                    // toggled by a Livewire property re-rendering the
+                    // whole subtree, not that component's show/x-show state.
+                    focusables() {
+                        let selector = 'a, button, input:not([type=\'hidden\']), textarea, select, [tabindex]:not([tabindex=\'-1\'])'
+                        return [...$el.querySelectorAll(selector)].filter(el => ! el.hasAttribute('disabled'))
+                    },
+                    firstFocusable() { return this.focusables()[0] },
+                    lastFocusable() { return this.focusables().slice(-1)[0] },
+                    nextFocusable() { return this.focusables()[this.nextFocusableIndex()] || this.firstFocusable() },
+                    prevFocusable() { return this.focusables()[this.prevFocusableIndex()] || this.lastFocusable() },
+                    nextFocusableIndex() { return (this.focusables().indexOf(document.activeElement) + 1) % (this.focusables().length + 1) },
+                    prevFocusableIndex() { return Math.max(0, this.focusables().indexOf(document.activeElement)) - 1 },
+                }"
+                x-init="$nextTick(() => firstFocusable()?.focus())"
+                x-on:keydown.tab.prevent="$event.shiftKey || nextFocusable().focus()"
+                x-on:keydown.shift.tab.prevent="prevFocusable().focus()"
+            >
                 <div class="flex justify-between items-start p-5" style="border-bottom: 1px solid var(--hair)">
                     <div>
-                        <div class="text-lg font-bold">{{ $editingCardName }}</div>
+                        <div id="card-editor-title" class="text-lg font-bold">{{ $editingCardName }}</div>
                     </div>
                     <button wire:click="closeCardEditor" class="nw-row-btn" aria-label="Close">✕</button>
                 </div>

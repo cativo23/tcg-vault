@@ -1285,6 +1285,25 @@ test('updateRow rejects an edit that would collide with a sibling row instead of
     expect($holo->fresh()->quantity)->toBe(1);
 });
 
+test('the card editor modal has dialog semantics', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->html();
+
+    expect($html)->toContain('role="dialog"')
+        ->toContain('aria-modal="true"')
+        ->toContain('aria-labelledby="card-editor-title"')
+        ->toContain('id="card-editor-title"');
+});
+
 test('adding a variant row creates a new item and appends it to the modal instantly', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
