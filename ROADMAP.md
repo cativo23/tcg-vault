@@ -32,14 +32,13 @@ roadmap safe to attempt.
   documented. `pgdata` is a local Docker volume on a single VPS; a
   restore that has never been run is not a backup. Covers the
   `collection-photos-data` volume too.
-- **Redis persistence** (`--appendonly yes`, or scheduled RDB saves).
-  Confirmed live: recreating the `redis` container to fix its memory
-  limit silently dropped every queued job that hadn't been picked up
-  yet — a `catalog:refresh-prices` dispatch of 2,952 jobs vanished
-  mid-flight with no error, because nothing had told Redis to write any
-  of it to disk first. The same container restart that a crash, an OOM
-  kill, or a routine `docker compose up -d` triggers today loses
-  whatever is in the queue at that instant.
+- ~~**Redis persistence**~~ — done. `--appendonly yes --appendfsync
+  everysec` caps the loss window at ~1s instead of losing everything
+  since the last restart, the same failure that dropped a 2,952-job
+  `catalog:refresh-prices` dispatch mid-flight with no error. Memory
+  limit raised 256M → 384M for `BGREWRITEAOF`'s fork/copy-on-write
+  headroom on top of Horizon's own ~160M telemetry floor; confirmed
+  against live polaris2 usage (3.7GB free host RAM) before sizing it.
 - **Persist `storage/logs`** on a named volume in
   `docker/prod/compose.prod.yml`, and set `LOG_CHANNEL=daily` with an
   explicit retention window. Today the logs live in the container's
