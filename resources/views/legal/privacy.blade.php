@@ -9,7 +9,7 @@
     <h2>What I collect</h2>
     <ul>
         <li><strong>Your account:</strong> name, username, email address, and your password (stored only as a one-way hash, never readable). Name, email and password are needed to have an account.</li>
-        <li><strong>Your collection:</strong> the cards you add and everything you enter about them — variant, condition, grade, quantity, notes and photos. Location and other details your phone embeds in a photo (such as the device and when it was taken) are removed before the photo is stored.</li>
+        <li><strong>Your collection:</strong> the cards you add and everything you enter about them — variant, condition, grade, quantity, notes and photos. Location and other details your phone embeds in a photo (such as the device and when it was taken) are removed before the photo is stored; only its rotation and colour profile are kept.</li>
         <li><strong>Invites:</strong> the email address an invite was created for, and who created, accepted or revoked it. The app does not email invites; they are shared as links.</li>
         <li><strong>Feedback you send:</strong> your message, its type, your username and email, and the page you were on.</li>
         <li><strong>Cookies:</strong> a session cookie and a security (CSRF) cookie, plus — only if you tick “Remember me” — a login cookie that lasts up to about 400 days; and, only if the age check at signup fails, a cookie that blocks another attempt (see “Children”). All are strictly necessary for the app to work, so no consent is asked. Your light/dark theme choice is saved in your own browser only.</li>

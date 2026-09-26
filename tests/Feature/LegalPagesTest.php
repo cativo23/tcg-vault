@@ -94,6 +94,6 @@ test('the privacy policy no longer lists Google as a recipient', function () {
 
 test('the privacy policy says location data is removed from photos', function () {
     $this->get('/privacy')
-        ->assertSee('are removed before the photo is stored.')
+        ->assertSee('are removed before the photo is stored; only its rotation and colour profile are kept.')
         ->assertDontSee('Photos are stored exactly as uploaded');
 });
