@@ -6,6 +6,44 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-26
+
+### Added
+
+- A staff Members page (`/staff/members`, `manage-members` permission) to
+  suspend or delete accounts. Suspending is reversible: the member can't
+  sign in, an open session ends on its next request, and their public page
+  is hidden. Deleting removes the account, collection and photos after the
+  member's username is typed. Nobody can act on their own account, a
+  super-admin, or (unless super-admin) another staff member. Each action is
+  recorded, by account number only, for a year.
+
+### Changed
+
+- Fonts are now served by the app itself instead of Google Fonts.
+- Uploaded photos have their location and other embedded details removed
+  (rotation and colour profile are kept). A photo that can't be processed
+  is refused rather than stored as uploaded, and photo processing is
+  limited per user per minute.
+- Photos waiting to be saved are kept on private storage, not the public
+  disk.
+- Invites nobody accepted are deleted within 31 days of expiring or being
+  revoked, and expired password reset tokens are cleared daily.
+
+### Fixed
+
+- Typed passwords are masked before a request reaches Telescope or an error
+  report reaches Bugsink, including Livewire payloads, breadcrumbs and
+  stack-frame arguments.
+- Deleting another member's account removes their photos too.
+
+### Deploy
+
+Run `php artisan migrate --force` (`users.suspended_at`,
+`moderation_actions`), `php artisan db:seed` (the `manage-members`
+permission), and once, `php artisan photos:strip-metadata` to clean photos
+stored before this release.
+
 ## [0.9.0] - 2026-09-26
 
 ### Added
