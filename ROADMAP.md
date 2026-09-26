@@ -134,22 +134,34 @@ roadmap safe to attempt.
 
 ## v0.8.0 — Ready for someone else's eyes
 
-- **A live example gallery**, linked from the landing page. Today the
-  product's actual value — daily pricing, set completion, activity
-  history — is invisible until after someone has registered *and*
-  manually entered cards. This is the single largest retention risk and
-  the cheapest to fix; the mechanism already exists.
-- **Privacy policy and terms.**
-- **A feedback / bug-report channel.** A beta with no way to reach the
-  author produces silent churn instead of reports.
-- **Surface the public/private toggle.** It lives in `/admin`
-  ("Manage collection"); the landing page's own FAQ tells users to look
-  for it on their profile. Move it, mirror it, or fix the copy.
-- **Say what account deletion does.** The cascade to the user's
-  collection is real and currently unstated next to the button.
-- **CSV export.** The TCGplayer import parser already establishes the
-  column semantics; the reverse direction is bounded work, and a
-  collection tracker with no way out of it is a hard sell.
+- ~~**A live example gallery**, linked from the landing page.~~ — done.
+  A dedicated `demo` account with twelve modern chase cards at real daily
+  prices, seeded by `php artisan demo:seed-gallery`; the landing link only
+  shows once it is public and has cards.
+- ~~**Privacy policy and terms.**~~ — done. `/privacy` and `/terms`,
+  checked claim-by-claim against the code in two compliance reviews;
+  signup states that creating an account accepts them, and a neutral
+  age screen enforces the 13+ minimum.
+- ~~**A feedback / bug-report channel.**~~ — done. "Feedback" in the
+  logged-in top bar opens a form that emails the owner, with the member's
+  username and page attached.
+- ~~**Surface the public/private toggle.**~~ — done. A labelled
+  Private/Public control on My Collection with a line saying who can see
+  it; the FAQ now points there.
+- ~~**Say what account deletion does.**~~ — done. The copy names what is
+  removed and links to the export. Along the way, deletion was fixed for
+  invite-registered users and now also removes photo files.
+- ~~**CSV export.**~~ — done. A full CSV (not the TCGplayer text format,
+  which would drop condition, variant, grade and notes).
+
+Follow-ups raised by the legal review, not yet scheduled:
+
+- Keep typed passwords out of Telescope and Bugsink request payloads.
+- Self-host the two fonts so visitors' IPs no longer reach Google.
+- Strip location (EXIF) data from uploaded photos.
+- Purge expired invites and old password-reset tokens on a schedule.
+- A real admin tool to suspend or delete an account (the terms currently
+  describe a manual process).
 
 ## v0.9.0 — Pipeline hardening
 
