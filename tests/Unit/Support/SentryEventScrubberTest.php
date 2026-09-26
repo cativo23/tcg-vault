@@ -4,6 +4,9 @@ use App\Support\SensitiveInput;
 use App\Support\SentryEventScrubber;
 use Sentry\Breadcrumb;
 use Sentry\Event;
+use Sentry\ExceptionDataBag;
+use Sentry\Frame;
+use Sentry\Stacktrace;
 
 test('a password in the request body of an error report is masked before it is sent', function () {
     $event = Event::createEvent();
@@ -48,6 +51,31 @@ test('a password in a Livewire breadcrumb is masked before the report is sent', 
     expect(json_encode($metadata))->not->toContain('hunter1')->not->toContain('reset-abc')
         ->and($metadata[0]['form'])->toBe(['email' => 'ash@example.com', 'password' => SensitiveInput::MASK])
         ->and($sent->getBreadcrumbs()[0]->getMessage())->toBe('Component hydrate: pages.auth.login');
+});
+
+test('stack-frame arguments are dropped, so a password passed to a function is never sent', function () {
+    $frame = new Frame('Illuminate\\Auth\\SessionGuard::attempt', 'SessionGuard.php', 1, vars: ['credentials' => ['email' => 'a@b.c', 'password' => 'hunter3']]);
+    $event = Event::createEvent();
+    $event->setExceptions([new ExceptionDataBag(new RuntimeException('boom'), new Stacktrace([$frame]))]);
+    $event->setStacktrace(new Stacktrace([clone $frame]));
+
+    $sent = SentryEventScrubber::beforeSend($event);
+
+    expect($sent->getExceptions()[0]->getStacktrace()->getFrames()[0]->getVars())->toBe([])
+        ->and($sent->getStacktrace()->getFrames()[0]->getVars())->toBe([]);
+});
+
+test('a breadcrumb whose metadata cannot be encoded still lets the report through', function () {
+    $event = Event::createEvent();
+    $event->setBreadcrumb([new Breadcrumb(Breadcrumb::LEVEL_INFO, Breadcrumb::TYPE_DEFAULT, 'livewire', 'x', ['bad' => new class implements JsonSerializable
+    {
+        public function jsonSerialize(): mixed
+        {
+            throw new RuntimeException('cannot encode');
+        }
+    }])]);
+
+    expect(SentryEventScrubber::beforeSend($event)->getBreadcrumbs()[0]->getMetadata())->toBe([]);
 });
 
 test('an event with no request data is sent unchanged', function () {
