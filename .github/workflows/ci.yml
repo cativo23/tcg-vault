@@ -154,5 +154,12 @@ jobs:
           context: .
           file: ./docker/prod/Dockerfile
           push: false
+          load: true
+          tags: tcg-vault:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # The photo stripper depends on a system package; fail here rather than
+      # on the first upload after a deploy if the image ever lacks it.
+      - name: Check exiftool runs in the image
+        run: docker run --rm --entrypoint /usr/bin/exiftool tcg-vault:ci -ver
