@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -139,4 +140,22 @@ test('staff cannot suspend or delete another staff member; only a super-admin ca
     Livewire::actingAs($admin)->test('staff.member-manager')->call('suspend', $otherStaff->id)->assertHasNoErrors();
 
     expect($otherStaff->fresh()->isSuspended())->toBeTrue();
+});
+
+test('suspending, lifting and deleting are logged with who did it to whom', function () {
+    Log::spy();
+    $staff = staffMember();
+    $member = User::factory()->create(['username' => 'logged-lu']);
+
+    Livewire::actingAs($staff)->test('staff.member-manager')
+        ->call('suspend', $member->id)
+        ->call('unsuspend', $member->id)
+        ->call('confirmDelete', $member->id)
+        ->set('deleteConfirmation', 'logged-lu')
+        ->call('deleteMember');
+
+    foreach (['suspended', 'unsuspended', 'deleted'] as $action) {
+        Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context) => $message === "Member {$action} by staff"
+            && $context === ['actor_id' => $staff->id, 'member_id' => $member->id, 'member_username' => 'logged-lu'])->once();
+    }
 });

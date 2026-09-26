@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\AccountDeleter;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -40,14 +41,20 @@ final class MemberManager extends Component
     {
         $member = $this->actionableMemberOrNull($userId);
 
-        $member?->forceFill(['suspended_at' => now()])->save();
+        if ($member !== null) {
+            $member->forceFill(['suspended_at' => now()])->save();
+            $this->logModeration('suspended', $member);
+        }
     }
 
     public function unsuspend(int $userId): void
     {
         $member = $this->actionableMemberOrNull($userId);
 
-        $member?->forceFill(['suspended_at' => null])->save();
+        if ($member !== null) {
+            $member->forceFill(['suspended_at' => null])->save();
+            $this->logModeration('unsuspended', $member);
+        }
     }
 
     public function confirmDelete(int $userId): void
@@ -78,6 +85,8 @@ final class MemberManager extends Component
             return;
         }
 
+        // Logged first: afterwards there is no account left to name.
+        $this->logModeration('deleted', $member);
         $deleter->delete($member);
 
         $this->reset('deletingUserId', 'deleteConfirmation');
@@ -124,6 +133,16 @@ final class MemberManager extends Component
         }
 
         return $member;
+    }
+
+    /** The only record of a moderation action, since a delete leaves nothing behind. */
+    private function logModeration(string $action, User $member): void
+    {
+        Log::info("Member {$action} by staff", [
+            'actor_id' => auth()->id(),
+            'member_id' => $member->id,
+            'member_username' => $member->username,
+        ]);
     }
 
     public function render(): View
