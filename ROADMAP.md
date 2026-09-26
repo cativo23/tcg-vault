@@ -175,9 +175,9 @@ Follow-ups raised by the legal review, not yet scheduled:
 
 ## Unscheduled — Larastan level 9
 
-Level 9 rejects every value typed `mixed`. It reports 126 more errors than
-level 8, and 76 of them are in `TcgdexCardCatalogProvider`, which reads
-tcgdex's JSON without checking its shape. The fix is not annotations: it
+Level 9 rejects every value typed `mixed`. Most of what it reports beyond
+level 8 is in `TcgdexCardCatalogProvider`, which reads tcgdex's JSON
+without checking its shape. The fix is not annotations: it
 is a parsing layer that validates each tcgdex response field by field
 before building `CardDetailData` / `PriceEntryData`, with its own tests.
 Raise `phpstan.neon` to level 9 once that layer exists.
