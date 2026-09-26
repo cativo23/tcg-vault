@@ -159,3 +159,16 @@ test('suspending, lifting and deleting are logged with who did it to whom', func
             && $context === ['actor_id' => $staff->id, 'member_id' => $member->id, 'member_username' => 'logged-lu'])->once();
     }
 });
+
+test('every action re-checks the permission, not just loading the page', function () {
+    $staff = staffMember();
+    $member = User::factory()->create();
+
+    $component = Livewire::actingAs($staff)->test('staff.member-manager');
+    $staff->revokePermissionTo('manage-members');
+    app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+
+    $component->call('suspend', $member->id)->assertForbidden();
+
+    expect($member->fresh()->isSuspended())->toBeFalse();
+});
