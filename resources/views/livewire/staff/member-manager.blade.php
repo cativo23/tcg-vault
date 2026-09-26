@@ -20,7 +20,7 @@
             <form wire:submit="deleteMember" class="flex items-end gap-3">
                 <div class="flex-1">
                     <x-input-label for="deleteConfirmation" :value="__('Confirmation')" />
-                    <x-text-input wire:model="deleteConfirmation" id="deleteConfirmation" class="block mt-1 w-full" type="text" autocomplete="off" autofocus required />
+                    <x-text-input wire:model="deleteConfirmation" id="deleteConfirmation" class="block mt-1 w-full" type="text" autocomplete="off" x-init="$nextTick(() => $el.focus())" required />
                     <x-input-error :messages="$errors->get('deleteConfirmation')" class="mt-2" />
                 </div>
                 <button type="submit" class="nw-row-btn nw-row-btn--danger">{{ __('Delete account') }}</button>
