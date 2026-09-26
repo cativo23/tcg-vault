@@ -5,7 +5,7 @@ use App\Modules\Collection\Services\ExiftoolPhotoMetadataStripper;
 use Symfony\Component\Process\Process;
 
 /*
- * Runs the real exiftool binary. CI installs it and sets exiftoolBinary()_REQUIRED,
+ * Runs the real exiftool binary. CI installs it and sets EXIFTOOL_REQUIRED,
  * so a missing binary fails there instead of silently skipping.
  */
 
@@ -16,7 +16,7 @@ function exiftoolBinary(): string
 
 beforeEach(function () {
     if (! is_executable(exiftoolBinary())) {
-        if (getenv('exiftoolBinary()_REQUIRED')) {
+        if (getenv('EXIFTOOL_REQUIRED')) {
             $this->fail('exiftool is required for these tests but is not installed at '.exiftoolBinary());
         }
         $this->markTestSkipped('exiftool is not installed ('.exiftoolBinary().').');
