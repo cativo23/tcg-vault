@@ -85,3 +85,9 @@ test('the privacy policy says typed passwords are masked in error and debug reco
         ->assertSee('Passwords you type are masked before either record is kept.')
         ->assertDontSee('which can contain what you typed.');
 });
+
+test('the privacy policy no longer lists Google as a recipient', function () {
+    $this->get('/privacy')
+        ->assertDontSee('Google Fonts')
+        ->assertDontSee('Google LLC');
+});
