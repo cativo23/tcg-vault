@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Invites\Models\Invite;
 use App\Support\DiscordAlerter;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -29,3 +30,10 @@ Schedule::command('catalog:check-pricing-freshness')->dailyAt('04:00');
 // the table grows until the disk does not. 48h matches this project's
 // other short-lived operational data (Horizon's failed-job retention).
 Schedule::command('telescope:prune --hours=48')->daily();
+
+// Reset tokens expire after an hour but stay in the table until cleared.
+Schedule::command('auth:clear-resets')->daily();
+
+// model:prune only discovers models under app/Models, so module models
+// are listed here.
+Schedule::command('model:prune', ['--model' => [Invite::class]])->daily();
