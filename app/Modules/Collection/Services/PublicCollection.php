@@ -56,7 +56,12 @@ final class PublicCollection
         return $this->collectionIds->isEmpty();
     }
 
-    /** Constrain any CollectionItem query/relation to this user's public collections. */
+    /**
+     * Constrain any CollectionItem query/relation to this user's public collections.
+     *
+     * @param  Builder<*>|Relation<*, *, *>  $query
+     * @return ($query is Builder<*> ? Builder<*> : Relation<*, *, *>)
+     */
     public function scopeItems(Builder|Relation $query): Builder|Relation
     {
         return $query->whereIn('collection_id', $this->collectionIds);
@@ -65,6 +70,8 @@ final class PublicCollection
     /**
      * Every distinct card the user owns publicly, with everything a tile
      * needs eager-loaded (set, price snapshots, the owned copies).
+     *
+     * @return Builder<Card>
      */
     public function cardsQuery(): Builder
     {
@@ -82,6 +89,8 @@ final class PublicCollection
      * with how many distinct cards they own from it and how many cards
      * the catalog actually holds for it (`Set.card_count` was not always
      * populated by early syncs; the real count is the honest fallback).
+     *
+     * @return Builder<Set>
      */
     public function setsQuery(): Builder
     {
@@ -95,10 +104,17 @@ final class PublicCollection
             ]);
     }
 
-    /** The user's public copies (physical items), newest first. */
+    /**
+     * The user's public copies (physical items), newest first.
+     *
+     * @return Builder<CollectionItem>
+     */
     public function itemsQuery(): Builder
     {
-        return $this->scopeItems(CollectionItem::query())->latest();
+        $query = CollectionItem::query();
+        $this->scopeItems($query);
+
+        return $query->latest();
     }
 
     public function ownsSet(Set $set): bool

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire;
 
 use App\Mail\FeedbackSubmitted;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
@@ -87,7 +88,7 @@ final class FeedbackForm extends Component
         return mb_substr($path, 0, 500);
     }
 
-    public function render()
+    public function render(): View
     {
         return view('livewire.feedback-form');
     }

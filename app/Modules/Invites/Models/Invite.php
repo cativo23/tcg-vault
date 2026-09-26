@@ -12,11 +12,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\URL;
 
-/**
- * @use HasFactory<InviteFactory>
- */
 final class Invite extends Model
 {
+    /** @use HasFactory<InviteFactory> */
     use HasFactory;
 
     protected $fillable = ['email', 'created_by', 'accepted_by', 'expires_at', 'used_at', 'revoked_at', 'revoked_by'];
@@ -35,16 +33,19 @@ final class Invite extends Model
         return InviteFactory::new();
     }
 
+    /** @return BelongsTo<User, $this> */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /** @return BelongsTo<User, $this> */
     public function acceptedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'accepted_by');
     }
 
+    /** @return BelongsTo<User, $this> */
     public function revokedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'revoked_by');
@@ -86,6 +87,9 @@ final class Invite extends Model
      * ask the database directly instead of loading every row for an
      * email and filtering in PHP. Kept next to isUsable() so the two
      * can't silently drift apart.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
      */
     public function scopeUsable(Builder $query): Builder
     {

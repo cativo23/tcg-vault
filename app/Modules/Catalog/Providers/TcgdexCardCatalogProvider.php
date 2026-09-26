@@ -267,7 +267,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
                     source: 'tcgplayer',
                     variant: $variantKey,
                     currency: $currency,
-                    marketMinor: $this->toMinorUnits($variantData['marketPrice'] ?? null),
+                    marketMinor: $this->toMinorUnits($variantData['marketPrice']),
                     lowMinor: $this->toMinorUnits($variantData['lowPrice'] ?? null),
                     trendMinor: null, // tcgplayer's per-variant payload has no trend figure
                     sourceUpdatedAt: $updated,

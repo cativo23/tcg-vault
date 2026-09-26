@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Collection\Services\Valuation;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -50,7 +51,7 @@ final class CardShow extends Component
         $this->card = $card;
     }
 
-    public function render()
+    public function render(): View
     {
         $public = $this->publicCollection();
         $resolver = new CardPriceResolver;
@@ -84,7 +85,7 @@ final class CardShow extends Component
         $photos = $items
             ->filter(fn ($item) => $item->photo_path !== null)
             ->map(fn ($item) => [
-                'url' => Storage::disk('collection-photos')->url($item->photo_path),
+                'url' => Storage::disk('collection-photos')->url((string) $item->photo_path),
                 'label' => trim(($item->grade_company ? "{$item->grade_company} {$item->grade_value}" : $item->condition)),
             ])
             ->values();

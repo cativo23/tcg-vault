@@ -32,6 +32,7 @@ final class SyncCardPricingJob implements ShouldQueue
 
     public function __construct(public readonly string $tcgdexCardId) {}
 
+    /** @return list<int> */
     public function backoff(): array
     {
         return [10, 30, 60]; // seconds

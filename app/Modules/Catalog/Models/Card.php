@@ -5,15 +5,18 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Models;
 
 use App\Modules\Collection\Models\CollectionItem;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * The foreign keys behind these are NOT NULL and constrained, so the
+ * related row always exists.
+ *
+ * @property-read Set $set
+ */
 final class Card extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'tcgdex_id',
         'set_id',
@@ -35,16 +38,19 @@ final class Card extends Model
         ];
     }
 
+    /** @return BelongsTo<Set, $this> */
     public function set(): BelongsTo
     {
         return $this->belongsTo(Set::class);
     }
 
+    /** @return HasMany<CardPriceSnapshot, $this> */
     public function priceSnapshots(): HasMany
     {
         return $this->hasMany(CardPriceSnapshot::class);
     }
 
+    /** @return HasMany<CollectionItem, $this> */
     public function collectionItems(): HasMany
     {
         return $this->hasMany(CollectionItem::class);

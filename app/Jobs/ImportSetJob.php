@@ -42,6 +42,7 @@ final class ImportSetJob implements ShouldBeUnique, ShouldQueue
 
     public int $tries = 3;
 
+    /** @return list<int> */
     public function backoff(): array
     {
         return [10, 30, 60]; // seconds

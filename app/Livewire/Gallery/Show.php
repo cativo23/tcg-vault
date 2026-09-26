@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Services\Valuation;
+use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -71,7 +72,7 @@ final class Show extends Component
         }
     }
 
-    public function render()
+    public function render(): View
     {
         $public = $this->publicCollection();
         $resolver = new CardPriceResolver;
@@ -110,7 +111,7 @@ final class Show extends Component
         $sorted = match ($this->sort) {
             'name' => $entries->sortBy(fn ($e) => $e['card']->name),
             'rarity' => $entries->sortBy(fn ($e) => $e['card']->rarity ?? ''),
-            'value' => $entries->sortByDesc(fn ($e) => $e['snapshot']?->market_minor ?? -1),
+            'value' => $entries->sortByDesc(fn ($e) => $e['snapshot']->market_minor ?? -1),
             default => $entries->sortBy(fn ($e) => str_pad($e['card']->local_id, 5, '0', STR_PAD_LEFT)),
         };
 
@@ -121,7 +122,7 @@ final class Show extends Component
         // individually numeric. The other sort modes (name/rarity/value)
         // keep the "collection is the subject" grouping.
         if ($this->sort !== 'number') {
-            $sorted = $sorted->sortByDesc(fn ($e) => $e['owned'] ? 1 : 0, SORT_REGULAR, false)->values();
+            $sorted = $sorted->sortByDesc(fn (array $e): int => (int) $e['owned'])->values();
         } else {
             $sorted = $sorted->values();
         }

@@ -12,7 +12,7 @@ the full picture; this file is what an agent needs before making changes.
 - Conventional commits (`type(scope): description`), one concern per commit.
 
 ## CI/CD
-- **CI** (`.github/workflows/ci.yml`): Pint + Pest (Postgres service
+- **CI** (`.github/workflows/ci.yml`): Pint + Larastan (level 8) + Pest (Postgres service
   container) + `npm run build`, on every push/PR to `master`.
 - **Release** (`.github/workflows/auto-release.yml`): merging a
   `release/vX.Y.Z` branch into `master` creates a GitHub Release from the

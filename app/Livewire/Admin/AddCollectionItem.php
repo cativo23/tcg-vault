@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
@@ -127,6 +128,7 @@ final class AddCollectionItem extends Component
      */
     private const MAX_ROWS = 25;
 
+    /** @return array{variant: ?string, condition: string, quantity: int, grade_company: ?string, grade_value: ?string, notes: ?string, photo: mixed, showDetails: bool} */
     private function blankRow(): array
     {
         return [
@@ -141,6 +143,7 @@ final class AddCollectionItem extends Component
         ];
     }
 
+    /** @return array<string, string> */
     protected function rules(): array
     {
         return [
@@ -411,7 +414,7 @@ final class AddCollectionItem extends Component
         return redirect()->route('admin.collection.index');
     }
 
-    public function render()
+    public function render(): View
     {
         return view('livewire.admin.add-collection-item');
     }

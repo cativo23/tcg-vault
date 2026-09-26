@@ -10,6 +10,7 @@ use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -35,7 +36,7 @@ final class Activity extends Component
         $this->resolveTargetUser($username);
     }
 
-    public function render()
+    public function render(): View
     {
         $public = $this->publicCollection();
         $resolver = new CardPriceResolver;
@@ -92,14 +93,12 @@ final class Activity extends Component
                 // 'default' row, so the fallback can never put another
                 // print's price under this row's label. No card-wide
                 // price means no price shown.
-                'snapshot' => $item->card
-                    ? $resolver->resolveForVariant($item->card, $item->variant) ?? $resolver->resolveCardWide($item->card)
-                    : null,
+                'snapshot' => $resolver->resolveForVariant($item->card, $item->variant) ?? $resolver->resolveCardWide($item->card),
                 'at' => $item->created_at,
             ]);
 
         $feed = $moves->concat($additions)
-            ->sortByDesc(fn ($e) => $e['at']->timestamp)
+            ->sortByDesc(fn ($e) => $e['at']->timestamp ?? 0)
             ->take(self::MAX_FEED)
             ->values();
 

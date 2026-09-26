@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace App\Modules\Collection\Models;
 
 use App\Modules\Catalog\Models\Card;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * The foreign keys behind these are NOT NULL and constrained, so the
+ * related row always exists.
+ *
+ * @property-read Card $card
+ * @property-read Collection $collection
+ */
 final class CollectionItem extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'collection_id',
         'card_id',
@@ -35,11 +39,13 @@ final class CollectionItem extends Model
         ];
     }
 
+    /** @return BelongsTo<Collection, $this> */
     public function collection(): BelongsTo
     {
         return $this->belongsTo(Collection::class);
     }
 
+    /** @return BelongsTo<Card, $this> */
     public function card(): BelongsTo
     {
         return $this->belongsTo(Card::class);

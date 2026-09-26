@@ -11,6 +11,8 @@ use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
+use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -158,8 +160,10 @@ final class CollectionItems extends Component
      * (which carries TenantScope) so a card_id with no items in the
      * caller's OWN collection throws a 404, never a 403 that would
      * confirm the card exists in someone else's.
+     *
+     * @return EloquentCollection<int, CollectionItem>
      */
-    private function ownedCardItemsOrFail(int $cardId): \Illuminate\Support\Collection
+    private function ownedCardItemsOrFail(int $cardId): EloquentCollection
     {
         $collectionIds = Collection::query()->pluck('id');
         $items = CollectionItem::where('card_id', $cardId)
@@ -184,9 +188,10 @@ final class CollectionItems extends Component
         $this->resetValidation();
 
         $items = $this->ownedCardItemsOrFail($cardId);
+        $primary = $items->firstOrFail();
 
         $this->editingCardId = $cardId;
-        $this->editingCollectionId = $items->first()->collection_id;
+        $this->editingCollectionId = $primary->collection_id;
         $this->editingRows = $items->map(fn (CollectionItem $i) => [
             'id' => $i->id,
             'variant' => $i->variant,
@@ -200,7 +205,7 @@ final class CollectionItems extends Component
             'showDetails' => false,
         ])->values()->all();
 
-        $card = $items->first()->card;
+        $card = $primary->card;
         $this->editingCardName = $card->name;
 
         // Same variant-sourcing priority as the old startEditingItem():
@@ -220,7 +225,7 @@ final class CollectionItems extends Component
             // had), not the union of every row's variant in this card
             // group, so one row's choice never leaks into another row's
             // dropdown as a selectable option.
-            $variants = array_values(array_filter([$items->first()->variant]));
+            $variants = array_filter([$primary->variant]);
         }
         $this->editingAvailableVariants = $variants;
 
@@ -300,6 +305,7 @@ final class CollectionItems extends Component
         ];
     }
 
+    /** @return array<string, string> */
     protected function rules(): array
     {
         return [
@@ -481,7 +487,7 @@ final class CollectionItems extends Component
         $this->resetPage();
     }
 
-    public function render()
+    public function render(): View
     {
         // PERF: every Livewire action on this component — including ones
         // that only touch the card-editor modal (toggleRowDetails,
@@ -564,7 +570,7 @@ final class CollectionItems extends Component
                 return $item;
             });
 
-            $pricedItems = $valued->filter(fn (CollectionItem $i) => $i->_valueMinor !== null);
+            $pricedItems = $valued->filter(fn (CollectionItem $i) => $i->getAttribute('_valueMinor') !== null);
             $currencies = $pricedItems->pluck('_currency')->unique();
 
             // Summing minor units across items priced in different
@@ -573,11 +579,11 @@ final class CollectionItems extends Component
             // when every priced item in the group shares one currency.
             $totalCurrency = $currencies->count() === 1 ? $currencies->first() : null;
             $totalValueMinor = $totalCurrency !== null
-                ? (int) $pricedItems->sum(fn (CollectionItem $i) => $i->_valueMinor * $i->quantity)
+                ? (int) $pricedItems->sum(fn (CollectionItem $i) => $i->getAttribute('_valueMinor') * $i->quantity)
                 : null;
 
             return (object) [
-                'card' => $valued->first()->card,
+                'card' => $valued->firstOrFail()->card,
                 'items' => $valued->sortBy('variant')->values(),
                 'totalQuantity' => (int) $valued->sum('quantity'),
                 'totalValueMinor' => $totalValueMinor,
