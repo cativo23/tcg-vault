@@ -1620,7 +1620,8 @@ test('a user over the photo limit keeps the old photo and the new one is not pro
     RateLimiter::increment('photo-strip:'.auth()->id(), amount: StripsUploadedPhotos::photoLimitPerMinute());
 
     $component->set('editingRows.0.photo', UploadedFile::fake()->image('new.jpg'))
-        ->assertHasErrors(['editingRows.0.photo']);
+        ->assertHasErrors(['editingRows.0.photo'])
+        ->assertSet('editingRows.0.photo', fn ($photo) => $photo !== null);
 
     expect($this->photoStripper->stripped)->toBe([])
         ->and($item->fresh()->photo_path)->toBe('old-photo.jpg');

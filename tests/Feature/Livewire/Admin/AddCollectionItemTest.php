@@ -1047,7 +1047,9 @@ test('a user over the photo limit is refused without the photo being processed',
     $component->set('rows.0.photo', UploadedFile::fake()->image('card.jpg'))
         ->call('save')
         ->assertHasErrors(['rows.0.photo'])
-        ->assertSee('That’s a lot of photos in a minute. Please wait a moment and try again.');
+        ->assertSee('That’s a lot of photos in a minute. Please wait a moment and try again.')
+        // Kept, so the same file can be saved once the limit resets.
+        ->assertSet('rows.0.photo', fn ($photo) => $photo !== null);
 
     expect($this->photoStripper->stripped)->toBe([])
         ->and(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();

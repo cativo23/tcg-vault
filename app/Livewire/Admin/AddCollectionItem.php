@@ -356,10 +356,13 @@ final class AddCollectionItem extends Component
         // is stored; a photo that can't be stripped is refused, never kept
         // as uploaded.
         foreach ($this->rows as $index => $row) {
-            if ($row['photo'] && ! $this->stripUploadedPhoto($row['photo'], "rows.$index.photo")) {
-                // Cleared so a resubmit doesn't retry the same refused file.
-                $this->rows[$index]['photo'] = null;
-
+            if ($row['photo'] && ! $this->stripUploadedPhoto(
+                $row['photo'],
+                "rows.$index.photo",
+                function () use ($index): void {
+                    $this->rows[$index]['photo'] = null;
+                },
+            )) {
                 return null;
             }
         }

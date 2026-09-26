@@ -11,7 +11,9 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 /**
  * Strips an upload's metadata before a component stores it, and refuses it
- * (with an error on the given field) when that fails. Each attempt counts
+ * (with an error on the given field) when that fails. A photo that can't be
+ * stripped is discarded so it isn't retried; one refused only by the limit
+ * is kept, to be saved once the limit resets. Each attempt counts
  * against a per-user limit, so nobody can keep exiftool busy by submitting
  * large photos over and over.
  */
@@ -22,7 +24,10 @@ trait StripsUploadedPhotos
         return 30;
     }
 
-    protected function stripUploadedPhoto(TemporaryUploadedFile $photo, string $errorKey): bool
+    /**
+     * @param  callable(): void  $discard  clears the component's reference to a photo that can't be stripped
+     */
+    protected function stripUploadedPhoto(TemporaryUploadedFile $photo, string $errorKey, callable $discard): bool
     {
         $key = 'photo-strip:'.auth()->id();
 
@@ -41,6 +46,7 @@ trait StripsUploadedPhotos
             app(PhotoMetadataStripper::class)->strip($photo->getRealPath());
         } catch (PhotoMetadataStripException $e) {
             report($e);
+            $discard();
             $this->addError($errorKey, 'This photo couldn’t be processed. Try a different file.');
 
             return false;

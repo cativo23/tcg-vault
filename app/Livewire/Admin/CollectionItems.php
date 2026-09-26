@@ -383,9 +383,13 @@ final class CollectionItems extends Component
         if ($row['photo'] !== null) {
             // Stripped before the old photo is deleted, so a file that
             // can't be processed leaves the item's current photo in place.
-            if (! $this->stripUploadedPhoto($row['photo'], "editingRows.$index.photo")) {
-                $this->editingRows[$index]['photo'] = null;
-
+            if (! $this->stripUploadedPhoto(
+                $row['photo'],
+                "editingRows.$index.photo",
+                function () use ($index): void {
+                    $this->editingRows[$index]['photo'] = null;
+                },
+            )) {
                 return;
             }
 
