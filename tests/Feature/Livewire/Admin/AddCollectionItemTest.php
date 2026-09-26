@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Livewire\Admin\AddCollectionItem;
+use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Models\User;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardDetailData;
@@ -16,6 +17,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
@@ -1027,8 +1029,23 @@ test('a photo whose metadata cannot be stripped is refused and nothing is saved'
         ->set('rows.0.photo', UploadedFile::fake()->image('card.jpg'))
         ->call('save')
         ->assertHasErrors(['rows.0.photo'])
-        ->assertSee('This photo couldn’t be processed. Try a different file.');
+        ->assertSee('This photo couldn’t be processed. Try a different file.')
+        ->assertSet('rows.0.photo', null);
 
     expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse()
         ->and(Storage::disk('collection-photos')->allFiles())->toBe([]);
+});
+
+test('a user over the photo limit is refused without the photo being processed', function () {
+    Storage::fake('collection-photos');
+    $component = addScreenWithCardSelected($this);
+    RateLimiter::increment('photo-strip:'.auth()->id(), amount: StripsUploadedPhotos::photoLimitPerMinute());
+
+    $component->set('rows.0.photo', UploadedFile::fake()->image('card.jpg'))
+        ->call('save')
+        ->assertHasErrors(['rows.0.photo'])
+        ->assertSee('That’s a lot of photos in a minute. Please wait a moment and try again.');
+
+    expect($this->photoStripper->stripped)->toBe([])
+        ->and(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();
 });
