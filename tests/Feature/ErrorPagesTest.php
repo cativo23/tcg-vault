@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Support\Facades\URL;
 
@@ -30,6 +31,27 @@ test('a 404 renders the branded error page', function () {
         ->assertNotFound()
         ->assertSee('Page not found')
         ->assertSee('tcg-vault', escape: false);
+});
+
+test('a guest hitting a 404 is sent home, not asked to log in', function () {
+    // A stale or mistyped gallery link is a normal, expected 404 on a
+    // public site — the visitor may have no account to log into at all.
+    $this->get('/this-route-does-not-exist')
+        ->assertNotFound()
+        ->assertSee('Go home')
+        ->assertDontSee('Back to login')
+        ->assertSee(route('home'), false);
+});
+
+test('an authenticated user hitting a 404 is sent back to their own collection', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get('/this-route-does-not-exist')
+        ->assertNotFound()
+        ->assertSee('Back to your collection')
+        ->assertDontSee('Go home')
+        ->assertSee(route('admin.collection.index'), false);
 });
 
 test('the 419 error view is branded', function () {

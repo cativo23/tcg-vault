@@ -122,9 +122,11 @@ roadmap safe to attempt.
   tooltip) — a `title` alone is not a reliable accessible name, and is
   nothing at all on touch. The modal's own "✕" close button already had
   one.
-- **The 404 page sends anonymous visitors to "Back to login."** A stale
-  or mistyped gallery link is a normal, expected 404 on a public site,
-  and the visitor may not have an account to log in to. Send guests home.
+- ~~**The 404 page sends anonymous visitors to "Back to login."**~~ —
+  done. Guests now get "Go home" → `route('home')`; an authenticated
+  user's stale link is a different case (their own bookmark going bad),
+  so they get "Back to your collection" instead — neither is asked to
+  log in for a plain 404. 403/419/500 keep "Back to login" unchanged.
 - **N+1 in the TCGplayer import preview.**
   `TcgplayerImportParser.php:88` runs a card lookup and a variant count
   per parsed line. Batch both.

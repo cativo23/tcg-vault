@@ -1,4 +1,18 @@
-@props(['code', 'title', 'message'])
+@props([
+    'code',
+    'title',
+    'message',
+    // Defaults to "Back to login" for every error page except 404, which
+    // passes its own — a stale or mistyped gallery link is a normal,
+    // expected 404 on a public site, and the visitor hitting it may not
+    // have an account to log in to at all.
+    'linkRoute' => 'login',
+    'linkLabel' => null,
+])
+
+@php
+    $linkLabel ??= __('Back to login');
+@endphp
 
 {{--
     The branded shell for every HTTP error page (403/404/419/500/…).
@@ -34,8 +48,8 @@
             <div class="nw-eyebrow" style="color: var(--danger)">{{ $code }}</div>
             <h1 class="nw-h1 nw-display" style="margin-top: 0.5rem;">{{ $title }}</h1>
             <p style="margin-top: 1rem; max-width: 32rem; color: var(--muted)">{{ $message }}</p>
-            <a href="{{ route('login') }}" class="nw-pill-select" style="margin-top: 2rem; text-decoration: none; display: inline-block;">
-                {{ __('Back to login') }}
+            <a href="{{ route($linkRoute) }}" class="nw-pill-select" style="margin-top: 2rem; text-decoration: none; display: inline-block;">
+                {{ $linkLabel }}
             </a>
         </div>
     </body>
