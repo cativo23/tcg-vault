@@ -40,9 +40,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libimage-exiftool-perl \
     && rm -rf /var/lib/apt/lists/*
 # Drop back to the base image's own non-root user (www-data, uid 33) —
-# installing packages and extensions needs root, but nothing after it does. Leaving
-# USER root set here would make the whole runtime stage (and therefore
-# the container nginx/php-fpm actually serves requests as) run as root,
+# installing packages and extensions needs root, but nothing after it
+# does. Leaving USER root set here would make the whole runtime stage (and
+# therefore the container nginx/php-fpm actually serves requests as) run as root,
 # a real regression caught by this repo's automated commit review.
 USER www-data
 
