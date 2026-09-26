@@ -24,6 +24,9 @@
         <li>To read and answer your feedback — <em>legitimate interest</em>, and your choice to send it.</li>
     </ul>
 
+    <h2>Children</h2>
+    <p>You must be at least 13 to create an account, and have a parent’s or guardian’s permission if you’re under 18. If I learn that an account belongs to someone younger than 13, or to a minor without that permission, I’ll delete it. A parent or guardian can ask me to at <a href="mailto:admin@cativo.dev">admin@cativo.dev</a>.</p>
+
     <h2>Public and private</h2>
     <p>Every account with a username has a page at <code>/your-username</code>. Your collection starts <strong>private</strong>: the page then shows only your username and name, and no cards. If you switch it to <strong>public</strong> (on My Collection), anyone can see your cards, their values and your activity there. You can switch back to private at any time.</p>
     <p>Card photos are stored at long, unguessable web addresses. They are only linked from your page while your collection is public, but anyone who already has a photo’s exact address could still open it.</p>

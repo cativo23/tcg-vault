@@ -11,6 +11,7 @@
 
     <h2>Your account</h2>
     <ul>
+        <li>You must be at least 13 to create an account, and have a parent’s or guardian’s permission if you’re under 18 or the age of majority where you live.</li>
         <li>Keep your password to yourself; you are responsible for what happens under your account.</li>
         <li>Pick a username that doesn’t impersonate anyone or break the rules below — it becomes a public web address.</li>
         <li>You can delete your account at any time from your Profile.</li>
