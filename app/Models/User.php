@@ -53,6 +53,12 @@ class User extends Authenticatable
         ];
     }
 
+    /** Staff have blocked this account; it can't sign in and its page is hidden. */
+    public function isSuspended(): bool
+    {
+        return $this->suspended_at !== null;
+    }
+
     /**
      * The single source of truth for what a valid `username` looks like.
      * Every write path — the profile form, registration, and the
@@ -66,12 +72,6 @@ class User extends Authenticatable
      *
      * @return list<mixed>
      */
-    /** Staff have blocked this account; it can't sign in and its page is hidden. */
-    public function isSuspended(): bool
-    {
-        return $this->suspended_at !== null;
-    }
-
     public static function usernameRules(?int $ignoreUserId = null): array
     {
         return [
