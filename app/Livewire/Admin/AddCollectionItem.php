@@ -357,6 +357,9 @@ final class AddCollectionItem extends Component
         // as uploaded.
         foreach ($this->rows as $index => $row) {
             if ($row['photo'] && ! $this->stripUploadedPhoto($row['photo'], "rows.$index.photo")) {
+                // Cleared so a resubmit doesn't retry the same refused file.
+                $this->rows[$index]['photo'] = null;
+
                 return null;
             }
         }
