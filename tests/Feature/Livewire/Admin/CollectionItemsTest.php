@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Tests\Support\FakePhotoMetadataStripper;
 
 test('the collection index lists the authenticated users items', function () {
     $user = User::factory()->create();
@@ -1595,8 +1596,11 @@ test('a replacement photo in the card editor has its metadata stripped before it
 
     $component->set('editingRows.0.photo', UploadedFile::fake()->image('new.jpg'))->assertHasNoErrors();
 
+    $stored = $item->fresh()->photo_path;
+
     expect($this->photoStripper->stripped)->toHaveCount(1)
-        ->and($item->fresh()->photo_path)->not->toBe('old-photo.jpg');
+        ->and($stored)->not->toBe('old-photo.jpg')
+        ->and(Storage::disk('collection-photos')->get($stored))->toEndWith(FakePhotoMetadataStripper::MARKER);
 });
 
 test('a replacement photo that cannot be stripped is refused and the old photo is kept', function () {

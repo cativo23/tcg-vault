@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Spatie\LaravelData\DataCollection;
+use Tests\Support\FakePhotoMetadataStripper;
 
 // The test queue connection is 'sync', so a successful save() would
 // otherwise dispatch ImportSetJob inline against these tests' provider
@@ -1017,8 +1018,10 @@ test('an uploaded photo has its metadata stripped before it is stored', function
         ->call('save')
         ->assertHasNoErrors();
 
+    $stored = CollectionItem::where('card_tcgdex_id', 'me05-116')->value('photo_path');
+
     expect($this->photoStripper->stripped)->toHaveCount(1)
-        ->and(CollectionItem::where('card_tcgdex_id', 'me05-116')->value('photo_path'))->not->toBeNull();
+        ->and(Storage::disk('collection-photos')->get($stored))->toEndWith(FakePhotoMetadataStripper::MARKER);
 });
 
 test('a photo whose metadata cannot be stripped is refused and nothing is saved', function () {

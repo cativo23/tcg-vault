@@ -9,11 +9,14 @@ use App\Modules\Collection\Exceptions\PhotoMetadataStripException;
 
 /**
  * Stands in for exiftool in feature tests, which then don't need the binary
- * (the real stripper has its own tests). Records what it was given and can
+ * (the real stripper has its own tests). Records what it was given, marks
+ * the file so a test can check the stored copy is the stripped one, and can
  * be told to fail.
  */
 final class FakePhotoMetadataStripper implements PhotoMetadataStripper
 {
+    public const MARKER = '[stripped-by-fake]';
+
     /** @var list<string> */
     public array $stripped = [];
 
@@ -26,5 +29,6 @@ final class FakePhotoMetadataStripper implements PhotoMetadataStripper
         }
 
         $this->stripped[] = $absolutePath;
+        file_put_contents($absolutePath, self::MARKER, FILE_APPEND);
     }
 }
