@@ -15,7 +15,10 @@ final class Money
 {
     public static function format(int $minor, string $currency): string
     {
-        return Number::currency($minor / 100, in: $currency, locale: 'en');
+        // Number::currency() returns false only if intl can't format at
+        // all; show the plain amount rather than fail the whole page.
+        return Number::currency($minor / 100, in: $currency, locale: 'en')
+            ?: $currency.' '.number_format($minor / 100, 2);
     }
 
     /** "+$2.00" / "-$0.15" / "$0.00" — for deltas, where the sign is the point. */
