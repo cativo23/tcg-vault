@@ -6,6 +6,25 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-26
+
+### Fixed
+
+- Accessibility: the card variant editor is now a real dialog —
+  `role="dialog"`, `aria-modal`, a label, focus moved in on open, Tab
+  trapped inside, and focus returned to the row's Edit button on close.
+- Accessibility: gallery, per-set gallery, collection, and card-add
+  searches now announce their result count to screen readers. The
+  card-add search is debounced so it doesn't announce every keystroke,
+  and a failed search no longer reads as "0 results".
+- Accessibility: icon-only buttons have accessible names — the variant
+  editor's remove/cancel/confirm buttons (now naming which row), and the
+  admin navigation's mobile menu toggle.
+- Errors: the 404 page no longer sends visitors to a login form. Guests
+  get "Go home"; signed-in collectors get "Back to your collection".
+- Import: the TCGplayer import preview runs a fixed number of queries
+  instead of two per parsed line.
+
 ## [0.6.1] - 2026-09-26
 
 ### Fixed
