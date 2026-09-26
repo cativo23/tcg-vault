@@ -35,7 +35,10 @@ trait StripsUploadedPhotos
         RateLimiter::hit($key, 60);
 
         try {
-            app(PhotoMetadataStripper::class)->strip((string) $photo->getRealPath());
+            // A local temporary upload always has an absolute real path; a
+            // remote temp disk would give a relative key, which the stripper
+            // refuses, so uploads fail closed rather than go unstripped.
+            app(PhotoMetadataStripper::class)->strip($photo->getRealPath());
         } catch (PhotoMetadataStripException $e) {
             report($e);
             $this->addError($errorKey, 'This photo couldn’t be processed. Try a different file.');

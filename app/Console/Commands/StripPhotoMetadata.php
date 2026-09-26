@@ -10,10 +10,9 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Strips metadata from every photo already on the collection-photos disk.
- * New uploads are stripped on the way in; this cleans the ones stored
- * before that. Safe to run again: an already-stripped file just stays as
- * it is.
+ * Strips metadata from every photo on the collection-photos disk, for
+ * files that were stored without going through the upload stripping.
+ * Safe to run again: an already-stripped file just stays as it is.
  */
 final class StripPhotoMetadata extends Command
 {
