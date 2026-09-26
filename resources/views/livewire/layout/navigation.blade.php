@@ -42,6 +42,12 @@ new class extends Component
                             {{ __('View gallery') }}
                         </x-nav-link>
                     @endif
+                    {{-- A button styled as a nav link: it opens the feedback
+                         modal (livewire:feedback-form in layouts/app) rather
+                         than navigating. --}}
+                    <button type="button" x-on:click="$dispatch('open-modal', 'feedback')" class="nw-link inline-flex items-center px-1 pt-1 text-sm font-medium leading-5 focus:outline-none transition duration-150 ease-in-out">
+                        {{ __('Feedback') }}
+                    </button>
                     @can('manage-invites')
                         <x-nav-link :href="route('staff.invites')" :active="request()->routeIs('staff.invites')" wire:navigate>
                             {{ __('Invites') }}
@@ -128,6 +134,9 @@ new class extends Component
                     {{ __('View gallery') }}
                 </x-responsive-nav-link>
             @endif
+            <button type="button" x-on:click="open = false; $dispatch('open-modal', 'feedback')" class="nw-link nw-row-hover block w-full ps-3 pe-4 py-2 border-l-4 border-transparent text-start text-base font-medium focus:outline-none transition duration-150 ease-in-out">
+                {{ __('Feedback') }}
+            </button>
             @can('manage-invites')
                 <x-responsive-nav-link :href="route('staff.invites')" :active="request()->routeIs('staff.invites')" wire:navigate>
                     {{ __('Invites') }}
