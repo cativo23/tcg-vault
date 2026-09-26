@@ -6,6 +6,24 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-26
+
+### Added
+
+- Static analysis in CI: Larastan at level 8 with no baseline, run on
+  every push and pull request.
+- A dependency audit in CI (`composer audit` and `npm audit`), failing on
+  high and critical advisories.
+- The production image is now built on every pull request (without
+  pushing), so a broken Dockerfile fails review instead of a deploy.
+
+### Fixed
+
+- The CSV export now fails with an error if its output stream can't be
+  opened, instead of downloading an empty file.
+- Prices fall back to a plain amount if the currency formatter fails,
+  instead of rendering empty.
+
 ## [0.8.1] - 2026-09-26
 
 ### Fixed
