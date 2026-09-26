@@ -106,7 +106,7 @@ final class InviteManager extends Component
                 return;
             }
 
-            $stale->revoke(auth()->id());
+            $stale->revoke(auth()->user()?->id);
 
             try {
                 DB::transaction(fn () => Invite::create($attributes));
@@ -137,7 +137,7 @@ final class InviteManager extends Component
     {
         Gate::authorize('manage-invites');
 
-        Invite::findOrFail($inviteId)->revoke(auth()->id());
+        Invite::findOrFail($inviteId)->revoke(auth()->user()?->id);
     }
 
     public function render(): View
