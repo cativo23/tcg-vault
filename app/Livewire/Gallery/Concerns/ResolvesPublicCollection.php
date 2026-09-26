@@ -38,7 +38,8 @@ trait ResolvesPublicCollection
     /** The collector's display name for mastheads and titles. */
     protected function collectorName(): string
     {
-        return $this->targetUser->name ?: $this->targetUser->username;
+        // The page was resolved by username, so it is never null here.
+        return $this->targetUser->name ?: (string) $this->targetUser->username;
     }
 
     /**
