@@ -165,12 +165,22 @@ Follow-ups raised by the legal review, not yet scheduled:
 
 ## v0.9.0 — Pipeline hardening
 
-- **Static analysis** (larastan) in `ci.yml`. Pint and Pest both pass
-  today; neither catches a type or logic error.
+- **Static analysis** (larastan) in `ci.yml` at level 8, with no
+  baseline. Pint and Pest both pass on code with type and null-handling
+  mistakes; neither catches them.
 - **Dependency audit** — `composer audit` and `npm audit`.
 - **Build the production image on pull requests.** `deploy.yml` only
   builds on `release: published`, so a broken Dockerfile surfaces during
   a deploy rather than during review. It has done exactly that before.
+
+## Unscheduled — Larastan level 9
+
+Level 9 rejects every value typed `mixed`. It reports 126 more errors than
+level 8, and 76 of them are in `TcgdexCardCatalogProvider`, which reads
+tcgdex's JSON without checking its shape. The fix is not annotations: it
+is a parsing layer that validates each tcgdex response field by field
+before building `CardDetailData` / `PriceEntryData`, with its own tests.
+Raise `phpstan.neon` to level 9 once that layer exists.
 
 ## v1.0.0 — Wide private beta
 
