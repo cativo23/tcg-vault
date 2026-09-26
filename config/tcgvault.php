@@ -18,6 +18,10 @@ return [
     // username used elsewhere) rather than relying on the derived one.
     'admin_username' => env('TCGVAULT_ADMIN_USERNAME'),
 
+    // Where the in-app feedback form sends reports. Defaults to the admin
+    // email, so it works without extra setup.
+    'feedback_email' => env('TCGVAULT_FEEDBACK_EMAIL', env('TCGVAULT_ADMIN_EMAIL')),
+
     // Only the INITIAL value, seeded once into RegistrationSettings by
     // database/settings/..._create_registration_settings.php — after
     // that migration runs, App\Settings\RegistrationSettings::$open

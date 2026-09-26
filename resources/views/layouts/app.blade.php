@@ -32,6 +32,7 @@
     <body class="font-sans antialiased">
         <div class="min-h-screen" style="background: var(--bone)">
             <livewire:layout.navigation />
+            <livewire:feedback-form />
 
             <!-- Page Heading -->
             @if (isset($header))
