@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Models\User;
 use App\Modules\Invites\Models\Invite;
+use Database\Seeders\PermissionSeeder;
 use Illuminate\Support\Facades\URL;
 
 // Laravel falls back to its default whitescreen error page for any status
@@ -30,6 +32,44 @@ test('a 404 renders the branded error page', function () {
         ->assertNotFound()
         ->assertSee('Page not found')
         ->assertSee('tcg-vault', escape: false);
+});
+
+test('a guest hitting a 404 is sent home, not asked to log in', function () {
+    // A stale or mistyped gallery link is a normal, expected 404 on a
+    // public site — the visitor may have no account to log into at all.
+    $this->get('/this-route-does-not-exist')
+        ->assertNotFound()
+        ->assertSee('Go home')
+        ->assertDontSee('Back to login')
+        ->assertSee(route('home'), false);
+});
+
+test('an authenticated user with use-collection hitting a 404 is sent back to their own collection', function () {
+    $this->seed(PermissionSeeder::class);
+    $user = User::factory()->create(); // gets the `user` role (and use-collection) now that the permission exists
+
+    $this->actingAs($user)
+        ->get('/this-route-does-not-exist')
+        ->assertNotFound()
+        ->assertSee('Back to your collection')
+        ->assertDontSee('Go home')
+        ->assertSee(route('admin.collection.index'), false);
+});
+
+test('an authenticated user without use-collection hitting a 404 is still sent home, not into a 403', function () {
+    // Bouncing straight from a 404 into a 403 (admin.collection.index
+    // gates on the permission, not just auth) would be a worse outcome
+    // than the login prompt this page used to show everyone.
+    $this->seed(PermissionSeeder::class);
+    $user = User::factory()->create();
+    $user->syncRoles([]); // authenticated, but no use-collection
+
+    $this->actingAs($user)
+        ->get('/this-route-does-not-exist')
+        ->assertNotFound()
+        ->assertSee('Go home')
+        ->assertDontSee('Back to your collection')
+        ->assertSee(route('home'), false);
 });
 
 test('the 419 error view is branded', function () {
