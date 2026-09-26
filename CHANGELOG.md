@@ -6,6 +6,37 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-26
+
+### Added
+
+- A live example collection, linked from the landing page: a dedicated
+  `demo` account holding twelve modern chase cards at real, daily-refreshed
+  prices, seeded by `php artisan demo:seed-gallery`. The link only shows
+  once that collection exists, is public and has cards.
+- CSV export of the whole collection from My Collection — every item with
+  its variant, condition, grade, quantity, notes and current market price.
+- An in-app feedback form for beta members ("Feedback" in the top bar),
+  emailed to the owner with the member's username and page attached.
+- Privacy policy and terms of use, linked from every public page and from
+  signup, where creating an account now means accepting them.
+- A neutral age screen at signup: birth month and year (never stored),
+  under-13s refused, and a guardian checkbox for 13–17.
+
+### Fixed
+
+- Account deletion failed for anyone who registered through an invite
+  (and for staff who had created or revoked one). The accepted invite is
+  now deleted with the account; invites someone created or revoked stay.
+- Deleting an account now also deletes its card photos from disk; they
+  previously stayed reachable by URL.
+- The account-deletion copy now says exactly what is removed, and links
+  to the CSV export.
+- The collection's visibility control is now a labelled Private/Public
+  switch with a line saying who can see it; the landing FAQ no longer
+  points to the wrong page for it.
+
+
 ## [0.7.0] - 2026-09-26
 
 ### Fixed
