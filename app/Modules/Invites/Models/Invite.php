@@ -9,6 +9,7 @@ use Database\Factories\InviteFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\URL;
 
@@ -16,6 +17,11 @@ final class Invite extends Model
 {
     /** @use HasFactory<InviteFactory> */
     use HasFactory;
+
+    use Prunable;
+
+    /** How long an unaccepted invite is kept after it expires or is revoked. */
+    public const PRUNE_AFTER_DAYS = 30;
 
     protected $fillable = ['email', 'created_by', 'accepted_by', 'expires_at', 'used_at', 'revoked_at', 'revoked_by'];
 
@@ -97,6 +103,24 @@ final class Invite extends Model
             ->whereNull('used_at')
             ->whereNull('revoked_at')
             ->where('expires_at', '>', now());
+    }
+
+    /**
+     * An invite nobody accepted only holds a non-member's email, so it goes
+     * once it has been dead for a while. Accepted invites stay: they record
+     * who invited whom, and are deleted with the account they created.
+     *
+     * @return Builder<self>
+     */
+    public function prunable(): Builder
+    {
+        $cutoff = now()->subDays(self::PRUNE_AFTER_DAYS);
+
+        return self::query()
+            ->whereNull('used_at')
+            ->where(fn (Builder $query) => $query
+                ->where('expires_at', '<', $cutoff)
+                ->orWhere('revoked_at', '<', $cutoff));
     }
 
     /**
