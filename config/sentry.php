@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\SentryEventScrubber;
+
 /**
  * Sentry Laravel SDK configuration file.
  *
@@ -52,6 +54,10 @@ return [
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#send_default_pii
     'send_default_pii' => env('SENTRY_SEND_DEFAULT_PII', false),
+
+    // The request body is attached even with send_default_pii off; this masks
+    // typed passwords and tokens in it before the report leaves the app.
+    'before_send' => [SentryEventScrubber::class, 'beforeSend'],
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#ignore_exceptions
     // 'ignore_exceptions' => [],
