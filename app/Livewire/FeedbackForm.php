@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire;
 
 use App\Mail\FeedbackSubmitted;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
@@ -25,8 +26,6 @@ final class FeedbackForm extends Component
 
     public string $pageUrl = '';
 
-    public bool $sent = false;
-
     public function send(): void
     {
         $user = auth()->user();
@@ -37,6 +36,16 @@ final class FeedbackForm extends Component
             'message' => ['required', 'string', 'max:5000'],
         ]);
 
+        // Queueing with no recipient would show "Thanks" while the job
+        // fails in the worker, so the report would vanish unseen.
+        $recipient = config('tcgvault.feedback_email');
+        if (! filled($recipient)) {
+            Log::error('Feedback form submitted but tcgvault.feedback_email is not configured.');
+            $this->addError('message', 'Feedback can’t be sent right now. Please try again later.');
+
+            return;
+        }
+
         $key = 'feedback:'.$user->id;
         if (RateLimiter::tooManyAttempts($key, self::MAX_PER_HOUR)) {
             $this->addError('message', 'That’s a lot of feedback in one hour — thank you! Please try again a bit later.');
@@ -45,7 +54,7 @@ final class FeedbackForm extends Component
         }
         RateLimiter::hit($key, 3600);
 
-        Mail::to(config('tcgvault.feedback_email'))->queue(new FeedbackSubmitted(
+        Mail::to($recipient)->queue(new FeedbackSubmitted(
             type: $this->type,
             body: $this->message,
             username: $user->username,
@@ -54,12 +63,9 @@ final class FeedbackForm extends Component
         ));
 
         $this->reset('message', 'type');
-        $this->sent = true;
-    }
-
-    public function startOver(): void
-    {
-        $this->sent = false;
+        // The "Thanks" panel is toggled client-side: re-rendering the modal
+        // from the server when it reopens would close it again.
+        $this->dispatch('feedback-sent');
     }
 
     /**

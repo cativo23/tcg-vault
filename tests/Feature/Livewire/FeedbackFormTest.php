@@ -41,7 +41,7 @@ test('sending emails the owner the message, type, username and page, with the us
         ->set('pageUrl', url('/admin?page=2'))
         ->call('send')
         ->assertHasNoErrors()
-        ->assertSet('sent', true)
+        ->assertDispatched('feedback-sent')
         ->assertSet('message', '');
 
     Mail::assertQueued(FeedbackSubmitted::class, function (FeedbackSubmitted $mail) {
@@ -123,4 +123,49 @@ test('the email shows the message as text, never as HTML', function () {
         ->assertDontSeeInHtml('<script>alert(1)</script>', false)
         ->assertSeeInText('ash')
         ->assertSeeInText('/admin');
+});
+
+test('with no feedback address configured it says so instead of pretending to send', function (?string $address) {
+    config(['tcgvault.feedback_email' => $address]);
+    $this->actingAs(User::factory()->create());
+
+    Livewire::test(FeedbackForm::class)
+        ->set('type', 'bug')
+        ->set('message', 'hello')
+        ->call('send')
+        ->assertHasErrors('message')
+        ->assertNotDispatched('feedback-sent');
+
+    Mail::assertNothingQueued();
+})->with(['null' => [null], 'empty' => ['']]);
+
+test('a transient mail failure is retried rather than dropped', function () {
+    $mail = new FeedbackSubmitted(type: 'bug', body: 'x', username: 'ash', userEmail: 'ash@example.test', pagePath: null);
+
+    expect($mail->tries)->toBe(3)->and($mail->backoff)->toBe(60);
+});
+
+test('only a same-site path survives, whatever shape the URL takes', function (string $url, ?string $expected) {
+    $this->actingAs(User::factory()->create());
+
+    Livewire::test(FeedbackForm::class)
+        ->set('type', 'bug')->set('message', 'hello')->set('pageUrl', $url)
+        ->call('send');
+
+    Mail::assertQueued(FeedbackSubmitted::class, fn (FeedbackSubmitted $mail) => $mail->pagePath === $expected);
+})->with([
+    'scheme-relative other host' => ['//evil.example/x', null],
+    'userinfo pointing elsewhere' => ['http://localhost:8000@evil.example/x', null],
+    'userinfo and fragment dropped' => ['http://evil@localhost/x?a=1#frag', '/x?a=1'],
+    'javascript scheme' => ['javascript:alert(1)', null],
+]);
+
+test('reopening the modal after sending shows a fresh form', function () {
+    $html = file_get_contents(resource_path('views/livewire/feedback-form.blade.php'));
+
+    // Client-side only: a server round trip on open re-renders the modal
+    // and closes it again.
+    expect($html)->toContain('x-on:feedback-sent.window="sent = true;')
+        ->and($html)->toContain('sent = false')
+        ->and($html)->not->toContain('$wire.startOver');
 });

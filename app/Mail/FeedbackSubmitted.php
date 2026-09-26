@@ -27,6 +27,11 @@ final class FeedbackSubmitted extends Mailable implements ShouldQueue
         'confusing' => 'Something’s confusing',
     ];
 
+    /** A transient mail-provider failure retries instead of dropping the report. */
+    public int $tries = 3;
+
+    public int $backoff = 60;
+
     public function __construct(
         public readonly string $type,
         public readonly string $body,
