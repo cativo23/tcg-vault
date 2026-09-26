@@ -4,17 +4,18 @@
     <h1 class="nw-display nw-h1 nw-h1--sm">Privacy policy</h1>
     <p class="nw-legal-meta">Last updated September 2026</p>
 
-    <p>tcg-vault is a small, independent Pokémon TCG collection tracker run by one person, Carlos Cativo (“I”), from El Salvador. This page explains what the app stores about you, why, and what you can do about it. It is written to meet the EU General Data Protection Regulation (GDPR) as well as Salvadoran law, since anyone can visit the public galleries.</p>
+    <p>tcg-vault is a small, independent Pokémon TCG collection tracker run by one person, Carlos Cativo (“I”), from El Salvador. I am the controller of the data described here. This page explains what the app stores about you, why, and what you can do about it. It is written to meet the EU General Data Protection Regulation (GDPR) as well as Salvadoran law, since anyone can visit the public galleries.</p>
 
     <h2>What I collect</h2>
     <ul>
-        <li><strong>Your account:</strong> name, username, email address, and your password (stored only as a one-way hash, never readable).</li>
-        <li><strong>Your collection:</strong> the cards you add and everything you enter about them — variant, condition, grade, quantity, notes and photos.</li>
-        <li><strong>Invites:</strong> the email address an invite was sent to, and who created, accepted or revoked it.</li>
+        <li><strong>Your account:</strong> name, username, email address, and your password (stored only as a one-way hash, never readable). Name, email and password are needed to have an account.</li>
+        <li><strong>Your collection:</strong> the cards you add and everything you enter about them — variant, condition, grade, quantity, notes and photos. Photos are stored exactly as uploaded, including any location data your phone embedded in them.</li>
+        <li><strong>Invites:</strong> the email address an invite was created for, and who created, accepted or revoked it. The app does not email invites; they are shared as links.</li>
         <li><strong>Feedback you send:</strong> your message, its type, your username and email, and the page you were on.</li>
-        <li><strong>Technical data:</strong> a session cookie and a security (CSRF) cookie that keep you logged in and protect forms; your light/dark theme choice, saved in your own browser; and error reports when something breaks.</li>
+        <li><strong>Cookies:</strong> a session cookie and a security (CSRF) cookie, plus — only if you tick “Remember me” — a login cookie that lasts up to about 400 days. All are strictly necessary for the app to work, so no consent is asked. Your light/dark theme choice is saved in your own browser only.</li>
+        <li><strong>Error and debug records:</strong> see “Where your data lives” below.</li>
     </ul>
-    <p>There is no advertising, no analytics and no tracking across other sites.</p>
+    <p>There is no advertising, no analytics and no tracking across other sites. No automated decisions are made about you.</p>
 
     <h2>Why, and on what legal basis</h2>
     <ul>
@@ -24,35 +25,43 @@
     </ul>
 
     <h2>Public and private</h2>
-    <p>Every account with a username has a page at <code>/your-username</code>. Your collection starts <strong>private</strong>: the page then shows nothing. If you switch it to <strong>public</strong> (on My Collection), anyone can see your cards, their values and your activity there.</p>
+    <p>Every account with a username has a page at <code>/your-username</code>. Your collection starts <strong>private</strong>: the page then shows only your username and name, and no cards. If you switch it to <strong>public</strong> (on My Collection), anyone can see your cards, their values and your activity there. You can switch back to private at any time.</p>
     <p>Card photos are stored at long, unguessable web addresses. They are only linked from your page while your collection is public, but anyone who already has a photo’s exact address could still open it.</p>
 
     <h2>Where your data lives, and who else touches it</h2>
     <ul>
         <li><strong>Hosting:</strong> the app, its database and your photos run on a server rented from Hetzner Online GmbH in Nuremberg, Germany (EU).</li>
-        <li><strong>Email:</strong> feedback and account emails (such as password resets) are sent through Resend, a US email provider.</li>
-        <li><strong>Error tracking:</strong> error reports go to a self-hosted Bugsink instance on the same server infrastructure; they are configured not to include personal data by default. Detailed request logs for debugging are deleted automatically after 48 hours.</li>
+        <li><strong>Email:</strong> feedback and account emails (such as password resets) are sent through Resend, Inc., in the United States.</li>
+        <li><strong>Error reports:</strong> when something breaks, a report goes to a self-hosted Bugsink instance on my own server infrastructure. It includes the request that failed, which can contain what you typed.</li>
+        <li><strong>Debug records:</strong> a short-lived log of failed requests and errors, which can include your IP address, account name and email, and the request details. It is deleted within 3 days.</li>
         <li><strong>Card data and artwork:</strong> card images load directly from tcgdex (<code>assets.tcgdex.net</code>), so your browser contacts their servers and they see your IP address.</li>
-        <li><strong>Fonts:</strong> the app’s typefaces load from Google Fonts, so your browser also contacts Google’s servers, which see your IP address.</li>
+        <li><strong>Fonts:</strong> the app’s typefaces load from Google Fonts (Google LLC, United States), so your browser also contacts Google’s servers, which see your IP address.</li>
     </ul>
-    <p>I don’t sell or share your data with anyone else.</p>
+    <p>Where data goes to the United States (Resend, Google), the transfer relies on the EU–US Data Privacy Framework or the providers’ Standard Contractual Clauses. I don’t sell or share your data with anyone else.</p>
 
     <h2>How long I keep it</h2>
-    <p>Your account and collection are kept until you delete them. A login session lasts up to a year unless you log out. Feedback emails stay in my inbox so I can follow up on them.</p>
+    <ul>
+        <li>Your account and collection: until you delete them.</li>
+        <li>A login session: up to a year unless you log out; the “Remember me” cookie up to about 400 days.</li>
+        <li>Debug records: deleted within 3 days. Error reports: kept only as long as needed to fix the problem.</li>
+        <li>Feedback emails: kept in my inbox for as long as needed to follow up.</li>
+    </ul>
 
     <h2>Your rights</h2>
     <p>You can, at any time:</p>
     <ul>
-        <li><strong>Get a copy</strong> of your collection — “Export CSV” on My Collection downloads every card with all its details.</li>
+        <li><strong>Get a copy</strong> of your collection — “Export CSV” on My Collection downloads every card with all its details (photos are not included).</li>
         <li><strong>Correct</strong> your details on your Profile, and your cards on My Collection.</li>
-        <li><strong>Delete your account</strong> from your Profile. This immediately and permanently removes your account, your whole collection with its notes and photos, and the invite you signed up with.</li>
-        <li><strong>Ask</strong> what I hold about you, object to how it’s used, or complain to your local data protection authority.</li>
+        <li><strong>Delete your account</strong> from your Profile. This immediately and permanently removes your account, your whole collection with its notes and photos, and the invite you signed up with. Copies in short-lived debug records and error reports expire on the schedule above.</li>
+        <li><strong>Ask</strong> for access to what I hold about you, or for restriction or portability of it; object to how it’s used; or withdraw a choice such as making your collection public.</li>
+        <li><strong>Complain</strong> to your local data protection authority.</li>
     </ul>
+    <p>I reply to requests within one month. If a breach puts your data at risk, I’ll tell you without undue delay.</p>
 
     <h2>Contact</h2>
-    <p>Use “Feedback” in the app’s top bar while logged in, or write to <strong>[contact email — to be confirmed]</strong>.</p>
+    <p>Write to <a href="mailto:admin@cativo.dev">admin@cativo.dev</a>, or use “Feedback” in the app’s top bar while logged in.</p>
 
     <h2>Changes</h2>
-    <p>If this policy changes in a way that matters, the date above changes and logged-in members are told in the app.</p>
+    <p>If this policy changes in a way that matters, I’ll update the date above and email members.</p>
 </article>
 @endcomponent

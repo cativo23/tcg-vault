@@ -116,6 +116,8 @@ new #[Layout('layouts.guest')] class extends Component
                 <x-input-error :messages="$errors->get('password_confirmation')" class="mt-2" />
             </div>
 
+            @include('partials.signup-legal-notice')
+
             <div class="flex items-center justify-end mt-4">
                 <a class="nw-link underline text-sm rounded-md" href="{{ route('login') }}" wire:navigate>
                     {{ __('Already registered?') }}
