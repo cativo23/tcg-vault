@@ -11,6 +11,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Scopes\TenantScope;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -31,21 +32,31 @@ final class SeedDemoGallery extends Command
         $username = config('tcgvault.demo.username');
         $email = config('tcgvault.demo.email');
 
-        $existing = User::where('username', $username)->first();
-        if ($existing !== null && $existing->email !== $email) {
-            $this->error("The username [{$username}] belongs to a real account; set TCGVAULT_DEMO_USERNAME to another one.");
+        // The email is the demo account's identity, so changing
+        // TCGVAULT_DEMO_USERNAME renames it rather than creating a second.
+        $demo = User::where('email', $email)->first();
+
+        // Same rules as every other path that writes a username, since
+        // it becomes a public URL segment.
+        $validator = Validator::make(['username' => $username], ['username' => User::usernameRules($demo?->id)]);
+        if ($validator->fails()) {
+            $this->error("TCGVAULT_DEMO_USERNAME [{$username}] is not usable: ".$validator->errors()->first('username'));
 
             return self::FAILURE;
         }
 
-        // Nobody is meant to log in as the demo: a random password that is
-        // never shown or stored anywhere, and no roles.
-        $demo = $existing ?? User::create([
-            'name' => 'Example collection',
-            'username' => $username,
-            'email' => $email,
-            'password' => Str::random(64),
-        ]);
+        if ($demo === null) {
+            // Nobody is meant to log in as the demo: a random password that
+            // is never shown or stored anywhere, and no roles.
+            $demo = User::create([
+                'name' => 'Demo',
+                'username' => $username,
+                'email' => $email,
+                'password' => Str::random(64),
+            ]);
+        } elseif ($demo->username !== $username) {
+            $demo->update(['username' => $username]);
+        }
 
         // Console context has no authenticated user, so TenantScope would
         // filter every query to `user_id is null`.
@@ -68,7 +79,10 @@ final class SeedDemoGallery extends Command
             }
 
             CollectionItem::firstOrCreate(
-                ['collection_id' => $collection->id, 'card_id' => $card->id, 'variant' => 'holofoil', 'condition' => 'NM'],
+                [
+                    'collection_id' => $collection->id, 'card_id' => $card->id, 'variant' => 'holofoil',
+                    'condition' => 'NM', 'grade_company' => null, 'grade_value' => null,
+                ],
                 ['card_tcgdex_id' => $card->tcgdex_id, 'quantity' => 1],
             );
         }

@@ -28,8 +28,8 @@ final class Home extends Component
 
     /**
      * The example collection's username, or null while it hasn't been
-     * seeded or isn't public — the link only shows when it would land on
-     * a real collection.
+     * seeded, isn't public, or has no cards — the link only shows when it
+     * would land on a real collection.
      */
     public ?string $exampleUsername = null;
 
@@ -40,12 +40,19 @@ final class Home extends Component
 
         if ($user !== null) {
             $this->redirectRoute('gallery.index', ['username' => $user->username], navigate: false);
+
+            return;
         }
 
         $this->registrationOpen = app(RegistrationSettings::class)->open;
 
-        $demo = User::where('username', config('tcgvault.demo.username'))->first();
-        if ($demo !== null && ! PublicCollection::for($demo)->isEmpty()) {
+        // Matched on the demo email too: the username alone is claimable by
+        // any member, and this link must never advertise someone's own
+        // collection as the example.
+        $demo = User::where('username', config('tcgvault.demo.username'))
+            ->where('email', config('tcgvault.demo.email'))
+            ->first();
+        if ($demo !== null && PublicCollection::for($demo)->itemsQuery()->exists()) {
             $this->exampleUsername = $demo->username;
         }
     }

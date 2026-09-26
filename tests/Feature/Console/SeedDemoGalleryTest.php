@@ -109,3 +109,23 @@ test('it refuses to take over a real account that already has the demo username'
 
     expect(Collection::withoutGlobalScope(TenantScope::class)->where('user_id', $real->id)->exists())->toBeFalse();
 });
+
+test('it rejects a configured username the profile form would reject', function (string $username) {
+    config(['tcgvault.demo.username' => $username]);
+    fakeProvider()->shouldNotReceive('findCard');
+
+    $this->artisan('demo:seed-gallery')->assertFailed();
+
+    expect(User::where('email', 'demo@tcg-vault.invalid')->exists())->toBeFalse();
+})->with(['reserved word' => ['login'], 'uppercase' => ['Demo']]);
+
+test('changing the configured username renames the existing demo account', function () {
+    fakeProvider()->shouldNotReceive('findCard');
+    $this->artisan('demo:seed-gallery')->assertSuccessful();
+
+    config(['tcgvault.demo.username' => 'showcase']);
+    $this->artisan('demo:seed-gallery')->assertSuccessful();
+
+    expect(User::where('email', 'demo@tcg-vault.invalid')->value('username'))->toBe('showcase')
+        ->and(User::where('email', 'demo@tcg-vault.invalid')->count())->toBe(1);
+});
