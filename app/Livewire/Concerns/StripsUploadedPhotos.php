@@ -19,10 +19,9 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
  */
 trait StripsUploadedPhotos
 {
-    public static function photoLimitPerMinute(): int
-    {
-        return 30;
-    }
+    // A constant rather than a public method, which Livewire would expose
+    // as an action.
+    public const PHOTO_LIMIT_PER_MINUTE = 30;
 
     /**
      * @param  callable(): void  $discard  clears the component's reference to a photo that can't be stripped
@@ -31,7 +30,7 @@ trait StripsUploadedPhotos
     {
         $key = 'photo-strip:'.auth()->id();
 
-        if (RateLimiter::tooManyAttempts($key, self::photoLimitPerMinute())) {
+        if (RateLimiter::tooManyAttempts($key, self::PHOTO_LIMIT_PER_MINUTE)) {
             $this->addError($errorKey, 'That’s a lot of photos in a minute. Please wait a moment and try again.');
 
             return false;

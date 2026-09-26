@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Livewire\Admin\AddCollectionItem;
-use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Models\User;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardDetailData;
@@ -1042,7 +1041,7 @@ test('a photo whose metadata cannot be stripped is refused and nothing is saved'
 test('a user over the photo limit is refused without the photo being processed', function () {
     Storage::fake('collection-photos');
     $component = addScreenWithCardSelected($this);
-    RateLimiter::increment('photo-strip:'.auth()->id(), amount: StripsUploadedPhotos::photoLimitPerMinute());
+    RateLimiter::increment('photo-strip:'.auth()->id(), amount: AddCollectionItem::PHOTO_LIMIT_PER_MINUTE);
 
     $component->set('rows.0.photo', UploadedFile::fake()->image('card.jpg'))
         ->call('save')
