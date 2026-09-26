@@ -165,11 +165,12 @@ Follow-ups raised by the legal review, not yet scheduled:
 
 ## v0.9.0 — Pipeline hardening
 
-- **Static analysis** (larastan) in `ci.yml` at level 8, with no
+- ~~**Static analysis** (larastan) in `ci.yml`~~ — done, at level 8 with no
   baseline. Pint and Pest both pass on code with type and null-handling
   mistakes; neither catches them.
-- **Dependency audit** — `composer audit` and `npm audit`.
-- **Build the production image on pull requests.** `deploy.yml` only
+- ~~**Dependency audit** — `composer audit` and `npm audit`.~~ — done;
+  fails on high and critical advisories.
+- ~~**Build the production image on pull requests.**~~ — done. `deploy.yml` only
   builds on `release: published`, so a broken Dockerfile surfaces during
   a deploy rather than during review. It has done exactly that before.
 
