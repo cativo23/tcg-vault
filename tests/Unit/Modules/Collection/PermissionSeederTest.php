@@ -11,7 +11,7 @@ test('seeding creates the core permissions and roles', function () {
 
     $this->seed();
 
-    foreach (['view-horizon', 'view-telescope', 'manage-invites', 'manage-platform-settings', 'use-collection'] as $permission) {
+    foreach (['view-horizon', 'view-telescope', 'manage-invites', 'manage-platform-settings', 'manage-members', 'use-collection'] as $permission) {
         expect(Permission::where('name', $permission)->exists())->toBeTrue();
     }
 
