@@ -49,6 +49,7 @@
         <li>Feedback emails: kept in my inbox for as long as needed to follow up.</li>
         <li>An invite nobody accepted: deleted within 31 days of expiring or being revoked. An accepted invite is deleted with the account it created.</li>
         <li>Password reset links: expire after an hour and are deleted within a day.</li>
+        <li>If staff suspend or delete an account: a record of that, holding the account’s internal number but not its name or email, kept for a year.</li>
     </ul>
 
     <h2>Your rights</h2>
