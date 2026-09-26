@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire;
 
 use App\Models\User;
+use App\Modules\Collection\Services\PublicCollection;
 use App\Settings\RegistrationSettings;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
@@ -25,6 +26,13 @@ final class Home extends Component
 {
     public bool $registrationOpen;
 
+    /**
+     * The example collection's username, or null while it hasn't been
+     * seeded or isn't public — the link only shows when it would land on
+     * a real collection.
+     */
+    public ?string $exampleUsername = null;
+
     public function mount(): void
     {
         /** @var User|null $user */
@@ -35,6 +43,11 @@ final class Home extends Component
         }
 
         $this->registrationOpen = app(RegistrationSettings::class)->open;
+
+        $demo = User::where('username', config('tcgvault.demo.username'))->first();
+        if ($demo !== null && ! PublicCollection::for($demo)->isEmpty()) {
+            $this->exampleUsername = $demo->username;
+        }
     }
 
     public function render()

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Models\User;
+use App\Modules\Collection\Models\Collection;
 use App\Settings\RegistrationSettings;
 
 test('a guest always sees a login link on the home page', function () {
@@ -39,4 +41,25 @@ test('the privacy FAQ points to where the visibility control actually is', funct
         ->assertOk()
         ->assertSee('My Collection')
         ->assertDontSee('from your profile');
+});
+
+test('the home page links to the example collection once it is public', function () {
+    config(['tcgvault.demo.username' => 'demo']);
+    $demo = User::factory()->create(['username' => 'demo']);
+    Collection::factory()->for($demo)->create(['is_public' => true]);
+
+    $this->get('/')
+        ->assertOk()
+        ->assertSee(route('gallery.index', ['username' => 'demo']))
+        ->assertSee('See an example collection');
+});
+
+test('the home page hides the example link while there is no public demo collection', function () {
+    config(['tcgvault.demo.username' => 'demo']);
+    $demo = User::factory()->create(['username' => 'demo']);
+    Collection::factory()->for($demo)->create(['is_public' => false]);
+
+    $this->get('/')
+        ->assertOk()
+        ->assertDontSee('See an example collection');
 });
