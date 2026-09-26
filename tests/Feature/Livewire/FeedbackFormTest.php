@@ -160,12 +160,16 @@ test('only a same-site path survives, whatever shape the URL takes', function (s
     'javascript scheme' => ['javascript:alert(1)', null],
 ]);
 
-test('reopening the modal after sending shows a fresh form', function () {
+test('reopening the modal after sending resets it client-side, without a server round trip', function () {
     $html = file_get_contents(resource_path('views/livewire/feedback-form.blade.php'));
 
-    // Client-side only: a server round trip on open re-renders the modal
-    // and closes it again.
-    expect($html)->toContain('x-on:feedback-sent.window="sent = true;')
-        ->and($html)->toContain('sent = false')
-        ->and($html)->not->toContain('$wire.startOver');
+    // A server action on open re-renders the modal and closes it again, so
+    // the reset has to happen in the open-modal handler itself.
+    expect($html)->toContain("x-on:open-modal.window=\"if (\$event.detail === 'feedback') { \$wire.pageUrl = window.location.href; sent = false }\"");
+});
+
+test('the modal focus trap skips elements that are not rendered', function () {
+    $html = file_get_contents(resource_path('views/components/modal.blade.php'));
+
+    expect($html)->toContain('el.getClientRects().length');
 });

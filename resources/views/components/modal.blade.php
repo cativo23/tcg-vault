@@ -23,6 +23,9 @@ $maxWidth = [
             return [...$el.querySelectorAll(selector)]
                 // All non-disabled elements...
                 .filter(el => ! el.hasAttribute('disabled'))
+                // ...that are actually rendered: a panel hidden with x-show
+                // would otherwise trap Tab on elements that can't take focus.
+                .filter(el => el.getClientRects().length)
         },
         firstFocusable() { return this.focusables()[0] },
         lastFocusable() { return this.focusables().slice(-1)[0] },
