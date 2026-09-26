@@ -9,21 +9,39 @@
          once the button row grew to 3 items. Wrapping the buttons to their
          own line on narrow screens keeps the heading at its natural size
          instead of fighting it for the same row. --}}
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
         <h1 class="nw-display nw-h1 nw-h1--sm">My Collection</h1>
         <div class="flex items-center gap-2 flex-wrap">
-            {{-- No separate Save step — same instant-toggle pattern as
+            {{-- No separate Save step — same instant-apply pattern as
                  "Needs review" below, since this is reversible any time,
-                 not a destructive action that needs a confirm step. --}}
-            <div class="nw-seg" role="group" aria-label="Visibility">
-                <button type="button" wire:click="toggleVisibility" aria-pressed="{{ $isPublic ? 'true' : 'false' }}">
-                    {{ $isPublic ? 'Public' : 'Private' }}
-                </button>
+                 not a destructive action that needs a confirm step. Two
+                 fixed-label options, like the gallery's Sort control: a
+                 single button whose label swapped between states read as
+                 both the state and the action at once. --}}
+            <div class="nw-seg" role="group" aria-label="Visibility" aria-describedby="visibility-help">
+                <span class="lbl">Visibility</span>
+                <button type="button" wire:click="setVisibility(false)" aria-pressed="{{ $isPublic ? 'false' : 'true' }}">Private</button>
+                <button type="button" wire:click="setVisibility(true)" aria-pressed="{{ $isPublic ? 'true' : 'false' }}">Public</button>
             </div>
             <a href="{{ route('admin.collection.import') }}" class="nw-btn-secondary">Import TCGplayer</a>
             <a href="{{ route('admin.collection.add') }}" class="nw-btn-primary">+ Add card</a>
         </div>
     </div>
+
+    {{-- Says what the current setting means at the point of deciding. A
+         public collection has no page until the user picks a username,
+         so that case points to the profile instead of a URL. --}}
+    <p id="visibility-help" class="text-xs mb-4 sm:text-right" style="color: var(--muted)" aria-live="polite">
+        @if (! $isPublic)
+            Only you can see your collection.
+        @elseif ($username = auth()->user()->username)
+            Anyone can see it at
+            <a href="{{ route('gallery.index', ['username' => $username]) }}" style="color: var(--ink); text-decoration: underline">/{{ $username }}</a>.
+        @else
+            Public, but there’s no page to show it on yet.
+            <a href="{{ route('profile') }}" wire:navigate style="color: var(--ink); text-decoration: underline">Set a username</a> to get one.
+        @endif
+    </p>
 
     <div class="nw-toolbar mb-4">
         <div class="nw-count" role="status">Showing <b>{{ $totalCards }}</b> {{ Str::plural('card', $totalCards) }} <span style="opacity:.6">· {{ $totalCopies }} {{ Str::plural('copy', $totalCopies) }}</span></div>

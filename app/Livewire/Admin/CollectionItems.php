@@ -76,17 +76,17 @@ final class CollectionItems extends Component
         );
     }
 
-    public function updateVisibility(): void
+    /**
+     * Sets an explicit value rather than flipping the current one, so a
+     * double-click on "Public" can never land the collection back on
+     * private.
+     */
+    public function setVisibility(bool $public): void
     {
-        $this->resolveCollection()->update(['is_public' => $this->isPublic]);
+        $this->isPublic = $public;
+        $this->resolveCollection()->update(['is_public' => $public]);
 
         $this->dispatch('visibility-saved');
-    }
-
-    public function toggleVisibility(): void
-    {
-        $this->isPublic = ! $this->isPublic;
-        $this->updateVisibility();
     }
 
     private const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
