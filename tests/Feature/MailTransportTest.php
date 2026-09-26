@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Mail\Transport\ResendTransport;
 use Illuminate\Support\Facades\Mail;
 
 test('the resend mailer production uses can actually be built', function () {
@@ -11,5 +12,5 @@ test('the resend mailer production uses can actually be built', function () {
     ]);
 
     expect(Mail::mailer('resend')->getSymfonyTransport())
-        ->toBeInstanceOf(Illuminate\Mail\Transport\ResendTransport::class);
+        ->toBeInstanceOf(ResendTransport::class);
 });
