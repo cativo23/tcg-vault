@@ -100,3 +100,37 @@ test('no temporary files are left next to the photo', function () {
 
     expect(glob($this->dir.'/*'))->toBe([$path]);
 });
+
+test('a photo whose extension does not match its content is still stripped', function () {
+    // WebP saved as .jpg is common; exiftool refuses to write when the name
+    // and the content disagree, so the stripper must not pass the name on.
+    $path = photoWithLocation($this->dir, 'webp');
+    $misnamed = $this->dir.'/card.jpg';
+    rename($path, $misnamed);
+
+    (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($misnamed);
+
+    $tags = readTags($misnamed);
+    expect(array_filter(array_keys($tags), fn (string $k) => str_starts_with($k, 'GPS')))->toBe([])
+        ->and($tags['File:FileType'])->toContain('WEBP')
+        ->and(glob($this->dir.'/*'))->toBe([$misnamed]);
+});
+
+test('a file of another type is refused without running exiftool on it', function () {
+    $path = $this->dir.'/photo.gif';
+    imagegif(imagecreatetruecolor(4, 4), $path);
+
+    (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
+})->throws(PhotoMetadataStripFailed::class, 'Unsupported image type');
+
+test('a failure does not put exiftool output or the file name in the error', function () {
+    $path = $this->dir.'/c2VjcmV0LW5hbWU=.jpg';
+    file_put_contents($path, "\xFF\xD8\xFF\xE0garbage");
+
+    try {
+        (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
+        $this->fail('Expected the strip to fail.');
+    } catch (PhotoMetadataStripFailed $e) {
+        expect($e->getMessage())->not->toContain('c2VjcmV0LW5hbWU')->not->toContain($this->dir);
+    }
+});
