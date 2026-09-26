@@ -14,6 +14,7 @@
         "livewire/livewire": "^3.6.4",
         "livewire/volt": "^1.7.0",
         "predis/predis": "^3.6",
+        "resend/resend-php": "^1.16",
         "sentry/sentry-laravel": "^4.28",
         "spatie/laravel-data": "^4.23",
         "spatie/laravel-permission": "^8.3",
