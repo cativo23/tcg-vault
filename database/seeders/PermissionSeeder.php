@@ -27,6 +27,7 @@ class PermissionSeeder extends Seeder
         'view-telescope',
         'manage-invites',
         'manage-platform-settings',
+        'manage-members',
         'use-collection',
     ];
 

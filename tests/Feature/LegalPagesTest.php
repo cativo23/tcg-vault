@@ -103,3 +103,7 @@ test('the privacy policy says how long invites and reset links are kept', functi
         ->assertSee('An invite nobody accepted: deleted within 31 days of expiring or being revoked.')
         ->assertSee('Password reset links: expire after an hour and are deleted within a day.');
 });
+
+test('the privacy policy says moderation actions are recorded without the member’s name', function () {
+    $this->get('/privacy')->assertSee('If staff suspend or delete an account: a record of that, holding the account’s internal number but not its name or email, kept for a year.', false);
+});

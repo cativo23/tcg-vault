@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Models\ModerationAction;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
@@ -23,4 +24,8 @@ test('old unaccepted invites are pruned daily', function () {
 
     expect($event?->expression)->toBe('0 0 * * *')
         ->and((string) $event?->command)->toContain("--model='".Invite::class."'");
+});
+
+test('old moderation records are pruned daily', function () {
+    expect((string) scheduledEvent('model:prune')?->command)->toContain("--model='".ModerationAction::class."'");
 });

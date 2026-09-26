@@ -23,7 +23,8 @@ trait ResolvesPublicCollection
     {
         $user = User::where('username', $username)->first();
 
-        if ($user === null) {
+        // A suspended member's page is hidden, indistinguishable from none.
+        if ($user === null || $user->isSuspended()) {
             throw new NotFoundHttpException;
         }
 

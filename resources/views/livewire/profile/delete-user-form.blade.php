@@ -1,9 +1,8 @@
 <?php
 
 use App\Livewire\Actions\Logout;
-use App\Modules\Collection\Models\CollectionItem;
+use App\Support\AccountDeleter;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Component;
 
 new class extends Component
@@ -13,7 +12,7 @@ new class extends Component
     /**
      * Delete the currently authenticated user.
      */
-    public function deleteUser(Logout $logout): void
+    public function deleteUser(Logout $logout, AccountDeleter $deleter): void
     {
         $this->validate([
             'password' => ['required', 'string', 'current_password'],
@@ -21,21 +20,8 @@ new class extends Component
 
         $user = Auth::user();
 
-        // The database cascade removes the collection's rows but not the
-        // photo files they point to, which stay publicly reachable by URL.
-        // Paths are read before the delete and the files removed after it,
-        // so a failed delete never leaves rows pointing at missing photos.
-        // This must run before $logout: Collection's TenantScope filters on
-        // auth()->id(), so after logout the query silently matches nothing.
-        $photoPaths = CollectionItem::query()
-            ->whereHas('collection', fn ($query) => $query->where('user_id', $user->id))
-            ->whereNotNull('photo_path')
-            ->pluck('photo_path')
-            ->all();
-
-        tap($user, $logout(...))->delete();
-
-        Storage::disk('collection-photos')->delete($photoPaths);
+        $logout();
+        $deleter->delete($user);
 
         $this->redirect('/', navigate: true);
     }

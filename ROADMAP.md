@@ -165,8 +165,9 @@ Follow-ups raised by the legal review, not yet scheduled:
 - ~~Purge expired invites and old password-reset tokens on a schedule.~~
   — done: unaccepted invites 30 days after they expire or are revoked;
   reset tokens daily.
-- A real admin tool to suspend or delete an account (the terms currently
-  describe a manual process).
+- ~~A real admin tool to suspend or delete an account~~ — done: staff
+  Members page (`manage-members`); suspending blocks sign-in and hides the
+  member's page, deleting reuses the self-delete cleanup.
 
 ## v0.9.0 — Pipeline hardening
 
