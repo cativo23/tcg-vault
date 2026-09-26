@@ -39,9 +39,7 @@ test('a password typed into a Livewire form never reaches a Telescope request en
         ->and(json_encode($content['payload']))->toContain('ash@example.com');
 });
 
-test('the app registers the scrubbing watcher in place of the stock request watcher', function () {
-    $watchers = array_keys(config('telescope.watchers'));
-
-    expect($watchers)->toContain(ScrubbingRequestWatcher::class)
-        ->not->toContain(RequestWatcher::class);
+test('Telescope resolves the request watcher to the scrubbing one', function () {
+    expect(app()->make(RequestWatcher::class, ['options' => []]))->toBeInstanceOf(ScrubbingRequestWatcher::class)
+        ->and(array_keys(config('telescope.watchers')))->toContain(RequestWatcher::class);
 });

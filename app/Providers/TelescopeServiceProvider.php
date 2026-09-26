@@ -3,10 +3,12 @@
 namespace App\Providers;
 
 use App\Models\User;
+use App\Telescope\ScrubbingRequestWatcher;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Telescope\IncomingEntry;
 use Laravel\Telescope\Telescope;
 use Laravel\Telescope\TelescopeApplicationServiceProvider;
+use Laravel\Telescope\Watchers\RequestWatcher;
 
 class TelescopeServiceProvider extends TelescopeApplicationServiceProvider
 {
@@ -18,6 +20,11 @@ class TelescopeServiceProvider extends TelescopeApplicationServiceProvider
         // Telescope::night();
 
         $this->hideSensitiveRequestDetails();
+
+        // Telescope resolves each watcher from the container by its config
+        // key, so this swaps in the scrubbing one while the key stays the
+        // stock class that Telescope's dashboard looks up for its status.
+        $this->app->bind(RequestWatcher::class, ScrubbingRequestWatcher::class);
 
         $isLocal = $this->app->environment('local');
 
