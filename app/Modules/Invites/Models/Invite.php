@@ -106,20 +106,6 @@ final class Invite extends Model
     }
 
     /**
-     * No-ops on an already-used invite — revoking is only meaningful
-     * for one nobody has accepted yet; an accepted invite's account
-     * already exists and revoking the invite row after the fact would
-     * do nothing useful (and could read as "the account was undone",
-     * which it isn't).
-     *
-     * The `used_at is null` guard lives in the UPDATE's WHERE clause,
-     * not a check against this in-memory instance's attributes — a
-     * single UPDATE is atomic at the database, so a request that
-     * accepts this invite between this object being loaded and revoke()
-     * being called can never be raced: whichever write actually sets
-     * used_at first wins, and this revoke() then correctly no-ops.
-     */
-    /**
      * An invite nobody accepted only holds a non-member's email, so it goes
      * once it has been dead for a while. Accepted invites stay: they record
      * who invited whom, and are deleted with the account they created.
@@ -137,6 +123,20 @@ final class Invite extends Model
                 ->orWhere('revoked_at', '<', $cutoff));
     }
 
+    /**
+     * No-ops on an already-used invite — revoking is only meaningful
+     * for one nobody has accepted yet; an accepted invite's account
+     * already exists and revoking the invite row after the fact would
+     * do nothing useful (and could read as "the account was undone",
+     * which it isn't).
+     *
+     * The `used_at is null` guard lives in the UPDATE's WHERE clause,
+     * not a check against this in-memory instance's attributes — a
+     * single UPDATE is atomic at the database, so a request that
+     * accepts this invite between this object being loaded and revoke()
+     * being called can never be raced: whichever write actually sets
+     * used_at first wins, and this revoke() then correctly no-ops.
+     */
     public function revoke(?int $revokedBy = null): void
     {
         $updated = self::query()
