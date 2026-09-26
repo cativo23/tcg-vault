@@ -97,3 +97,9 @@ test('the privacy policy says location data is removed from photos', function ()
         ->assertSee('are removed before the photo is stored; only its rotation and colour profile are kept.')
         ->assertDontSee('Photos are stored exactly as uploaded');
 });
+
+test('the privacy policy says how long invites and reset links are kept', function () {
+    $this->get('/privacy')
+        ->assertSee('An invite nobody accepted: deleted 30 days after it expires or is revoked.')
+        ->assertSee('Password reset links: expire after an hour and are deleted within a day.');
+});

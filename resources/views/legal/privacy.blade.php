@@ -47,6 +47,8 @@
         <li>A login session: up to a year unless you log out; the “Remember me” cookie up to about 400 days.</li>
         <li>Debug records: deleted within 3 days. Error reports: kept only as long as needed to fix the problem.</li>
         <li>Feedback emails: kept in my inbox for as long as needed to follow up.</li>
+        <li>An invite nobody accepted: deleted 30 days after it expires or is revoked. An accepted invite is deleted with the account it created.</li>
+        <li>Password reset links: expire after an hour and are deleted within a day.</li>
     </ul>
 
     <h2>Your rights</h2>
