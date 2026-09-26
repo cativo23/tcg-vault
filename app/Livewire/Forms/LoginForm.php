@@ -33,11 +33,24 @@ class LoginForm extends Form
 
         $column = str_contains($this->email, '@') ? 'email' : 'username';
 
-        if (! Auth::attempt([$column => $this->email, 'password' => $this->password], $this->remember)) {
+        // attemptWhen runs the callback only after the password checks out,
+        // so a wrong password never reveals that an account is suspended.
+        $suspended = false;
+        $signedIn = Auth::attemptWhen(
+            [$column => $this->email, 'password' => $this->password],
+            function (User $user) use (&$suspended): bool {
+                $suspended = $user->isSuspended();
+
+                return ! $suspended;
+            },
+            $this->remember,
+        );
+
+        if (! $signedIn) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
-                'form.email' => trans('auth.failed'),
+                'form.email' => $suspended ? 'This account is suspended.' : trans('auth.failed'),
             ]);
         }
 
