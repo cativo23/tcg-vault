@@ -91,3 +91,9 @@ test('the privacy policy no longer lists Google as a recipient', function () {
         ->assertDontSee('Google Fonts')
         ->assertDontSee('Google LLC');
 });
+
+test('the privacy policy says location data is removed from photos', function () {
+    $this->get('/privacy')
+        ->assertSee('are removed before the photo is stored.')
+        ->assertDontSee('Photos are stored exactly as uploaded');
+});
