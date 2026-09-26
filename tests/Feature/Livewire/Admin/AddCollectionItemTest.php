@@ -348,11 +348,18 @@ test('a malformed catalog search response shows a friendly error instead of cras
     );
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(AddCollectionItem::class)
+    $html = Livewire::test(AddCollectionItem::class)
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->assertHasErrors('search')
-        ->assertSet('results', []);
+        ->assertSet('results', [])
+        ->html();
+
+    // A search failure sets results to [] same as a genuine zero-match
+    // search — without suppressing the status line on an error, this
+    // would announce "0 results" for what was actually a failure the
+    // error message right above it already covers.
+    expect($html)->not->toContain('0 result');
 });
 
 test('a full page of results signals there might be more, without fetching them yet', function () {
