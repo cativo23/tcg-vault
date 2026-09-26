@@ -12,6 +12,9 @@
                 @else
                     <span class="nw-home-cta">Invite-only — ask an existing member</span>
                 @endif
+                @if ($exampleUsername)
+                    <a href="{{ route('gallery.index', ['username' => $exampleUsername]) }}" class="nw-home-example" wire:navigate>See an example collection →</a>
+                @endif
             </div>
 
             <div class="nw-home-fan">

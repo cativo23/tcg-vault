@@ -59,4 +59,31 @@ return [
         'SSP' => 'sv08',
         'SWSH12' => 'swsh12',
     ],
+
+    /**
+     * The public example collection the landing page links to, seeded by
+     * `php artisan demo:seed-gallery`. A dedicated account, never a real
+     * member's, holding one near-mint raw copy of each chase card below,
+     * so the prices it shows are honest raw market prices. Every card
+     * joins the Catalog, which puts it on the daily price refresh.
+     * The email uses the reserved .invalid TLD so nothing is ever sent.
+     */
+    'demo' => [
+        'username' => env('TCGVAULT_DEMO_USERNAME', 'demo'),
+        'email' => 'demo@tcg-vault.invalid',
+        'cards' => [
+            'swsh7-215',   // Umbreon VMAX (alt art), Evolving Skies
+            'sv08.5-161',  // Umbreon ex (SIR), Prismatic Evolutions
+            'swsh7-218',   // Rayquaza VMAX (alt art), Evolving Skies
+            'swsh11-186',  // Giratina V (alt art), Lost Origin
+            'me02-125',    // Mega Charizard X ex (SIR), Phantasmal Flames
+            'swsh12-186',  // Lugia V (alt art), Silver Tempest
+            'sv03.5-199',  // Charizard ex (SIR), 151
+            'swsh8-270',   // Espeon VMAX (alt art), Fusion Strike
+            'sv08-238',    // Pikachu ex (SIR), Surging Sparks
+            'sv04.5-234',  // Charizard ex (SIR), Paldean Fates
+            'me01-188',    // Mega Lucario ex (MHR), Mega Evolution
+            'me05-116',    // Mega Darkrai ex (SIR), Pitch Black
+        ],
+    ],
 ];

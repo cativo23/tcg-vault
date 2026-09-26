@@ -113,6 +113,10 @@ docker compose -f compose.prod.yml exec app php artisan migrate --force
 # lands locks the existing admin out of Horizon, Telescope, and their
 # own /admin, since those now gate on a permission nothing else grants.
 docker compose -f compose.prod.yml exec app php artisan db:seed
+# Creates or tops up the public example collection the landing page links
+# to (config tcgvault.demo). Idempotent; only needed when that card list
+# changes. Calls tcgdex for any card not already in the Catalog.
+docker compose -f compose.prod.yml exec app php artisan demo:seed-gallery
 ```
 
 ## Acceptance checklist (first deploy)

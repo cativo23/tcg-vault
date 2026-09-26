@@ -1251,6 +1251,16 @@ body::before {
   opacity: 0; animation: nw-home-rise .6s var(--ease) forwards .42s;
 }
 
+/* Secondary to .nw-home-cta: a plain underlined link on the frozen-dark
+   hero, same frozen light color and rise animation, so it reads as the
+   quieter second option rather than a competing pill. */
+.nw-home-example {
+  display: block; width: fit-content; margin-top: 14px; font-size: 12px; font-weight: 600;
+  color: var(--chrome-fg); text-decoration: underline; text-underline-offset: 3px;
+  opacity: 0; animation: nw-home-rise .6s var(--ease) forwards .5s;
+}
+.nw-home-example:hover { text-decoration-color: var(--signal); }
+
 .nw-home-fan { position: relative; height: 260px; }
 @media (max-width: 48rem) { .nw-home-fan { height: 190px; margin-top: 4px; } }
 
