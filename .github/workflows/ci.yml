@@ -16,6 +16,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Reads only the lock files, so it needs no install and no database and
+  # runs alongside the test job. Fails on high and critical advisories;
+  # lower severities and abandoned packages are reported, not fatal.
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: "8.4"
+          coverage: none
+
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+
+      - name: Audit Composer dependencies
+        run: composer audit --locked --abandoned=report --ignore-severity=low --ignore-severity=medium
+
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
+
   test:
     runs-on: ubuntu-latest
 
