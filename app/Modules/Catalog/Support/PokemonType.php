@@ -26,6 +26,7 @@ final class PokemonType
         'Dragon' => '#8562E0',
     ];
 
+    /** @param  array<string, mixed>|null  $raw */
     public static function of(?array $raw): ?string
     {
         $type = $raw['types'][0] ?? null;

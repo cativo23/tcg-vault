@@ -10,6 +10,7 @@ use Spatie\LaravelData\DataCollection;
 
 final class CardDetailData extends Data
 {
+    /** @param  DataCollection<int, PriceEntryData>  $prices */
     public function __construct(
         public string $tcgdexId,
         public string $setTcgdexId,
@@ -20,7 +21,6 @@ final class CardDetailData extends Data
         public array $variants,
         public ?string $officialImageUrl,
         #[DataCollectionOf(PriceEntryData::class)]
-        /** @var DataCollection<int, PriceEntryData> */
         public DataCollection $prices,
         /** @var array<string, mixed> */
         public array $raw,

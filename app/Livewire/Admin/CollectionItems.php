@@ -12,6 +12,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -159,8 +160,10 @@ final class CollectionItems extends Component
      * (which carries TenantScope) so a card_id with no items in the
      * caller's OWN collection throws a 404, never a 403 that would
      * confirm the card exists in someone else's.
+     *
+     * @return EloquentCollection<int, CollectionItem>
      */
-    private function ownedCardItemsOrFail(int $cardId): \Illuminate\Support\Collection
+    private function ownedCardItemsOrFail(int $cardId): EloquentCollection
     {
         $collectionIds = Collection::query()->pluck('id');
         $items = CollectionItem::where('card_id', $cardId)
@@ -301,6 +304,7 @@ final class CollectionItems extends Component
         ];
     }
 
+    /** @return array<string, string> */
     protected function rules(): array
     {
         return [

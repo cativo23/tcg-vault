@@ -128,6 +128,7 @@ final class AddCollectionItem extends Component
      */
     private const MAX_ROWS = 25;
 
+    /** @return array{variant: ?string, condition: string, quantity: int, grade_company: ?string, grade_value: ?string, notes: ?string, photo: mixed, showDetails: bool} */
     private function blankRow(): array
     {
         return [
@@ -142,6 +143,7 @@ final class AddCollectionItem extends Component
         ];
     }
 
+    /** @return array<string, string> */
     protected function rules(): array
     {
         return [

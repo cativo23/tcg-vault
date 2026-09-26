@@ -63,7 +63,7 @@ class User extends Authenticatable
      * LoginForm::throttleKey()) if two differently-cased usernames both
      * pass some other, laxer check.
      *
-     * @return array<string, array<int, mixed>>
+     * @return list<mixed>
      */
     public static function usernameRules(?int $ignoreUserId = null): array
     {
