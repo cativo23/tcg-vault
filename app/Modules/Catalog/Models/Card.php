@@ -35,16 +35,19 @@ final class Card extends Model
         ];
     }
 
+    /** @return BelongsTo<Set, $this> */
     public function set(): BelongsTo
     {
         return $this->belongsTo(Set::class);
     }
 
+    /** @return HasMany<CardPriceSnapshot, $this> */
     public function priceSnapshots(): HasMany
     {
         return $this->hasMany(CardPriceSnapshot::class);
     }
 
+    /** @return HasMany<CollectionItem, $this> */
     public function collectionItems(): HasMany
     {
         return $this->hasMany(CollectionItem::class);

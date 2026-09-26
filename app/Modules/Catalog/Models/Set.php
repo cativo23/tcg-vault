@@ -30,6 +30,7 @@ final class Set extends Model
         ];
     }
 
+    /** @return HasMany<Card, $this> */
     public function cards(): HasMany
     {
         return $this->hasMany(Card::class);

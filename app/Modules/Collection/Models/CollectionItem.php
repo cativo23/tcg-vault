@@ -35,11 +35,13 @@ final class CollectionItem extends Model
         ];
     }
 
+    /** @return BelongsTo<Collection, $this> */
     public function collection(): BelongsTo
     {
         return $this->belongsTo(Collection::class);
     }
 
+    /** @return BelongsTo<Card, $this> */
     public function card(): BelongsTo
     {
         return $this->belongsTo(Card::class);
