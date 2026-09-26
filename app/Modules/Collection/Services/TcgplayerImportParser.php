@@ -87,7 +87,7 @@ final class TcgplayerImportParser
         // into two queries total regardless of line count — one per line
         // here (Card::where()->first() plus a priceSnapshots() count) used
         // to make a large import's preview scale with the export size.
-        $localCards = Card::whereIn('tcgdex_id', array_keys($candidates))->get(['id', 'tcgdex_id', 'name'])->keyBy('tcgdex_id');
+        $localCards = $candidates === [] ? collect() : Card::whereIn('tcgdex_id', array_keys($candidates))->get(['id', 'tcgdex_id', 'name'])->keyBy('tcgdex_id');
 
         $variantCounts = $localCards->isEmpty() ? collect() : CardPriceSnapshot::whereIn('card_id', $localCards->pluck('id'))
             ->select('card_id', 'variant')

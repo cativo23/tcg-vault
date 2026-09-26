@@ -186,7 +186,11 @@ test('resolving multiple locally-synced lines runs a constant number of queries,
         CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 500]);
     }
 
+    // Without this, a fixture that silently stopped resolving locally would
+    // fall through to findCard(), get swallowed as lookup_failed, and both
+    // runs would log the same single query — passing without testing anything.
     $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldNotReceive('findCard');
     $parser = new TcgplayerImportParser($provider);
 
     // One line resolved locally shouldn't cost noticeably less than three —
@@ -197,10 +201,12 @@ test('resolving multiple locally-synced lines runs a constant number of queries,
     $oneLineQueries = count(DB::getQueryLog());
 
     DB::flushQueryLog();
-    $parser->parse("1 Toucannon - 068/084 [PBL] 068/084\n1 Lampent [PBL] 037/084\n1 Malamar [PBL] 052/084");
+    $result = $parser->parse("1 Toucannon - 068/084 [PBL] 068/084\n1 Lampent [PBL] 037/084\n1 Malamar [PBL] 052/084");
     $threeLineQueries = count(DB::getQueryLog());
     DB::disableQueryLog();
 
+    expect($result->matched)->toHaveCount(3);
+    expect($result->unmatched)->toHaveCount(0);
     expect($threeLineQueries)->toBe($oneLineQueries);
 });
 
