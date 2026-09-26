@@ -24,3 +24,10 @@ test('under 13 is refused and 13 to 17 needs a guardian', function () {
         ->and(AgeScreen::needsGuardian(8, 2013, $today))->toBeTrue()
         ->and(AgeScreen::needsGuardian(8, 2008, $today))->toBeFalse();
 });
+
+test('the conservative rule holds across the year boundary', function () {
+    // December birthday, checked in January: the December month is over.
+    expect(AgeScreen::ageOn(12, 2013, CarbonImmutable::parse('2027-01-10')))->toBe(13)
+        // January birthday, checked in January: not counted until the month ends.
+        ->and(AgeScreen::ageOn(1, 2014, CarbonImmutable::parse('2027-01-31')))->toBe(12);
+});
