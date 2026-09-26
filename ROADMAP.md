@@ -162,7 +162,8 @@ Follow-ups raised by the legal review, not yet scheduled:
 - ~~Self-host the two fonts so visitors' IPs no longer reach Google.~~ — done.
 - ~~Strip location (EXIF) data from uploaded photos.~~ — done, with exiftool,
   losslessly, keeping only the rotation and colour profile.
-- Purge expired invites and old password-reset tokens on a schedule.
+- ~~Purge expired invites and old password-reset tokens on a schedule.~~ — done: unaccepted invites 30 days after
+  they expire or are revoked; reset tokens daily.
 - A real admin tool to suspend or delete an account (the terms currently
   describe a manual process).
 
