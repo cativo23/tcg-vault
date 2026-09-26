@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Models\User;
 use App\Modules\Collection\Models\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Livewire\Volt\Volt;
 
 test('a suspended member cannot log in, even with the right password', function () {
@@ -43,12 +45,10 @@ test('a member suspended while signed in is logged out on their next request', f
     $this->actingAs($user);
     $user->forceFill(['suspended_at' => now()])->save();
 
-    $this->get('/profile')
-        ->assertRedirect(route('login'))
-        ->assertSessionHas('status', 'This account is suspended.');
+    $this->get('/profile')->assertRedirect(route('login', ['suspended' => 1]));
 
     $this->assertGuest();
-    $this->get(route('login'))->assertSee('This account is suspended.');
+    $this->get(route('login', ['suspended' => 1]))->assertSee('This account is suspended.');
 });
 
 test('a suspended member’s public page is not shown', function () {
@@ -64,4 +64,36 @@ test('an active member is unaffected', function () {
 
     $this->get('/active-ash')->assertOk();
     $this->actingAs($user)->get('/profile')->assertOk();
+});
+
+test('the suspension notice survives a Livewire request, which follows the redirect before loading the page', function () {
+    // Livewire's fetch follows the 302 (using up any flashed message) and
+    // then loads the final URL again, so the notice travels in the URL.
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $user->forceFill(['suspended_at' => now()])->save();
+
+    $redirect = $this->withHeader('X-Livewire', 'true')->post('/livewire/update')->headers->get('Location');
+
+    expect($redirect)->toBe(route('login', ['suspended' => 1]));
+    $this->get($redirect)->assertSee('This account is suspended.');
+    $this->get($redirect)->assertSee('This account is suspended.');
+});
+
+test('a remember-me cookie alone does not keep a suspended member signed in', function () {
+    $user = User::factory()->create();
+    $user->setRememberToken($token = Str::random(60));
+    $user->save();
+    $user->forceFill(['suspended_at' => now()])->save();
+    $recaller = Auth::guard('web')->getRecallerName();
+
+    $this->withCookie($recaller, $user->id.'|'.$token.'|'.$user->password)
+        ->get('/profile')
+        ->assertRedirect(route('login', ['suspended' => 1]));
+
+    $this->assertGuest();
+});
+
+test('the login page shows no suspension notice unless asked to', function () {
+    $this->get(route('login'))->assertDontSee('This account is suspended.');
 });

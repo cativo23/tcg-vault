@@ -50,7 +50,7 @@ class LoginForm extends Form
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
-                'form.email' => $suspended ? 'This account is suspended.' : trans('auth.failed'),
+                'form.email' => trans($suspended ? 'auth.suspended' : 'auth.failed'),
             ]);
         }
 

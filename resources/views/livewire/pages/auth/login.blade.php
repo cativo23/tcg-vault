@@ -26,7 +26,7 @@ new #[Layout('layouts.guest')] class extends Component
 
 <div class="nw-card p-8">
     <!-- Session Status -->
-    <x-auth-session-status class="mb-4" :status="session('status')" />
+    <x-auth-session-status class="mb-4" :status="request()->boolean('suspended') ? __('auth.suspended') : session('status')" />
 
     <form wire:submit="login">
         <!-- Email Address -->

@@ -26,7 +26,10 @@ final class EnsureAccountIsActive
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            return redirect()->route('login')->with('status', 'This account is suspended.');
+            // In the URL rather than flashed: a Livewire request's fetch
+            // follows this redirect (using up a flash) before the browser
+            // loads the login page itself.
+            return redirect()->route('login', ['suspended' => 1]);
         }
 
         return $next($request);
