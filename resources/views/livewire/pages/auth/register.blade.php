@@ -1,5 +1,6 @@
 <?php
 
+use App\Livewire\Concerns\ScreensAge;
 use App\Models\User;
 use App\Settings\RegistrationSettings;
 use Illuminate\Auth\Events\Registered;
@@ -11,6 +12,8 @@ use Livewire\Volt\Component;
 
 new #[Layout('layouts.guest')] class extends Component
 {
+    use ScreensAge;
+
     public string $name = '';
     public string $username = '';
     public string $email = '';
@@ -56,6 +59,8 @@ new #[Layout('layouts.guest')] class extends Component
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
         ]);
+
+        $this->screenAge();
 
         $validated['password'] = Hash::make($validated['password']);
 
@@ -115,6 +120,10 @@ new #[Layout('layouts.guest')] class extends Component
 
                 <x-input-error :messages="$errors->get('password_confirmation')" class="mt-2" />
             </div>
+
+            @include('partials.signup-age-fields')
+
+            @include('partials.signup-legal-notice')
 
             <div class="flex items-center justify-end mt-4">
                 <a class="nw-link underline text-sm rounded-md" href="{{ route('login') }}" wire:navigate>

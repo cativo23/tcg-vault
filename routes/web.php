@@ -68,6 +68,12 @@ Route::get('/staff/settings', PlatformSettings::class)
 // does, and whichever was registered first would win.
 require __DIR__.'/auth.php';
 
+// Static legal pages. Registered before the /{username} wildcard below,
+// and both words are in User::reservedUsernames() so no account can
+// shadow them.
+Route::view('/privacy', 'legal.privacy')->name('privacy');
+Route::view('/terms', 'legal.terms')->name('terms');
+
 // Public gallery. The literal segments (sets, activity, movimientos) MUST
 // be registered before the `{setTcgdexId}` wildcard or the wildcard eats
 // them. tcgdex set ids are short alphanumerics ("me05", "swsh12pt5") so

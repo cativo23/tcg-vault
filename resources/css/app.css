@@ -1374,3 +1374,13 @@ body::before {
   display: inline-block; margin-top: 16px; background: var(--chrome-fg); color: var(--chrome-bg);
   padding: 10px 20px; border-radius: var(--radius-pill, 999px); font-size: 12px; font-weight: 700;
 }
+
+/* Long-form text (privacy policy, terms): readable measure and rhythm on
+   the existing type scale and tokens — no second typeface, no accent. */
+.nw-legal { max-width: 72ch; }
+.nw-legal .nw-legal-meta { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.nw-legal h2 { margin-top: 32px; font-size: 1.1rem; font-weight: 700; color: var(--ink); }
+.nw-legal p, .nw-legal li { margin-top: 10px; font-size: 14px; line-height: 1.65; color: var(--ink); }
+.nw-legal ul { margin-top: 6px; padding-left: 1.2rem; list-style: disc; }
+.nw-legal a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.nw-legal code { font-size: .9em; background: var(--bone-2); padding: 1px 5px; border-radius: 4px; }
