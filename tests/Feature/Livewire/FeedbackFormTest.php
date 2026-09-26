@@ -173,3 +173,9 @@ test('the modal focus trap skips elements that are not rendered', function () {
 
     expect($html)->toContain('el.getClientRects().length');
 });
+
+test('the confirmation only offers Close, since reopening already gives a fresh form', function () {
+    $html = file_get_contents(resource_path('views/livewire/feedback-form.blade.php'));
+
+    expect($html)->not->toContain('Send another');
+});

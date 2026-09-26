@@ -20,7 +20,6 @@
             <p class="mt-1 text-sm" style="color: var(--muted)">{{ __('Replies come to your account email.') }}</p>
 
             <div class="mt-6 flex justify-end gap-3">
-                <x-secondary-button type="button" x-on:click="sent = false">{{ __('Send another') }}</x-secondary-button>
                 <x-primary-button type="button" x-on:click="$dispatch('close')">{{ __('Close') }}</x-primary-button>
             </div>
         </div>
