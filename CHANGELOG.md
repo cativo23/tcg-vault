@@ -6,6 +6,16 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-26
+
+### Fixed
+
+- Email could not be sent in production: the `resend` mail transport's
+  SDK (`resend/resend-php`) was never installed, so the feedback form
+  errored on submit and password-reset emails failed. A test now builds
+  the Resend mailer so a missing SDK fails CI instead of production.
+
+
 ## [0.8.0] - 2026-09-26
 
 ### Added
