@@ -10,6 +10,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -28,6 +29,7 @@ final class MemberManager extends Component
 
     private const PER_PAGE = 24;
 
+    #[Locked]
     public ?int $deletingUserId = null;
 
     public string $deleteConfirmation = '';
@@ -123,7 +125,14 @@ final class MemberManager extends Component
     {
         Gate::authorize('manage-members');
 
-        $member = User::findOrFail($userId);
+        // Found rather than failed: another tab may have deleted them.
+        $member = User::find($userId);
+        if ($member === null) {
+            $this->addError('members', 'That member no longer exists.');
+
+            return null;
+        }
+
         $reason = self::refusalReason($member);
 
         if ($reason !== null) {
@@ -149,7 +158,7 @@ final class MemberManager extends Component
     {
         return view('livewire.staff.member-manager', [
             // Roles are loaded up front: every row checks hasRole('super-admin').
-            'members' => User::query()->with('roles')->latest()->paginate(self::PER_PAGE),
+            'members' => User::query()->with('roles')->latest()->orderByDesc('id')->paginate(self::PER_PAGE),
             'deleting' => $this->deletingUserId !== null ? User::find($this->deletingUserId) : null,
         ]);
     }

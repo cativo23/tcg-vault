@@ -8,19 +8,19 @@
     @error('members') <p class="text-sm mb-4" style="color: var(--danger)" role="alert">{{ $message }}</p> @enderror
 
     @if ($deleting)
-        <div class="nw-card p-5 mb-6 max-w-2xl" role="alertdialog" aria-labelledby="delete-member-title">
+        <div class="nw-card p-5 mb-6 max-w-2xl" role="region" aria-labelledby="delete-member-title">
             <h2 id="delete-member-title" class="font-medium mb-2">
-                {{ __('Delete :name’s account?', ['name' => $deleting->username ?? $deleting->email]) }}
+                {{ __('Delete :name’s account?', ['name' => \App\Livewire\Staff\MemberManager::confirmationWord($deleting)]) }}
             </h2>
             <p class="text-sm mb-4" style="color: var(--muted)">
-                {{ __('This permanently deletes their account, collection, notes and photos. Type') }}
-                <strong style="color: var(--ink)">{{ \App\Livewire\Staff\MemberManager::confirmationWord($deleting) }}</strong>
-                {{ __('to confirm.') }}
+                {!! __('This permanently deletes their account, collection, notes and photos. Type :word to confirm.', [
+                    'word' => '<strong style="color: var(--ink)">'.e(\App\Livewire\Staff\MemberManager::confirmationWord($deleting)).'</strong>',
+                ]) !!}
             </p>
             <form wire:submit="deleteMember" class="flex items-end gap-3">
                 <div class="flex-1">
                     <x-input-label for="deleteConfirmation" :value="__('Confirmation')" />
-                    <x-text-input wire:model="deleteConfirmation" id="deleteConfirmation" class="block mt-1 w-full" type="text" autocomplete="off" required />
+                    <x-text-input wire:model="deleteConfirmation" id="deleteConfirmation" class="block mt-1 w-full" type="text" autocomplete="off" autofocus required />
                     <x-input-error :messages="$errors->get('deleteConfirmation')" class="mt-2" />
                 </div>
                 <button type="submit" class="nw-row-btn nw-row-btn--danger">{{ __('Delete account') }}</button>
@@ -41,7 +41,7 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach ($members as $member)
+                @forelse ($members as $member)
                     <tr wire:key="member-{{ $member->id }}" class="border-t" style="border-color: var(--hair)">
                         <td class="p-3 font-medium">{{ $member->username ?? $member->name }}</td>
                         <td class="p-3" style="color: var(--muted)">{{ $member->email }}</td>
@@ -58,7 +58,9 @@
                             @endif
                         </td>
                     </tr>
-                @endforeach
+                @empty
+                    <tr><td colspan="5" class="p-6 text-center" style="color: var(--muted)">{{ __('No members on this page.') }}</td></tr>
+                @endforelse
             </tbody>
         </table>
     </div>

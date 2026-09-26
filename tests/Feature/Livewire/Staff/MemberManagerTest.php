@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 function staffMember(): User
 {
@@ -166,9 +168,27 @@ test('every action re-checks the permission, not just loading the page', functio
 
     $component = Livewire::actingAs($staff)->test('staff.member-manager');
     $staff->revokePermissionTo('manage-members');
-    app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
 
     $component->call('suspend', $member->id)->assertForbidden();
 
     expect($member->fresh()->isSuspended())->toBeFalse();
 });
+
+test('acting on a member who no longer exists shows an error instead of failing', function () {
+    $staff = staffMember();
+    $member = User::factory()->create();
+
+    $component = Livewire::actingAs($staff)->test('staff.member-manager');
+    $member->delete();
+
+    $component->call('suspend', $member->id)->assertHasErrors(['members'])->assertOk();
+});
+
+test('the member to delete cannot be swapped by the client', function () {
+    $staff = staffMember();
+    $member = User::factory()->create();
+
+    Livewire::actingAs($staff)->test('staff.member-manager')
+        ->set('deletingUserId', $member->id);
+})->throws(CannotUpdateLockedPropertyException::class);
