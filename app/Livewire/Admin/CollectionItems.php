@@ -399,8 +399,7 @@ final class CollectionItems extends Component
 
             $newPath = basename($row['photo']->store('/', 'collection-photos'));
             $update['photo_path'] = $newPath;
-            $this->editingRows[$index]['photo_path'] = $newPath;
-            $this->editingRows[$index]['photo'] = null;
+            $this->editingRows[$index] = ['photo_path' => $newPath, 'photo' => null] + $row;
         }
 
         try {
