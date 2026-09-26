@@ -107,6 +107,11 @@ jobs:
       - name: Build front-end assets
         run: npm run build
 
+      # The photo metadata stripper's own tests run the real binary and
+      # fail (rather than skip) when EXIFTOOL_REQUIRED is set.
+      - name: Install exiftool
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libimage-exiftool-perl
+
       - name: Copy environment file
         run: cp .env.example .env
 
@@ -125,6 +130,7 @@ jobs:
           DB_DATABASE: testing
           DB_USERNAME: root
           DB_PASSWORD: ""
+          EXIFTOOL_REQUIRED: "1"
         run: composer test
 
   # Builds the same image deploy.yml ships, without pushing, so a broken
