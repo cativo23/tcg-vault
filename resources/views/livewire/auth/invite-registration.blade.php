@@ -42,6 +42,8 @@
             <x-input-error :messages="$errors->get('password_confirmation')" class="mt-2" />
         </div>
 
+        @include('partials.signup-age-fields')
+
         @include('partials.signup-legal-notice')
 
         <div class="flex items-center justify-end mt-4">

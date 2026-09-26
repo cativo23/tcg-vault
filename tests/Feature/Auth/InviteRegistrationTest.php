@@ -76,6 +76,8 @@ test('completing an invite creates the user with the user role, marks the invite
         ->set('username', 'invitee')
         ->set('password', 'a-real-password')
         ->set('password_confirmation', 'a-real-password')
+        ->set('birth_month', 1)
+        ->set('birth_year', 1990)
         ->call('register')
         ->assertRedirect();
 

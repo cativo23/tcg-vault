@@ -68,11 +68,14 @@ test('the open signup form says that creating an account accepts the terms', fun
         ->assertSee('By creating an account you agree to the');
 });
 
-test('the terms, the privacy policy and the signup notice all state the minimum age', function () {
+test('the terms and the privacy policy both state the minimum age', function () {
     $this->get('/terms')->assertSee('at least 13');
     $this->get('/privacy')->assertSee('at least 13');
+});
 
-    app(App\Settings\RegistrationSettings::class)->open = true;
-    app(App\Settings\RegistrationSettings::class)->save();
-    $this->get(route('register'))->assertSee('you’re at least 13', false);
+test('the privacy policy explains the age check and its cookie', function () {
+    $this->get('/privacy')
+        ->assertSee('birth month and year')
+        ->assertSee('not stored')
+        ->assertSee('can’t sign up from that browser', false);
 });

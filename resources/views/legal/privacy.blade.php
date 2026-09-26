@@ -12,7 +12,7 @@
         <li><strong>Your collection:</strong> the cards you add and everything you enter about them — variant, condition, grade, quantity, notes and photos. Photos are stored exactly as uploaded, including any location data your phone embedded in them.</li>
         <li><strong>Invites:</strong> the email address an invite was created for, and who created, accepted or revoked it. The app does not email invites; they are shared as links.</li>
         <li><strong>Feedback you send:</strong> your message, its type, your username and email, and the page you were on.</li>
-        <li><strong>Cookies:</strong> a session cookie and a security (CSRF) cookie, plus — only if you tick “Remember me” — a login cookie that lasts up to about 400 days. All are strictly necessary for the app to work, so no consent is asked. Your light/dark theme choice is saved in your own browser only.</li>
+        <li><strong>Cookies:</strong> a session cookie and a security (CSRF) cookie, plus — only if you tick “Remember me” — a login cookie that lasts up to about 400 days; and, only if the age check at signup fails, a cookie that blocks another attempt (see “Children”). All are strictly necessary for the app to work, so no consent is asked. Your light/dark theme choice is saved in your own browser only.</li>
         <li><strong>Error and debug records:</strong> see “Where your data lives” below.</li>
     </ul>
     <p>There is no advertising, no analytics and no tracking across other sites. No automated decisions are made about you.</p>
@@ -25,7 +25,7 @@
     </ul>
 
     <h2>Children</h2>
-    <p>You must be at least 13 to create an account, and have a parent’s or guardian’s permission if you’re under 18. If I learn that an account belongs to someone younger than 13, or to a minor without that permission, I’ll delete it. A parent or guardian can ask me to at <a href="mailto:admin@cativo.dev">admin@cativo.dev</a>.</p>
+    <p>At signup you enter your birth month and year. It is only used to check your age at that moment and is not stored. If the check fails, a cookie means you can’t sign up from that browser for a year. You must be at least 13 to create an account, and have a parent’s or guardian’s permission if you’re under 18 (confirmed with a checkbox at signup). If I learn that an account belongs to someone younger than 13, or to a minor without that permission, I’ll delete it. A parent or guardian can ask me to at <a href="mailto:admin@cativo.dev">admin@cativo.dev</a>.</p>
 
     <h2>Public and private</h2>
     <p>Every account with a username has a page at <code>/your-username</code>. Your collection starts <strong>private</strong>: the page then shows only your username and name, and no cards. If you switch it to <strong>public</strong> (on My Collection), anyone can see your cards, their values and your activity there. You can switch back to private at any time.</p>

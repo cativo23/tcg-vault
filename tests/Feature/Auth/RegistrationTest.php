@@ -32,7 +32,9 @@ test('new users can register', function () {
         ->set('username', 'testuser')
         ->set('email', 'test@example.com')
         ->set('password', 'password')
-        ->set('password_confirmation', 'password');
+        ->set('password_confirmation', 'password')
+        ->set('birth_month', 1)
+        ->set('birth_year', 1990);
 
     $component->call('register');
 

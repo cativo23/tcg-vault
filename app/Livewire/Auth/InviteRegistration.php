@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Auth;
 
+use App\Livewire\Concerns\ScreensAge;
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Auth\Events\Registered;
@@ -19,6 +20,8 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 #[Layout('layouts.guest')]
 final class InviteRegistration extends Component
 {
+    use ScreensAge;
+
     /**
      * #[Locked], not plain protected: a plain protected/private property
      * doesn't survive Livewire's hydrate/dehydrate cycle at all between
@@ -88,6 +91,8 @@ final class InviteRegistration extends Component
             'username' => User::usernameRules(),
             'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
         ]);
+
+        $this->screenAge();
 
         $user = DB::transaction(function () use ($validated) {
             // Re-fetch and lock the invite row inside the transaction —
