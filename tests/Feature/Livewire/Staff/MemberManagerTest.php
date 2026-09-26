@@ -117,3 +117,26 @@ test('staff cannot delete themselves from the members page', function () {
 
     expect(User::whereKey($staff->id)->exists())->toBeTrue();
 });
+
+test('staff cannot suspend or delete another staff member; only a super-admin can', function () {
+    $staff = staffMember();
+    $otherStaff = User::factory()->create(['username' => 'staff-bo']);
+    $otherStaff->givePermissionTo('manage-members');
+
+    Livewire::actingAs($staff)->test('staff.member-manager')
+        ->call('suspend', $otherStaff->id)
+        ->assertHasErrors(['members'])
+        ->call('confirmDelete', $otherStaff->id)
+        ->set('deleteConfirmation', 'staff-bo')
+        ->call('deleteMember')
+        ->assertHasErrors(['members']);
+
+    expect($otherStaff->fresh()->isSuspended())->toBeFalse();
+
+    $admin = User::factory()->create();
+    $admin->assignRole(Role::findOrCreate('super-admin'));
+
+    Livewire::actingAs($admin)->test('staff.member-manager')->call('suspend', $otherStaff->id)->assertHasNoErrors();
+
+    expect($otherStaff->fresh()->isSuspended())->toBeTrue();
+});

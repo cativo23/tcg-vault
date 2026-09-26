@@ -48,14 +48,14 @@
                         <td class="p-3" style="color: var(--muted)">{{ $member->created_at?->diffForHumans() }}</td>
                         <td class="p-3">{{ $member->isSuspended() ? __('Suspended') : __('Active') }}</td>
                         <td class="p-3 text-right whitespace-nowrap">
-                            @unless ($member->is(auth()->user()) || $member->hasRole('super-admin'))
+                            @if (\App\Livewire\Staff\MemberManager::refusalReason($member) === null)
                                 @if ($member->isSuspended())
                                     <button type="button" wire:click="unsuspend({{ $member->id }})" class="nw-row-btn">{{ __('Lift suspension') }}</button>
                                 @else
                                     <button type="button" wire:click="suspend({{ $member->id }})" class="nw-row-btn">{{ __('Suspend') }}</button>
                                 @endif
                                 <button type="button" wire:click="confirmDelete({{ $member->id }})" class="nw-row-btn nw-row-btn--danger">{{ __('Delete') }}</button>
-                            @endunless
+                            @endif
                         </td>
                     </tr>
                 @endforeach

@@ -17,7 +17,8 @@ use Livewire\WithPagination;
  * suspending is reversible (the member can't sign in and their page is
  * hidden); deleting removes the account and everything it owns, and has to
  * be confirmed by typing the member's username. Nobody can act on their own
- * account here or on a super-admin.
+ * account here or on a super-admin, and only a super-admin can act on
+ * another staff member.
  */
 #[Layout('layouts.app')]
 final class MemberManager extends Component
@@ -89,24 +90,35 @@ final class MemberManager extends Component
     }
 
     /**
-     * Authorizes the caller, then returns the member unless it's the
-     * caller's own account or a super-admin, in which case it records an
-     * error and returns null.
+     * Why the signed-in staff member may not suspend or delete this
+     * member, or null when they may. Shared by the action guard and the
+     * view, so the buttons shown always match what the server allows.
+     */
+    public static function refusalReason(User $member): ?string
+    {
+        $actor = auth()->user();
+
+        return match (true) {
+            $member->is($actor) => 'You can’t suspend or delete your own account here.',
+            $member->hasRole('super-admin') => 'A super-admin can’t be suspended or deleted here.',
+            $member->can('manage-members') && ! $actor?->hasRole('super-admin') => 'Only a super-admin can suspend or delete another staff member.',
+            default => null,
+        };
+    }
+
+    /**
+     * Authorizes the caller, then returns the member unless they may not act
+     * on it, in which case it records the reason and returns null.
      */
     private function actionableMemberOrNull(int $userId): ?User
     {
         Gate::authorize('manage-members');
 
         $member = User::findOrFail($userId);
+        $reason = self::refusalReason($member);
 
-        if ($member->is(auth()->user())) {
-            $this->addError('members', 'You can’t suspend or delete your own account here.');
-
-            return null;
-        }
-
-        if ($member->hasRole('super-admin')) {
-            $this->addError('members', 'A super-admin can’t be suspended or deleted here.');
+        if ($reason !== null) {
+            $this->addError('members', $reason);
 
             return null;
         }
