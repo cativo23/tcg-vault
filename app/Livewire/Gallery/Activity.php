@@ -93,14 +93,12 @@ final class Activity extends Component
                 // 'default' row, so the fallback can never put another
                 // print's price under this row's label. No card-wide
                 // price means no price shown.
-                'snapshot' => $item->card
-                    ? $resolver->resolveForVariant($item->card, $item->variant) ?? $resolver->resolveCardWide($item->card)
-                    : null,
+                'snapshot' => $resolver->resolveForVariant($item->card, $item->variant) ?? $resolver->resolveCardWide($item->card),
                 'at' => $item->created_at,
             ]);
 
         $feed = $moves->concat($additions)
-            ->sortByDesc(fn ($e) => $e['at']->timestamp)
+            ->sortByDesc(fn ($e) => $e['at']->timestamp ?? 0)
             ->take(self::MAX_FEED)
             ->values();
 

@@ -85,7 +85,7 @@ final class CardShow extends Component
         $photos = $items
             ->filter(fn ($item) => $item->photo_path !== null)
             ->map(fn ($item) => [
-                'url' => Storage::disk('collection-photos')->url($item->photo_path),
+                'url' => Storage::disk('collection-photos')->url((string) $item->photo_path),
                 'label' => trim(($item->grade_company ? "{$item->grade_company} {$item->grade_value}" : $item->condition)),
             ])
             ->values();
