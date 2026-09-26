@@ -33,3 +33,10 @@ test('a guest sees invite-only copy and no sign-up link when registration is clo
     $response->assertDontSee('Sign up');
     $response->assertSee('Invite-only');
 });
+
+test('the privacy FAQ points to where the visibility control actually is', function () {
+    $this->get('/')
+        ->assertOk()
+        ->assertSee('My Collection')
+        ->assertDontSee('from your profile');
+});

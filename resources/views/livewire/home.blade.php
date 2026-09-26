@@ -109,7 +109,7 @@
             <h2>Frequently asked questions</h2>
             <div class="item">
                 <p class="q">Is my data private?</p>
-                <p class="a">Yes — your collection is yours. You control exactly what's public and what isn't from your profile.</p>
+                <p class="a">Yes — your collection is yours. Your collection starts private, and you choose whether to make it public with the Visibility switch on your My Collection page.</p>
             </div>
             <div class="item">
                 <p class="q">When does registration open?</p>

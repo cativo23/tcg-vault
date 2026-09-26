@@ -76,17 +76,29 @@ final class CollectionItems extends Component
         );
     }
 
-    public function updateVisibility(): void
+    /**
+     * One parameterless action per option rather than a toggle or a
+     * setVisibility($bool): a double-click on "Public" can never land the
+     * collection back on private, and there is no client-supplied value
+     * for PHP's loose bool coercion to misread (the string "false" is
+     * truthy).
+     */
+    public function makePublic(): void
     {
-        $this->resolveCollection()->update(['is_public' => $this->isPublic]);
-
-        $this->dispatch('visibility-saved');
+        $this->applyVisibility(true);
     }
 
-    public function toggleVisibility(): void
+    public function makePrivate(): void
     {
-        $this->isPublic = ! $this->isPublic;
-        $this->updateVisibility();
+        $this->applyVisibility(false);
+    }
+
+    private function applyVisibility(bool $public): void
+    {
+        $this->isPublic = $public;
+        $this->resolveCollection()->update(['is_public' => $public]);
+
+        $this->dispatch('visibility-saved');
     }
 
     private const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
