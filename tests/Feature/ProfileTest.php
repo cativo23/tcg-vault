@@ -177,7 +177,8 @@ test('deleting an account that created or revoked invites keeps those invites', 
     Volt::test('profile.delete-user-form')
         ->set('password', 'password')
         ->call('deleteUser')
-        ->assertHasNoErrors();
+        ->assertHasNoErrors()
+        ->assertRedirect('/');
 
     expect($admin->fresh())->toBeNull()
         ->and($created->fresh()->created_by)->toBeNull()
