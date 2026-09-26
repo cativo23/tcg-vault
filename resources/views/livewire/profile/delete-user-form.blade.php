@@ -25,6 +25,8 @@ new class extends Component
         // photo files they point to, which stay publicly reachable by URL.
         // Paths are read before the delete and the files removed after it,
         // so a failed delete never leaves rows pointing at missing photos.
+        // This must run before $logout: Collection's TenantScope filters on
+        // auth()->id(), so after logout the query silently matches nothing.
         $photoPaths = CollectionItem::query()
             ->whereHas('collection', fn ($query) => $query->where('user_id', $user->id))
             ->whereNotNull('photo_path')
