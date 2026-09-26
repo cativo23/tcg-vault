@@ -50,7 +50,7 @@ final class CatalogSyncService
         // cache would still reference a Set row that no longer exists in the
         // database, causing a foreign-key violation on the next card synced
         // from the same set.
-        $set = $existingCard?->set ?? $this->syncSet($cardDetail->setTcgdexId);
+        $set = $existingCard->set ?? $this->syncSet($cardDetail->setTcgdexId);
 
         return DB::transaction(function () use ($cardDetail, $set): Card {
             $card = Card::updateOrCreate(
@@ -69,7 +69,8 @@ final class CatalogSyncService
 
             $this->storePriceSnapshots($card, $cardDetail);
 
-            return $card->fresh(['priceSnapshots']);
+            // The row was written inside this transaction, so it exists.
+            return $card->fresh(['priceSnapshots']) ?? $card;
         });
     }
 

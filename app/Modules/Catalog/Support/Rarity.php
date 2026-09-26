@@ -50,7 +50,7 @@ final class Rarity
 
         // Unknown wording: first letter of each word, capped so a long
         // phrase never overflows the tile header.
-        $initials = collect(preg_split('/\s+/', $rarity) ?: [])
+        $initials = collect(preg_split('/\s+/', (string) $rarity) ?: [])
             ->map(fn (string $word) => Str::upper(Str::substr($word, 0, 1)))
             ->implode('');
 
