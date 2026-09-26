@@ -4,14 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 final class CardPriceSnapshot extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'card_id',
         'source',
