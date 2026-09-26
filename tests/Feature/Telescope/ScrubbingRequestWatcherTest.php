@@ -14,10 +14,10 @@ afterEach(function () {
 });
 
 /** Records one failed Livewire request through the watcher and returns the stored entry's content. */
-function recordFailedLivewireRequest(array $body): array
+function recordFailedLivewireRequest(array $body, ?Response $response = null): array
 {
     $request = Request::create('/livewire/update', 'POST', server: ['CONTENT_TYPE' => 'application/json'], content: json_encode($body));
-    $response = new Response('Server Error', 500);
+    $response ??= new Response('Server Error', 500);
 
     Telescope::startRecording();
     (new ScrubbingRequestWatcher(['size_limit' => 64]))->recordRequest(new RequestHandled($request, $response));
@@ -37,6 +37,17 @@ test('a password typed into a Livewire form never reaches a Telescope request en
     expect(json_encode($content['payload']))->not->toContain('hunter2')
         ->and($content['payload']['components'][0]['updates']['form.password'])->toBe(SensitiveInput::MASK)
         ->and(json_encode($content['payload']))->toContain('ash@example.com');
+});
+
+test('a password in a JSON response body is masked too', function () {
+    $response = new Response(json_encode([
+        'components' => [['snapshot' => json_encode(['data' => ['password' => 'hunter2']])]],
+    ]), 500, ['Content-Type' => 'application/json']);
+
+    $content = recordFailedLivewireRequest(['components' => []], $response);
+
+    expect($content['response'])->toBeArray()
+        ->and(json_encode($content['response']))->not->toContain('hunter2');
 });
 
 test('Telescope resolves the request watcher to the scrubbing one', function () {
