@@ -43,6 +43,9 @@ test('the collection home shows every owned card once, with the collector as the
     $response->assertSee('Pikachu on the Ball');
     $response->assertDontSee('Fomantis'); // in a touched set, but not owned — the home is the collection, not the catalog
     $response->assertSeeInOrder(['Showing', '2', 'of', '2']);
+    // Swapping the result count with no announcement told assistive tech
+    // nothing happened when a search/filter actually changed the grid.
+    $response->assertSee('role="status"', false);
 });
 
 test('the search box shows a loading indicator while a debounced search is in flight', function () {

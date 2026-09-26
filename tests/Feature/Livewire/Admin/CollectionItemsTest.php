@@ -30,7 +30,10 @@ test('the collection index lists the authenticated users items', function () {
 
     Livewire::test(CollectionItems::class)
         ->assertSee('Mega Darkrai ex')
-        ->assertSee('NM');
+        ->assertSee('NM')
+        // Swapping the result count with no announcement told assistive
+        // tech nothing happened when search/filters actually changed it.
+        ->assertSeeHtml('role="status"');
 });
 
 test('the search box shows a loading indicator while a debounced search is in flight', function () {

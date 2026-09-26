@@ -66,7 +66,7 @@
     @else
         <div class="nw-toolbar">
             <div class="nw-toolbar-group">
-                <div class="nw-count">Showing <b>{{ $entries->count() }}</b> of <b>{{ $totalEntries }}</b></div>
+                <div class="nw-count" role="status">Showing <b>{{ $entries->count() }}</b> of <b>{{ $totalEntries }}</b></div>
                 @if ($isFiltered)
                     <button type="button" wire:click="clearFilters" class="nw-count" style="color: var(--ink); text-decoration: underline; text-underline-offset: 3px">Clear</button>
                 @endif

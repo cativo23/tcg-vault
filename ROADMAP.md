@@ -109,10 +109,13 @@ roadmap safe to attempt.
   also dispatches an event to return focus to the row's own Edit button
   — the modal's whole subtree, including whatever held focus, is removed
   from the DOM on close, not just hidden.
-- **`aria-live` on Livewire search results.** Gallery search, collection
-  search and card search all swap their result grid with the loading
-  spinner marked `aria-hidden`, so assistive tech is told nothing
-  happened. Announce the result count.
+- ~~**`aria-live` on Livewire search results.**~~ — done. Added
+  `role="status"` (implies `aria-live="polite" aria-atomic="true"`) to
+  the result-count text in the public gallery, the per-set gallery, the
+  collection index, and the card-add search — the fourth spot (card
+  search) had no persistent count at all before this, only a conditional
+  "first N matches" note, so it also gained an always-rendered (if
+  empty) result-count line for a live region to actually announce.
 - **Accessible names on icon-only buttons** in
   `resources/views/livewire/admin/partials/variant-row.blade.php` — a
   `title` attribute is not a reliable accessible name, and is nothing at

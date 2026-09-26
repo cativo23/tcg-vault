@@ -40,7 +40,11 @@ test('a logged-in admin can search tcgdex and see results', function () {
     Livewire::test(AddCollectionItem::class)
         ->set('search', 'Darkrai')
         ->call('runSearch')
-        ->assertSet('results.0.name', 'Mega Darkrai ex');
+        ->assertSet('results.0.name', 'Mega Darkrai ex')
+        // Swapping the result tiles with no announcement told assistive
+        // tech nothing happened when a search actually returned results.
+        ->assertSeeHtml('role="status"')
+        ->assertSee('1 result');
 });
 
 test('the search box shows a loading indicator while a debounced search is in flight', function () {
@@ -344,11 +348,18 @@ test('a malformed catalog search response shows a friendly error instead of cras
     );
     $this->app->instance(CardCatalogProvider::class, $provider);
 
-    Livewire::test(AddCollectionItem::class)
+    $html = Livewire::test(AddCollectionItem::class)
         ->set('search', 'Darkrai')
         ->call('runSearch')
         ->assertHasErrors('search')
-        ->assertSet('results', []);
+        ->assertSet('results', [])
+        ->html();
+
+    // A search failure sets results to [] same as a genuine zero-match
+    // search — without suppressing the status line on an error, this
+    // would announce "0 results" for what was actually a failure the
+    // error message right above it already covers.
+    expect($html)->not->toContain('0 result');
 });
 
 test('a full page of results signals there might be more, without fetching them yet', function () {

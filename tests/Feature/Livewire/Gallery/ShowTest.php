@@ -31,6 +31,9 @@ test('shows only owned cards by default, computes stats from the whole set', fun
     $response->assertSee('Mega Darkrai ex'); // owned, shown
     $response->assertDontSee('Fomantis'); // not owned — hidden by default (missing cards are opt-in)
     $response->assertSee('Collected</div>', escape: false); // stats still cover the whole set, unfiltered
+    // Swapping the result count with no announcement told assistive tech
+    // nothing happened when the search box actually changed the grid.
+    $response->assertSee('role="status"', false);
 });
 
 test('owning even one card out of a huge set never rounds the progress bar down to 0%', function () {

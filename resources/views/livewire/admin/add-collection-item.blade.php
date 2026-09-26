@@ -15,11 +15,24 @@
         <div class="mb-4">
             <x-input-label value="Search tcgdex by name" />
             <span class="nw-search-wrap w-full">
-                <input type="text" wire:model.live.debounce.400ms="search" wire:keyup="runSearch"
+                <input type="text" wire:model.live.debounce.400ms="search" wire:keyup.debounce.400ms="runSearch"
                        class="nw-input w-full" placeholder="e.g. Mega Darkrai ex">
                 <span wire:loading wire:target="search,runSearch" class="nw-search-loading" aria-hidden="true"></span>
             </span>
-            @error('search') <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
+            @error('search') <p class="text-sm mt-1" style="color: var(--danger)" role="alert">{{ $message }}</p> @enderror
+            {{-- Always rendered (even empty before a search) so assistive
+                 tech is already watching this region when a result count
+                 first lands — a live region added to the DOM at the same
+                 moment its content changes can miss the announcement.
+                 Suppressed on a search error: runSearch() sets $results
+                 to [] when it fails, and without this check the status
+                 line would announce "0 results" for what was actually a
+                 failure the @error message above already covers. --}}
+            <p class="text-xs mt-1" style="color: var(--muted)" role="status">
+                @if ($search !== '' && ! $errors->has('search'))
+                    {{ count($results) }} {{ Str::plural('result', count($results)) }}
+                @endif
+            </p>
         </div>
 
         @if (count($results) > 0)

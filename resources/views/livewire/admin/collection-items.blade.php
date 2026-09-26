@@ -26,7 +26,7 @@
     </div>
 
     <div class="nw-toolbar mb-4">
-        <div class="nw-count">Showing <b>{{ $totalCards }}</b> {{ Str::plural('card', $totalCards) }} <span style="opacity:.6">· {{ $totalCopies }} {{ Str::plural('copy', $totalCopies) }}</span></div>
+        <div class="nw-count" role="status">Showing <b>{{ $totalCards }}</b> {{ Str::plural('card', $totalCards) }} <span style="opacity:.6">· {{ $totalCopies }} {{ Str::plural('copy', $totalCopies) }}</span></div>
 
         @if ($possiblyTruncated)
             <div class="text-xs" style="color: var(--warning)" title="Your collection has more items than this listing can load at once — some cards, totals, or variant groupings may be incomplete">
