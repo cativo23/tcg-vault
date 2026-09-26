@@ -159,7 +159,7 @@ Follow-ups raised by the legal review, not yet scheduled:
 - ~~Keep typed passwords out of Telescope and Bugsink request payloads.~~
   — done. A password-reset token can still appear in a recorded URL or
   Referer header (single-use, expires in 60 minutes).
-- Self-host the two fonts so visitors' IPs no longer reach Google.
+- ~~Self-host the two fonts so visitors' IPs no longer reach Google.~~ — done.
 - Strip location (EXIF) data from uploaded photos.
 - Purge expired invites and old password-reset tokens on a schedule.
 - A real admin tool to suspend or delete an account (the terms currently

@@ -38,9 +38,8 @@
         <li><strong>Error reports:</strong> when something breaks, a report goes to a self-hosted Bugsink instance on my own server infrastructure. It includes the request that failed, which can contain other things you typed.</li>
         <li><strong>Debug records:</strong> a short-lived log of failed requests and errors, which can include your IP address, account name and email, and the request details. It is deleted within 3 days. Passwords you type are masked before either record is kept.</li>
         <li><strong>Card data and artwork:</strong> card images load directly from tcgdex (<code>assets.tcgdex.net</code>), so your browser contacts their servers and they see your IP address.</li>
-        <li><strong>Fonts:</strong> the app’s typefaces load from Google Fonts (Google LLC, United States), so your browser also contacts Google’s servers, which see your IP address.</li>
     </ul>
-    <p>Where data goes to the United States (Resend, Google), the transfer relies on the EU–US Data Privacy Framework or the providers’ Standard Contractual Clauses. I don’t sell or share your data with anyone else.</p>
+    <p>Where data goes to the United States (Resend), the transfer relies on the EU–US Data Privacy Framework or the provider’s Standard Contractual Clauses. I don’t sell or share your data with anyone else.</p>
 
     <h2>How long I keep it</h2>
     <ul>
