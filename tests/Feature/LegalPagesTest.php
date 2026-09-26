@@ -100,6 +100,6 @@ test('the privacy policy says location data is removed from photos', function ()
 
 test('the privacy policy says how long invites and reset links are kept', function () {
     $this->get('/privacy')
-        ->assertSee('An invite nobody accepted: deleted 30 days after it expires or is revoked.')
+        ->assertSee('An invite nobody accepted: deleted within 31 days of expiring or being revoked.')
         ->assertSee('Password reset links: expire after an hour and are deleted within a day.');
 });
