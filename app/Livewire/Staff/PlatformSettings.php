@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Livewire\Staff;
 
 use App\Settings\RegistrationSettings;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -32,7 +33,7 @@ final class PlatformSettings extends Component
         $this->dispatch('settings-saved');
     }
 
-    public function render()
+    public function render(): View
     {
         return view('livewire.staff.platform-settings');
     }

@@ -8,6 +8,7 @@ use App\Livewire\Concerns\ScreensAge;
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Auth\Events\Registered;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -135,7 +136,7 @@ final class InviteRegistration extends Component
         $this->redirect(route('dashboard', absolute: false), navigate: false);
     }
 
-    public function render()
+    public function render(): View
     {
         return view('livewire.auth.invite-registration');
     }

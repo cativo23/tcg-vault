@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
@@ -411,7 +412,7 @@ final class AddCollectionItem extends Component
         return redirect()->route('admin.collection.index');
     }
 
-    public function render()
+    public function render(): View
     {
         return view('livewire.admin.add-collection-item');
     }

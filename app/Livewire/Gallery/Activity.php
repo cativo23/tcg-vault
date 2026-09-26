@@ -10,6 +10,7 @@ use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -35,7 +36,7 @@ final class Activity extends Component
         $this->resolveTargetUser($username);
     }
 
-    public function render()
+    public function render(): View
     {
         $public = $this->publicCollection();
         $resolver = new CardPriceResolver;

@@ -7,6 +7,7 @@ namespace App\Livewire;
 use App\Models\User;
 use App\Modules\Collection\Services\PublicCollection;
 use App\Settings\RegistrationSettings;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -57,7 +58,7 @@ final class Home extends Component
         }
     }
 
-    public function render()
+    public function render(): View
     {
         return view('livewire.home');
     }

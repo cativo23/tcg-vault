@@ -7,6 +7,7 @@ namespace App\Livewire\Gallery;
 use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Collection\Services\Valuation;
+use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -26,7 +27,7 @@ final class Sets extends Component
         $this->resolveTargetUser($username);
     }
 
-    public function render()
+    public function render(): View
     {
         $public = $this->publicCollection();
         $valuation = new Valuation;

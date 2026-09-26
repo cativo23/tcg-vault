@@ -9,6 +9,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Services\Valuation;
+use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -94,7 +95,7 @@ final class Index extends Component
         $this->take = self::PER_PAGE;
     }
 
-    public function render()
+    public function render(): View
     {
         $public = $this->publicCollection();
         $resolver = new CardPriceResolver;

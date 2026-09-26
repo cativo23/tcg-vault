@@ -9,6 +9,7 @@ use App\Modules\Collection\Data\UnmatchedImportLine;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
 use App\Modules\Collection\Services\TcgplayerImportParser;
+use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Throwable;
@@ -111,7 +112,7 @@ final class Import extends Component
             : 'Confirm import';
     }
 
-    public function render()
+    public function render(): View
     {
         return view('livewire.admin.import');
     }

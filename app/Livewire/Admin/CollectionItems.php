@@ -11,6 +11,7 @@ use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -481,7 +482,7 @@ final class CollectionItems extends Component
         $this->resetPage();
     }
 
-    public function render()
+    public function render(): View
     {
         // PERF: every Livewire action on this component — including ones
         // that only touch the card-editor modal (toggleRowDetails,

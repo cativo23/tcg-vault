@@ -6,6 +6,7 @@ namespace App\Livewire\Staff;
 
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -139,7 +140,7 @@ final class InviteManager extends Component
         Invite::findOrFail($inviteId)->revoke(auth()->id());
     }
 
-    public function render()
+    public function render(): View
     {
         return view('livewire.staff.invite-manager', [
             'invites' => Invite::latest()->paginate(self::PER_PAGE),
