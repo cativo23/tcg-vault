@@ -1,7 +1,12 @@
 <?php
 
 use App\Models\User;
+use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\Set;
+use App\Modules\Collection\Models\Collection;
+use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Invites\Models\Invite;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
 
 test('profile page is displayed', function () {
@@ -183,6 +188,56 @@ test('deleting an account that created or revoked invites keeps those invites', 
     expect($admin->fresh())->toBeNull()
         ->and($created->fresh()->created_by)->toBeNull()
         ->and($revoked->fresh()->revoked_by)->toBeNull();
+});
+
+test('deleting an account removes its uploaded card photos but no one elses', function () {
+    Storage::fake('collection-photos');
+    Storage::disk('collection-photos')->put('mine.jpg', 'x');
+    Storage::disk('collection-photos')->put('theirs.jpg', 'x');
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    $user = User::factory()->create();
+    $other = User::factory()->create();
+    foreach ([[$user, 'mine.jpg'], [$other, 'theirs.jpg']] as [$owner, $photo]) {
+        CollectionItem::create([
+            'collection_id' => Collection::factory()->for($owner)->create()->id,
+            'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+            'condition' => 'NM', 'quantity' => 1, 'photo_path' => $photo,
+        ]);
+    }
+
+    $this->actingAs($user);
+
+    Volt::test('profile.delete-user-form')
+        ->set('password', 'password')
+        ->call('deleteUser')
+        ->assertHasNoErrors();
+
+    Storage::disk('collection-photos')->assertMissing('mine.jpg');
+    Storage::disk('collection-photos')->assertExists('theirs.jpg');
+});
+
+test('the delete account form says exactly what deletion removes', function () {
+    $this->actingAs(User::factory()->create(['username' => 'ash']));
+
+    Volt::test('profile.delete-user-form')
+        ->assertSee('your whole collection')
+        ->assertSee('notes and photos')
+        ->assertSee('/ash')
+        ->assertSee('username becomes available')
+        ->assertSee('can’t be undone')
+        // No export exists yet to back up a "download your data" prompt.
+        ->assertDontSee('download');
+});
+
+test('the delete account form skips the gallery line for a user with no username', function () {
+    $this->actingAs(User::factory()->create(['username' => null]));
+
+    Volt::test('profile.delete-user-form')
+        ->assertSee('your whole collection')
+        ->assertDontSee('goes offline');
 });
 
 test('correct password must be provided to delete account', function () {
