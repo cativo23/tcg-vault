@@ -8,6 +8,13 @@ use App\Modules\Catalog\Models\Card;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * The foreign keys behind these are NOT NULL and constrained, so the
+ * related row always exists.
+ *
+ * @property-read Card $card
+ * @property-read Collection $collection
+ */
 final class CollectionItem extends Model
 {
     protected $fillable = [

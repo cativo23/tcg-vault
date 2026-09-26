@@ -7,6 +7,12 @@ namespace App\Modules\Catalog\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * The foreign keys behind these are NOT NULL and constrained, so the
+ * related row always exists.
+ *
+ * @property-read Card $card
+ */
 final class CardPriceSnapshot extends Model
 {
     protected $fillable = [
