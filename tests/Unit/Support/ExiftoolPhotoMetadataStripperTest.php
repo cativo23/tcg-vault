@@ -5,18 +5,21 @@ use App\Modules\Collection\Services\ExiftoolPhotoMetadataStripper;
 use Symfony\Component\Process\Process;
 
 /*
- * Runs the real exiftool binary. CI installs it and sets EXIFTOOL_REQUIRED,
+ * Runs the real exiftool binary. CI installs it and sets exiftoolBinary()_REQUIRED,
  * so a missing binary fails there instead of silently skipping.
  */
 
-const EXIFTOOL = '/usr/bin/exiftool';
+function exiftoolBinary(): string
+{
+    return (string) config('tcgvault.exiftool_path');
+}
 
 beforeEach(function () {
-    if (! is_executable(EXIFTOOL)) {
-        if (getenv('EXIFTOOL_REQUIRED')) {
-            $this->fail('exiftool is required for these tests but is not installed at '.EXIFTOOL);
+    if (! is_executable(exiftoolBinary())) {
+        if (getenv('exiftoolBinary()_REQUIRED')) {
+            $this->fail('exiftool is required for these tests but is not installed at '.exiftoolBinary());
         }
-        $this->markTestSkipped('exiftool is not installed ('.EXIFTOOL.').');
+        $this->markTestSkipped('exiftool is not installed ('.exiftoolBinary().').');
     }
 
     $this->dir = sys_get_temp_dir().'/strip-test-'.bin2hex(random_bytes(4));
@@ -31,7 +34,7 @@ afterEach(function () {
 });
 
 /** Writes a small image carrying GPS, author and XMP data plus a rotation tag. */
-function photoWithLocation(string $dir, string $ext): string
+function exiftoolPhotoWithLocation(string $dir, string $ext): string
 {
     $path = "$dir/photo.$ext";
     $image = imagecreatetruecolor(40, 20);
@@ -42,27 +45,27 @@ function photoWithLocation(string $dir, string $ext): string
         'webp' => imagewebp($image, $path),
     };
 
-    (new Process([EXIFTOOL, '-q', '-overwrite_original', '-GPSLatitude=13.69', '-GPSLatitudeRef=N',
+    (new Process([exiftoolBinary(), '-q', '-overwrite_original', '-GPSLatitude=13.69', '-GPSLatitudeRef=N',
         '-GPSLongitude=89.19', '-GPSLongitudeRef=W', '-Orientation#=6', '-Artist=Ash', '-XMP:Creator=Ash', $path]))->mustRun();
 
     return $path;
 }
 
 /** @return array<string, mixed> every tag exiftool can read from the file */
-function readTags(string $path): array
+function exiftoolReadTags(string $path): array
 {
-    $process = (new Process([EXIFTOOL, '-j', '-n', '-G1', '-a', $path]))->mustRun();
+    $process = (new Process([exiftoolBinary(), '-j', '-n', '-G1', '-a', $path]))->mustRun();
 
     return json_decode($process->getOutput(), true)[0];
 }
 
 test('location, author and XMP data are removed while the rotation is kept', function (string $ext) {
-    $path = photoWithLocation($this->dir, $ext);
-    expect(readTags($path))->toHaveKey('IFD0:Artist');
+    $path = exiftoolPhotoWithLocation($this->dir, $ext);
+    expect(exiftoolReadTags($path))->toHaveKey('IFD0:Artist');
 
-    (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
+    (new ExiftoolPhotoMetadataStripper(exiftoolBinary()))->strip($path);
 
-    $tags = readTags($path);
+    $tags = exiftoolReadTags($path);
     $leftover = array_filter(array_keys($tags), fn (string $k) => preg_match('/^(GPS|XMP|IFD0:Artist|Composite:GPS)/', $k));
 
     expect($leftover)->toBe([])
@@ -70,10 +73,10 @@ test('location, author and XMP data are removed while the rotation is kept', fun
 })->with(['jpg', 'png', 'webp']);
 
 test('the image itself is not re-encoded', function () {
-    $path = photoWithLocation($this->dir, 'png');
+    $path = exiftoolPhotoWithLocation($this->dir, 'png');
     $pixelBefore = imagecolorat(imagecreatefrompng($path), 5, 5);
 
-    (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
+    (new ExiftoolPhotoMetadataStripper(exiftoolBinary()))->strip($path);
 
     expect(imagecolorat(imagecreatefrompng($path), 5, 5))->toBe($pixelBefore);
 });
@@ -82,21 +85,21 @@ test('a file that is not really an image is refused', function () {
     $path = $this->dir.'/fake.jpg';
     file_put_contents($path, 'not an image');
 
-    (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
+    (new ExiftoolPhotoMetadataStripper(exiftoolBinary()))->strip($path);
 })->throws(PhotoMetadataStripException::class);
 
 test('a missing file is refused', function () {
-    (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($this->dir.'/missing.jpg');
+    (new ExiftoolPhotoMetadataStripper(exiftoolBinary()))->strip($this->dir.'/missing.jpg');
 })->throws(PhotoMetadataStripException::class);
 
 test('a path that looks like an option is refused before exiftool runs', function () {
-    (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip('-all=');
+    (new ExiftoolPhotoMetadataStripper(exiftoolBinary()))->strip('-all=');
 })->throws(PhotoMetadataStripException::class);
 
 test('no temporary files are left next to the photo', function () {
-    $path = photoWithLocation($this->dir, 'jpg');
+    $path = exiftoolPhotoWithLocation($this->dir, 'jpg');
 
-    (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
+    (new ExiftoolPhotoMetadataStripper(exiftoolBinary()))->strip($path);
 
     expect(glob($this->dir.'/*'))->toBe([$path]);
 });
@@ -104,13 +107,13 @@ test('no temporary files are left next to the photo', function () {
 test('a photo whose extension does not match its content is still stripped', function () {
     // WebP saved as .jpg is common; exiftool refuses to write when the name
     // and the content disagree, so the stripper must not pass the name on.
-    $path = photoWithLocation($this->dir, 'webp');
+    $path = exiftoolPhotoWithLocation($this->dir, 'webp');
     $misnamed = $this->dir.'/card.jpg';
     rename($path, $misnamed);
 
-    (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($misnamed);
+    (new ExiftoolPhotoMetadataStripper(exiftoolBinary()))->strip($misnamed);
 
-    $tags = readTags($misnamed);
+    $tags = exiftoolReadTags($misnamed);
     expect(array_filter(array_keys($tags), fn (string $k) => str_starts_with($k, 'GPS')))->toBe([])
         ->and($tags['File:FileType'])->toContain('WEBP')
         ->and(glob($this->dir.'/*'))->toBe([$misnamed]);
@@ -120,7 +123,7 @@ test('a file of another type is refused without running exiftool on it', functio
     $path = $this->dir.'/photo.gif';
     imagegif(imagecreatetruecolor(4, 4), $path);
 
-    (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
+    (new ExiftoolPhotoMetadataStripper(exiftoolBinary()))->strip($path);
 })->throws(PhotoMetadataStripException::class, 'Unsupported image type');
 
 test('a failure does not put exiftool output or the file name in the error', function () {
@@ -128,9 +131,20 @@ test('a failure does not put exiftool output or the file name in the error', fun
     file_put_contents($path, "\xFF\xD8\xFF\xE0garbage");
 
     try {
-        (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
+        (new ExiftoolPhotoMetadataStripper(exiftoolBinary()))->strip($path);
         $this->fail('Expected the strip to fail.');
     } catch (PhotoMetadataStripException $e) {
         expect($e->getMessage())->not->toContain('c2VjcmV0LW5hbWU')->not->toContain($this->dir);
     }
+});
+
+test('the colour profile is kept', function () {
+    // sRGB-v2-micro.icc: Compact ICC Profiles by saucecontrol, CC0-1.0.
+    $path = exiftoolPhotoWithLocation($this->dir, 'jpg');
+    (new Process([exiftoolBinary(), '-q', '-overwrite_original', '-icc_profile<='.base_path('tests/Fixtures/sRGB-v2-micro.icc'), $path]))->mustRun();
+    expect(exiftoolReadTags($path))->toHaveKey('ICC_Profile:ProfileDescription');
+
+    (new ExiftoolPhotoMetadataStripper(exiftoolBinary()))->strip($path);
+
+    expect(exiftoolReadTags($path))->toHaveKey('ICC_Profile:ProfileDescription');
 });
