@@ -50,6 +50,7 @@ final class CatalogSyncService
         // cache would still reference a Set row that no longer exists in the
         // database, causing a foreign-key violation on the next card synced
         // from the same set.
+        // `??` also covers a null $existingCard, not just a null set.
         $set = $existingCard->set ?? $this->syncSet($cardDetail->setTcgdexId);
 
         return DB::transaction(function () use ($cardDetail, $set): Card {
