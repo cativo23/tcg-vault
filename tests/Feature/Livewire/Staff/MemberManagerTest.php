@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Models\ModerationAction;
 use App\Models\User;
-use Illuminate\Support\Facades\Log;
 use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
@@ -144,8 +144,7 @@ test('staff cannot suspend or delete another staff member; only a super-admin ca
     expect($otherStaff->fresh()->isSuspended())->toBeTrue();
 });
 
-test('suspending, lifting and deleting are logged with who did it to whom', function () {
-    Log::spy();
+test('suspending, lifting and deleting are recorded with who did it to which account', function () {
     $staff = staffMember();
     $member = User::factory()->create(['username' => 'logged-lu']);
 
@@ -156,10 +155,23 @@ test('suspending, lifting and deleting are logged with who did it to whom', func
         ->set('deleteConfirmation', 'logged-lu')
         ->call('deleteMember');
 
-    foreach (['suspended', 'unsuspended', 'deleted'] as $action) {
-        Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context) => $message === "Member {$action} by staff"
-            && $context === ['actor_id' => $staff->id, 'member_id' => $member->id, 'member_username' => 'logged-lu'])->once();
-    }
+    expect(ModerationAction::orderBy('id')->get(['actor_id', 'member_id', 'action'])->toArray())->toBe([
+        ['actor_id' => $staff->id, 'member_id' => $member->id, 'action' => 'suspended'],
+        ['actor_id' => $staff->id, 'member_id' => $member->id, 'action' => 'unsuspended'],
+        ['actor_id' => $staff->id, 'member_id' => $member->id, 'action' => 'deleted'],
+    ]);
+});
+
+test('moderation records are kept for a year, then pruned', function () {
+    $staff = staffMember();
+    $old = ModerationAction::create(['actor_id' => $staff->id, 'member_id' => 99, 'action' => 'deleted']);
+    $old->forceFill(['created_at' => now()->subDays(ModerationAction::KEEP_DAYS + 1)])->save();
+    $recent = ModerationAction::create(['actor_id' => $staff->id, 'member_id' => 98, 'action' => 'suspended']);
+
+    $this->artisan('model:prune', ['--model' => [ModerationAction::class]])->assertSuccessful();
+
+    expect(ModerationAction::pluck('id')->all())->toBe([$recent->id])
+        ->and(ModerationAction::KEEP_DAYS)->toBe(365);
 });
 
 test('every action re-checks the permission, not just loading the page', function () {
@@ -192,3 +204,27 @@ test('the member to delete cannot be swapped by the client', function () {
     Livewire::actingAs($staff)->test('staff.member-manager')
         ->set('deletingUserId', $member->id);
 })->throws(CannotUpdateLockedPropertyException::class);
+
+test('anyone holding a staff permission counts as staff, not just member managers', function () {
+    $staff = staffMember();
+    Permission::findOrCreate('manage-invites');
+    $inviter = User::factory()->create();
+    $inviter->givePermissionTo('manage-invites');
+
+    Livewire::actingAs($staff)->test('staff.member-manager')
+        ->call('suspend', $inviter->id)
+        ->assertHasErrors(['members']);
+
+    expect($inviter->fresh()->isSuspended())->toBeFalse();
+});
+
+test('an ordinary collector with only use-collection can be moderated', function () {
+    $staff = staffMember();
+    Permission::findOrCreate('use-collection');
+    $collector = User::factory()->create();
+    $collector->givePermissionTo('use-collection');
+
+    Livewire::actingAs($staff)->test('staff.member-manager')->call('suspend', $collector->id)->assertHasNoErrors();
+
+    expect($collector->fresh()->isSuspended())->toBeTrue();
+});

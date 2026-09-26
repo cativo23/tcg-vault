@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Livewire\Staff;
 
+use App\Models\ModerationAction;
 use App\Models\User;
 use App\Support\AccountDeleter;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -20,7 +20,7 @@ use Livewire\WithPagination;
  * hidden); deleting removes the account and everything it owns, and has to
  * be confirmed by typing the member's username. Nobody can act on their own
  * account here or on a super-admin, and only a super-admin can act on
- * another staff member.
+ * another staff member (anyone with a permission beyond using a collection).
  */
 #[Layout('layouts.app')]
 final class MemberManager extends Component
@@ -45,7 +45,7 @@ final class MemberManager extends Component
 
         if ($member !== null) {
             $member->forceFill(['suspended_at' => now()])->save();
-            $this->logModeration('suspended', $member);
+            $this->recordModeration('suspended', $member);
         }
     }
 
@@ -55,7 +55,7 @@ final class MemberManager extends Component
 
         if ($member !== null) {
             $member->forceFill(['suspended_at' => null])->save();
-            $this->logModeration('unsuspended', $member);
+            $this->recordModeration('unsuspended', $member);
         }
     }
 
@@ -87,8 +87,7 @@ final class MemberManager extends Component
             return;
         }
 
-        // Logged first: afterwards there is no account left to name.
-        $this->logModeration('deleted', $member);
+        $this->recordModeration('deleted', $member);
         $deleter->delete($member);
 
         $this->reset('deletingUserId', 'deleteConfirmation');
@@ -112,9 +111,15 @@ final class MemberManager extends Component
         return match (true) {
             $member->is($actor) => 'You can’t suspend or delete your own account here.',
             $member->hasRole('super-admin') => 'A super-admin can’t be suspended or deleted here.',
-            $member->can('manage-members') && ! $actor?->hasRole('super-admin') => 'Only a super-admin can suspend or delete another staff member.',
+            self::isStaff($member) && ! $actor?->hasRole('super-admin') => 'Only a super-admin can suspend or delete another staff member.',
             default => null,
         };
+    }
+
+    /** Holds any permission beyond using a collection, directly or through a role. */
+    private static function isStaff(User $member): bool
+    {
+        return $member->getAllPermissions()->pluck('name')->contains(fn (string $name) => $name !== 'use-collection');
     }
 
     /**
@@ -144,21 +149,21 @@ final class MemberManager extends Component
         return $member;
     }
 
-    /** The only record of a moderation action, since a delete leaves nothing behind. */
-    private function logModeration(string $action, User $member): void
+    /** The only trace of a moderation action, since a delete leaves nothing behind. */
+    private function recordModeration(string $action, User $member): void
     {
-        Log::info("Member {$action} by staff", [
+        ModerationAction::create([
             'actor_id' => auth()->id(),
             'member_id' => $member->id,
-            'member_username' => $member->username,
+            'action' => $action,
         ]);
     }
 
     public function render(): View
     {
         return view('livewire.staff.member-manager', [
-            // Roles are loaded up front: every row checks hasRole('super-admin').
-            'members' => User::query()->with('roles')->latest()->orderByDesc('id')->paginate(self::PER_PAGE),
+            // Loaded up front: every row checks the member's roles and permissions.
+            'members' => User::query()->with(['roles.permissions', 'permissions'])->latest()->orderByDesc('id')->paginate(self::PER_PAGE),
             'deleting' => $this->deletingUserId !== null ? User::find($this->deletingUserId) : null,
         ]);
     }

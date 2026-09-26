@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ModerationAction;
 use App\Modules\Invites\Models\Invite;
 use App\Support\DiscordAlerter;
 use Illuminate\Foundation\Inspiring;
@@ -36,4 +37,4 @@ Schedule::command('auth:clear-resets')->daily();
 
 // model:prune only discovers models under app/Models, so module models
 // are listed here.
-Schedule::command('model:prune', ['--model' => [Invite::class]])->daily();
+Schedule::command('model:prune', ['--model' => [Invite::class, ModerationAction::class]])->daily();
