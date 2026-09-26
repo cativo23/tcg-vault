@@ -53,6 +53,11 @@ new class extends Component
                             {{ __('Invites') }}
                         </x-nav-link>
                     @endcan
+                    @can('manage-members')
+                        <x-nav-link :href="route('staff.members')" :active="request()->routeIs('staff.members')" wire:navigate>
+                            {{ __('Members') }}
+                        </x-nav-link>
+                    @endcan
                     @can('manage-platform-settings')
                         <x-nav-link :href="route('staff.settings')" :active="request()->routeIs('staff.settings')" wire:navigate>
                             {{ __('Settings') }}
@@ -140,6 +145,11 @@ new class extends Component
             @can('manage-invites')
                 <x-responsive-nav-link :href="route('staff.invites')" :active="request()->routeIs('staff.invites')" wire:navigate>
                     {{ __('Invites') }}
+                </x-responsive-nav-link>
+            @endcan
+            @can('manage-members')
+                <x-responsive-nav-link :href="route('staff.members')" :active="request()->routeIs('staff.members')" wire:navigate>
+                    {{ __('Members') }}
                 </x-responsive-nav-link>
             @endcan
             @can('manage-platform-settings')

@@ -11,6 +11,7 @@ use App\Livewire\Gallery\Sets;
 use App\Livewire\Gallery\Show;
 use App\Livewire\Home;
 use App\Livewire\Staff\InviteManager;
+use App\Livewire\Staff\MemberManager;
 use App\Livewire\Staff\PlatformSettings;
 use Illuminate\Support\Facades\Route;
 
@@ -57,6 +58,10 @@ Route::get('/staff/invites', InviteManager::class)
 Route::get('/staff/settings', PlatformSettings::class)
     ->middleware(['auth', 'can:manage-platform-settings'])
     ->name('staff.settings');
+
+Route::get('/staff/members', MemberManager::class)
+    ->middleware(['auth', 'can:manage-members'])
+    ->name('staff.members');
 
 // Every auth.php route (login, register, forgot-password, the
 // reset-password/{token} and verify-email/{id}/{hash} routes) MUST be
