@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Collection\Services;
 
+use App\Modules\Collection\Contracts\PhotoMetadataStripper;
+use App\Modules\Collection\Exceptions\PhotoMetadataStripException;
 use finfo;
 use Symfony\Component\Process\Exception\ExceptionInterface as ProcessException;
 use Symfony\Component\Process\Process;
@@ -39,12 +41,12 @@ final class ExiftoolPhotoMetadataStripper implements PhotoMetadataStripper
     public function strip(string $absolutePath): void
     {
         if (! str_starts_with($absolutePath, '/') || ! is_file($absolutePath)) {
-            throw new PhotoMetadataStripFailed('Not an existing absolute file path.');
+            throw new PhotoMetadataStripException('Not an existing absolute file path.');
         }
 
         $extension = self::EXTENSIONS[(string) (new finfo(FILEINFO_MIME_TYPE))->file($absolutePath)] ?? null;
         if ($extension === null) {
-            throw new PhotoMetadataStripFailed('Unsupported image type.');
+            throw new PhotoMetadataStripException('Unsupported image type.');
         }
 
         // Hidden and in the same directory, so the final rename is atomic
@@ -53,7 +55,7 @@ final class ExiftoolPhotoMetadataStripper implements PhotoMetadataStripper
 
         try {
             if (! copy($absolutePath, $working)) {
-                throw new PhotoMetadataStripFailed('Could not create the working copy.');
+                throw new PhotoMetadataStripException('Could not create the working copy.');
             }
 
             $this->runExiftool($working);
@@ -64,7 +66,7 @@ final class ExiftoolPhotoMetadataStripper implements PhotoMetadataStripper
             }
 
             if (! rename($working, $absolutePath)) {
-                throw new PhotoMetadataStripFailed('Could not replace the original with the stripped copy.');
+                throw new PhotoMetadataStripException('Could not replace the original with the stripped copy.');
             }
         } finally {
             if (is_file($working)) {
@@ -91,12 +93,12 @@ final class ExiftoolPhotoMetadataStripper implements PhotoMetadataStripper
         try {
             $process->run();
         } catch (ProcessException $e) {
-            throw new PhotoMetadataStripFailed('exiftool did not complete: '.$e::class, previous: $e);
+            throw new PhotoMetadataStripException('exiftool did not complete: '.$e::class, previous: $e);
         }
 
         // stderr names the file, so it stays out of the message.
         if (! $process->isSuccessful()) {
-            throw new PhotoMetadataStripFailed(sprintf('exiftool exited with %d.', (int) $process->getExitCode()));
+            throw new PhotoMetadataStripException(sprintf('exiftool exited with %d.', (int) $process->getExitCode()));
         }
     }
 }

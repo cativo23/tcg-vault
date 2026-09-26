@@ -2,8 +2,6 @@
 
 namespace App\Providers;
 
-use App\Modules\Collection\Services\ExiftoolPhotoMetadataStripper;
-use App\Modules\Collection\Services\PhotoMetadataStripper;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Gate;
@@ -18,10 +16,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->bind(
-            PhotoMetadataStripper::class,
-            fn () => new ExiftoolPhotoMetadataStripper((string) config('tcgvault.exiftool_path')),
-        );
+        //
     }
 
     /**

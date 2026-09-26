@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Livewire\Concerns;
 
-use App\Modules\Collection\Services\PhotoMetadataStripFailed;
-use App\Modules\Collection\Services\PhotoMetadataStripper;
+use App\Modules\Collection\Contracts\PhotoMetadataStripper;
+use App\Modules\Collection\Exceptions\PhotoMetadataStripException;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
@@ -36,7 +36,7 @@ trait StripsUploadedPhotos
 
         try {
             app(PhotoMetadataStripper::class)->strip((string) $photo->getRealPath());
-        } catch (PhotoMetadataStripFailed $e) {
+        } catch (PhotoMetadataStripException $e) {
             report($e);
             $this->addError($errorKey, 'This photo couldn’t be processed. Try a different file.');
 

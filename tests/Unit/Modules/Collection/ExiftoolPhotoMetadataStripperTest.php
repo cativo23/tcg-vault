@@ -1,7 +1,7 @@
 <?php
 
+use App\Modules\Collection\Exceptions\PhotoMetadataStripException;
 use App\Modules\Collection\Services\ExiftoolPhotoMetadataStripper;
-use App\Modules\Collection\Services\PhotoMetadataStripFailed;
 use Symfony\Component\Process\Process;
 
 /*
@@ -83,15 +83,15 @@ test('a file that is not really an image is refused', function () {
     file_put_contents($path, 'not an image');
 
     (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
-})->throws(PhotoMetadataStripFailed::class);
+})->throws(PhotoMetadataStripException::class);
 
 test('a missing file is refused', function () {
     (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($this->dir.'/missing.jpg');
-})->throws(PhotoMetadataStripFailed::class);
+})->throws(PhotoMetadataStripException::class);
 
 test('a path that looks like an option is refused before exiftool runs', function () {
     (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip('-all=');
-})->throws(PhotoMetadataStripFailed::class);
+})->throws(PhotoMetadataStripException::class);
 
 test('no temporary files are left next to the photo', function () {
     $path = photoWithLocation($this->dir, 'jpg');
@@ -121,7 +121,7 @@ test('a file of another type is refused without running exiftool on it', functio
     imagegif(imagecreatetruecolor(4, 4), $path);
 
     (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
-})->throws(PhotoMetadataStripFailed::class, 'Unsupported image type');
+})->throws(PhotoMetadataStripException::class, 'Unsupported image type');
 
 test('a failure does not put exiftool output or the file name in the error', function () {
     $path = $this->dir.'/c2VjcmV0LW5hbWU=.jpg';
@@ -130,7 +130,7 @@ test('a failure does not put exiftool output or the file name in the error', fun
     try {
         (new ExiftoolPhotoMetadataStripper(EXIFTOOL))->strip($path);
         $this->fail('Expected the strip to fail.');
-    } catch (PhotoMetadataStripFailed $e) {
+    } catch (PhotoMetadataStripException $e) {
         expect($e->getMessage())->not->toContain('c2VjcmV0LW5hbWU')->not->toContain($this->dir);
     }
 });

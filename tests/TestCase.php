@@ -2,7 +2,7 @@
 
 namespace Tests;
 
-use App\Modules\Collection\Services\PhotoMetadataStripper;
+use App\Modules\Collection\Contracts\PhotoMetadataStripper;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Tests\Support\FakePhotoMetadataStripper;
 
