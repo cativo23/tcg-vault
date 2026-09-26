@@ -24,6 +24,7 @@
                 <button type="button" wire:click="makePublic" aria-pressed="{{ $isPublic ? 'true' : 'false' }}">Public</button>
             </div>
             <a href="{{ route('admin.collection.import') }}" class="nw-btn-secondary">Import TCGplayer</a>
+            <a href="{{ route('admin.collection.export') }}" class="nw-btn-secondary" download>Export CSV</a>
             <a href="{{ route('admin.collection.add') }}" class="nw-btn-primary">+ Add card</a>
         </div>
     </div>
