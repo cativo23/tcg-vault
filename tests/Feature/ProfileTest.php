@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Modules\Invites\Models\Invite;
 use Livewire\Volt\Volt;
 
 test('profile page is displayed', function () {
@@ -144,6 +145,44 @@ test('user can delete their account', function () {
 
     $this->assertGuest();
     $this->assertNull($user->fresh());
+});
+
+test('deleting an account that registered through an invite also deletes that invite', function () {
+    $user = User::factory()->create();
+    $invite = Invite::factory()->create([
+        'email' => $user->email,
+        'used_at' => now(),
+        'accepted_by' => $user->id,
+    ]);
+
+    $this->actingAs($user);
+
+    Volt::test('profile.delete-user-form')
+        ->set('password', 'password')
+        ->call('deleteUser')
+        ->assertHasNoErrors()
+        ->assertRedirect('/');
+
+    expect($user->fresh())->toBeNull()
+        ->and($invite->fresh())->toBeNull();
+});
+
+test('deleting an account that created or revoked invites keeps those invites', function () {
+    $admin = User::factory()->create();
+    $created = Invite::factory()->create(['created_by' => $admin->id]);
+    $revoked = Invite::factory()->create(['revoked_at' => now(), 'revoked_by' => $admin->id]);
+
+    $this->actingAs($admin);
+
+    Volt::test('profile.delete-user-form')
+        ->set('password', 'password')
+        ->call('deleteUser')
+        ->assertHasNoErrors()
+        ->assertRedirect('/');
+
+    expect($admin->fresh())->toBeNull()
+        ->and($created->fresh()->created_by)->toBeNull()
+        ->and($revoked->fresh()->revoked_by)->toBeNull();
 });
 
 test('correct password must be provided to delete account', function () {
