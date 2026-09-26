@@ -32,13 +32,13 @@ final class CollectionCsvExporter
         // A BOM so Excel reads the file as UTF-8 instead of mangling
         // accented names; other spreadsheet apps ignore it.
         fwrite($out, "\xEF\xBB\xBF");
-        fputcsv($out, self::HEADER, escape: '');
+        fputcsv($out, self::HEADER, escape: '', eol: "\r\n");
 
         CollectionItem::query()
             ->whereIn('collection_id', Collection::query()->select('id'))
             ->with(['card.set', 'card.priceSnapshots'])
             ->lazyById(200)
-            ->each(fn (CollectionItem $item) => fputcsv($out, $this->row($item), escape: ''));
+            ->each(fn (CollectionItem $item) => fputcsv($out, $this->row($item), escape: '', eol: "\r\n"));
     }
 
     /**
@@ -67,12 +67,17 @@ final class CollectionCsvExporter
     }
 
     /**
-     * Spreadsheet apps run a cell starting with = + - @ (or a tab/CR that
-     * precedes one) as a formula, so a note like =HYPERLINK(...) would
-     * execute on open. A leading apostrophe makes it plain text.
+     * Spreadsheet apps run a cell starting with = + - @ (or a tab, CR or
+     * LF that precedes one) as a formula, so a note like =HYPERLINK(...)
+     * would execute on open; some locales treat the full-width forms the
+     * same way. A leading apostrophe makes it plain text.
      */
     private function neutraliseFormula(string $value): string
     {
-        return $value !== '' && str_contains("=+-@\t\r", $value[0]) ? "'".$value : $value;
+        $first = mb_substr($value, 0, 1);
+
+        return $first !== '' && in_array($first, ['=', '+', '-', '@', "\t", "\r", "\n", '＝', '＋', '－', '＠'], true)
+            ? "'".$value
+            : $value;
     }
 }

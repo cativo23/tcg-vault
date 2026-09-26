@@ -9,6 +9,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Support\Carbon;
+use Livewire\Volt\Volt;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -120,16 +121,46 @@ test('the export includes every item, past the 1,000-row cap the collection page
     expect($rows)->toHaveCount(1006);
 });
 
-test('the export never includes another users items', function () {
+test('the export includes the users own items and never another users', function () {
     $user = collector();
-    CollectionItem::create([
-        'collection_id' => Collection::factory()->for(User::factory()->create())->create()->id,
-        'card_id' => $this->card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1,
-    ]);
+    foreach ([[$user, 'mine'], [User::factory()->create(), 'theirs']] as [$owner, $note]) {
+        CollectionItem::create([
+            'collection_id' => Collection::factory()->for($owner)->create()->id,
+            'card_id' => $this->card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1,
+            'notes' => $note,
+        ]);
+    }
 
     $rows = exportRows($this->actingAs($user)->get(route('admin.collection.export'))->streamedContent());
 
-    expect($rows)->toHaveCount(1);
+    expect($rows)->toHaveCount(2)
+        ->and($rows[1][10])->toBe('mine');
+});
+
+test('a formula hidden behind a leading line feed or a full-width sign is neutralised too', function (string $note) {
+    $user = collector();
+    CollectionItem::create([
+        'collection_id' => Collection::factory()->for($user)->create()->id, 'card_id' => $this->card->id,
+        'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'notes' => $note,
+    ]);
+
+    $csv = $this->actingAs($user)->get(route('admin.collection.export'))->streamedContent();
+    $handle = fopen('php://memory', 'r+');
+    fwrite($handle, preg_replace('/^\xEF\xBB\xBF/', '', $csv));
+    rewind($handle);
+    fgetcsv($handle, escape: '');
+    $row = fgetcsv($handle, escape: '');
+
+    expect($row[10])->toBe("'".$note);
+})->with([
+    'line feed' => ["\n=HYPERLINK(\"http://example.test\")"],
+    'full-width equals' => ['＝1+1'],
+]);
+
+test('rows end with CRLF, as RFC 4180 specifies', function () {
+    $csv = $this->actingAs(collector())->get(route('admin.collection.export'))->streamedContent();
+
+    expect($csv)->toEndWith("\r\n");
 });
 
 test('cells that a spreadsheet would run as a formula are neutralised', function () {
@@ -151,8 +182,14 @@ test('the collection page links to the export', function () {
         ->assertSee(route('admin.collection.export'));
 });
 
-test('the delete account form points to the export before deleting', function () {
-    $this->actingAs(collector())
-        ->get(route('profile'))
-        ->assertSee(route('admin.collection.export'));
+test('the delete account form points to the export once, outside the confirm modal', function () {
+    $this->actingAs(collector());
+
+    $html = Volt::test('profile.delete-user-form')->html();
+    $modal = substr($html, strpos($html, 'confirm-user-deletion'));
+
+    // The modal focuses its first link or input on open; a link there
+    // would take focus from the password field.
+    expect(substr_count($html, route('admin.collection.export')))->toBe(1)
+        ->and($modal)->not->toContain(route('admin.collection.export'));
 });

@@ -49,6 +49,13 @@ new class extends Component
 
         <p class="mt-1 text-sm" style="color: var(--muted)">
             @include('livewire.profile.partials.deletion-consequences')
+            {{-- Only here, never in the confirm modal: the modal focuses
+                 its first link or input on open, and a link there would
+                 take focus from the password field. --}}
+            @can('use-collection')
+                <a href="{{ route('admin.collection.export') }}" download style="color: var(--ink); text-decoration: underline">{{ __('Download your collection as CSV') }}</a>
+                {{ __('first if you want to keep a copy.') }}
+            @endcan
         </p>
     </header>
 
