@@ -227,9 +227,7 @@ test('the delete account form says exactly what deletion removes', function () {
         ->assertSee('notes and photos')
         ->assertSee('/ash')
         ->assertSee('username becomes available')
-        ->assertSee('can’t be undone')
-        // No export exists yet to back up a "download your data" prompt.
-        ->assertDontSee('download');
+        ->assertSee('can’t be undone');
 });
 
 test('the delete account form skips the gallery line for a user with no username', function () {

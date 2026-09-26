@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CollectionExportController;
 use App\Livewire\Admin\AddCollectionItem;
 use App\Livewire\Admin\CollectionItems;
 use App\Livewire\Admin\Import;
@@ -41,6 +42,9 @@ Route::middleware(['auth', 'can:use-collection'])->group(function () {
 
     Route::get('/admin', CollectionItems::class)
         ->name('admin.collection.index');
+
+    Route::get('/admin/export', CollectionExportController::class)
+        ->name('admin.collection.export');
 });
 
 // Platform-management, not "my collection" — deliberately a separate
