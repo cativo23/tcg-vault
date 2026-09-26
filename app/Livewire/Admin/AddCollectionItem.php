@@ -10,6 +10,8 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
+use App\Modules\Collection\Services\PhotoMetadataStripFailed;
+use App\Modules\Collection\Services\PhotoMetadataStripper;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -325,7 +327,7 @@ final class AddCollectionItem extends Component
         }
     }
 
-    public function save(CollectionService $service): mixed
+    public function save(CollectionService $service, PhotoMetadataStripper $stripper): mixed
     {
         $this->validate();
 
@@ -348,6 +350,24 @@ final class AddCollectionItem extends Component
                 return null;
             }
             $seen[$key] = true;
+        }
+
+        // Location and other metadata come off each upload before anything
+        // is stored; a photo that can't be stripped is refused, never kept
+        // as uploaded.
+        foreach ($this->rows as $index => $row) {
+            if (! $row['photo']) {
+                continue;
+            }
+
+            try {
+                $stripper->strip((string) $row['photo']->getRealPath());
+            } catch (PhotoMetadataStripFailed $e) {
+                report($e);
+                $this->addError("rows.$index.photo", 'This photo couldn’t be processed. Try a different file.');
+
+                return null;
+            }
         }
 
         $storedPhotoPaths = [];

@@ -11,6 +11,8 @@ use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
+use App\Modules\Collection\Services\PhotoMetadataStripFailed;
+use App\Modules\Collection\Services\PhotoMetadataStripper;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -379,6 +381,18 @@ final class CollectionItems extends Component
         // must leave the existing photo alone rather than nulling it out
         // just because this particular save didn't carry a new one.
         if ($row['photo'] !== null) {
+            // Stripped before the old photo is deleted, so a file that
+            // can't be processed leaves the item's current photo in place.
+            try {
+                app(PhotoMetadataStripper::class)->strip((string) $row['photo']->getRealPath());
+            } catch (PhotoMetadataStripFailed $e) {
+                report($e);
+                $this->editingRows[$index]['photo'] = null;
+                $this->addError("editingRows.$index.photo", 'This photo couldn’t be processed. Try a different file.');
+
+                return;
+            }
+
             if ($item->photo_path) {
                 Storage::disk('collection-photos')->delete($item->photo_path);
             }

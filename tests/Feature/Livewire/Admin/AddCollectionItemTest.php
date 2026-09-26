@@ -17,6 +17,7 @@ use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Spatie\LaravelData\DataCollection;
 
@@ -981,4 +982,53 @@ test('a catalog sync failure during save shows a friendly error and does not cre
         ->assertHasErrors('selectedTcgdexId');
 
     expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();
+});
+
+/** A signed-in user on the add screen with Mega Darkrai ex selected and ready to save. */
+function addScreenWithCardSelected(object $test): Testable
+{
+    $user = User::factory()->create();
+    $test->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    app()->instance(CardCatalogProvider::class, $provider);
+
+    return Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'me05-116')
+        ->set('rows.0.condition', 'NM');
+}
+
+test('an uploaded photo has its metadata stripped before it is stored', function () {
+    Storage::fake('collection-photos');
+
+    addScreenWithCardSelected($this)
+        ->set('rows.0.photo', UploadedFile::fake()->image('card.jpg'))
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($this->photoStripper->stripped)->toHaveCount(1)
+        ->and(CollectionItem::where('card_tcgdex_id', 'me05-116')->value('photo_path'))->not->toBeNull();
+});
+
+test('a photo whose metadata cannot be stripped is refused and nothing is saved', function () {
+    Storage::fake('collection-photos');
+    $this->photoStripper->fail = true;
+
+    addScreenWithCardSelected($this)
+        ->set('rows.0.photo', UploadedFile::fake()->image('card.jpg'))
+        ->call('save')
+        ->assertHasErrors(['rows.0.photo'])
+        ->assertSee('This photo couldn’t be processed. Try a different file.');
+
+    expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse()
+        ->and(Storage::disk('collection-photos')->allFiles())->toBe([]);
 });
