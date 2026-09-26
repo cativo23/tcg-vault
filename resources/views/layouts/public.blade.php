@@ -177,6 +177,7 @@
                     </div>
                     <div class="sm:text-right sm:max-w-xs">
                         A personal collection archive. Not affiliated with Nintendo, Creatures, GAME FREAK or The Pokémon Company.
+                        <div class="mt-2"><a href="{{ route('privacy') }}" wire:navigate>Privacy</a> · <a href="{{ route('terms') }}" wire:navigate>Terms</a></div>
                     </div>
                 </div>
             </footer>

@@ -57,6 +57,11 @@
                 </div>
 
                 {{ $slot }}
+
+                <p class="mt-6 text-center text-xs" style="color: var(--muted)">
+                    <a href="{{ route('privacy') }}" class="underline" wire:navigate>Privacy</a> ·
+                    <a href="{{ route('terms') }}" class="underline" wire:navigate>Terms</a>
+                </p>
             </div>
         </div>
     </body>
