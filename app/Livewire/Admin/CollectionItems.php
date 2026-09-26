@@ -188,9 +188,10 @@ final class CollectionItems extends Component
         $this->resetValidation();
 
         $items = $this->ownedCardItemsOrFail($cardId);
+        $primary = $items->firstOrFail();
 
         $this->editingCardId = $cardId;
-        $this->editingCollectionId = $items->first()->collection_id;
+        $this->editingCollectionId = $primary->collection_id;
         $this->editingRows = $items->map(fn (CollectionItem $i) => [
             'id' => $i->id,
             'variant' => $i->variant,
@@ -204,7 +205,7 @@ final class CollectionItems extends Component
             'showDetails' => false,
         ])->values()->all();
 
-        $card = $items->first()->card;
+        $card = $primary->card;
         $this->editingCardName = $card->name;
 
         // Same variant-sourcing priority as the old startEditingItem():
@@ -224,7 +225,7 @@ final class CollectionItems extends Component
             // had), not the union of every row's variant in this card
             // group, so one row's choice never leaks into another row's
             // dropdown as a selectable option.
-            $variants = array_values(array_filter([$items->first()->variant]));
+            $variants = array_filter([$primary->variant]);
         }
         $this->editingAvailableVariants = $variants;
 
@@ -569,7 +570,7 @@ final class CollectionItems extends Component
                 return $item;
             });
 
-            $pricedItems = $valued->filter(fn (CollectionItem $i) => $i->_valueMinor !== null);
+            $pricedItems = $valued->filter(fn (CollectionItem $i) => $i->getAttribute('_valueMinor') !== null);
             $currencies = $pricedItems->pluck('_currency')->unique();
 
             // Summing minor units across items priced in different
@@ -578,11 +579,11 @@ final class CollectionItems extends Component
             // when every priced item in the group shares one currency.
             $totalCurrency = $currencies->count() === 1 ? $currencies->first() : null;
             $totalValueMinor = $totalCurrency !== null
-                ? (int) $pricedItems->sum(fn (CollectionItem $i) => $i->_valueMinor * $i->quantity)
+                ? (int) $pricedItems->sum(fn (CollectionItem $i) => $i->getAttribute('_valueMinor') * $i->quantity)
                 : null;
 
             return (object) [
-                'card' => $valued->first()->card,
+                'card' => $valued->firstOrFail()->card,
                 'items' => $valued->sortBy('variant')->values(),
                 'totalQuantity' => (int) $valued->sum('quantity'),
                 'totalValueMinor' => $totalValueMinor,
