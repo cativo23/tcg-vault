@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Livewire\Admin\CollectionItems;
+use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
@@ -11,6 +12,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
@@ -1607,4 +1609,15 @@ test('a replacement photo that cannot be stripped is refused and the old photo i
 
     expect($item->fresh()->photo_path)->toBe('old-photo.jpg')
         ->and(Storage::disk('collection-photos')->allFiles())->toBe(['old-photo.jpg']);
+});
+
+test('a user over the photo limit keeps the old photo and the new one is not processed', function () {
+    [$component, $item] = cardEditorWithStoredPhoto($this);
+    RateLimiter::increment('photo-strip:'.auth()->id(), amount: StripsUploadedPhotos::photoLimitPerMinute());
+
+    $component->set('editingRows.0.photo', UploadedFile::fake()->image('new.jpg'))
+        ->assertHasErrors(['editingRows.0.photo']);
+
+    expect($this->photoStripper->stripped)->toBe([])
+        ->and($item->fresh()->photo_path)->toBe('old-photo.jpg');
 });

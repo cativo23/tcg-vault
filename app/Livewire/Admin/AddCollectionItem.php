@@ -4,14 +4,13 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
-use App\Modules\Collection\Services\PhotoMetadataStripFailed;
-use App\Modules\Collection\Services\PhotoMetadataStripper;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -24,6 +23,7 @@ use Throwable;
 #[Layout('layouts.app')]
 final class AddCollectionItem extends Component
 {
+    use StripsUploadedPhotos;
     use WithFileUploads;
 
     public ?int $collectionId = null;
@@ -327,7 +327,7 @@ final class AddCollectionItem extends Component
         }
     }
 
-    public function save(CollectionService $service, PhotoMetadataStripper $stripper): mixed
+    public function save(CollectionService $service): mixed
     {
         $this->validate();
 
@@ -356,16 +356,7 @@ final class AddCollectionItem extends Component
         // is stored; a photo that can't be stripped is refused, never kept
         // as uploaded.
         foreach ($this->rows as $index => $row) {
-            if (! $row['photo']) {
-                continue;
-            }
-
-            try {
-                $stripper->strip((string) $row['photo']->getRealPath());
-            } catch (PhotoMetadataStripFailed $e) {
-                report($e);
-                $this->addError("rows.$index.photo", 'This photo couldn’t be processed. Try a different file.');
-
+            if ($row['photo'] && ! $this->stripUploadedPhoto($row['photo'], "rows.$index.photo")) {
                 return null;
             }
         }

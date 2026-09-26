@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
@@ -11,8 +12,6 @@ use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
-use App\Modules\Collection\Services\PhotoMetadataStripFailed;
-use App\Modules\Collection\Services\PhotoMetadataStripper;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -30,6 +29,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 #[Layout('layouts.app')]
 final class CollectionItems extends Component
 {
+    use StripsUploadedPhotos;
     use WithFileUploads;
     use WithPagination;
 
@@ -383,12 +383,8 @@ final class CollectionItems extends Component
         if ($row['photo'] !== null) {
             // Stripped before the old photo is deleted, so a file that
             // can't be processed leaves the item's current photo in place.
-            try {
-                app(PhotoMetadataStripper::class)->strip((string) $row['photo']->getRealPath());
-            } catch (PhotoMetadataStripFailed $e) {
-                report($e);
+            if (! $this->stripUploadedPhoto($row['photo'], "editingRows.$index.photo")) {
                 $this->editingRows[$index]['photo'] = null;
-                $this->addError("editingRows.$index.photo", 'This photo couldn’t be processed. Try a different file.');
 
                 return;
             }
