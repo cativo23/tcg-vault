@@ -37,3 +37,22 @@ test('a photo that cannot be stripped is reported and the command fails', functi
         ->expectsOutputToContain('Stripped 0 of 1 photos.')
         ->assertFailed();
 });
+
+test('working copies left by an interrupted strip are removed once stale', function () {
+    // A killed process can't run its cleanup, and a working copy holds the
+    // unstripped original, so old ones are deleted rather than skipped.
+    Storage::fake('collection-photos');
+    $disk = Storage::disk('collection-photos');
+    $disk->put('.strip-old.jpg', 'unstripped');
+    $disk->put('.strip-old.jpg_exiftool_tmp', 'partial');
+    $disk->put('.strip-recent.jpg', 'in progress');
+    touch($disk->path('.strip-old.jpg'), now()->subHour()->getTimestamp());
+    touch($disk->path('.strip-old.jpg_exiftool_tmp'), now()->subHour()->getTimestamp());
+
+    $this->artisan('photos:strip-metadata')->assertSuccessful();
+
+    expect($disk->exists('.strip-old.jpg'))->toBeFalse()
+        ->and($disk->exists('.strip-old.jpg_exiftool_tmp'))->toBeFalse()
+        ->and($disk->exists('.strip-recent.jpg'))->toBeTrue()
+        ->and($this->photoStripper->stripped)->toBe([]);
+});

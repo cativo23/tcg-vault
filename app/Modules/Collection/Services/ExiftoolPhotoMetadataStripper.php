@@ -69,8 +69,12 @@ final class ExiftoolPhotoMetadataStripper implements PhotoMetadataStripper
                 throw new PhotoMetadataStripException('Could not replace the original with the stripped copy.');
             }
         } finally {
-            if (is_file($working)) {
-                unlink($working);
+            // exiftool writes <file>_exiftool_tmp beside the file; it's only
+            // left behind if exiftool is killed mid-write.
+            foreach ([$working, $working.'_exiftool_tmp'] as $leftover) {
+                if (is_file($leftover)) {
+                    unlink($leftover);
+                }
             }
         }
     }
