@@ -7,6 +7,16 @@
     // action string for every field in this row — updateRow() re-validates
     // and re-saves the whole row regardless of which field changed, so
     // there's nothing per-field for it to select.
+
+    // A screen reader's button list shows every "Remove this variant"
+    // together with no way to tell rows apart — variant can be empty
+    // ("not specified") and two rows can share variant+condition (e.g.
+    // different grades), so position is the only part that's always
+    // unambiguous; variant/condition are appended when they add anything.
+    $rowDescription = 'variant '.($rowIndex + 1);
+    if (! empty($row['variant'])) {
+        $rowDescription .= ' ('.\Illuminate\Support\Str::headline($row['variant']).', '.$row['condition'].')';
+    }
 @endphp
 <div class="p-4" style="border-bottom: 1px solid var(--hair); display: grid; grid-template-columns: 1fr 1fr 70px auto; gap: 10px; align-items: end; position: relative;" wire:key="{{ $namePrefix }}">
     <div wire:loading.class="opacity-50" wire:target="{{ $onUpdate ?: $namePrefix }}">
@@ -37,11 +47,11 @@
     </div>
     @if (($confirmingRemoveRowIndex ?? null) === $rowIndex)
         <div style="display:flex; gap:4px;">
-            <button type="button" wire:click="removeVariantRow({{ $rowIndex }})" class="nw-row-btn nw-row-btn--danger" style="height: 34px;">Confirm</button>
-            <button type="button" wire:click="cancelRemoveRow" class="nw-row-btn" style="height: 34px;">✕</button>
+            <button type="button" wire:click="removeVariantRow({{ $rowIndex }})" class="nw-row-btn nw-row-btn--danger" aria-label="Confirm removing {{ $rowDescription }}" style="height: 34px;">Confirm</button>
+            <button type="button" wire:click="cancelRemoveRow" class="nw-row-btn" aria-label="Cancel removing {{ $rowDescription }}" style="height: 34px;">✕</button>
         </div>
     @elseif ($onRemove)
-        <button type="button" wire:click="{{ $onRemove }}" class="nw-row-btn nw-row-btn--danger" title="Remove this variant" style="height: 34px;">✕</button>
+        <button type="button" wire:click="{{ $onRemove }}" class="nw-row-btn nw-row-btn--danger" title="Remove this variant" aria-label="Remove {{ $rowDescription }}" style="height: 34px;">✕</button>
     @endif
 
     <div style="grid-column: 1 / -1;">
