@@ -79,3 +79,9 @@ test('the privacy policy explains the age check and its cookie', function () {
         ->assertSee('not stored')
         ->assertSee('can’t sign up from that browser', false);
 });
+
+test('the privacy policy says typed passwords are masked in error and debug records', function () {
+    $this->get('/privacy')
+        ->assertSee('Passwords you type are masked before either record is kept.')
+        ->assertDontSee('which can contain what you typed.');
+});
