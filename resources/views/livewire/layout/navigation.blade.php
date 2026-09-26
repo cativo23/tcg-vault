@@ -98,8 +98,16 @@ new class extends Component
 
                 <!-- Hamburger -->
                 <div class="flex items-center sm:hidden">
-                    <button @click="open = ! open" class="nw-hover-tint inline-flex items-center justify-center p-2 rounded-md focus:outline-none transition duration-150 ease-in-out" style="color: var(--chrome-fg)">
-                        <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
+                    <button
+                        type="button"
+                        @click="open = ! open"
+                        :aria-expanded="open.toString()"
+                        aria-label="Toggle navigation menu"
+                        aria-controls="admin-mobile-nav"
+                        class="nw-hover-tint inline-flex items-center justify-center p-2 rounded-md focus:outline-none transition duration-150 ease-in-out"
+                        style="color: var(--chrome-fg)"
+                    >
+                        <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                             <path :class="{'hidden': open, 'inline-flex': ! open }" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                             <path :class="{'hidden': ! open, 'inline-flex': open }" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                         </svg>
@@ -110,7 +118,7 @@ new class extends Component
     </div>
 
     <!-- Responsive Navigation Menu -->
-    <div :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden">
+    <div id="admin-mobile-nav" :class="{'block': open, 'hidden': ! open}" class="hidden sm:hidden">
         <div class="pt-2 pb-3 space-y-1">
             <x-responsive-nav-link :href="route('admin.collection.index')" :active="request()->routeIs('admin.collection.*')" wire:navigate>
                 {{ __('Collection') }}

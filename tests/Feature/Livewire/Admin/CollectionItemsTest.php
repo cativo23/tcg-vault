@@ -1301,13 +1301,18 @@ test('the remove and cancel icon-only buttons have accessible names', function (
     // A "✕" with only a title attribute is not a reliable accessible
     // name and is nothing at all on touch — removeVariantRow only shows
     // its own "✕" once there's more than one row, so this needs two.
+    // Labels also name the row itself, not just the action — with two
+    // rows open, "Remove this variant" on both would be indistinguishable
+    // in a screen reader's button list.
     $test = Livewire::test(CollectionItems::class)->call('openCardEditor', $card->id);
 
-    expect($test->html())->toContain('aria-label="Remove this variant"');
+    expect($test->html())->toContain('aria-label="Remove variant 1 (Normal, NM)"')
+        ->toContain('aria-label="Remove variant 2 (Holofoil, NM)"');
 
     $test->call('confirmRemoveRow', 0);
 
-    expect($test->html())->toContain('aria-label="Cancel removing this variant"');
+    expect($test->html())->toContain('aria-label="Cancel removing variant 1 (Normal, NM)"')
+        ->toContain('aria-label="Confirm removing variant 1 (Normal, NM)"');
 });
 
 test('the card editor modal has dialog semantics', function () {
