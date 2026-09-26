@@ -20,8 +20,8 @@
                  both the state and the action at once. --}}
             <div class="nw-seg" role="group" aria-label="Visibility" aria-describedby="visibility-help">
                 <span class="lbl">Visibility</span>
-                <button type="button" wire:click="setVisibility(false)" aria-pressed="{{ $isPublic ? 'false' : 'true' }}">Private</button>
-                <button type="button" wire:click="setVisibility(true)" aria-pressed="{{ $isPublic ? 'true' : 'false' }}">Public</button>
+                <button type="button" wire:click="makePrivate" aria-pressed="{{ $isPublic ? 'false' : 'true' }}">Private</button>
+                <button type="button" wire:click="makePublic" aria-pressed="{{ $isPublic ? 'true' : 'false' }}">Public</button>
             </div>
             <a href="{{ route('admin.collection.import') }}" class="nw-btn-secondary">Import TCGplayer</a>
             <a href="{{ route('admin.collection.add') }}" class="nw-btn-primary">+ Add card</a>

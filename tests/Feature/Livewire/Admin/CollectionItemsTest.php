@@ -970,12 +970,12 @@ test('a new collection defaults to private, matching every other creation path',
     expect(Collection::where('user_id', $user->id)->where('slug', 'my-collection')->first()->is_public)->toBeFalse();
 });
 
-test('toggling visibility persists it to the users collection', function () {
+test('making the collection public persists it', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
     Livewire::test(CollectionItems::class)
-        ->call('setVisibility', true)
+        ->call('makePublic')
         ->assertSet('isPublic', true);
 
     expect(Collection::where('user_id', $user->id)->where('slug', 'my-collection')->first()->is_public)->toBeTrue();
@@ -996,11 +996,25 @@ test('the visibility control has fixed Private and Public options, with the curr
 
     Livewire::test(CollectionItems::class)
         ->assertSeeHtml('<span class="lbl">Visibility</span>')
-        ->assertSeeHtml('wire:click="setVisibility(false)" aria-pressed="true">Private</button>')
-        ->assertSeeHtml('wire:click="setVisibility(true)" aria-pressed="false">Public</button>')
-        ->call('setVisibility', true)
-        ->assertSeeHtml('wire:click="setVisibility(false)" aria-pressed="false">Private</button>')
-        ->assertSeeHtml('wire:click="setVisibility(true)" aria-pressed="true">Public</button>');
+        ->assertSeeHtml('wire:click="makePrivate" aria-pressed="true">Private</button>')
+        ->assertSeeHtml('wire:click="makePublic" aria-pressed="false">Public</button>')
+        ->call('makePublic')
+        ->assertSeeHtml('wire:click="makePrivate" aria-pressed="false">Private</button>')
+        ->assertSeeHtml('wire:click="makePublic" aria-pressed="true">Public</button>');
+});
+
+test('making a public collection private persists it and says so', function () {
+    $user = User::factory()->create(['username' => 'ash']);
+    $this->actingAs($user);
+    Collection::create(['user_id' => $user->id, 'slug' => 'my-collection', 'name' => 'My Collection', 'is_public' => true]);
+
+    Livewire::test(CollectionItems::class)
+        ->assertSet('isPublic', true)
+        ->call('makePrivate')
+        ->assertSet('isPublic', false)
+        ->assertSee('Only you can see your collection.');
+
+    expect(Collection::where('user_id', $user->id)->where('slug', 'my-collection')->first()->is_public)->toBeFalse();
 });
 
 test('choosing the option that is already selected leaves visibility unchanged', function () {
@@ -1008,8 +1022,8 @@ test('choosing the option that is already selected leaves visibility unchanged',
     $this->actingAs($user);
 
     Livewire::test(CollectionItems::class)
-        ->call('setVisibility', true)
-        ->call('setVisibility', true)
+        ->call('makePublic')
+        ->call('makePublic')
         ->assertSet('isPublic', true);
 
     expect(Collection::where('user_id', $user->id)->where('slug', 'my-collection')->first()->is_public)->toBeTrue();
@@ -1027,7 +1041,7 @@ test('a public collection says who can see it and links to the page', function (
     $this->actingAs(User::factory()->create(['username' => 'ash']));
 
     Livewire::test(CollectionItems::class)
-        ->call('setVisibility', true)
+        ->call('makePublic')
         ->assertSee('Anyone can see it at')
         ->assertSeeHtml('href="'.route('gallery.index', ['username' => 'ash']).'"')
         ->assertDontSee('Only you can see your collection.');
@@ -1037,7 +1051,7 @@ test('a public collection without a username points to the profile, since there 
     $this->actingAs(User::factory()->create(['username' => null]));
 
     Livewire::test(CollectionItems::class)
-        ->call('setVisibility', true)
+        ->call('makePublic')
         ->assertSee('Set a username')
         ->assertSeeHtml('href="'.route('profile').'"')
         ->assertDontSee('Anyone can see it at');

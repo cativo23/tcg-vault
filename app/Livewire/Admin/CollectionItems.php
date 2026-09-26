@@ -77,11 +77,23 @@ final class CollectionItems extends Component
     }
 
     /**
-     * Sets an explicit value rather than flipping the current one, so a
-     * double-click on "Public" can never land the collection back on
-     * private.
+     * One parameterless action per option rather than a toggle or a
+     * setVisibility($bool): a double-click on "Public" can never land the
+     * collection back on private, and there is no client-supplied value
+     * for PHP's loose bool coercion to misread (the string "false" is
+     * truthy).
      */
-    public function setVisibility(bool $public): void
+    public function makePublic(): void
+    {
+        $this->applyVisibility(true);
+    }
+
+    public function makePrivate(): void
+    {
+        $this->applyVisibility(false);
+    }
+
+    private function applyVisibility(bool $public): void
     {
         $this->isPublic = $public;
         $this->resolveCollection()->update(['is_public' => $public]);
