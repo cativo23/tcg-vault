@@ -38,10 +38,10 @@
     @if (($confirmingRemoveRowIndex ?? null) === $rowIndex)
         <div style="display:flex; gap:4px;">
             <button type="button" wire:click="removeVariantRow({{ $rowIndex }})" class="nw-row-btn nw-row-btn--danger" style="height: 34px;">Confirm</button>
-            <button type="button" wire:click="cancelRemoveRow" class="nw-row-btn" style="height: 34px;">✕</button>
+            <button type="button" wire:click="cancelRemoveRow" class="nw-row-btn" aria-label="Cancel removing this variant" style="height: 34px;">✕</button>
         </div>
     @elseif ($onRemove)
-        <button type="button" wire:click="{{ $onRemove }}" class="nw-row-btn nw-row-btn--danger" title="Remove this variant" style="height: 34px;">✕</button>
+        <button type="button" wire:click="{{ $onRemove }}" class="nw-row-btn nw-row-btn--danger" title="Remove this variant" aria-label="Remove this variant" style="height: 34px;">✕</button>
     @endif
 
     <div style="grid-column: 1 / -1;">

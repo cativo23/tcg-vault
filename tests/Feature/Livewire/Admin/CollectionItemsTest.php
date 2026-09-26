@@ -1288,6 +1288,28 @@ test('updateRow rejects an edit that would collide with a sibling row instead of
     expect($holo->fresh()->quantity)->toBe(1);
 });
 
+test('the remove and cancel icon-only buttons have accessible names', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'holofoil', 'condition' => 'NM', 'quantity' => 1]);
+
+    // A "✕" with only a title attribute is not a reliable accessible
+    // name and is nothing at all on touch — removeVariantRow only shows
+    // its own "✕" once there's more than one row, so this needs two.
+    $test = Livewire::test(CollectionItems::class)->call('openCardEditor', $card->id);
+
+    expect($test->html())->toContain('aria-label="Remove this variant"');
+
+    $test->call('confirmRemoveRow', 0);
+
+    expect($test->html())->toContain('aria-label="Cancel removing this variant"');
+});
+
 test('the card editor modal has dialog semantics', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

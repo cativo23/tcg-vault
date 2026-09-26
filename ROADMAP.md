@@ -116,10 +116,12 @@ roadmap safe to attempt.
   search) had no persistent count at all before this, only a conditional
   "first N matches" note, so it also gained an always-rendered (if
   empty) result-count line for a live region to actually announce.
-- **Accessible names on icon-only buttons** in
-  `resources/views/livewire/admin/partials/variant-row.blade.php` — a
-  `title` attribute is not a reliable accessible name, and is nothing at
-  all on touch.
+- ~~**Accessible names on icon-only buttons**~~ — done. Added
+  `aria-label` to the "✕" remove and cancel-remove buttons in
+  `variant-row.blade.php` (kept the existing `title` too, for the mouse
+  tooltip) — a `title` alone is not a reliable accessible name, and is
+  nothing at all on touch. The modal's own "✕" close button already had
+  one.
 - **The 404 page sends anonymous visitors to "Back to login."** A stale
   or mistyped gallery link is a normal, expected 404 on a public site,
   and the visitor may not have an account to log in to. Send guests home.
