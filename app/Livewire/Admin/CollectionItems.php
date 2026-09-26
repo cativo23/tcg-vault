@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
@@ -28,6 +29,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 #[Layout('layouts.app')]
 final class CollectionItems extends Component
 {
+    use StripsUploadedPhotos;
     use WithFileUploads;
     use WithPagination;
 
@@ -379,14 +381,25 @@ final class CollectionItems extends Component
         // must leave the existing photo alone rather than nulling it out
         // just because this particular save didn't carry a new one.
         if ($row['photo'] !== null) {
+            // Stripped before the old photo is deleted, so a file that
+            // can't be processed leaves the item's current photo in place.
+            if (! $this->stripUploadedPhoto(
+                $row['photo'],
+                "editingRows.$index.photo",
+                function () use ($index): void {
+                    $this->editingRows[$index]['photo'] = null;
+                },
+            )) {
+                return;
+            }
+
             if ($item->photo_path) {
                 Storage::disk('collection-photos')->delete($item->photo_path);
             }
 
             $newPath = basename($row['photo']->store('/', 'collection-photos'));
             $update['photo_path'] = $newPath;
-            $this->editingRows[$index]['photo_path'] = $newPath;
-            $this->editingRows[$index]['photo'] = null;
+            $this->editingRows[$index] = ['photo_path' => $newPath, 'photo' => null] + $row;
         }
 
         try {

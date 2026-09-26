@@ -22,6 +22,10 @@ return [
     // email, so it works without extra setup.
     'feedback_email' => env('TCGVAULT_FEEDBACK_EMAIL', env('TCGVAULT_ADMIN_EMAIL')),
 
+    // The exiftool binary that strips location and other metadata from
+    // uploaded photos. Installed by docker/prod/Dockerfile and in CI.
+    'exiftool_path' => env('TCGVAULT_EXIFTOOL_PATH', '/usr/bin/exiftool'),
+
     // Only the INITIAL value, seeded once into RegistrationSettings by
     // database/settings/..._create_registration_settings.php — after
     // that migration runs, App\Settings\RegistrationSettings::$open

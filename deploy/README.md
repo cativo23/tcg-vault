@@ -117,6 +117,10 @@ docker compose -f compose.prod.yml exec app php artisan db:seed
 # to (config tcgvault.demo). Idempotent; only needed when that card list
 # changes. Calls tcgdex for any card not already in the Catalog.
 docker compose -f compose.prod.yml exec app php artisan demo:seed-gallery
+# Removes location and other metadata from photos stored before uploads
+# were stripped on the way in. Idempotent; a non-zero exit lists any file
+# exiftool couldn't process.
+docker compose -f compose.prod.yml exec app php artisan photos:strip-metadata
 ```
 
 ## Acceptance checklist (first deploy)

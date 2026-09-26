@@ -107,6 +107,11 @@ jobs:
       - name: Build front-end assets
         run: npm run build
 
+      # The photo metadata stripper's own tests run the real binary and
+      # fail (rather than skip) when EXIFTOOL_REQUIRED is set.
+      - name: Install exiftool
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libimage-exiftool-perl
+
       - name: Copy environment file
         run: cp .env.example .env
 
@@ -125,6 +130,7 @@ jobs:
           DB_DATABASE: testing
           DB_USERNAME: root
           DB_PASSWORD: ""
+          EXIFTOOL_REQUIRED: "1"
         run: composer test
 
   # Builds the same image deploy.yml ships, without pushing, so a broken
@@ -148,5 +154,12 @@ jobs:
           context: .
           file: ./docker/prod/Dockerfile
           push: false
+          load: true
+          tags: tcg-vault:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # The photo stripper depends on a system package; fail here rather than
+      # on the first upload after a deploy if the image ever lacks it.
+      - name: Check exiftool runs in the image
+        run: docker run --rm --entrypoint /usr/bin/exiftool tcg-vault:ci -ver

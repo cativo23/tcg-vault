@@ -11,10 +11,12 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Tests\Support\FakePhotoMetadataStripper;
 
 test('the collection index lists the authenticated users items', function () {
     $user = User::factory()->create();
@@ -1567,4 +1569,59 @@ test('validation errors on hidden detail fields auto-expands the details section
     // error message and grading inputs are now visible in the rendered HTML.
     expect($html)->toContain('must not be greater than 32');
     expect($html)->toContain('Grading company');
+});
+
+/** A signed-in user's item for Mega Darkrai ex with a stored photo, open in the card editor. */
+function cardEditorWithStoredPhoto(object $test): array
+{
+    Storage::fake('collection-photos');
+    Storage::disk('collection-photos')->put('old-photo.jpg', 'old-bytes');
+
+    $user = User::factory()->create();
+    $test->actingAs($user);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116',
+        'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'old-photo.jpg',
+    ]);
+
+    return [Livewire::test(CollectionItems::class)->call('openCardEditor', $card->id), $item];
+}
+
+test('a replacement photo in the card editor has its metadata stripped before it is stored', function () {
+    [$component, $item] = cardEditorWithStoredPhoto($this);
+
+    $component->set('editingRows.0.photo', UploadedFile::fake()->image('new.jpg'))->assertHasNoErrors();
+
+    $stored = $item->fresh()->photo_path;
+
+    expect($this->photoStripper->stripped)->toHaveCount(1)
+        ->and($stored)->not->toBe('old-photo.jpg')
+        ->and(Storage::disk('collection-photos')->get($stored))->toEndWith(FakePhotoMetadataStripper::MARKER);
+});
+
+test('a replacement photo that cannot be stripped is refused and the old photo is kept', function () {
+    [$component, $item] = cardEditorWithStoredPhoto($this);
+    $this->photoStripper->fail = true;
+
+    $component->set('editingRows.0.photo', UploadedFile::fake()->image('new.jpg'))
+        ->assertHasErrors(['editingRows.0.photo'])
+        ->assertSee('This photo couldn’t be processed. Try a different file.');
+
+    expect($item->fresh()->photo_path)->toBe('old-photo.jpg')
+        ->and(Storage::disk('collection-photos')->allFiles())->toBe(['old-photo.jpg']);
+});
+
+test('a user over the photo limit keeps the old photo and the new one is not processed', function () {
+    [$component, $item] = cardEditorWithStoredPhoto($this);
+    RateLimiter::increment('photo-strip:'.auth()->id(), amount: CollectionItems::PHOTO_LIMIT_PER_MINUTE);
+
+    $component->set('editingRows.0.photo', UploadedFile::fake()->image('new.jpg'))
+        ->assertHasErrors(['editingRows.0.photo'])
+        ->assertSet('editingRows.0.photo', fn ($photo) => $photo !== null);
+
+    expect($this->photoStripper->stripped)->toBe([])
+        ->and($item->fresh()->photo_path)->toBe('old-photo.jpg');
 });

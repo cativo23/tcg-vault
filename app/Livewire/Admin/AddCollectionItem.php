@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Models\Set;
@@ -22,6 +23,7 @@ use Throwable;
 #[Layout('layouts.app')]
 final class AddCollectionItem extends Component
 {
+    use StripsUploadedPhotos;
     use WithFileUploads;
 
     public ?int $collectionId = null;
@@ -348,6 +350,21 @@ final class AddCollectionItem extends Component
                 return null;
             }
             $seen[$key] = true;
+        }
+
+        // Location and other metadata come off each upload before anything
+        // is stored; a photo that can't be stripped is refused, never kept
+        // as uploaded.
+        foreach ($this->rows as $index => $row) {
+            if ($row['photo'] && ! $this->stripUploadedPhoto(
+                $row['photo'],
+                "rows.$index.photo",
+                function () use ($index): void {
+                    $this->rows[$index]['photo'] = null;
+                },
+            )) {
+                return null;
+            }
         }
 
         $storedPhotoPaths = [];
