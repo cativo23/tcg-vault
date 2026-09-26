@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Services\TcgplayerImportParser;
+use Illuminate\Support\Facades\DB;
 
 function fakeImportCard(string $tcgdexId, string $setTcgdexId, string $localId, string $name, array $prices = []): CardDetailData
 {
@@ -176,6 +177,31 @@ test('does not flag a locally-synced card with only one known price variant', fu
     $result = (new TcgplayerImportParser($provider))->parse('1 Toucannon - 068/084 [PBL] 068/084');
 
     expect($result->matched->first()->variantAmbiguous)->toBeFalse();
+});
+
+test('resolving multiple locally-synced lines runs a constant number of queries, not one per line', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    foreach (['068' => 'Toucannon', '037' => 'Lampent', '052' => 'Malamar'] as $localId => $name) {
+        $card = Card::create(['tcgdex_id' => "me05-{$localId}", 'set_id' => $set->id, 'local_id' => $localId, 'name' => $name]);
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 500]);
+    }
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $parser = new TcgplayerImportParser($provider);
+
+    // One line resolved locally shouldn't cost noticeably less than three —
+    // Card::where()->first() and priceSnapshots()->count() per candidate
+    // (the original bug) would instead scale 1:1 with the line count.
+    DB::enableQueryLog();
+    $parser->parse('1 Toucannon - 068/084 [PBL] 068/084');
+    $oneLineQueries = count(DB::getQueryLog());
+
+    DB::flushQueryLog();
+    $parser->parse("1 Toucannon - 068/084 [PBL] 068/084\n1 Lampent [PBL] 037/084\n1 Malamar [PBL] 052/084");
+    $threeLineQueries = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    expect($threeLineQueries)->toBe($oneLineQueries);
 });
 
 test('flags a card resolved via tcgdex as variant-ambiguous when it reports more than one price variant', function () {

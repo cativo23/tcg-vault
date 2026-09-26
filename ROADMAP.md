@@ -127,9 +127,10 @@ roadmap safe to attempt.
   user's stale link is a different case (their own bookmark going bad),
   so they get "Back to your collection" instead — neither is asked to
   log in for a plain 404. 403/419/500 keep "Back to login" unchanged.
-- **N+1 in the TCGplayer import preview.**
-  `TcgplayerImportParser.php:88` runs a card lookup and a variant count
-  per parsed line. Batch both.
+- ~~**N+1 in the TCGplayer import preview.**~~ — done. Both the card
+  lookup and the variant count now run once for the whole import
+  (`whereIn` + `keyBy`/`groupBy`) instead of once per parsed line — a
+  large re-import's preview no longer scales with the export size.
 
 ## v0.8.0 — Ready for someone else's eyes
 

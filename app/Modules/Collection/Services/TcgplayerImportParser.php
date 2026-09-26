@@ -7,6 +7,7 @@ namespace App\Modules\Collection\Services;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Collection\Data\MatchedImportLine;
 use App\Modules\Collection\Data\ParsedImport;
 use App\Modules\Collection\Data\UnmatchedImportLine;
@@ -80,14 +81,26 @@ final class TcgplayerImportParser
 
         $matched = [];
 
+        // Cards this install already synced are resolved locally, which
+        // removes one tcgdex round-trip per line. On a re-import of an
+        // already-synced set that's the entire preview cost gone. Batched
+        // into two queries total regardless of line count — one per line
+        // here (Card::where()->first() plus a priceSnapshots() count) used
+        // to make a large import's preview scale with the export size.
+        $localCards = Card::whereIn('tcgdex_id', array_keys($candidates))->get(['id', 'tcgdex_id', 'name'])->keyBy('tcgdex_id');
+
+        $variantCounts = $localCards->isEmpty() ? collect() : CardPriceSnapshot::whereIn('card_id', $localCards->pluck('id'))
+            ->select('card_id', 'variant')
+            ->distinct()
+            ->get()
+            ->groupBy('card_id')
+            ->map->count();
+
         foreach ($candidates as $tcgdexCardId => $candidate) {
-            // Cards this install already synced are resolved locally, which
-            // removes one tcgdex round-trip per line. On a re-import of an
-            // already-synced set that's the entire preview cost gone.
-            $localCard = Card::where('tcgdex_id', $tcgdexCardId)->first(['id', 'name']);
+            $localCard = $localCards->get($tcgdexCardId);
 
             if ($localCard !== null) {
-                $variantCount = $localCard->priceSnapshots()->distinct('variant')->count('variant');
+                $variantCount = $variantCounts->get($localCard->id, 0);
 
                 $matched[] = new MatchedImportLine(
                     qty: $candidate['qty'],
