@@ -5,3 +5,6 @@ parameters:
     level: 8
     paths:
         - app
+    # Models declare casts in a casts() method returning a plain `array`;
+    # without this, larastan ignores them and types every date as string.
+    parseModelCastsMethod: true
