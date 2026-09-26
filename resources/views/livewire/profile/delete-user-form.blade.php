@@ -46,7 +46,7 @@ new class extends Component
         </h2>
 
         <p class="mt-1 text-sm" style="color: var(--muted)">
-            {{ __('Once your account is deleted, all of its resources and data will be permanently deleted. Before deleting your account, please download any data or information that you wish to retain.') }}
+            @include('livewire.profile.partials.deletion-consequences')
         </p>
     </header>
 
@@ -63,7 +63,8 @@ new class extends Component
             </h2>
 
             <p class="mt-1 text-sm" style="color: var(--muted)">
-                {{ __('Once your account is deleted, all of its resources and data will be permanently deleted. Please enter your password to confirm you would like to permanently delete your account.') }}
+                @include('livewire.profile.partials.deletion-consequences')
+                {{ __('Enter your password to confirm.') }}
             </p>
 
             <div class="mt-6">

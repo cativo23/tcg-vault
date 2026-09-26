@@ -219,6 +219,27 @@ test('deleting an account removes its uploaded card photos but no one elses', fu
     Storage::disk('collection-photos')->assertExists('theirs.jpg');
 });
 
+test('the delete account form says exactly what deletion removes', function () {
+    $this->actingAs(User::factory()->create(['username' => 'ash']));
+
+    Volt::test('profile.delete-user-form')
+        ->assertSee('your whole collection')
+        ->assertSee('notes and photos')
+        ->assertSee('/ash')
+        ->assertSee('username becomes available')
+        ->assertSee('can’t be undone')
+        // No export exists yet to back up a "download your data" prompt.
+        ->assertDontSee('download');
+});
+
+test('the delete account form skips the gallery line for a user with no username', function () {
+    $this->actingAs(User::factory()->create(['username' => null]));
+
+    Volt::test('profile.delete-user-form')
+        ->assertSee('your whole collection')
+        ->assertDontSee('goes offline');
+});
+
 test('correct password must be provided to delete account', function () {
     $user = User::factory()->create();
 
