@@ -13,7 +13,9 @@
                 {{ __('Delete :name’s account?', ['name' => $deleting->username ?? $deleting->email]) }}
             </h2>
             <p class="text-sm mb-4" style="color: var(--muted)">
-                {{ __('This permanently deletes their account, collection, notes and photos. Type :word to confirm.', ['word' => \App\Livewire\Staff\MemberManager::confirmationWord($deleting)]) }}
+                {{ __('This permanently deletes their account, collection, notes and photos. Type') }}
+                <strong style="color: var(--ink)">{{ \App\Livewire\Staff\MemberManager::confirmationWord($deleting) }}</strong>
+                {{ __('to confirm.') }}
             </p>
             <form wire:submit="deleteMember" class="flex items-end gap-3">
                 <div class="flex-1">
