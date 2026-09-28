@@ -49,6 +49,7 @@
         <li>Feedback emails: kept in my inbox for as long as needed to follow up.</li>
         <li>An invite nobody accepted: deleted within 31 days of expiring or being revoked. An accepted invite is deleted with the account it created.</li>
         <li>Password reset links: expire after an hour and are deleted within a day.</li>
+        <li>Backups: a copy of the database and your photos is taken every night and kept on the same server for 14 days, then deleted. It exists only to recover from a mistake or a failure, and is not used for anything else.</li>
         <li>If staff suspend or delete an account: a record of that, holding the account’s internal number but not its name or email, kept for a year.</li>
     </ul>
 
@@ -57,7 +58,7 @@
     <ul>
         <li><strong>Get a copy</strong> of your collection — “Export CSV” on My Collection downloads every card with all its details (photos are not included).</li>
         <li><strong>Correct</strong> your details on your Profile, and your cards on My Collection.</li>
-        <li><strong>Delete your account</strong> from your Profile. This immediately and permanently removes your account, your whole collection with its notes and photos, and the invite you signed up with. Copies in short-lived debug records and error reports expire on the schedule above.</li>
+        <li><strong>Delete your account</strong> from your Profile. This immediately and permanently removes your account, your whole collection with its notes and photos, and the invite you signed up with. Copies in short-lived debug records and error reports expire on the schedule above, and your data is gone from the nightly backups within 14 days. If a backup ever has to be restored in that time, I delete your account again.</li>
         <li><strong>Ask</strong> for access to what I hold about you, or for restriction or portability of it; object to how it’s used; or withdraw a choice such as making your collection public.</li>
         <li><strong>Complain</strong> to your local data protection authority.</li>
     </ul>

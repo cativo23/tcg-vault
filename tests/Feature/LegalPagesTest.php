@@ -107,3 +107,10 @@ test('the privacy policy says how long invites and reset links are kept', functi
 test('the privacy policy says moderation actions are recorded without the member’s name', function () {
     $this->get('/privacy')->assertSee('If staff suspend or delete an account: a record of that, holding the account’s internal number but not its name or email, kept for a year.', false);
 });
+
+test('the privacy policy says backups keep deleted data for 14 days', function () {
+    $this->get('/privacy')
+        ->assertSee('Backups:')
+        ->assertSee('kept on the same server for 14 days')
+        ->assertSee('from the nightly backups within 14 days');
+});
