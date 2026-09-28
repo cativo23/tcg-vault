@@ -78,6 +78,8 @@ test('a cardmarket-only card with no straight holo print labels its prices norma
     // 'default'/'holofoil' assumption. tcgdex's real payload for this
     // card:
     Http::fake([
+        // No image in this payload, so the image fallback looks up the set.
+        'api.tcgdex.net/v2/en/sets/*' => Http::response([], 404),
         'api.tcgdex.net/v2/en/cards/me03-068' => Http::response([
             'id' => 'me03-068',
             'localId' => '068',
@@ -117,6 +119,8 @@ test('a card with BOTH a straight holo and a reverse-holo print gets cardmarket 
     // one — otherwise a collector who owns the other print gets no price
     // at all despite real market data existing.
     Http::fake([
+        // No image in this payload, so the image fallback looks up the set.
+        'api.tcgdex.net/v2/en/sets/*' => Http::response([], 404),
         'api.tcgdex.net/v2/en/cards/me05-777' => Http::response([
             'id' => 'me05-777',
             'localId' => '777',
@@ -144,6 +148,8 @@ test('a card with BOTH a straight holo and a reverse-holo print gets cardmarket 
 
 test('a straight-holo-only card still labels its foil-tier price holofoil', function () {
     Http::fake([
+        // No image in this payload, so the image fallback looks up the set.
+        'api.tcgdex.net/v2/en/sets/*' => Http::response([], 404),
         'api.tcgdex.net/v2/en/cards/me05-999' => Http::response([
             'id' => 'me05-999',
             'localId' => '999',
@@ -499,4 +505,28 @@ test('searchCardsByName sends the query as a URL parameter, never string-interpo
     Http::assertSent(function ($request) {
         return str_starts_with($request->url(), 'https://api.tcgdex.net/v2/en/cards?name=');
     });
+});
+
+test('findCard fills in the image from tcgdex’s asset server when the API leaves it empty', function () {
+    $payload = array_merge(fakeTcgdexCardPayload(), ['id' => 'mep-031', 'localId' => '031', 'set' => ['id' => 'mep', 'name' => 'MEP Black Star Promos']]);
+    unset($payload['image']);
+
+    Http::fake([
+        'api.tcgdex.net/v2/en/cards/mep-031' => Http::response($payload),
+        'api.tcgdex.net/v2/en/sets/mep' => Http::response(['id' => 'mep', 'serie' => ['id' => 'me']]),
+        'assets.tcgdex.net/en/me/mep/031/high.webp' => Http::response('', 200),
+    ]);
+
+    $card = (new TcgdexCardCatalogProvider('https://api.tcgdex.net/v2/en'))->findCard('mep-031');
+
+    expect($card->officialImageUrl)->toBe('https://assets.tcgdex.net/en/me/mep/031/high.webp');
+});
+
+test('findCard makes no extra requests when the API already has the image', function () {
+    Http::fake(['api.tcgdex.net/v2/en/cards/me05-116' => Http::response(fakeTcgdexCardPayload())]);
+
+    $card = (new TcgdexCardCatalogProvider('https://api.tcgdex.net/v2/en'))->findCard('me05-116');
+
+    expect($card->officialImageUrl)->toBe('https://assets.tcgdex.net/en/me/me05/116/high.webp');
+    Http::assertSentCount(1);
 });
