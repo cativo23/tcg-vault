@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 
 /**
  * Catches the nightly backup silently stopping. The `backup` container
- * (docker/prod/backup.sh) writes a database dump and a photo archive once
+ * (docker/prod/backup/backup.sh) writes a database dump and a photo archive once
  * a day; a broken dump, a full disk or a stopped container would otherwise
  * only be noticed on the day a restore is needed.
  *
@@ -23,7 +23,7 @@ final class CheckBackupFreshness extends Command
     /** Label shown in the alert => filename pattern. */
     private const KINDS = [
         'database' => 'db-*.dump',
-        'photo' => 'photos-*.tar.gz',
+        'photo' => 'photos-*.tar',
     ];
 
     protected $signature = 'backups:check-freshness';
@@ -51,7 +51,28 @@ final class CheckBackupFreshness extends Command
             $this->checkKind($alerter, $dir, $label, $pattern);
         }
 
+        $this->checkFreeSpace($alerter, $dir);
+
         return self::SUCCESS;
+    }
+
+    /**
+     * The backups share a disk with the live database, and each night adds
+     * a full copy of the photos. A full disk would stop Postgres as well as
+     * the backups, so it is flagged while there is still room to act.
+     */
+    private function checkFreeSpace(DiscordAlerter $alerter, string $dir): void
+    {
+        $minFree = (int) config('tcgvault.backups.min_free_bytes');
+        $free = disk_free_space($dir);
+
+        if ($free === false || $free >= $minFree) {
+            return;
+        }
+
+        $freeGb = round($free / 1024 ** 3, 1);
+        $alerter->send("⚠️ tcg-vault: only {$freeGb} GB free on the backup disk, which also holds the live database.");
+        $this->warn("Only {$freeGb} GB free on the backup disk.");
     }
 
     private function checkKind(DiscordAlerter $alerter, string $dir, string $label, string $pattern): void

@@ -27,7 +27,7 @@ function makeBackupAt(string $dir, string $name, int $hoursAgo): void
 test('does not alert when both the database dump and the photo archive are recent', function () {
     Http::fake();
     makeBackupAt($this->backupDir, 'db-2026-09-28.dump', 5);
-    makeBackupAt($this->backupDir, 'photos-2026-09-28.tar.gz', 5);
+    makeBackupAt($this->backupDir, 'photos-2026-09-28.tar', 5);
 
     $this->artisan('backups:check-freshness')->assertSuccessful();
 
@@ -37,11 +37,46 @@ test('does not alert when both the database dump and the photo archive are recen
 test('alerts when the newest database dump is older than the threshold', function () {
     Http::fake();
     makeBackupAt($this->backupDir, 'db-2026-09-26.dump', 30);
-    makeBackupAt($this->backupDir, 'photos-2026-09-28.tar.gz', 5);
+    makeBackupAt($this->backupDir, 'photos-2026-09-28.tar', 5);
 
     $this->artisan('backups:check-freshness')->assertSuccessful();
 
     Http::assertSent(fn ($request) => str_contains($request['content'], 'database backup is 30h old'));
+});
+
+test('judges freshness by the newest backup, not an older one still kept', function () {
+    Http::fake();
+    makeBackupAt($this->backupDir, 'db-2026-09-20.dump', 200);
+    makeBackupAt($this->backupDir, 'db-2026-09-28.dump', 5);
+    makeBackupAt($this->backupDir, 'photos-2026-09-20.tar', 200);
+    makeBackupAt($this->backupDir, 'photos-2026-09-28.tar', 5);
+
+    $this->artisan('backups:check-freshness')->assertSuccessful();
+
+    Http::assertNothingSent();
+});
+
+test('sends one alert per stale kind when both are stale', function () {
+    Http::fake();
+    makeBackupAt($this->backupDir, 'db-2026-09-25.dump', 72);
+    makeBackupAt($this->backupDir, 'photos-2026-09-25.tar', 72);
+
+    $this->artisan('backups:check-freshness')->assertSuccessful();
+
+    Http::assertSentCount(2);
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'database backup is 72h old'));
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'photo backup is 72h old'));
+});
+
+test('alerts when the disk holding the backups is running out of space', function () {
+    Http::fake();
+    config(['tcgvault.backups.min_free_bytes' => PHP_INT_MAX]);
+    makeBackupAt($this->backupDir, 'db-2026-09-28.dump', 5);
+    makeBackupAt($this->backupDir, 'photos-2026-09-28.tar', 5);
+
+    $this->artisan('backups:check-freshness')->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'free on the backup disk'));
 });
 
 test('alerts when there is no photo archive at all', function () {
@@ -56,7 +91,7 @@ test('alerts when there is no photo archive at all', function () {
 test('ignores a half-written dump that never finished', function () {
     Http::fake();
     makeBackupAt($this->backupDir, '.db-2026-09-28.dump.partial', 1);
-    makeBackupAt($this->backupDir, 'photos-2026-09-28.tar.gz', 5);
+    makeBackupAt($this->backupDir, 'photos-2026-09-28.tar', 5);
 
     $this->artisan('backups:check-freshness')->assertSuccessful();
 
