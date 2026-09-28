@@ -10,7 +10,7 @@ beforeEach(function () {
 
     $this->backupDir = storage_path('framework/testing/backups-'.bin2hex(random_bytes(4)));
     File::ensureDirectoryExists($this->backupDir);
-    config(['tcgvault.backups.path' => $this->backupDir]);
+    config(['tcgvault.backups.path' => $this->backupDir, 'tcgvault.backups.min_free_bytes' => 0]);
 });
 
 afterEach(function () {

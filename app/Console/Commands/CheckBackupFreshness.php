@@ -66,7 +66,14 @@ final class CheckBackupFreshness extends Command
         $minFree = (int) config('tcgvault.backups.min_free_bytes');
         $free = disk_free_space($dir);
 
-        if ($free === false || $free >= $minFree) {
+        if ($free === false) {
+            $alerter->send('⚠️ tcg-vault: could not read the free space on the backup disk.');
+            $this->warn('Could not read the free space on the backup disk.');
+
+            return;
+        }
+
+        if ($free >= $minFree) {
             return;
         }
 
