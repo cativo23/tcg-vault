@@ -13,7 +13,6 @@ use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
 use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
-use App\Modules\Catalog\Services\TcgdexImageFallback;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -43,12 +42,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      */
     private const SEARCH_PAGE_SIZE = 24;
 
-    private readonly TcgdexImageFallback $imageFallback;
-
-    public function __construct(private readonly string $baseUrl, ?TcgdexImageFallback $imageFallback = null)
-    {
-        $this->imageFallback = $imageFallback ?? new TcgdexImageFallback($baseUrl);
-    }
+    public function __construct(private readonly string $baseUrl) {}
 
     /**
      * api.tcgdex.net's DNS record resolves to an IPv6 address, but the
@@ -92,10 +86,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             name: $json['name'],
             rarity: $json['rarity'] ?? null,
             variants: $json['variants'] ?? [],
-            // Some sets come back with no image even though tcgdex hosts one.
-            officialImageUrl: isset($json['image'])
-                ? "{$json['image']}/high.webp"
-                : $this->imageFallback->resolve($json['set']['id'], $json['localId']),
+            officialImageUrl: isset($json['image']) ? "{$json['image']}/high.webp" : null,
             prices: new DataCollection(PriceEntryData::class, $this->extractPrices($json['pricing'] ?? [], $json['variants'] ?? [])),
             raw: $json,
         );

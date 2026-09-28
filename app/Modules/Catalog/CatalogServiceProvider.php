@@ -20,7 +20,7 @@ final class CatalogServiceProvider extends ServiceProvider
 
         $this->app->singleton(
             CardCatalogProvider::class,
-            fn ($app) => new TcgdexCardCatalogProvider(config('tcgdex.base_url'), $app->make(TcgdexImageFallback::class)),
+            fn () => new TcgdexCardCatalogProvider(config('tcgdex.base_url')),
         );
     }
 }

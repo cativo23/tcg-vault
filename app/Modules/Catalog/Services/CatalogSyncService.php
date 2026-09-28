@@ -18,7 +18,10 @@ final class CatalogSyncService
     /** @var array<string, Set> */
     private array $syncedSets = [];
 
-    public function __construct(private readonly CardCatalogProvider $provider) {}
+    public function __construct(
+        private readonly CardCatalogProvider $provider,
+        private readonly ?TcgdexImageFallback $imageFallback = null,
+    ) {}
 
     public function syncCard(string $tcgdexCardId): Card
     {
@@ -53,7 +56,9 @@ final class CatalogSyncService
         // `??` also covers a null $existingCard, not just a null set.
         $set = $existingCard->set ?? $this->syncSet($cardDetail->setTcgdexId);
 
-        return DB::transaction(function () use ($cardDetail, $set): Card {
+        $imageUrl = $this->imageUrlFor($cardDetail, $existingCard, $set);
+
+        return DB::transaction(function () use ($cardDetail, $set, $imageUrl): Card {
             $card = Card::updateOrCreate(
                 ['tcgdex_id' => $cardDetail->tcgdexId],
                 [
@@ -62,7 +67,7 @@ final class CatalogSyncService
                     'name' => $cardDetail->name,
                     'rarity' => $cardDetail->rarity,
                     'variants' => $cardDetail->variants,
-                    'official_image_url' => $cardDetail->officialImageUrl,
+                    'official_image_url' => $imageUrl,
                     'raw' => $cardDetail->raw,
                     'synced_at' => CarbonImmutable::now(),
                 ],
@@ -73,6 +78,26 @@ final class CatalogSyncService
             // The row was written inside this transaction, so it exists.
             return $card->fresh(['priceSnapshots']) ?? $card;
         });
+    }
+
+    /**
+     * tcgdex's own image when it sends one; otherwise the image already
+     * stored, so a day when the asset check fails can't erase it; only
+     * then the fallback, which looks the file up on tcgdex's asset server.
+     * Done here, the one place the image is saved, so screens that call
+     * findCard() without storing anything pay nothing for it.
+     */
+    private function imageUrlFor(CardDetailData $cardDetail, ?Card $existingCard, Set $set): ?string
+    {
+        if ($cardDetail->officialImageUrl !== null) {
+            return $cardDetail->officialImageUrl;
+        }
+
+        if ($existingCard !== null && (string) $existingCard->official_image_url !== '') {
+            return $existingCard->official_image_url;
+        }
+
+        return ($this->imageFallback ?? app(TcgdexImageFallback::class))->resolve($set->tcgdex_id, $cardDetail->localId);
     }
 
     private function syncSet(string $setTcgdexId): Set

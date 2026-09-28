@@ -13,6 +13,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Http;
 use Spatie\LaravelData\DataCollection;
 
 function fakeCardDetail(): CardDetailData
@@ -111,6 +112,9 @@ test('syncing the same card twice on the same day updates the card but does not 
 });
 
 test('syncCard only fetches the set once across two cards in the same set', function () {
+    // These cards come without an image, so the fallback checks tcgdex.
+    Http::fake(['*' => Http::response('', 404)]);
+
     $secondCardDetail = new CardDetailData(
         tcgdexId: 'me05-117',
         setTcgdexId: 'me05',
@@ -169,6 +173,9 @@ test('re-syncing an already-known card from a FRESH service instance never calls
 });
 
 test('a rolled back card sync does not poison the memoized set for a later card in the same set', function () {
+    // These cards come without an image, so the fallback checks tcgdex.
+    Http::fake(['*' => Http::response('', 404)]);
+
     // First card has a price entry that violates the `currency` column's
     // char(3) constraint, so its DB::transaction() rolls back AFTER the
     // Set has already been synced by syncSet(). On the old (buggy)
@@ -227,4 +234,48 @@ test('a rolled back card sync does not poison the memoized set for a later card 
 
     expect($card->tcgdex_id)->toBe('me05-117');
     expect($card->set_id)->toBe(Set::where('tcgdex_id', 'me05')->sole()->id);
+});
+
+/** A provider that returns fakeCardDetail() for me05-116, with the given image. */
+function providerReturningImage(?string $image): CardCatalogProvider
+{
+    $detail = fakeCardDetail();
+    $detail->officialImageUrl = $image;
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn($detail);
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+
+    return $provider;
+}
+
+test('a card tcgdex sends without an image gets one from the asset server when it exists', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/sets/me05' => Http::response(['id' => 'me05', 'serie' => ['id' => 'me']]),
+        'assets.tcgdex.net/en/me/me05/116/high.webp' => Http::response('', 200),
+    ]);
+
+    $card = (new CatalogSyncService(providerReturningImage(null)))->syncCard('me05-116');
+
+    expect($card->official_image_url)->toBe('https://assets.tcgdex.net/en/me/me05/116/high.webp');
+});
+
+test('a stored image survives a sync where tcgdex sends none and the asset check fails', function () {
+    Http::fake(['*' => Http::response('', 503)]);
+    (new CatalogSyncService(providerReturningImage('https://assets.tcgdex.net/en/me/me05/116/high.webp')))->syncCard('me05-116');
+
+    $card = (new CatalogSyncService(providerReturningImage(null)))->syncCard('me05-116');
+
+    expect($card->official_image_url)->toBe('https://assets.tcgdex.net/en/me/me05/116/high.webp');
+    Http::assertNothingSent();
+});
+
+test('an image tcgdex does send is used without any extra request', function () {
+    Http::fake();
+
+    $card = (new CatalogSyncService(providerReturningImage('https://assets.tcgdex.net/en/me/me05/116/high.webp')))->syncCard('me05-116');
+
+    expect($card->official_image_url)->toBe('https://assets.tcgdex.net/en/me/me05/116/high.webp');
+    Http::assertNothingSent();
 });
