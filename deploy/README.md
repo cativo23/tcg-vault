@@ -121,6 +121,10 @@ docker compose -f compose.prod.yml exec app php artisan demo:seed-gallery
 # were stripped on the way in. Idempotent; a non-zero exit lists any file
 # exiftool couldn't process.
 docker compose -f compose.prod.yml exec app php artisan photos:strip-metadata
+# Fills in images tcgdex's API leaves out (e.g. MEP and SVP promos) for
+# cards synced before the fallback existed. Idempotent; checks each file
+# exists before saving it.
+docker compose -f compose.prod.yml exec app php artisan catalog:backfill-images
 ```
 
 ## Acceptance checklist (first deploy)
