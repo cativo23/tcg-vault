@@ -27,6 +27,11 @@ Schedule::command('catalog:refresh-prices')
 // docblock for the staleness threshold and why it exists.
 Schedule::command('catalog:check-pricing-freshness')->dailyAt('04:00');
 
+// The `backup` container writes its nightly dump at 03:00 UTC (see
+// docker/prod/backup/backup.sh); this runs three hours later so a slow night
+// still has room to finish.
+Schedule::command('backups:check-freshness')->dailyAt('06:00');
+
 // Telescope's storage driver is `database` with no retention of its own —
 // the table grows until the disk does not. 48h matches this project's
 // other short-lived operational data (Horizon's failed-job retention).

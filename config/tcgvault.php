@@ -94,4 +94,15 @@ return [
             'me05-116',    // Mega Darkrai ex (SIR), Pitch Black
         ],
     ],
+
+    /**
+     * Where the nightly `backup` container (docker/prod/backup/backup.sh) writes
+     * its database dumps and photo archives, as mounted into the scheduler.
+     * Unset means there are no backups to watch, e.g. locally. Below
+     * min_free_bytes free on that disk, backups:check-freshness alerts.
+     */
+    'backups' => [
+        'path' => env('TCGVAULT_BACKUP_PATH'),
+        'min_free_bytes' => 5 * 1024 ** 3,
+    ],
 ];

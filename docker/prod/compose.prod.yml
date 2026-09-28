@@ -84,8 +84,12 @@ services:
     # Same reasoning as horizon above — no HTTP server in this container.
     healthcheck:
       disable: true
+    environment:
+      TCGVAULT_BACKUP_PATH: /backups
     volumes:
       - app-logs:/var/www/html/storage/logs
+      # Read-only, for backups:check-freshness: it only looks at file ages.
+      - ./backups:/backups:ro
     # Also on space-server_web to reach http://bugsink:8000 — an uncaught
     # exception in a scheduled command should get reported same as any
     # other.
@@ -119,6 +123,37 @@ services:
       resources:
         limits: { cpus: '1.0', memory: 192M }
         reservations: { cpus: '0.1', memory: 96M }
+
+  # Nightly database dump + photo archive into ~/deploy/tcg-vault/backups,
+  # checked by the scheduler's backups:check-freshness. Same image as
+  # postgres so pg_dump always matches the server version. See
+  # backup/backup.sh.
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # The script's directory is mounted, not the file: a file mount pins the
+    # inode, so a redeployed script would never be seen. If the script is
+    # missing, Docker would create an empty directory in its place and `sh`
+    # would exit 0 in a silent restart loop, so fail loudly instead.
+    entrypoint: ["/bin/sh", "-c", "[ -f /opt/backup/backup.sh ] || { echo 'backup: /opt/backup/backup.sh is missing' >&2; exit 1; }; exec /bin/sh /opt/backup/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: ${DB_DATABASE}
+      PGUSER: ${DB_USERNAME}
+      PGPASSWORD: ${DB_PASSWORD}
+      BACKUP_HOUR: 3
+      BACKUP_KEEP_DAYS: 14
+    depends_on:
+      postgres: { condition: service_healthy }
+    volumes:
+      - ./backup:/opt/backup:ro
+      - ./backups:/backups
+      - collection-photos-data:/photos:ro
+    networks: [tcgvault-internal]
+    deploy:
+      resources:
+        limits: { cpus: '0.25', memory: 128M }
+        reservations: { cpus: '0.05', memory: 32M }
 
   redis:
     image: redis:7-alpine

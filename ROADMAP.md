@@ -74,12 +74,14 @@ roadmap safe to attempt.
   `SESSION_SECURE_COOKIE=true` confirmed live on polaris2's actual `.env`
   (not just the template), and added as an explicit line in
   `deploy/README.md`'s acceptance checklist.
-- **Off-host database backups**, with one restore actually performed and
-  documented. `pgdata` is a local Docker volume on a single VPS; a
-  restore that has never been run is not a backup. Covers the
-  `collection-photos-data` volume too. Deliberately last in this
-  milestone: the free tier (Cloudflare R2, 10GB) needs billing enabled on
-  the Cloudflare account first, on hold until that card is added.
+- ~~**Nightly local backups**~~ — done. A `backup` container dumps the
+  database and archives the photo volume every night, keeps two weeks,
+  and the scheduler alerts Discord if either goes stale. Restore steps
+  are in `deploy/README.md`.
+- **Copy the backups off the host.** The nightly files still sit on the
+  same VPS as the data, so losing polaris2 loses them too. The free tier
+  (Cloudflare R2, 10GB) needs billing enabled on the Cloudflare account
+  first, on hold until that card is added.
 
 ## v0.7.0 — Correctness and accessibility
 
