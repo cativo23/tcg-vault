@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-28
+
+### Fixed
+
+- Cards tcgdex's API sends without an image (all MEP Black Star Promos,
+  some SVP promos) now show it: the app finds the file on tcgdex's asset
+  server at its usual address and saves it only once it's confirmed to
+  exist. A stored image is no longer cleared on a night the check fails.
+
+### Deploy
+
+Run `php artisan catalog:backfill-images` once to fill in cards synced
+before this release.
+
 ## [0.10.0] - 2026-09-26
 
 ### Added
