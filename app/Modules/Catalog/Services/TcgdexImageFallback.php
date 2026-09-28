@@ -16,10 +16,12 @@ use Illuminate\Support\Facades\Http;
  * address: /{language}/{series}/{set}/{number}/high.webp.
  *
  * The series is only in the set payload, so it is looked up once per set
- * and cached for a day. The built address is only returned after a HEAD
- * request confirms the file exists, so a card that really has no image
- * keeps the app's placeholder instead of a broken link. Any failure
- * returns null: a missing image must never break a sync.
+ * and cached for a day (a set with none is remembered for ten minutes).
+ * The built address is only returned after a HEAD request confirms the
+ * file exists, so a card that really has no image keeps the app's
+ * placeholder instead of a broken link. Network failures and error
+ * responses return null, and redirects are not followed, so the check
+ * never leaves tcgdex's asset host.
  */
 final class TcgdexImageFallback
 {
@@ -29,15 +31,20 @@ final class TcgdexImageFallback
 
     private const SERIES_CACHE_SECONDS = 86400;
 
-    /** Set and card numbers are plain segments like "mep", "sv03.5" or "TG01". */
-    private const SEGMENT = '/^[A-Za-z0-9.\-]+$/';
+    private const NO_SERIES_CACHE_SECONDS = 600;
+
+    /**
+     * Set and card numbers are plain segments like "mep", "sv03.5" or
+     * "TG01": the same shape the provider accepts for tcgdex ids, so no
+     * lone ".", leading "-", ".." or trailing newline.
+     */
+    private const SEGMENT = '/^[a-z0-9]+(?:[.-][a-z0-9]+)*\z/i';
 
     public function __construct(private readonly string $apiBaseUrl) {}
 
     public function resolve(string $setTcgdexId, string $localId): ?string
     {
-        if (! preg_match(self::SEGMENT, $setTcgdexId) || ! preg_match(self::SEGMENT, $localId)
-            || str_contains($setTcgdexId, '..') || str_contains($localId, '..')) {
+        if (! preg_match(self::SEGMENT, $setTcgdexId) || ! preg_match(self::SEGMENT, $localId)) {
             return null;
         }
 
@@ -57,16 +64,21 @@ final class TcgdexImageFallback
 
     private function seriesOf(string $setTcgdexId): ?string
     {
-        return Cache::remember(
-            'tcgdex-series:'.$this->language().':'.$setTcgdexId,
-            self::SERIES_CACHE_SECONDS,
-            function () use ($setTcgdexId): ?string {
-                $response = $this->http()->get(rtrim($this->apiBaseUrl, '/')."/sets/{$setTcgdexId}");
-                $series = $response->successful() ? $response->json('serie.id') : null;
+        $key = 'tcgdex-series:'.$this->language().':'.$setTcgdexId;
 
-                return is_string($series) && preg_match(self::SEGMENT, $series) ? $series : null;
-            },
-        );
+        // '' marks "no series", which Cache::remember would not store.
+        $cached = Cache::get($key);
+        if (is_string($cached)) {
+            return $cached === '' ? null : $cached;
+        }
+
+        $response = $this->http()->get(rtrim($this->apiBaseUrl, '/')."/sets/{$setTcgdexId}");
+        $series = $response->successful() ? $response->json('serie.id') : null;
+        $series = is_string($series) && preg_match(self::SEGMENT, $series) ? $series : null;
+
+        Cache::put($key, $series ?? '', $series === null ? self::NO_SERIES_CACHE_SECONDS : self::SERIES_CACHE_SECONDS);
+
+        return $series;
     }
 
     /** The API base ends in the language, e.g. https://api.tcgdex.net/v2/en. */
@@ -78,6 +90,6 @@ final class TcgdexImageFallback
     private function http(): PendingRequest
     {
         // IPv4 only, for the same broken-IPv6-route reason as the provider.
-        return Http::timeout(self::TIMEOUT_SECONDS)->withOptions(['force_ip_resolve' => 'v4']);
+        return Http::timeout(self::TIMEOUT_SECONDS)->withoutRedirecting()->withOptions(['force_ip_resolve' => 'v4']);
     }
 }

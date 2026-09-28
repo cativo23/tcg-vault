@@ -60,6 +60,27 @@ test('ignores ids that are not plain tcgdex segments', function () {
     Http::fake();
 
     expect(imageFallback()->resolve('../x', '031'))->toBeNull()
-        ->and(imageFallback()->resolve('mep', '0/../1'))->toBeNull();
+        ->and(imageFallback()->resolve('mep', '0/../1'))->toBeNull()
+        ->and(imageFallback()->resolve('.', '031'))->toBeNull()
+        ->and(imageFallback()->resolve('mep', "031\n"))->toBeNull();
     Http::assertNothingSent();
+});
+
+test('a set without a series is looked up once, not once per card', function () {
+    Http::fake(['api.tcgdex.net/v2/en/sets/odd' => Http::response(['id' => 'odd'])]);
+
+    imageFallback()->resolve('odd', '001');
+    imageFallback()->resolve('odd', '002');
+
+    Http::assertSentCount(1);
+});
+
+test('a redirect from the asset server is not followed', function () {
+    Http::fake([
+        'api.tcgdex.net/v2/en/sets/mep' => Http::response(['id' => 'mep', 'serie' => ['id' => 'me']]),
+        'assets.tcgdex.net/*' => Http::response('', 302, ['Location' => 'http://169.254.169.254/latest']),
+    ]);
+
+    expect(imageFallback()->resolve('mep', '031'))->toBeNull();
+    Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '169.254'));
 });
