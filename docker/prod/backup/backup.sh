@@ -15,7 +15,7 @@
 #
 # Files are 0600 (they hold every member's email and password hash); the
 # directory stays 0755 so the scheduler's backups:check-freshness can see
-# their ages without reading them. A backup is deleted once it is
+# their ages without reading them. A backup is deleted just before it is
 # BACKUP_KEEP_DAYS days old; the privacy policy states that period.
 #
 # These copies live on the same host as the data: they cover a bad
@@ -46,11 +46,12 @@ backup() {
     mv "$db_tmp" "$DIR/db-$day.dump" || return 1
 }
 
-# find's -mtime +N means "more than N whole days old", so N = KEEP_DAYS - 1
-# removes a file on the day it turns KEEP_DAYS days old.
+# Runs on every pass, not only after a successful backup, so old files still
+# go when backups are failing. The cutoff sits two hours short of KEEP_DAYS
+# so that a pass landing just before the mark can't carry a file past it.
 prune() {
     find "$DIR" -maxdepth 1 -type f \( -name 'db-*.dump' -o -name 'photos-*.tar' \) \
-        -mtime +"$((KEEP_DAYS - 1))" -delete
+        -mmin +"$((KEEP_DAYS * 1440 - 120))" -delete
 }
 
 mkdir -p "$DIR" && chmod 755 "$DIR" || exit 1
@@ -67,12 +68,13 @@ while :; do
     if [ ! -f "$DIR/db-$day.dump" ] && [ "$hour" -ge "$HOUR" ]; then
         if backup "$day"; then
             log "wrote db-$day.dump and photos-$day.tar"
-            prune || log "pruning old backups failed"
         else
             log "backup for $day failed; retrying in ${CHECK_EVERY_SECONDS}s"
             rm -f "$DIR"/.*.partial
         fi
     fi
+
+    prune || log "pruning old backups failed"
 
     sleep "$CHECK_EVERY_SECONDS" &
     wait $!
