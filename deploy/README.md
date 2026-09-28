@@ -188,42 +188,57 @@ dcp run --rm --no-deps -T --entrypoint sh backup -c "tar -tf /backups/photos-$DA
 The dump is restored into a new database and swapped in by renaming, so a
 failed restore leaves the live one untouched. Restore the database and the
 photos from the **same day**: the photo volume is emptied first, so it ends
-up matching the restored rows exactly.
+up matching the restored rows exactly. The app stays stopped until accounts
+deleted since the backup are deleted again, so none of them can sign in.
 
-1. Stop everything that reads or writes, and take a fresh dump of the
-   current state (`pre-restore.dump`) to compare against and to roll back to:
+1. Stop everything that reads or writes, and save the current state to
+   compare against and to roll back to. Its `db-`/`photos-` names mean the
+   nightly prune deletes it with the other backups:
    ```bash
    dcp stop app horizon scheduler backup
-   dcp run --rm --no-deps -T --entrypoint sh backup -c "pg_dump --format=custom --file=/backups/pre-restore.dump"
+   NOW=$(date -u +%F)
+   dcp run --rm --no-deps -T --entrypoint sh backup -c "umask 077 && pg_dump --format=custom --file=/backups/db-$NOW-pre-restore.dump && tar -C /photos -cf /backups/photos-$NOW-pre-restore.tar ."
    ```
-2. Restore into `tcg_vault_restored`, then swap it in (keeps the old one as
-   `tcg_vault_before_restore`):
+2. Restore into `tcg_vault_restored`, then swap it in, both renames in one
+   transaction (keeps the old one as `tcg_vault_before_restore`):
    ```bash
    dcp exec -T postgres sh -c 'createdb -U "$POSTGRES_USER" tcg_vault_restored'
    dcp run --rm --no-deps -T --entrypoint sh backup -c "pg_restore --no-owner --single-transaction --exit-on-error -d tcg_vault_restored /backups/db-$DAY.dump"
-   dcp exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "ALTER DATABASE \"$POSTGRES_DB\" RENAME TO tcg_vault_before_restore" -c "ALTER DATABASE tcg_vault_restored RENAME TO \"$POSTGRES_DB\""'
+   dcp exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -c "ALTER DATABASE \"$POSTGRES_DB\" RENAME TO tcg_vault_before_restore; ALTER DATABASE tcg_vault_restored RENAME TO \"$POSTGRES_DB\";"'
    ```
 3. Replace the photos:
    ```bash
    docker run --rm -v tcg-vault_collection-photos-data:/restore -v "$PWD/backups:/backups:ro" \
      postgres:17-alpine sh -c "find /restore -mindepth 1 -delete && tar -C /restore -xf /backups/photos-$DAY.tar"
    ```
-4. Start again, then check that `migrate:status` shows nothing pending:
+4. **Delete again every account deleted after the backup**, since members
+   were promised deletion. These are the ids in the restored database but
+   not in `tcg_vault_before_restore`; each goes through the app's own
+   account deletion, photos included:
+   ```bash
+   dcp exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select id from users order by id::text"' > /tmp/after
+   dcp exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d tcg_vault_before_restore -Atc "select id from users order by id::text"' > /tmp/before
+   for id in $(comm -23 /tmp/after /tmp/before); do
+     dcp run --rm --no-deps -T app php artisan tinker --execute="app(\App\Support\AccountDeleter::class)->delete(\App\Models\User::findOrFail($id));"
+   done
+   rm /tmp/after /tmp/before
+   ```
+   Then drop what the restore brought back past its promised lifetime
+   (debug records, reset links, old invites):
+   ```bash
+   dcp run --rm --no-deps -T app php artisan telescope:prune --hours=48
+   dcp run --rm --no-deps -T app php artisan auth:clear-resets
+   dcp run --rm --no-deps -T app php artisan model:prune --model='App\Modules\Invites\Models\Invite' --model='App\Models\ModerationAction'
+   ```
+5. Start again, then check that `migrate:status` shows nothing pending:
    ```bash
    dcp start app horizon scheduler backup
    dcp exec app php artisan migrate:status
    ```
-5. **Accounts deleted after the backup are back.** Members were promised
-   deletion, so delete them again from the staff Members page. These are the
-   ids present now but missing from `tcg_vault_before_restore`:
-   ```bash
-   dcp exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select id from users order by id::text"' > /tmp/after
-   dcp exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d tcg_vault_before_restore -Atc "select id from users order by id::text"' > /tmp/before
-   comm -23 /tmp/after /tmp/before; rm /tmp/after /tmp/before
-   ```
-6. Once everything checks out, drop the old database and the fresh dump:
-   `dcp exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" tcg_vault_before_restore'`
-   and `dcp run --rm --no-deps -T --entrypoint rm backup /backups/pre-restore.dump`.
+6. Once everything checks out, and **within 14 days** (the privacy policy's
+   backup period), drop the old database:
+   `dcp exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" tcg_vault_before_restore'`.
+   The pre-restore files are pruned on their own.
 
 ## Rollback
 `deploy.yml` deploys the exact release tag it just built (`IMAGE_TAG`
