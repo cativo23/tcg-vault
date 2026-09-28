@@ -4,6 +4,7 @@ namespace Tests;
 
 use App\Modules\Collection\Contracts\PhotoMetadataStripper;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Http;
 use Tests\Support\FakePhotoMetadataStripper;
 
 abstract class TestCase extends BaseTestCase
@@ -13,6 +14,9 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // No test may reach the real network: an unfaked request fails.
+        Http::preventStrayRequests();
 
         $this->photoStripper = new FakePhotoMetadataStripper;
         $this->app->instance(PhotoMetadataStripper::class, $this->photoStripper);
