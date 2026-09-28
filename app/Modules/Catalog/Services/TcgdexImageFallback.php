@@ -74,6 +74,13 @@ final class TcgdexImageFallback implements CardImageFallback
         }
 
         $response = $this->http()->get(rtrim($this->apiBaseUrl, '/')."/sets/{$setTcgdexId}");
+
+        // A server error says nothing about the set, so it isn't remembered;
+        // only a real answer (or a 404) is.
+        if (! $response->successful() && $response->status() !== 404) {
+            return null;
+        }
+
         $series = $response->successful() ? $response->json('serie.id') : null;
         $series = is_string($series) && preg_match(self::SEGMENT, $series) ? $series : null;
 

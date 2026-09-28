@@ -84,3 +84,13 @@ test('a redirect from the asset server is not followed', function () {
     expect(imageFallback()->resolve('mep', '031'))->toBeNull();
     Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '169.254'));
 });
+
+test('a server error on the set lookup is not remembered as "no series"', function () {
+    Http::fakeSequence('api.tcgdex.net/v2/en/sets/mep')
+        ->push('', 503)
+        ->push(['id' => 'mep', 'serie' => ['id' => 'me']]);
+    Http::fake(['assets.tcgdex.net/*' => Http::response('', 200)]);
+
+    expect(imageFallback()->resolve('mep', '031'))->toBeNull()
+        ->and(imageFallback()->resolve('mep', '031'))->toBe('https://assets.tcgdex.net/en/me/mep/031/high.webp');
+});
