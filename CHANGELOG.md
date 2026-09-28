@@ -6,6 +6,32 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-28
+
+### Added
+
+- Nightly backups: a `backup` container dumps the database and archives the
+  collection photos into `~/deploy/tcg-vault/backups/` every night after
+  03:00 UTC, keeping each copy for just under 14 days. The copies stay on
+  the same server, so they cover mistakes and a corrupt volume, not losing
+  the server.
+- `backups:check-freshness` (daily at 06:00 UTC) alerts Discord if either
+  backup is missing or more than 26 h old, or if the disk has under 5 GB
+  free.
+- Restore steps in `deploy/README.md`, including deleting again any account
+  deleted after the backup was taken.
+
+### Changed
+
+- The privacy policy states the 14-day backup period, and that deleted
+  accounts leave the backups within it.
+
+### Deploy
+
+No migrations. `deploy.yml` now also copies `backup/backup.sh` and starts
+the `backup` service; check the first backup was written and restore it
+into a scratch database once (`deploy/README.md`, "Check a backup").
+
 ## [0.10.1] - 2026-09-28
 
 ### Fixed
