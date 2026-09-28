@@ -4,17 +4,19 @@
 # always matches the server's major version).
 #
 # Once a day, at or after BACKUP_HOUR (UTC), it writes to /backups:
-#   db-YYYY-MM-DD.dump        pg_dump custom format, checked with pg_restore --list
-#   photos-YYYY-MM-DD.tar.gz  the whole collection-photos volume
+#   db-YYYY-MM-DD.dump     pg_dump custom format, checked with pg_restore --list
+#   photos-YYYY-MM-DD.tar  the whole collection-photos volume (JPEG/PNG/WebP
+#                          are already compressed, so it isn't gzipped)
 # Each file is written under a hidden .partial name and renamed only once
 # complete, so a half-written file never looks like a backup. The database
 # dump is renamed last and doubles as the "today is done" marker. A failed
-# run is cleaned up and retried on the next pass.
+# or interrupted run leaves only .partial files, which the next attempt
+# removes before it starts.
 #
 # Files are 0600 (they hold every member's email and password hash); the
 # directory stays 0755 so the scheduler's backups:check-freshness can see
-# their ages without reading them. Files older than BACKUP_KEEP_DAYS are
-# deleted.
+# their ages without reading them. A backup is deleted once it is
+# BACKUP_KEEP_DAYS days old; the privacy policy states that period.
 #
 # These copies live on the same host as the data: they cover a bad
 # migration, a wrong delete or a corrupt volume, not losing the server.
@@ -33,19 +35,22 @@ log() { echo "backup: $*" >&2; }
 backup() {
     day=$1
     db_tmp="$DIR/.db-$day.dump.partial"
-    photos_tmp="$DIR/.photos-$day.tar.gz.partial"
+    photos_tmp="$DIR/.photos-$day.tar.partial"
 
+    rm -f "$DIR"/.*.partial
     pg_dump --format=custom --file="$db_tmp" || return 1
     pg_restore --list "$db_tmp" > /dev/null || return 1
-    tar -C "$PHOTOS" -czf "$photos_tmp" . || return 1
+    tar -C "$PHOTOS" -cf "$photos_tmp" . || return 1
 
-    mv "$photos_tmp" "$DIR/photos-$day.tar.gz" || return 1
+    mv "$photos_tmp" "$DIR/photos-$day.tar" || return 1
     mv "$db_tmp" "$DIR/db-$day.dump" || return 1
 }
 
+# find's -mtime +N means "more than N whole days old", so N = KEEP_DAYS - 1
+# removes a file on the day it turns KEEP_DAYS days old.
 prune() {
-    find "$DIR" -maxdepth 1 -type f \( -name 'db-*.dump' -o -name 'photos-*.tar.gz' \) \
-        -mtime +"$KEEP_DAYS" -delete
+    find "$DIR" -maxdepth 1 -type f \( -name 'db-*.dump' -o -name 'photos-*.tar' \) \
+        -mtime +"$((KEEP_DAYS - 1))" -delete
 }
 
 mkdir -p "$DIR" && chmod 755 "$DIR" || exit 1
@@ -61,11 +66,11 @@ while :; do
 
     if [ ! -f "$DIR/db-$day.dump" ] && [ "$hour" -ge "$HOUR" ]; then
         if backup "$day"; then
-            log "wrote db-$day.dump and photos-$day.tar.gz"
+            log "wrote db-$day.dump and photos-$day.tar"
             prune || log "pruning old backups failed"
         else
             log "backup for $day failed; retrying in ${CHECK_EVERY_SECONDS}s"
-            rm -f "$DIR/.db-$day.dump.partial" "$DIR/.photos-$day.tar.gz.partial"
+            rm -f "$DIR"/.*.partial
         fi
     fi
 

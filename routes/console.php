@@ -28,7 +28,7 @@ Schedule::command('catalog:refresh-prices')
 Schedule::command('catalog:check-pricing-freshness')->dailyAt('04:00');
 
 // The `backup` container writes its nightly dump at 03:00 UTC (see
-// docker/prod/backup.sh); this runs three hours later so a slow night
+// docker/prod/backup/backup.sh); this runs three hours later so a slow night
 // still has room to finish.
 Schedule::command('backups:check-freshness')->dailyAt('06:00');
 

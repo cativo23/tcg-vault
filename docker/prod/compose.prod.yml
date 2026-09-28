@@ -126,11 +126,16 @@ services:
 
   # Nightly database dump + photo archive into ~/deploy/tcg-vault/backups,
   # checked by the scheduler's backups:check-freshness. Same image as
-  # postgres so pg_dump always matches the server version. See backup.sh.
+  # postgres so pg_dump always matches the server version. See
+  # backup/backup.sh.
   backup:
     image: postgres:17-alpine
     restart: unless-stopped
-    entrypoint: ["/bin/sh", "/backup.sh"]
+    # The script's directory is mounted, not the file: a file mount pins the
+    # inode, so a redeployed script would never be seen. If the script is
+    # missing, Docker would create an empty directory in its place and `sh`
+    # would exit 0 in a silent restart loop, so fail loudly instead.
+    entrypoint: ["/bin/sh", "-c", "[ -f /opt/backup/backup.sh ] || { echo 'backup: /opt/backup/backup.sh is missing' >&2; exit 1; }; exec /bin/sh /opt/backup/backup.sh"]
     environment:
       PGHOST: postgres
       PGDATABASE: ${DB_DATABASE}
@@ -141,7 +146,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     volumes:
-      - ./backup.sh:/backup.sh:ro
+      - ./backup:/opt/backup:ro
       - ./backups:/backups
       - collection-photos-data:/photos:ro
     networks: [tcgvault-internal]
