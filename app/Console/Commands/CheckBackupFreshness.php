@@ -86,6 +86,12 @@ final class CheckBackupFreshness extends Command
     {
         $newest = null;
         foreach (glob($dir.'/'.$pattern) ?: [] as $file) {
+            // A copy saved by hand before a restore (deploy/README.md) says
+            // nothing about whether the nightly run is working.
+            if (str_contains(basename($file), '-pre-restore')) {
+                continue;
+            }
+
             $mtime = filemtime($file);
             if ($mtime !== false && ($newest === null || $mtime > $newest)) {
                 $newest = $mtime;

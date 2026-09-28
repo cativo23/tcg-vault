@@ -98,6 +98,17 @@ test('ignores a half-written dump that never finished', function () {
     Http::assertSent(fn ($request) => str_contains($request['content'], 'no database backup'));
 });
 
+test('does not count a copy taken before a restore as a nightly backup', function () {
+    Http::fake();
+    makeBackupAt($this->backupDir, 'db-2026-09-28-pre-restore.dump', 1);
+    makeBackupAt($this->backupDir, 'photos-2026-09-28-pre-restore.tar', 1);
+
+    $this->artisan('backups:check-freshness')->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'no database backup'));
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'no photo backup'));
+});
+
 test('alerts when the backup directory is missing', function () {
     Http::fake();
     config(['tcgvault.backups.path' => $this->backupDir.'/nope']);
