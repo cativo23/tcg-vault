@@ -261,7 +261,7 @@ test('a card tcgdex sends without an image gets one from the asset server when i
     expect($card->official_image_url)->toBe('https://assets.tcgdex.net/en/me/me05/116/high.webp');
 });
 
-test('a stored image survives a sync where tcgdex sends none and the asset check fails', function () {
+test('a stored image is kept, with no asset check, when tcgdex sends none', function () {
     Http::fake(['*' => Http::response('', 503)]);
     (new CatalogSyncService(providerReturningImage('https://assets.tcgdex.net/en/me/me05/116/high.webp'), realImageFallback()))->syncCard('me05-116');
 

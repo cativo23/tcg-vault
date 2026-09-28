@@ -13,8 +13,6 @@ abstract class TestCase extends BaseTestCase
 {
     protected FakePhotoMetadataStripper $photoStripper;
 
-    protected NullCardImageFallback $imageFallback;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -22,8 +20,7 @@ abstract class TestCase extends BaseTestCase
         // No test may reach the real network: an unfaked request fails.
         Http::preventStrayRequests();
 
-        $this->imageFallback = new NullCardImageFallback;
-        $this->app->instance(CardImageFallback::class, $this->imageFallback);
+        $this->app->instance(CardImageFallback::class, new NullCardImageFallback);
 
         $this->photoStripper = new FakePhotoMetadataStripper;
         $this->app->instance(PhotoMetadataStripper::class, $this->photoStripper);

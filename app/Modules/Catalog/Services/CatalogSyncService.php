@@ -94,6 +94,8 @@ final class CatalogSyncService
             return $cardDetail->officialImageUrl;
         }
 
+        // Kept even if tcgdex stops sending an image it used to: rare, and
+        // better than an image that disappears whenever the check fails.
         if ($existingCard !== null && (string) $existingCard->official_image_url !== '') {
             return $existingCard->official_image_url;
         }
