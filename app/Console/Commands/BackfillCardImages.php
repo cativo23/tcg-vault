@@ -33,12 +33,16 @@ final class BackfillCardImages extends Command
             $url = $fallback->resolve($card->set->tcgdex_id, $card->local_id);
 
             if ($url !== null) {
-                $card->forceFill(['official_image_url' => $url])->save();
+                $card->update(['official_image_url' => $url]);
                 $found++;
             }
         }
 
         $this->info(sprintf('Found images for %d of %d cards without one.', $found, $cards->count()));
+
+        if ($found === 0 && $cards->isNotEmpty()) {
+            $this->warn('None found: tcgdex may have been unreachable, or these cards have no image there.');
+        }
 
         return self::SUCCESS;
     }
