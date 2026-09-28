@@ -148,6 +148,48 @@ docker compose -f compose.prod.yml exec app php artisan catalog:backfill-images
       healthy/up.
 - [ ] `~/deploy/tcg-vault/.env` is mode `600`; no secrets in the image or git.
 
+## Backups
+The `backup` service (`docker/prod/backup.sh`) writes, once a day after
+03:00 UTC, into `~/deploy/tcg-vault/backups/`:
+
+- `db-YYYY-MM-DD.dump`: `pg_dump` in custom format
+- `photos-YYYY-MM-DD.tar.gz`: the whole `collection-photos-data` volume
+
+Two weeks are kept. The files are root-owned `0600` because they hold every
+member's email and password hash, so read them through a container. The
+scheduler's `backups:check-freshness` (06:00 UTC) posts to Discord if either
+kind is missing or older than 26 h.
+
+**These copies live on the same server.** They cover a bad migration, a
+wrong delete or a corrupt volume, not losing polaris2. Copying them off the
+host is still open in `ROADMAP.md`.
+
+### Restore
+Check a dump without touching the live database, by restoring it into a
+scratch one and comparing row counts:
+```bash
+cd ~/deploy/tcg-vault
+C="docker compose -f compose.prod.yml"
+DUMP=db-YYYY-MM-DD.dump
+$C exec -T postgres sh -c 'createdb -U "$POSTGRES_USER" restore_check'
+$C run --rm --no-deps -T --entrypoint sh backup -c "PGDATABASE=restore_check pg_restore --no-owner /backups/$DUMP"
+$C exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d restore_check -Atc "select count(*) from users"'
+$C exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" restore_check'
+```
+
+Replacing the live database (stop everything that writes to it first):
+```bash
+$C stop app horizon scheduler
+$C run --rm --no-deps -T --entrypoint sh backup -c "pg_restore --clean --if-exists --no-owner -d \"\$PGDATABASE\" /backups/$DUMP"
+$C start app horizon scheduler
+```
+
+Photos (overwrites same-named files in the volume):
+```bash
+docker run --rm -v tcg-vault_collection-photos-data:/restore -v "$PWD/backups:/backups:ro" \
+  postgres:17-alpine tar -C /restore -xzf /backups/photos-YYYY-MM-DD.tar.gz
+```
+
 ## Rollback
 `deploy.yml` deploys the exact release tag it just built (`IMAGE_TAG`
 exported before `pull`/`up`) — never the mutable `:latest` — so `docker
