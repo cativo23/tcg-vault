@@ -49,7 +49,8 @@ ssh polaris2
 mkdir -p ~/deploy/tcg-vault
 docker network ls | grep space-server_web   # confirm the shared Traefik network exists
 ```
-Copy `docker/prod/compose.prod.yml` → `~/deploy/tcg-vault/compose.prod.yml` and
+Copy `docker/prod/compose.prod.yml` → `~/deploy/tcg-vault/compose.prod.yml`,
+`docker/prod/backup/backup.sh` → `~/deploy/tcg-vault/backup/backup.sh` and
 `docker/prod/.env.production.example` → `~/deploy/tcg-vault/.env`, then fill real secrets:
 ```bash
 # locally, generate an app key:
@@ -149,46 +150,80 @@ docker compose -f compose.prod.yml exec app php artisan catalog:backfill-images
 - [ ] `~/deploy/tcg-vault/.env` is mode `600`; no secrets in the image or git.
 
 ## Backups
-The `backup` service (`docker/prod/backup.sh`) writes, once a day after
-03:00 UTC, into `~/deploy/tcg-vault/backups/`:
+The `backup` service (`docker/prod/backup/backup.sh`) writes, once a day
+after 03:00 UTC, into `~/deploy/tcg-vault/backups/`:
 
 - `db-YYYY-MM-DD.dump`: `pg_dump` in custom format
-- `photos-YYYY-MM-DD.tar.gz`: the whole `collection-photos-data` volume
+- `photos-YYYY-MM-DD.tar`: the whole `collection-photos-data` volume
 
-Two weeks are kept. The files are root-owned `0600` because they hold every
-member's email and password hash, so read them through a container. The
-scheduler's `backups:check-freshness` (06:00 UTC) posts to Discord if either
-kind is missing or older than 26 h.
+Each backup is deleted once it is 14 days old; the privacy policy states
+that period, so change both together. The files are root-owned `0600`
+because they hold every member's email and password hash, so read them
+through a container. The scheduler's `backups:check-freshness` (06:00 UTC)
+posts to Discord if either kind is missing or older than 26 h, or if the
+disk has less than 5 GB free.
 
 **These copies live on the same server.** They cover a bad migration, a
 wrong delete or a corrupt volume, not losing polaris2. Copying them off the
 host is still open in `ROADMAP.md`.
 
-### Restore
-Check a dump without touching the live database, by restoring it into a
-scratch one and comparing row counts:
+Every block below starts from:
 ```bash
 cd ~/deploy/tcg-vault
-C="docker compose -f compose.prod.yml"
-DUMP=db-YYYY-MM-DD.dump
-$C exec -T postgres sh -c 'createdb -U "$POSTGRES_USER" restore_check'
-$C run --rm --no-deps -T --entrypoint sh backup -c "PGDATABASE=restore_check pg_restore --no-owner /backups/$DUMP"
-$C exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d restore_check -Atc "select count(*) from users"'
-$C exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" restore_check'
+dcp() { docker compose -f compose.prod.yml "$@"; }
+DAY=YYYY-MM-DD   # the backup to use
 ```
 
-Replacing the live database (stop everything that writes to it first):
+### Check a backup
+Restores the dump into a scratch database, leaving the live one alone:
 ```bash
-$C stop app horizon scheduler
-$C run --rm --no-deps -T --entrypoint sh backup -c "pg_restore --clean --if-exists --no-owner -d \"\$PGDATABASE\" /backups/$DUMP"
-$C start app horizon scheduler
+dcp exec -T postgres sh -c 'createdb -U "$POSTGRES_USER" restore_check'
+dcp run --rm --no-deps -T --entrypoint sh backup -c "pg_restore --no-owner --exit-on-error -d restore_check /backups/db-$DAY.dump"
+dcp exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d restore_check -Atc "select count(*) from users"'
+dcp exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" restore_check'
+dcp run --rm --no-deps -T --entrypoint sh backup -c "tar -tf /backups/photos-$DAY.tar | wc -l"
 ```
 
-Photos (overwrites same-named files in the volume):
-```bash
-docker run --rm -v tcg-vault_collection-photos-data:/restore -v "$PWD/backups:/backups:ro" \
-  postgres:17-alpine tar -C /restore -xzf /backups/photos-YYYY-MM-DD.tar.gz
-```
+### Replace the live database and photos
+The dump is restored into a new database and swapped in by renaming, so a
+failed restore leaves the live one untouched. Restore the database and the
+photos from the **same day**: the photo volume is emptied first, so it ends
+up matching the restored rows exactly.
+
+1. Stop everything that reads or writes, and take a fresh dump of the
+   current state (`pre-restore.dump`) to compare against and to roll back to:
+   ```bash
+   dcp stop app horizon scheduler backup
+   dcp run --rm --no-deps -T --entrypoint sh backup -c "pg_dump --format=custom --file=/backups/pre-restore.dump"
+   ```
+2. Restore into `tcg_vault_restored`, then swap it in (keeps the old one as
+   `tcg_vault_before_restore`):
+   ```bash
+   dcp exec -T postgres sh -c 'createdb -U "$POSTGRES_USER" tcg_vault_restored'
+   dcp run --rm --no-deps -T --entrypoint sh backup -c "pg_restore --no-owner --single-transaction --exit-on-error -d tcg_vault_restored /backups/db-$DAY.dump"
+   dcp exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "ALTER DATABASE \"$POSTGRES_DB\" RENAME TO tcg_vault_before_restore" -c "ALTER DATABASE tcg_vault_restored RENAME TO \"$POSTGRES_DB\""'
+   ```
+3. Replace the photos:
+   ```bash
+   docker run --rm -v tcg-vault_collection-photos-data:/restore -v "$PWD/backups:/backups:ro" \
+     postgres:17-alpine sh -c "find /restore -mindepth 1 -delete && tar -C /restore -xf /backups/photos-$DAY.tar"
+   ```
+4. Start again, then check that `migrate:status` shows nothing pending:
+   ```bash
+   dcp start app horizon scheduler backup
+   dcp exec app php artisan migrate:status
+   ```
+5. **Accounts deleted after the backup are back.** Members were promised
+   deletion, so delete them again from the staff Members page. These are the
+   ids present now but missing from `tcg_vault_before_restore`:
+   ```bash
+   dcp exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select id from users order by id::text"' > /tmp/after
+   dcp exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d tcg_vault_before_restore -Atc "select id from users order by id::text"' > /tmp/before
+   comm -23 /tmp/after /tmp/before; rm /tmp/after /tmp/before
+   ```
+6. Once everything checks out, drop the old database and the fresh dump:
+   `dcp exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" tcg_vault_before_restore'`
+   and `dcp run --rm --no-deps -T --entrypoint rm backup /backups/pre-restore.dump`.
 
 ## Rollback
 `deploy.yml` deploys the exact release tag it just built (`IMAGE_TAG`
