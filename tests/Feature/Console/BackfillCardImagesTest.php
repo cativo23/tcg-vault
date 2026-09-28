@@ -2,9 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Modules\Catalog\Contracts\CardImageFallback;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\TcgdexImageFallback;
 use Illuminate\Support\Facades\Http;
+
+// These tests exercise the real tcgdex lookup, with HTTP faked.
+beforeEach(fn () => $this->app->instance(CardImageFallback::class, new TcgdexImageFallback('https://api.tcgdex.net/v2/en')));
 
 test('cards stored without an image get one when tcgdex hosts it, and only then', function () {
     $set = Set::create(['tcgdex_id' => 'mep', 'name' => 'MEP Black Star Promos']);

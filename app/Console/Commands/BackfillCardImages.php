@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Modules\Catalog\Contracts\CardImageFallback;
 use App\Modules\Catalog\Models\Card;
-use App\Modules\Catalog\Services\TcgdexImageFallback;
 use Illuminate\Console\Command;
 
 /**
@@ -20,7 +20,7 @@ final class BackfillCardImages extends Command
 
     protected $description = 'Find images for catalog cards stored without one.';
 
-    public function handle(TcgdexImageFallback $fallback): int
+    public function handle(CardImageFallback $fallback): int
     {
         $cards = Card::query()
             ->with('set')

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Services;
 
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
+use App\Modules\Catalog\Contracts\CardImageFallback;
 use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Exceptions\CatalogIdentityMismatchException;
 use App\Modules\Catalog\Models\Card;
@@ -20,7 +21,7 @@ final class CatalogSyncService
 
     public function __construct(
         private readonly CardCatalogProvider $provider,
-        private readonly ?TcgdexImageFallback $imageFallback = null,
+        private readonly ?CardImageFallback $imageFallback = null,
     ) {}
 
     public function syncCard(string $tcgdexCardId): Card
@@ -97,7 +98,7 @@ final class CatalogSyncService
             return $existingCard->official_image_url;
         }
 
-        return ($this->imageFallback ?? app(TcgdexImageFallback::class))->resolve($set->tcgdex_id, $cardDetail->localId);
+        return ($this->imageFallback ?? app(CardImageFallback::class))->resolve($set->tcgdex_id, $cardDetail->localId);
     }
 
     private function syncSet(string $setTcgdexId): Set

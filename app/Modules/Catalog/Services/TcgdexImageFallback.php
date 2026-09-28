@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Services;
 
+use App\Modules\Catalog\Contracts\CardImageFallback;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Cache;
@@ -23,7 +24,7 @@ use Illuminate\Support\Facades\Http;
  * responses return null, and redirects are not followed, so the check
  * never leaves tcgdex's asset host.
  */
-final class TcgdexImageFallback
+final class TcgdexImageFallback implements CardImageFallback
 {
     private const ASSET_HOST = 'https://assets.tcgdex.net';
 
