@@ -82,7 +82,7 @@ final class InviteManager extends Component
             ],
         ]);
 
-        if ($limit = $this->emailLimitReached($this->email)) {
+        if ($limit = $this->reserveEmail($this->email)) {
             $this->addError('email', $limit);
 
             return;
@@ -125,6 +125,7 @@ final class InviteManager extends Component
                 ->first();
 
             if ($stale === null || $stale->isUsable()) {
+                $this->releaseEmail($this->email);
                 $this->addError('email', 'This email already has a pending invite.');
 
                 return;
@@ -148,6 +149,7 @@ final class InviteManager extends Component
                     throw $retryException;
                 }
 
+                $this->releaseEmail($this->email);
                 $this->addError('email', 'This email already has a pending invite.');
 
                 return;
@@ -170,7 +172,7 @@ final class InviteManager extends Component
             return;
         }
 
-        if ($limit = $this->emailLimitReached($invite->email)) {
+        if ($limit = $this->reserveEmail($invite->email)) {
             $this->addError('resend', $limit);
 
             return;
@@ -179,22 +181,40 @@ final class InviteManager extends Component
         $this->sendInviteEmail($invite);
     }
 
-    private function emailLimitReached(string $email): ?string
+    /**
+     * Counts the email against both limits before it is sent. Incrementing
+     * first and undoing it when over the limit is atomic, so requests sent
+     * at the same moment can't all slip past a check made before any of
+     * them counted. Returns why it was refused, or null once reserved.
+     */
+    private function reserveEmail(string $email): ?string
     {
-        if (RateLimiter::tooManyAttempts($this->addressLimiterKey($email), self::EMAILS_PER_ADDRESS_PER_HOUR)) {
+        if (RateLimiter::increment($this->addressLimiterKey($email), 3600) > self::EMAILS_PER_ADDRESS_PER_HOUR) {
+            RateLimiter::decrement($this->addressLimiterKey($email), 3600);
+
             return 'This address was already sent '.self::EMAILS_PER_ADDRESS_PER_HOUR.' invite emails in the last hour.';
         }
 
-        if (RateLimiter::tooManyAttempts($this->staffLimiterKey(), self::EMAILS_PER_STAFF_PER_DAY)) {
+        if (RateLimiter::increment($this->staffLimiterKey(), 86400) > self::EMAILS_PER_STAFF_PER_DAY) {
+            $this->releaseEmail($email);
+
             return 'You’ve sent '.self::EMAILS_PER_STAFF_PER_DAY.' invite emails today. Try again tomorrow.';
         }
 
         return null;
     }
 
+    /** Gives back a reservation whose email never went out. */
+    private function releaseEmail(string $email): void
+    {
+        RateLimiter::decrement($this->addressLimiterKey($email), 3600);
+        RateLimiter::decrement($this->staffLimiterKey(), 86400);
+    }
+
     /**
      * The invite already exists when this runs, so a queue that can't be
-     * reached leaves a pending invite whose email can be resent.
+     * reached leaves a pending invite whose email can be resent, and its
+     * reservation is given back.
      */
     private function sendInviteEmail(Invite $invite): void
     {
@@ -202,13 +222,12 @@ final class InviteManager extends Component
             Mail::to($invite->email)->queue(new InviteSent($invite));
         } catch (Throwable $exception) {
             report($exception);
+            $this->releaseEmail($invite->email);
             $this->addError('resend', 'The invite for '.$invite->email.' was saved, but its email couldn’t be sent. Use Resend to try again.');
 
             return;
         }
 
-        RateLimiter::hit($this->addressLimiterKey($invite->email), 3600);
-        RateLimiter::hit($this->staffLimiterKey(), 86400);
         $this->sentTo = $invite->email;
     }
 

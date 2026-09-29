@@ -6,7 +6,6 @@ use App\Mail\InviteSent;
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -252,16 +251,48 @@ test('creating and resending share the per-address limit', function () {
 test('one staff account can send at most 50 invite emails a day', function () {
     Mail::fake();
     $admin = inviteAdmin();
+    $component = Livewire::actingAs($admin)->test('staff.invite-manager');
+
+    // Real invites, in batches under the 20-a-minute creation limit.
     for ($i = 0; $i < 50; $i++) {
-        RateLimiter::hit('invite-mail-admin:'.$admin->id, 86400);
+        if ($i > 0 && $i % 20 === 0) {
+            $this->travel(61)->seconds();
+        }
+        $component->set('email', "person{$i}@example.com")->call('createInvite')->assertHasNoErrors();
     }
+    $this->travel(61)->seconds();
 
-    Livewire::actingAs($admin)
-        ->test('staff.invite-manager')
-        ->set('email', 'fifty-first@example.com')
-        ->call('createInvite')
-        ->assertHasErrors('email');
+    $component->set('email', 'fifty-first@example.com')->call('createInvite')->assertHasErrors('email');
 
-    Mail::assertNothingQueued();
+    Mail::assertQueuedCount(50);
     expect(Invite::where('email', 'fifty-first@example.com')->exists())->toBeFalse();
+});
+
+test('an invite email that could not be queued does not use up the limit', function () {
+    $admin = inviteAdmin();
+    $invite = Invite::factory()->create(['email' => 'retry@example.com']);
+    $component = Livewire::actingAs($admin)->test('staff.invite-manager');
+
+    // The first three sends fail to reach the queue; the rest succeed.
+    $calls = 0;
+    $queued = 0;
+    $pending = Mockery::mock();
+    $pending->shouldReceive('queue')->andReturnUsing(function () use (&$queued) {
+        $queued++;
+    });
+    Mail::shouldReceive('to')->andReturnUsing(function () use (&$calls, $pending) {
+        if (++$calls <= 3) {
+            throw new RuntimeException('queue down');
+        }
+
+        return $pending;
+    });
+
+    for ($i = 0; $i < 6; $i++) {
+        $component->call('resendInvite', $invite->id);
+    }
+    expect($queued)->toBe(3);
+
+    $component->call('resendInvite', $invite->id)->assertHasErrors('resend');
+    expect($queued)->toBe(3);
 });
