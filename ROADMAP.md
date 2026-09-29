@@ -156,7 +156,7 @@ roadmap safe to attempt.
 - ~~**CSV export.**~~ — done. A full CSV (not the TCGplayer text format,
   which would drop condition, variant, grade and notes).
 
-Follow-ups raised by the legal review, not yet scheduled:
+Follow-ups raised by the legal review:
 
 - ~~Keep typed passwords out of Telescope and Bugsink request payloads.~~
   — done. A password-reset token can still appear in a recorded URL or
@@ -196,6 +196,22 @@ Raise `phpstan.neon` to level 9 once that layer exists.
 Invites go out in waves. No new features; the release is the go/no-go on
 everything above.
 
+~~Go/no-go~~ — go. What it took:
+
+- Nightly local backups, with a production dump restored into a scratch
+  database to prove it (v0.11.0).
+- **Accepted risk:** the backups are still on the same host (the v0.6.0
+  off-host item is open). They cover a bad migration, a wrong delete or a
+  corrupt volume, but losing polaris2 loses them too. The beta opened
+  anyway because the database is small and the member count is too; that
+  item stays first in line once Cloudflare billing is enabled.
+- Invites emailed from the app, and every email in one branded layout
+  (v0.12.0), checked end to end in production.
+- The invite-email limits hold under parallel requests, and one inbox can
+  hold only one account or pending invite whatever its case (v0.13.0).
+- Production clean on the day: no failed jobs, no open errors beyond
+  tcgdex's own occasional 503s, which retries absorb.
+
 ## Beyond v1
 
 Ordered by how often a collector is likely to ask for it, not by how
@@ -206,8 +222,8 @@ interesting it is to build.
 - Deck lists
 - Trade and sale tracking
 - Usage analytics
-- **Move `CACHE_STORE` off Postgres onto a dedicated Redis instance**,
-  separate from the Horizon queue Redis — they need conflicting
+- **Give the cache its own Redis instance.** It currently shares the
+  Horizon queue's Redis, and the two need conflicting
   `maxmemory-policy` values (`noeviction` for queue data, `allkeys-lru`
   for cache), so they can't share a process regardless of memory sizing.
   Deliberately last: evaluate alongside centralizing Redis across other

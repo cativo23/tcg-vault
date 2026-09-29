@@ -6,6 +6,16 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-29
+
+The wide private beta: registration stays invite-only and invites go out
+in waves. No code changes from 0.13.0; this release marks the go/no-go
+in `ROADMAP.md` as passed.
+
+### Deploy
+
+No migrations.
+
 ## [0.13.0] - 2026-09-29
 
 ### Fixed
