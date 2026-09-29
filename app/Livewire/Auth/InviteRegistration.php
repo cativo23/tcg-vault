@@ -12,6 +12,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -78,7 +79,7 @@ final class InviteRegistration extends Component
         // the account directly). Without this, User::create() below hits
         // users.email's unique constraint and throws an unhandled
         // UniqueConstraintViolationException instead of a normal 403.
-        if (User::where('email', $invite->email)->exists()) {
+        if (User::whereRaw('LOWER(email) = ?', [Str::lower($invite->email)])->exists()) {
             throw new HttpException(403, 'This invite is no longer valid.');
         }
     }

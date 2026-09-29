@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
@@ -246,4 +247,96 @@ test('a regular user cannot revoke an invite', function () {
         ->assertForbidden();
 
     expect($invite->refresh()->revoked_at)->toBeNull();
+});
+
+function normalisingAdmin(): User
+{
+    Permission::findOrCreate('manage-invites');
+    $admin = User::factory()->create();
+    $admin->givePermissionTo('manage-invites');
+
+    return $admin;
+}
+
+test('an invited address is stored lowercased and trimmed', function () {
+    Livewire::actingAs(normalisingAdmin())
+        ->test('staff.invite-manager')
+        ->set('email', '  New.Person@Example.COM ')
+        ->call('createInvite')
+        ->assertHasNoErrors();
+
+    expect(Invite::sole()->email)->toBe('new.person@example.com');
+});
+
+test('an admin cannot invite a different-case spelling of an existing account', function () {
+    User::factory()->create(['email' => 'member@example.com']);
+
+    Livewire::actingAs(normalisingAdmin())
+        ->test('staff.invite-manager')
+        ->set('email', 'Member@Example.com')
+        ->call('createInvite')
+        ->assertHasErrors('email');
+
+    expect(Invite::count())->toBe(0);
+});
+
+test('an admin cannot double-invite an address by changing its case', function () {
+    Invite::factory()->create(['email' => 'pending@example.com']);
+
+    Livewire::actingAs(normalisingAdmin())
+        ->test('staff.invite-manager')
+        ->set('email', 'PENDING@example.com')
+        ->call('createInvite')
+        ->assertHasErrors('email');
+
+    expect(Invite::count())->toBe(1);
+});
+
+test('a quoted local part is refused, since it is the same mailbox as the unquoted one', function () {
+    Livewire::actingAs(normalisingAdmin())
+        ->test('staff.invite-manager')
+        ->set('email', '"victim"@example.com')
+        ->call('createInvite')
+        ->assertHasErrors('email');
+
+    expect(Invite::count())->toBe(0);
+});
+
+test('the database refuses two usable invites whose emails differ only in case', function () {
+    Invite::factory()->create(['email' => 'race@example.com']);
+
+    expect(fn () => DB::transaction(fn () => Invite::factory()->create(['email' => 'Race@example.com'])))
+        ->toThrow(QueryException::class, 'invites_usable_email_unique');
+});
+
+test('self-healing finds a stale invite stored with different case', function () {
+    $stale = Invite::factory()->create([
+        'email' => 'Legacy@example.com',
+        'expires_at' => now()->subDay(),
+    ]);
+
+    Livewire::actingAs(normalisingAdmin())
+        ->test('staff.invite-manager')
+        ->set('email', 'legacy@example.com')
+        ->call('createInvite')
+        ->assertHasNoErrors();
+
+    expect($stale->refresh()->revoked_at)->not->toBeNull();
+});
+
+test('the case-insensitive index migration keeps one pending invite per address instead of failing on duplicates', function () {
+    DB::statement('DROP INDEX invites_usable_email_unique');
+    $older = Invite::factory()->create(['email' => 'Dup@example.com', 'created_at' => now()->subDays(2)]);
+    $newer = Invite::factory()->create(['email' => 'dup@example.com', 'created_at' => now()->subDay()]);
+    $expired = Invite::factory()->create(['email' => 'DUP@example.com', 'expires_at' => now()->subHour()]);
+    $other = Invite::factory()->create(['email' => 'other@example.com']);
+
+    (require database_path('migrations/2026_09_29_180000_make_usable_invite_email_index_case_insensitive.php'))->up();
+
+    expect($newer->refresh()->revoked_at)->toBeNull()
+        ->and($older->refresh()->revoked_at)->not->toBeNull()
+        ->and($expired->refresh()->revoked_at)->not->toBeNull()
+        ->and($other->refresh()->revoked_at)->toBeNull()
+        ->and(DB::selectOne("select indexdef from pg_indexes where indexname = 'invites_usable_email_unique'")->indexdef)
+        ->toContain('lower');
 });
