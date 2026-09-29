@@ -204,11 +204,18 @@ final class InviteManager extends Component
         return null;
     }
 
-    /** Gives back a reservation whose email never went out. */
+    /**
+     * Gives back a reservation whose email never went out. A counter that
+     * expired in the meantime is left alone: decrementing it would start a
+     * new one below zero and hand out an extra email.
+     */
     private function releaseEmail(string $email): void
     {
-        RateLimiter::decrement($this->addressLimiterKey($email), 3600);
-        RateLimiter::decrement($this->staffLimiterKey(), 86400);
+        foreach ([$this->addressLimiterKey($email) => 3600, $this->staffLimiterKey() => 86400] as $key => $decay) {
+            if (RateLimiter::attempts($key) > 0) {
+                RateLimiter::decrement($key, $decay);
+            }
+        }
     }
 
     /**
