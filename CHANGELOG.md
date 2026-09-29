@@ -6,6 +6,28 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-29
+
+### Added
+
+- Creating an invite now emails the link to the invited address, with who
+  invited them and when the link expires. Each pending invite has a Resend
+  button. An invite revoked, used or deleted before its email goes out is
+  not sent.
+- Invite emails are limited to 3 an hour per address (creating and
+  resending together) and 50 a day per staff account.
+
+### Changed
+
+- Every email (invites, password resets, feedback) uses one tcg-vault
+  layout. Nothing in it loads from another server.
+- The privacy policy says invites are emailed, and that the email provider
+  keeps a copy of sent emails for 30 days.
+
+### Deploy
+
+No migrations.
+
 ## [0.11.0] - 2026-09-28
 
 ### Added
