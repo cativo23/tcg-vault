@@ -121,3 +121,8 @@ test('the privacy policy says invites are emailed to the invited address', funct
         ->assertSee('The invited address receives the invite by email')
         ->assertSee('such as password resets and invitations');
 });
+
+test('the privacy policy says how long the email provider keeps sent emails', function () {
+    $this->get('/privacy')
+        ->assertSee('Emails the app sends (invites, password resets, feedback): the email provider keeps a copy for 30 days.', false);
+});

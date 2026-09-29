@@ -49,6 +49,7 @@
         <li>Feedback emails: kept in my inbox for as long as needed to follow up.</li>
         <li>An invite nobody accepted: deleted within 31 days of expiring or being revoked. An accepted invite is deleted with the account it created.</li>
         <li>Password reset links: expire after an hour and are deleted within a day.</li>
+        <li>Emails the app sends (invites, password resets, feedback): the email provider keeps a copy for 30 days.</li>
         <li>Backups: a copy of the database and your photos is taken every night and kept on the same server for 14 days, then deleted. It exists only to recover from a mistake or a failure, and is not used for anything else.</li>
         <li>If staff suspend or delete an account: a record of that, holding the account’s internal number but not its name or email, kept for a year.</li>
     </ul>
