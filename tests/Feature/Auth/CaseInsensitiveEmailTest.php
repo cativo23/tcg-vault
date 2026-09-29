@@ -105,16 +105,19 @@ test('signing in works with the email typed in any case', function () {
     $this->assertAuthenticatedAs($user);
 });
 
-test('the migration moves pending reset links to the lowercased address', function () {
+test('the migration drops reset links stored under a capitalised address instead of failing', function () {
     DB::statement('DROP INDEX IF EXISTS users_email_lower_unique');
     User::factory()->create(['email' => 'Mixed@Example.com']);
+    // A capitalised token next to its lowercase twin would collide on the
+    // table's primary key if it were moved instead.
     DB::table('password_reset_tokens')->insert([
-        'email' => 'Mixed@Example.com', 'token' => 'hashed', 'created_at' => now(),
+        ['email' => 'Mixed@Example.com', 'token' => 'old', 'created_at' => now()],
+        ['email' => 'mixed@example.com', 'token' => 'new', 'created_at' => now()],
     ]);
 
     (require database_path(USER_EMAIL_MIGRATION))->up();
 
-    expect(DB::table('password_reset_tokens')->where('email', 'mixed@example.com')->exists())->toBeTrue();
+    expect(DB::table('password_reset_tokens')->pluck('email')->all())->toBe(['mixed@example.com']);
 });
 
 test('the admin seeder stores the admin email in lowercase and finds it again on a re-seed', function () {

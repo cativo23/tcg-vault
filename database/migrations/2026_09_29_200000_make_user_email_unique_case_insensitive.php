@@ -18,9 +18,10 @@ return new class extends Migration
      * stops and lists the account ids. Only ids: the message can end up in
      * logs and error reports.
      *
-     * Pending reset links are keyed by the address they were sent to, so
-     * they move with it. Rolling back drops the index but keeps the
-     * lowercased addresses.
+     * Pending reset links stored under a capitalised address stop matching
+     * once it is lowercased, so they are dropped; the member can ask for a
+     * new one. Rolling back drops the index but keeps the lowercased
+     * addresses.
      */
     public function up(): void
     {
@@ -38,7 +39,10 @@ return new class extends Migration
         }
 
         DB::statement('UPDATE users SET email = lower(email), updated_at = now() WHERE email <> lower(email)');
-        DB::statement('UPDATE password_reset_tokens SET email = lower(email) WHERE email <> lower(email)');
+        // Dropped rather than moved: the address is the table's primary key,
+        // so moving one next to its lowercase twin would fail, and a reset
+        // link expires within the hour anyway.
+        DB::statement('DELETE FROM password_reset_tokens WHERE email <> lower(email)');
         DB::statement('CREATE UNIQUE INDEX users_email_lower_unique ON users (lower(email))');
     }
 
