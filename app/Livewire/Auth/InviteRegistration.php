@@ -109,7 +109,9 @@ final class InviteRegistration extends Component
             $user = User::create([
                 'name' => $validated['name'],
                 'username' => $validated['username'],
-                'email' => $invite->email,
+                // Stored lowercase like every other account; the invite
+                // itself keeps its spelling, since its link hash uses it.
+                'email' => Str::lower($invite->email),
                 'password' => Hash::make($validated['password']),
             ]);
 
