@@ -74,16 +74,24 @@ final class InviteManager extends Component
 
         RateLimiter::hit($limiterKey, 60);
 
+        // Mail systems ignore an address's case, so one spelling is kept:
+        // otherwise `A@x.com` would pass every check `a@x.com` fails.
+        $this->email = Str::lower(trim($this->email));
+
         $this->validate([
             'email' => [
                 'required',
-                'email',
+                // `filter` refuses spaces, comments and other RFC forms
+                // that name the same mailbox under a different string; a
+                // quoted local part is refused for the same reason.
+                'email:rfc,filter',
+                'not_regex:/"/',
                 // Fail fast rather than issue a signed link that will
                 // always dead-end at "email already taken" on submit.
                 function (string $attribute, mixed $value, callable $fail) {
-                    if (User::where('email', $value)->exists()) {
+                    if (User::whereRaw('LOWER(email) = ?', [$value])->exists()) {
                         $fail('An account with this email already exists.');
-                    } elseif (Invite::where('email', $value)->usable()->exists()) {
+                    } elseif (Invite::forEmail($value)->usable()->exists()) {
                         $fail('This email already has a pending invite.');
                     }
                 },
@@ -129,7 +137,7 @@ final class InviteManager extends Component
             // invite. Self-heal that case instead of permanently
             // locking the email out until someone remembers to revoke
             // the stale row by hand.
-            $stale = Invite::where('email', $this->email)
+            $stale = Invite::forEmail($this->email)
                 ->whereNull('used_at')
                 ->whereNull('revoked_at')
                 ->first();

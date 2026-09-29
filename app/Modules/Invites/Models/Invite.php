@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 
 final class Invite extends Model
 {
@@ -103,6 +104,18 @@ final class Invite extends Model
             ->whereNull('used_at')
             ->whereNull('revoked_at')
             ->where('expires_at', '>', now());
+    }
+
+    /**
+     * Matches an address regardless of case, the same way the
+     * invites_usable_email_unique index and mail systems compare it.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeForEmail(Builder $query, string $email): Builder
+    {
+        return $query->whereRaw('LOWER(email) = ?', [Str::lower($email)]);
     }
 
     /**

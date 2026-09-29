@@ -375,6 +375,20 @@ test('no invite email is counted or sent while another request holds the limit l
     $lock->release();
     Mail::assertNothingQueued();
 });
+
+test('different spellings of one address share the per-address limit', function () {
+    Mail::fake();
+    $admin = inviteAdmin();
+    $component = Livewire::actingAs($admin)->test('staff.invite-manager');
+
+    foreach (['victim@example.com', 'Victim@Example.com', 'VICTIM@EXAMPLE.COM', 'victim@EXAMPLE.com'] as $email) {
+        $component->set('email', $email)->call('createInvite');
+        Invite::whereRaw('LOWER(email) = ?', ['victim@example.com'])->usable()->first()?->revoke();
+    }
+
+    Mail::assertQueuedCount(3);
+});
+
 test('a count left by the previous limiter format still counts after deploy', function () {
     Mail::fake();
     $admin = inviteAdmin();

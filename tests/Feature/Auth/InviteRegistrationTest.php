@@ -152,3 +152,10 @@ test('an invite already used cannot be used again', function () {
 
     expect(User::where('email', $invite->email)->exists())->toBeFalse();
 });
+
+test('an invite whose address differs only in case from an existing account is rejected', function () {
+    User::factory()->create(['email' => 'member@example.com']);
+    $invite = Invite::factory()->create(['email' => 'Member@example.com']);
+
+    $this->get(signedInviteUrl($invite))->assertForbidden();
+});
