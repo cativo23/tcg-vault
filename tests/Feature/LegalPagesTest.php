@@ -114,3 +114,15 @@ test('the privacy policy says backups keep deleted data for 14 days', function (
         ->assertSee('kept on the same server for 14 days')
         ->assertSee('from the nightly backups within 14 days');
 });
+
+test('the privacy policy says invites are emailed to the invited address', function () {
+    $this->get('/privacy')
+        ->assertDontSee('The app does not email invites')
+        ->assertSee('The invited address receives the invite by email')
+        ->assertSee('such as password resets and invitations');
+});
+
+test('the privacy policy says how long the email provider keeps sent emails', function () {
+    $this->get('/privacy')
+        ->assertSee('Emails the app sends (invites, password resets, feedback): the email provider keeps a copy for 30 days.', false);
+});

@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace App\Livewire\Staff;
 
+use App\Mail\InviteSent;
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Throwable;
 
 #[Layout('layouts.app')]
 final class InviteManager extends Component
@@ -22,7 +26,19 @@ final class InviteManager extends Component
 
     private const PER_PAGE = 24;
 
+    /**
+     * Every invite email, created or resent, counts against both limits:
+     * per address, so revoking and re-inviting can't flood one inbox, and
+     * per staff account, so a stolen account can't mail strangers at scale.
+     */
+    private const EMAILS_PER_ADDRESS_PER_HOUR = 3;
+
+    private const EMAILS_PER_STAFF_PER_DAY = 50;
+
     public string $email = '';
+
+    /** The address the last invite email was queued for, shown as a notice. */
+    public ?string $sentTo = null;
 
     public function mount(): void
     {
@@ -32,6 +48,8 @@ final class InviteManager extends Component
     public function createInvite(): void
     {
         Gate::authorize('manage-invites');
+
+        $this->sentTo = null;
 
         // A Livewire action isn't reachable by the route's own
         // `throttle` middleware at all (it runs through
@@ -64,6 +82,12 @@ final class InviteManager extends Component
             ],
         ]);
 
+        if ($limit = $this->reserveEmail($this->email)) {
+            $this->addError('email', $limit);
+
+            return;
+        }
+
         $attributes = [
             'email' => $this->email,
             'created_by' => auth()->id(),
@@ -76,7 +100,7 @@ final class InviteManager extends Component
             // transaction, e.g. under RefreshDatabase in tests) —
             // without this, a failed INSERT can otherwise poison every
             // later query in an enclosing transaction.
-            DB::transaction(fn () => Invite::create($attributes));
+            $invite = DB::transaction(fn () => Invite::create($attributes));
         } catch (QueryException $exception) {
             // The validation check above already covers the common
             // sequential case; this catches the genuine race it can't
@@ -101,6 +125,7 @@ final class InviteManager extends Component
                 ->first();
 
             if ($stale === null || $stale->isUsable()) {
+                $this->releaseEmail($this->email);
                 $this->addError('email', 'This email already has a pending invite.');
 
                 return;
@@ -109,7 +134,7 @@ final class InviteManager extends Component
             $stale->revoke(auth()->user()?->id);
 
             try {
-                DB::transaction(fn () => Invite::create($attributes));
+                $invite = DB::transaction(fn () => Invite::create($attributes));
             } catch (QueryException $retryException) {
                 // The row that conflicted a moment ago was the stale one
                 // just revoked above — but between that revoke and this
@@ -124,6 +149,7 @@ final class InviteManager extends Component
                     throw $retryException;
                 }
 
+                $this->releaseEmail($this->email);
                 $this->addError('email', 'This email already has a pending invite.');
 
                 return;
@@ -131,6 +157,88 @@ final class InviteManager extends Component
         }
 
         $this->reset('email');
+        $this->sendInviteEmail($invite);
+    }
+
+    /** For an invite email that never arrived or got lost. */
+    public function resendInvite(int $inviteId): void
+    {
+        Gate::authorize('manage-invites');
+
+        $this->sentTo = null;
+        $invite = Invite::findOrFail($inviteId);
+
+        if (! $invite->isUsable()) {
+            return;
+        }
+
+        if ($limit = $this->reserveEmail($invite->email)) {
+            $this->addError('resend', $limit);
+
+            return;
+        }
+
+        $this->sendInviteEmail($invite);
+    }
+
+    /**
+     * Counts the email against both limits before it is sent. Incrementing
+     * first and undoing it when over the limit is atomic, so requests sent
+     * at the same moment can't all slip past a check made before any of
+     * them counted. Returns why it was refused, or null once reserved.
+     */
+    private function reserveEmail(string $email): ?string
+    {
+        if (RateLimiter::increment($this->addressLimiterKey($email), 3600) > self::EMAILS_PER_ADDRESS_PER_HOUR) {
+            RateLimiter::decrement($this->addressLimiterKey($email), 3600);
+
+            return 'This address was already sent '.self::EMAILS_PER_ADDRESS_PER_HOUR.' invite emails in the last hour.';
+        }
+
+        if (RateLimiter::increment($this->staffLimiterKey(), 86400) > self::EMAILS_PER_STAFF_PER_DAY) {
+            $this->releaseEmail($email);
+
+            return 'You’ve sent '.self::EMAILS_PER_STAFF_PER_DAY.' invite emails today. Try again tomorrow.';
+        }
+
+        return null;
+    }
+
+    /** Gives back a reservation whose email never went out. */
+    private function releaseEmail(string $email): void
+    {
+        RateLimiter::decrement($this->addressLimiterKey($email), 3600);
+        RateLimiter::decrement($this->staffLimiterKey(), 86400);
+    }
+
+    /**
+     * The invite already exists when this runs, so a queue that can't be
+     * reached leaves a pending invite whose email can be resent, and its
+     * reservation is given back.
+     */
+    private function sendInviteEmail(Invite $invite): void
+    {
+        try {
+            Mail::to($invite->email)->queue(new InviteSent($invite));
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->releaseEmail($invite->email);
+            $this->addError('resend', 'The invite for '.$invite->email.' was saved, but its email couldn’t be sent. Use Resend to try again.');
+
+            return;
+        }
+
+        $this->sentTo = $invite->email;
+    }
+
+    private function addressLimiterKey(string $email): string
+    {
+        return 'invite-mail-address:'.sha1(Str::lower($email));
+    }
+
+    private function staffLimiterKey(): string
+    {
+        return 'invite-mail-admin:'.auth()->id();
     }
 
     public function revokeInvite(int $inviteId): void

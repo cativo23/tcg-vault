@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Contracts\Auth\CanResetPassword;
+use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
@@ -51,6 +54,24 @@ class AppServiceProvider extends ServiceProvider
             URL::forceRootUrl(config('app.url'));
             URL::forceScheme('https');
         }
+
+        // The reset email in the app's own branded layout. The link is the
+        // one Laravel builds by default, so the reset flow is unchanged.
+        ResetPassword::toMailUsing(function (object $notifiable, string $token): MailMessage {
+            /** @var CanResetPassword $notifiable */
+            $url = url(route('password.reset', [
+                'token' => $token,
+                'email' => $notifiable->getEmailForPasswordReset(),
+            ], false));
+            $data = [
+                'url' => $url,
+                'minutes' => config('auth.passwords.'.config('auth.defaults.passwords').'.expire') ?? 60,
+            ];
+
+            return (new MailMessage)
+                ->subject('Reset your tcg-vault password')
+                ->view(['mail.reset-password', 'mail.reset-password-text'], $data);
+        });
 
         // super-admin passes every gate and permission check, present or
         // future, without needing its own explicit permission list kept

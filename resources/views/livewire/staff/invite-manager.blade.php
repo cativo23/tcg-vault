@@ -9,8 +9,15 @@
                 <x-input-error :messages="$errors->get('email')" class="mt-2" />
             </div>
 
-            <x-primary-button>{{ __('Send invite') }}</x-primary-button>
+            <x-primary-button wire:loading.attr="disabled" wire:target="createInvite">{{ __('Send invite') }}</x-primary-button>
         </form>
+
+        <p role="status" class="mt-3 text-sm" style="color: var(--muted)">
+            @if ($sentTo)
+                {{ __('Invite sent to :email.', ['email' => $sentTo]) }}
+            @endif
+        </p>
+        <x-input-error :messages="$errors->get('resend')" class="mt-2" />
     </div>
 
     <div class="nw-card overflow-hidden">
@@ -54,6 +61,9 @@
                         </td>
                         <td class="p-3 text-right">
                             @if ($invite->isUsable())
+                                <button type="button" wire:click="resendInvite({{ $invite->id }})" wire:loading.attr="disabled" wire:target="resendInvite({{ $invite->id }})" class="nw-row-btn">
+                                    {{ __('Resend') }}
+                                </button>
                                 <button type="button" wire:click="revokeInvite({{ $invite->id }})" class="nw-row-btn nw-row-btn--danger">
                                     {{ __('Revoke') }}
                                 </button>

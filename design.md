@@ -182,6 +182,23 @@ property-diff across every tile in a full grid on every toggle).
 Frozen-chrome elements carry no such transition — their colors never
 change, so there's nothing to animate.
 
+## Email
+Every email renders through `resources/views/mail/layouts/branded.blade.php`
+(plus its `-text` twin). Email clients drop `<style>` blocks and CSS
+variables, so the layout inlines the hex values from the Tokens above: bone
+background, `--paper` panel, ink text, `--muted` secondary text, and one
+2px `--signal` hairline under the wordmark as the only green. The button is
+an ink pill with bone text (green text on bone fails contrast).
+
+- **Light only.** `color-scheme: light`; the site's dark theme is not
+  mirrored, because clients that force dark mode invert colours on their
+  own and a second palette would fight that.
+- **Nothing remote.** The wordmark is text, the font is the system stack,
+  and there are no images, so nothing loads from another server when an
+  email is opened.
+- **No markdown mail.** Laravel's markdown mail would run member-written
+  text (feedback) through a markdown parser; plain Blade keeps it escaped.
+
 ## Information architecture (public gallery)
 `/` → the owner's gallery. `/{u}/gallery` is **the collection** (every owned
 card, stat band, set rail, filters, sort) — the front door. `/{u}/gallery/sets`
