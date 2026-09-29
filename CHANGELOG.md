@@ -6,6 +6,27 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-29
+
+### Fixed
+
+- The invite-email limits (3 an hour per address, 50 a day per staff
+  account) could be beaten by sending requests in parallel: 10 at once let
+  7 or 8 emails through. Both limits are now checked and counted under one
+  lock, a slot is only given back to the window it came from, and a `+tag`
+  or Gmail dots no longer give the same inbox a separate budget.
+- Two accounts could share one inbox when their emails differed only in
+  capitals. Addresses are now stored lowercase and the database refuses a
+  second spelling, for accounts and for pending invites.
+- Signing in and resetting a password now work whatever case the email is
+  typed in.
+
+### Deploy
+
+Two migrations: run `php artisan migrate --force` against the new image
+before the deploy's `up -d`. Both stop instead of guessing if they find
+accounts or invites that differ only in case (prod had none).
+
 ## [0.12.0] - 2026-09-29
 
 ### Added
