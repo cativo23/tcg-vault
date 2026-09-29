@@ -197,11 +197,10 @@ everything above.
 
 - Nightly local backups, with a production dump restored into a scratch
   database to prove it (v0.11.0).
-- **Accepted risk:** the backups are still on the same host (the v0.6.0
-  off-host item is open). They cover a bad migration, a wrong delete or a
+- **Accepted risk:** the backups are still on the same host (the off-host
+  copy is open, last under Beyond v1). They cover a bad migration, a wrong delete or a
   corrupt volume, but losing polaris2 loses them too. The beta opened
-  anyway because the database is small and the member count is too; the
-  off-host copy is now the last item of Beyond v1.
+  anyway because the database is small and the member count is too.
 - Invites emailed from the app, and every email in one branded layout
   (v0.12.0), checked end to end in production.
 - The invite-email limits hold under parallel requests, and one inbox can
@@ -223,13 +222,14 @@ interesting it is to build.
   Horizon queue's Redis, and the two need conflicting
   `maxmemory-policy` values (`noeviction` for queue data, `allkeys-lru`
   for cache), so they can't share a process regardless of memory sizing.
-  Deliberately last: evaluate alongside centralizing Redis across other
-  projects on the same host rather than standing up a second one-off
-  instance here.
+  Evaluate alongside centralizing Redis across other projects on the
+  same host rather than standing up a second one-off instance here.
 - **Copy the backups off the host.** The nightly files still sit on the
   same VPS as the data, so losing polaris2 loses them too. The free tier
   (Cloudflare R2, 10GB) needs billing enabled on the Cloudflare account
-  first. Moved here from v0.6.0, last on purpose.
+  first. Outside the collector ordering above and last by choice: the
+  same-host risk is accepted for the beta (see v1.0.0), and it waits on
+  that billing step.
 
 ## Not on the roadmap
 
