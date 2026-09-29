@@ -196,6 +196,17 @@ Raise `phpstan.neon` to level 9 once that layer exists.
 Invites go out in waves. No new features; the release is the go/no-go on
 everything above.
 
+~~Go/no-go~~ — go. What it took:
+
+- Nightly local backups with a restore performed against production data
+  (v0.11.0). Copying them off the host is still open under v0.6.0.
+- Invites emailed from the app, and every email in one branded layout
+  (v0.12.0), checked end to end in production.
+- The invite-email limits hold under parallel requests, and one inbox can
+  hold only one account or pending invite whatever its case (v0.13.0).
+- Production clean on the day: no failed jobs, no open errors beyond
+  tcgdex's own occasional 503s, which retries absorb.
+
 ## Beyond v1
 
 Ordered by how often a collector is likely to ask for it, not by how
