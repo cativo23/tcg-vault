@@ -27,6 +27,10 @@ class DatabaseSeeder extends Seeder
             );
         }
 
+        // Stored lowercase like every other account, so a capital in the
+        // env value can't make a re-seed miss the row and create another.
+        $email = Str::lower($email);
+
         $username = config('tcgvault.admin_username') ?: Str::of(explode('@', $email)[0])
             ->lower()
             ->replaceMatches('/[^a-z0-9]/', '')
