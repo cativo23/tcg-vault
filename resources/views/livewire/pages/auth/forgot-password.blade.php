@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
@@ -20,8 +21,9 @@ new #[Layout('layouts.guest')] class extends Component
         // We will send the password reset link to this user. Once we have attempted
         // to send the link, we will examine the response then see the message we
         // need to show to the user. Finally, we'll send out a proper response.
+        // Accounts are stored lowercase, so the lookup is too.
         $status = Password::sendResetLink(
-            $this->only('email')
+            ['email' => Str::lower($this->email)]
         );
 
         if ($status != Password::RESET_LINK_SENT) {
