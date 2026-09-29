@@ -198,8 +198,9 @@ everything above.
 - Nightly local backups, with a production dump restored into a scratch
   database to prove it (v0.11.0).
 - **Accepted risk:** the backups are still on the same host (the off-host
-  copy is open, last under Beyond v1). They cover a bad migration, a wrong delete or a
-  corrupt volume, but losing polaris2 loses them too. The beta opened
+  copy is open, last under Beyond v1). They cover a bad migration, a
+  wrong delete or a corrupt volume, but losing polaris2 loses them too.
+  The beta opened
   anyway because the database is small and the member count is too.
 - Invites emailed from the app, and every email in one branded layout
   (v0.12.0), checked end to end in production.
