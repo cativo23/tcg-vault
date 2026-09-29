@@ -16,10 +16,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
+use RuntimeException;
 use Throwable;
 
 #[Layout('layouts.app')]
@@ -75,10 +77,11 @@ final class InviteManager extends Component
         RateLimiter::hit($limiterKey, 60);
 
         // Mail systems ignore an address's case, so one spelling is kept:
-        // otherwise `A@x.com` would pass every check `a@x.com` fails.
-        $this->email = Str::lower(trim($this->email));
+        // otherwise `A@x.com` would pass every check `a@x.com` fails. The
+        // field keeps what staff typed, so a refusal shows their input.
+        $email = Str::lower(trim($this->email));
 
-        $this->validate([
+        Validator::make(['email' => $email], [
             'email' => [
                 'required',
                 // `filter` refuses spaces, comments and other RFC forms
@@ -96,9 +99,9 @@ final class InviteManager extends Component
                     }
                 },
             ],
-        ]);
+        ])->validate();
 
-        $reservation = $this->reserveEmail($this->email);
+        $reservation = $this->reserveEmail($email);
 
         if (is_string($reservation)) {
             $this->addError('email', $reservation);
@@ -107,7 +110,7 @@ final class InviteManager extends Component
         }
 
         $attributes = [
-            'email' => $this->email,
+            'email' => $email,
             'created_by' => auth()->id(),
             'expires_at' => now()->addDays(config('tcgvault.invite_ttl_days', 7)),
         ];
@@ -127,6 +130,8 @@ final class InviteManager extends Component
             // partial unique index (see the invites migration) is the
             // real guarantee.
             if (! str_contains($exception->getMessage(), 'invites_usable_email_unique')) {
+                $this->releaseEmail($reservation);
+
                 throw $exception;
             }
 
@@ -137,7 +142,7 @@ final class InviteManager extends Component
             // invite. Self-heal that case instead of permanently
             // locking the email out until someone remembers to revoke
             // the stale row by hand.
-            $stale = Invite::forEmail($this->email)
+            $stale = Invite::forEmail($email)
                 ->whereNull('used_at')
                 ->whereNull('revoked_at')
                 ->first();
@@ -164,6 +169,8 @@ final class InviteManager extends Component
                 // have, rather than letting a second unhandled
                 // QueryException surface as a raw database error.
                 if (! str_contains($retryException->getMessage(), 'invites_usable_email_unique')) {
+                    $this->releaseEmail($reservation);
+
                     throw $retryException;
                 }
 
@@ -184,6 +191,20 @@ final class InviteManager extends Component
         Gate::authorize('manage-invites');
 
         $this->sentTo = null;
+
+        // Same per-staff pace as creating: resends also go through the
+        // shared limit lock, so an unthrottled loop would crowd out
+        // everyone else's invite emails.
+        $limiterKey = 'resend-invite:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($limiterKey, 20)) {
+            $this->addError('resend', 'Too many resends — try again in a few minutes.');
+
+            return;
+        }
+
+        RateLimiter::hit($limiterKey, 60);
+
         $invite = Invite::findOrFail($inviteId);
 
         if (! $invite->isUsable()) {
@@ -271,6 +292,8 @@ final class InviteManager extends Component
             });
         } catch (LockTimeoutException) {
             // Keeping the slot fails closed: the limit only gets stricter.
+            // Reported so a lock that keeps timing out doesn't go unseen.
+            report(new RuntimeException('Invite-email limit lock timed out while giving back a slot.'));
         }
     }
 
@@ -303,7 +326,14 @@ final class InviteManager extends Component
             return null;
         }
 
-        return ['hits' => (int) $hits, 'expires' => now()->getTimestamp() + $decay];
+        // RateLimiter kept the window's end under `:timer`; without it the
+        // window is treated as starting now, which only makes it stricter.
+        $timer = Cache::get($key.':timer');
+        $expires = is_numeric($timer) && (int) $timer > now()->getTimestamp()
+            ? (int) $timer
+            : now()->getTimestamp() + $decay;
+
+        return ['hits' => (int) $hits, 'expires' => $expires];
     }
 
     private function storeWindow(string $key, int $hits, int $expires): void
@@ -335,7 +365,25 @@ final class InviteManager extends Component
 
     private function addressLimiterKey(string $email): string
     {
-        return 'invite-mail-address:'.sha1(Str::lower($email));
+        return 'invite-mail-address:'.sha1($this->mailbox($email));
+    }
+
+    /**
+     * The inbox an address delivers to, for the per-address limit only
+     * (the invite keeps the address as typed): a `+tag` is dropped, and
+     * for Gmail the dots too, since `a.b+x@gmail.com` and `ab@gmail.com`
+     * are the same inbox and would otherwise each get their own budget.
+     */
+    private function mailbox(string $email): string
+    {
+        [$local, $domain] = array_pad(explode('@', Str::lower(trim($email)), 2), 2, '');
+        $local = Str::before($local, '+');
+
+        if (in_array($domain, ['gmail.com', 'googlemail.com'], true)) {
+            return str_replace('.', '', $local).'@gmail.com';
+        }
+
+        return $local.'@'.$domain;
     }
 
     private function staffLimiterKey(): string
