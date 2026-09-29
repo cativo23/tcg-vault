@@ -10,7 +10,7 @@
     <ul>
         <li><strong>Your account:</strong> name, username, email address, and your password (stored only as a one-way hash, never readable). Name, email and password are needed to have an account.</li>
         <li><strong>Your collection:</strong> the cards you add and everything you enter about them — variant, condition, grade, quantity, notes and photos. Location and other details your phone embeds in a photo (such as the device and when it was taken) are removed before the photo is stored; only its rotation and colour profile are kept.</li>
-        <li><strong>Invites:</strong> the email address an invite was created for, and who created, accepted or revoked it. The app does not email invites; they are shared as links.</li>
+        <li><strong>Invites:</strong> the email address an invite was created for, and who created, accepted or revoked it. The invited address receives the invite by email, once when it is created and again only if staff resend it; nothing else is sent to it unless an account is created.</li>
         <li><strong>Feedback you send:</strong> your message, its type, your username and email, and the page you were on.</li>
         <li><strong>Cookies:</strong> a session cookie and a security (CSRF) cookie, plus — only if you tick “Remember me” — a login cookie that lasts up to about 400 days; and, only if the age check at signup fails, a cookie that blocks another attempt (see “Children”). All are strictly necessary for the app to work, so no consent is asked. Your light/dark theme choice is saved in your own browser only.</li>
         <li><strong>Error and debug records:</strong> see “Where your data lives” below.</li>
@@ -34,7 +34,7 @@
     <h2>Where your data lives, and who else touches it</h2>
     <ul>
         <li><strong>Hosting:</strong> the app, its database and your photos run on a server rented from Hetzner Online GmbH in Nuremberg, Germany (EU).</li>
-        <li><strong>Email:</strong> feedback and account emails (such as password resets) are sent through Resend, Inc., in the United States.</li>
+        <li><strong>Email:</strong> feedback and account emails (such as password resets and invitations) are sent through Resend, Inc., in the United States.</li>
         <li><strong>Error reports:</strong> when something breaks, a report goes to a self-hosted Bugsink instance on my own server infrastructure. It includes the request that failed, which can contain other things you typed.</li>
         <li><strong>Debug records:</strong> a short-lived log of failed requests and errors, which can include your IP address, account name and email, and the request details. It is deleted within 3 days. Passwords you type are masked before either record is kept.</li>
         <li><strong>Card data and artwork:</strong> card images load directly from tcgdex (<code>assets.tcgdex.net</code>), so your browser contacts their servers and they see your IP address.</li>
