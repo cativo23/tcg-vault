@@ -509,3 +509,19 @@ test('a count left by the previous limiter format still counts after deploy', fu
 
     Mail::assertNothingQueued();
 });
+
+test('an earlier refusal disappears once a valid invite is sent', function () {
+    Mail::fake();
+    $admin = inviteAdmin();
+    User::factory()->create(['email' => 'member@example.com']);
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->set('email', 'member@example.com')
+        ->call('createInvite')
+        ->assertHasErrors('email')
+        ->set('email', 'newcomer@example.com')
+        ->call('createInvite')
+        ->assertHasNoErrors()
+        ->assertSee('Invite sent to newcomer@example.com');
+});

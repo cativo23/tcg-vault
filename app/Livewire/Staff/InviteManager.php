@@ -60,6 +60,9 @@ final class InviteManager extends Component
         Gate::authorize('manage-invites');
 
         $this->sentTo = null;
+        // Validation below runs on a normalised copy, not through
+        // $this->validate(), so it doesn't clear an earlier refusal itself.
+        $this->resetErrorBag(['email', 'resend']);
 
         // A Livewire action isn't reachable by the route's own
         // `throttle` middleware at all (it runs through
@@ -191,6 +194,7 @@ final class InviteManager extends Component
         Gate::authorize('manage-invites');
 
         $this->sentTo = null;
+        $this->resetErrorBag(['email', 'resend']);
 
         // Same per-staff pace as creating: resends also go through the
         // shared limit lock, so an unthrottled loop would crowd out
