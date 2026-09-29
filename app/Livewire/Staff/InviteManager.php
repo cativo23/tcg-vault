@@ -13,9 +13,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Throwable;
 
 #[Layout('layouts.app')]
 final class InviteManager extends Component
@@ -24,7 +26,14 @@ final class InviteManager extends Component
 
     private const PER_PAGE = 24;
 
-    private const RESENDS_PER_HOUR = 3;
+    /**
+     * Every invite email, created or resent, counts against both limits:
+     * per address, so revoking and re-inviting can't flood one inbox, and
+     * per staff account, so a stolen account can't mail strangers at scale.
+     */
+    private const EMAILS_PER_ADDRESS_PER_HOUR = 3;
+
+    private const EMAILS_PER_STAFF_PER_DAY = 50;
 
     public string $email = '';
 
@@ -39,6 +48,8 @@ final class InviteManager extends Component
     public function createInvite(): void
     {
         Gate::authorize('manage-invites');
+
+        $this->sentTo = null;
 
         // A Livewire action isn't reachable by the route's own
         // `throttle` middleware at all (it runs through
@@ -71,13 +82,17 @@ final class InviteManager extends Component
             ],
         ]);
 
+        if ($limit = $this->emailLimitReached($this->email)) {
+            $this->addError('email', $limit);
+
+            return;
+        }
+
         $attributes = [
             'email' => $this->email,
             'created_by' => auth()->id(),
             'expires_at' => now()->addDays(config('tcgvault.invite_ttl_days', 7)),
         ];
-
-        $this->sentTo = null;
 
         try {
             // Wrapped explicitly so a violation only rolls back THIS
@@ -143,10 +158,7 @@ final class InviteManager extends Component
         $this->sendInviteEmail($invite);
     }
 
-    /**
-     * For an invite email that never arrived or got lost. Limited per
-     * invite so the button can't be used to flood someone's inbox.
-     */
+    /** For an invite email that never arrived or got lost. */
     public function resendInvite(int $inviteId): void
     {
         Gate::authorize('manage-invites');
@@ -158,23 +170,56 @@ final class InviteManager extends Component
             return;
         }
 
-        $limiterKey = 'resend-invite:'.$invite->id;
-
-        if (RateLimiter::tooManyAttempts($limiterKey, self::RESENDS_PER_HOUR)) {
-            $this->addError('resend', 'This invite was already resent '.self::RESENDS_PER_HOUR.' times in the last hour.');
+        if ($limit = $this->emailLimitReached($invite->email)) {
+            $this->addError('resend', $limit);
 
             return;
         }
 
-        RateLimiter::hit($limiterKey, 3600);
-
         $this->sendInviteEmail($invite);
     }
 
+    private function emailLimitReached(string $email): ?string
+    {
+        if (RateLimiter::tooManyAttempts($this->addressLimiterKey($email), self::EMAILS_PER_ADDRESS_PER_HOUR)) {
+            return 'This address was already sent '.self::EMAILS_PER_ADDRESS_PER_HOUR.' invite emails in the last hour.';
+        }
+
+        if (RateLimiter::tooManyAttempts($this->staffLimiterKey(), self::EMAILS_PER_STAFF_PER_DAY)) {
+            return 'You’ve sent '.self::EMAILS_PER_STAFF_PER_DAY.' invite emails today. Try again tomorrow.';
+        }
+
+        return null;
+    }
+
+    /**
+     * The invite already exists when this runs, so a queue that can't be
+     * reached leaves a pending invite whose email can be resent.
+     */
     private function sendInviteEmail(Invite $invite): void
     {
-        Mail::to($invite->email)->queue(new InviteSent($invite));
+        try {
+            Mail::to($invite->email)->queue(new InviteSent($invite));
+        } catch (Throwable $exception) {
+            report($exception);
+            $this->addError('resend', 'The invite for '.$invite->email.' was saved, but its email couldn’t be sent. Use Resend to try again.');
+
+            return;
+        }
+
+        RateLimiter::hit($this->addressLimiterKey($invite->email), 3600);
+        RateLimiter::hit($this->staffLimiterKey(), 86400);
         $this->sentTo = $invite->email;
+    }
+
+    private function addressLimiterKey(string $email): string
+    {
+        return 'invite-mail-address:'.sha1(Str::lower($email));
+    }
+
+    private function staffLimiterKey(): string
+    {
+        return 'invite-mail-admin:'.auth()->id();
     }
 
     public function revokeInvite(int $inviteId): void

@@ -6,8 +6,10 @@ use App\Mail\InviteSent;
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 
 function inviteAdmin(): User
 {
@@ -32,7 +34,7 @@ test('creating an invite emails the invited address', function () {
     $invite = Invite::where('email', 'someone@example.com')->firstOrFail();
 
     Mail::assertQueued(InviteSent::class, fn (InviteSent $mail) => $mail->hasTo('someone@example.com')
-        && $mail->invite->is($invite));
+        && $mail->inviteId === $invite->id);
     Mail::assertQueuedCount(1);
 });
 
@@ -67,7 +69,7 @@ test('re-inviting over an expired invite emails the new invite once', function (
     $fresh = Invite::where('email', 'again@example.com')->usable()->firstOrFail();
 
     Mail::assertQueuedCount(1);
-    Mail::assertQueued(InviteSent::class, fn (InviteSent $mail) => $mail->invite->is($fresh));
+    Mail::assertQueued(InviteSent::class, fn (InviteSent $mail) => $mail->inviteId === $fresh->id);
 });
 
 test('staff can resend a pending invite', function () {
@@ -113,17 +115,73 @@ test('one invite is resent at most three times an hour', function () {
     Mail::assertQueuedCount(3);
 });
 
-test('a regular user cannot resend an invite', function () {
+test('resending re-checks the permission, not just loading the page', function () {
     Mail::fake();
-    $user = User::factory()->create();
+    $admin = inviteAdmin();
     $invite = Invite::factory()->create();
 
-    Livewire::actingAs($user)
-        ->test('staff.invite-manager')
-        ->assertForbidden();
+    $component = Livewire::actingAs($admin)->test('staff.invite-manager');
+    $admin->revokePermissionTo('manage-invites');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+    $component->call('resendInvite', $invite->id)->assertForbidden();
 
     Mail::assertNothingQueued();
-    expect($invite->refresh()->revoked_at)->toBeNull();
+});
+
+test('the notice for the last sent invite clears when the next one is refused', function () {
+    Mail::fake();
+    $admin = inviteAdmin();
+    User::factory()->create(['email' => 'member@example.com']);
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->set('email', 'first@example.com')
+        ->call('createInvite')
+        ->assertSee('Invite sent to first@example.com')
+        ->set('email', 'member@example.com')
+        ->call('createInvite')
+        ->assertHasErrors('email')
+        ->assertDontSee('Invite sent to first@example.com');
+});
+
+test('the resend limit is explained, not silently ignored', function () {
+    Mail::fake();
+    $admin = inviteAdmin();
+    $invite = Invite::factory()->create();
+    $component = Livewire::actingAs($admin)->test('staff.invite-manager');
+
+    for ($i = 0; $i < 3; $i++) {
+        $component->call('resendInvite', $invite->id);
+    }
+
+    $component->call('resendInvite', $invite->id)->assertHasErrors('resend');
+});
+
+test('if the email cannot be queued, the invite is kept and staff are told to resend', function () {
+    $admin = inviteAdmin();
+    Mail::shouldReceive('to')->andThrow(new RuntimeException('queue down'));
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->set('email', 'someone@example.com')
+        ->call('createInvite')
+        ->assertOk()
+        ->assertHasErrors('resend')
+        ->assertDontSee('Invite sent to someone@example.com');
+
+    expect(Invite::where('email', 'someone@example.com')->usable()->exists())->toBeTrue();
+});
+
+test('an invite deleted before its email leaves the queue is skipped, not failed', function () {
+    $invite = Invite::factory()->create(['email' => 'gone@example.com']);
+    $mail = (new InviteSent($invite))->to('gone@example.com');
+
+    $invite->delete();
+    $restored = unserialize(serialize($mail));
+    $restored->send(app('mail.manager'));
+
+    expect(app('mail.manager')->mailer('array')->getSymfonyTransport()->messages())->toHaveCount(0);
 });
 
 test('an invite revoked before its email leaves the queue is not sent', function () {
@@ -160,4 +218,50 @@ test('the invite email carries the working signed link, who sent it and when it 
     $mail->assertSeeInHtml('carlos');
     $mail->assertSeeInText($invite->expires_at->format('F j, Y'));
     $mail->assertSeeInText('no account is created');
+});
+
+test('revoking and re-inviting cannot be used to flood one address', function () {
+    Mail::fake();
+    $admin = inviteAdmin();
+    $component = Livewire::actingAs($admin)->test('staff.invite-manager');
+
+    for ($i = 0; $i < 4; $i++) {
+        $component->set('email', 'victim@example.com')->call('createInvite');
+        Invite::where('email', 'victim@example.com')->usable()->first()?->revoke();
+    }
+
+    Mail::assertQueuedCount(3);
+    $component->assertHasErrors('email');
+});
+
+test('creating and resending share the per-address limit', function () {
+    Mail::fake();
+    $admin = inviteAdmin();
+    $component = Livewire::actingAs($admin)->test('staff.invite-manager')
+        ->set('email', 'shared@example.com')
+        ->call('createInvite');
+    $invite = Invite::where('email', 'shared@example.com')->firstOrFail();
+
+    for ($i = 0; $i < 3; $i++) {
+        $component->call('resendInvite', $invite->id);
+    }
+
+    Mail::assertQueuedCount(3);
+});
+
+test('one staff account can send at most 50 invite emails a day', function () {
+    Mail::fake();
+    $admin = inviteAdmin();
+    for ($i = 0; $i < 50; $i++) {
+        RateLimiter::hit('invite-mail-admin:'.$admin->id, 86400);
+    }
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->set('email', 'fifty-first@example.com')
+        ->call('createInvite')
+        ->assertHasErrors('email');
+
+    Mail::assertNothingQueued();
+    expect(Invite::where('email', 'fifty-first@example.com')->exists())->toBeFalse();
 });
