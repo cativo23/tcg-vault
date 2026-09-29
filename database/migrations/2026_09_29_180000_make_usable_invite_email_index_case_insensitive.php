@@ -16,7 +16,8 @@ return new class extends Migration
      * Addresses that already hold more than one pending invite under
      * different spellings would make the index impossible to build, so
      * all but one are revoked first. The one kept is still usable if any
-     * is, and otherwise the newest.
+     * is, and otherwise the newest. Those rows get no revoked_by, and
+     * rolling back does not un-revoke them.
      */
     public function up(): void
     {
