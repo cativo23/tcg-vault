@@ -63,7 +63,7 @@ test('a member’s feedback text stays escaped, never turned into markup or link
     $mail->assertSeeInHtml('&lt;b&gt;bold&lt;/b&gt;', false);
     $mail->assertDontSeeInHtml('<b>bold</b>', false);
     $mail->assertDontSeeInHtml('href="https://evil.example"', false);
-    $mail->assertSeeInText('<b>bold</b> [click](https://evil.example)', false);
+    $mail->assertSeeInText('<b>bold</b> [click](https://evil.example)');
 });
 
 test('the branded emails load no remote images or fonts', function (Closure $make) {
@@ -71,3 +71,25 @@ test('the branded emails load no remote images or fonts', function (Closure $mak
 
     expect($html)->not->toContain('<img')->not->toContain('fonts.googleapis')->not->toContain('@import');
 })->with(brandedMailables());
+
+test('the password reset email has a plain-text part with the link', function () {
+    $user = User::factory()->create(['email' => 'ash@example.com']);
+
+    $user->notify(new ResetPassword('reset-token-123'));
+
+    $messages = app('mail.manager')->mailer('array')->getSymfonyTransport()->messages();
+    expect($messages)->toHaveCount(1);
+
+    $text = $messages->first()->getOriginalMessage()->getTextBody();
+    expect($text)->toContain(route('password.reset', ['token' => 'reset-token-123', 'email' => 'ash@example.com']))
+        ->toContain('60 minutes')
+        ->not->toContain('<table');
+});
+
+test('the password reset email still reads correctly when no expiry is configured', function () {
+    config(['auth.passwords.users.expire' => null]);
+
+    $html = (string) resetMail(User::factory()->create())->render();
+
+    expect($html)->toContain('60 minutes');
+});

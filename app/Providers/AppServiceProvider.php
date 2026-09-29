@@ -65,7 +65,7 @@ class AppServiceProvider extends ServiceProvider
             ], false));
             $data = [
                 'url' => $url,
-                'minutes' => config('auth.passwords.'.config('auth.defaults.passwords').'.expire'),
+                'minutes' => config('auth.passwords.'.config('auth.defaults.passwords').'.expire') ?? 60,
             ];
 
             return (new MailMessage)
