@@ -296,3 +296,33 @@ test('an invite email that could not be queued does not use up the limit', funct
     $component->call('resendInvite', $invite->id)->assertHasErrors('resend');
     expect($queued)->toBe(3);
 });
+
+test('giving back a slot after the limit window expired never adds an extra one', function () {
+    $admin = inviteAdmin();
+    $invite = Invite::factory()->create(['email' => 'late-fail@example.com']);
+    $component = Livewire::actingAs($admin)->test('staff.invite-manager');
+
+    // The first send fails only after the hour has run out, so its slot
+    // is given back to a counter that has already expired.
+    $calls = 0;
+    $queued = 0;
+    $pending = Mockery::mock();
+    $pending->shouldReceive('queue')->andReturnUsing(function () use (&$queued) {
+        $queued++;
+    });
+    Mail::shouldReceive('to')->andReturnUsing(function () use (&$calls, $pending) {
+        if (++$calls === 1) {
+            $this->travel(3601)->seconds();
+
+            throw new RuntimeException('queue down');
+        }
+
+        return $pending;
+    });
+
+    for ($i = 0; $i < 5; $i++) {
+        $component->call('resendInvite', $invite->id);
+    }
+
+    expect($queued)->toBe(3);
+});
