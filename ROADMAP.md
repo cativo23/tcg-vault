@@ -78,10 +78,7 @@ roadmap safe to attempt.
   database and archives the photo volume every night, keeps two weeks,
   and the scheduler alerts Discord if either goes stale. Restore steps
   are in `deploy/README.md`.
-- **Copy the backups off the host.** The nightly files still sit on the
-  same VPS as the data, so losing polaris2 loses them too. The free tier
-  (Cloudflare R2, 10GB) needs billing enabled on the Cloudflare account
-  first, on hold until that card is added.
+- **Copy the backups off the host** — moved to the end of Beyond v1.
 
 ## v0.7.0 — Correctness and accessibility
 
@@ -203,8 +200,8 @@ everything above.
 - **Accepted risk:** the backups are still on the same host (the v0.6.0
   off-host item is open). They cover a bad migration, a wrong delete or a
   corrupt volume, but losing polaris2 loses them too. The beta opened
-  anyway because the database is small and the member count is too; that
-  item stays first in line once Cloudflare billing is enabled.
+  anyway because the database is small and the member count is too; the
+  off-host copy is now the last item of Beyond v1.
 - Invites emailed from the app, and every email in one branded layout
   (v0.12.0), checked end to end in production.
 - The invite-email limits hold under parallel requests, and one inbox can
@@ -229,6 +226,10 @@ interesting it is to build.
   Deliberately last: evaluate alongside centralizing Redis across other
   projects on the same host rather than standing up a second one-off
   instance here.
+- **Copy the backups off the host.** The nightly files still sit on the
+  same VPS as the data, so losing polaris2 loses them too. The free tier
+  (Cloudflare R2, 10GB) needs billing enabled on the Cloudflare account
+  first. Moved here from v0.6.0, last on purpose.
 
 ## Not on the roadmap
 
