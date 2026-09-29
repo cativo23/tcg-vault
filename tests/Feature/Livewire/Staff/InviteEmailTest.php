@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Mail\InviteSent;
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
@@ -325,4 +326,65 @@ test('giving back a slot after the limit window expired never adds an extra one'
     }
 
     expect($queued)->toBe(3);
+});
+
+test('a slot given back after the window rolled over is not taken from the new window', function () {
+    $admin = inviteAdmin();
+    $invite = Invite::factory()->create(['email' => 'rollover@example.com']);
+
+    // The first send fails only after the hour has run out, and by then
+    // another send has already opened the next hour's window.
+    $calls = 0;
+    $queued = 0;
+    $pending = Mockery::mock();
+    $pending->shouldReceive('queue')->andReturnUsing(function () use (&$queued) {
+        $queued++;
+    });
+    Mail::shouldReceive('to')->andReturnUsing(function () use (&$calls, $pending, $admin, $invite) {
+        if (++$calls === 1) {
+            $this->travel(3601)->seconds();
+            Livewire::actingAs($admin)->test('staff.invite-manager')->call('resendInvite', $invite->id);
+
+            throw new RuntimeException('queue down');
+        }
+
+        return $pending;
+    });
+
+    Livewire::actingAs($admin)->test('staff.invite-manager')->call('resendInvite', $invite->id);
+
+    for ($i = 0; $i < 5; $i++) {
+        Livewire::actingAs($admin)->test('staff.invite-manager')->call('resendInvite', $invite->id);
+    }
+
+    expect($queued)->toBe(3);
+});
+
+test('no invite email is counted or sent while another request holds the limit lock', function () {
+    Mail::fake();
+    $admin = inviteAdmin();
+    $invite = Invite::factory()->create();
+    $lock = Cache::lock('invite-mail-limits', 30);
+    $lock->get();
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->call('resendInvite', $invite->id)
+        ->assertHasErrors('resend');
+
+    $lock->release();
+    Mail::assertNothingQueued();
+});
+test('a count left by the previous limiter format still counts after deploy', function () {
+    Mail::fake();
+    $admin = inviteAdmin();
+    $invite = Invite::factory()->create(['email' => 'carried@example.com']);
+    Cache::put('invite-mail-address:'.sha1('carried@example.com'), 3, 3600);
+
+    Livewire::actingAs($admin)
+        ->test('staff.invite-manager')
+        ->call('resendInvite', $invite->id)
+        ->assertHasErrors('resend');
+
+    Mail::assertNothingQueued();
 });

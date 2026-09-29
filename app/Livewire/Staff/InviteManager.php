@@ -7,8 +7,11 @@ namespace App\Livewire\Staff;
 use App\Mail\InviteSent;
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
@@ -34,6 +37,11 @@ final class InviteManager extends Component
     private const EMAILS_PER_ADDRESS_PER_HOUR = 3;
 
     private const EMAILS_PER_STAFF_PER_DAY = 50;
+
+    /** One lock for every invite-email counter, so both limits move together. */
+    private const LIMITS_LOCK = 'invite-mail-limits';
+
+    private const LIMITS_LOCK_WAIT_SECONDS = 3;
 
     public string $email = '';
 
@@ -82,8 +90,10 @@ final class InviteManager extends Component
             ],
         ]);
 
-        if ($limit = $this->reserveEmail($this->email)) {
-            $this->addError('email', $limit);
+        $reservation = $this->reserveEmail($this->email);
+
+        if (is_string($reservation)) {
+            $this->addError('email', $reservation);
 
             return;
         }
@@ -125,7 +135,7 @@ final class InviteManager extends Component
                 ->first();
 
             if ($stale === null || $stale->isUsable()) {
-                $this->releaseEmail($this->email);
+                $this->releaseEmail($reservation);
                 $this->addError('email', 'This email already has a pending invite.');
 
                 return;
@@ -149,7 +159,7 @@ final class InviteManager extends Component
                     throw $retryException;
                 }
 
-                $this->releaseEmail($this->email);
+                $this->releaseEmail($reservation);
                 $this->addError('email', 'This email already has a pending invite.');
 
                 return;
@@ -157,7 +167,7 @@ final class InviteManager extends Component
         }
 
         $this->reset('email');
-        $this->sendInviteEmail($invite);
+        $this->sendInviteEmail($invite, $reservation);
     }
 
     /** For an invite email that never arrived or got lost. */
@@ -172,64 +182,141 @@ final class InviteManager extends Component
             return;
         }
 
-        if ($limit = $this->reserveEmail($invite->email)) {
-            $this->addError('resend', $limit);
+        $reservation = $this->reserveEmail($invite->email);
+
+        if (is_string($reservation)) {
+            $this->addError('resend', $reservation);
 
             return;
         }
 
-        $this->sendInviteEmail($invite);
+        $this->sendInviteEmail($invite, $reservation);
     }
 
     /**
-     * Counts the email against both limits before it is sent. Incrementing
-     * first and undoing it when over the limit is atomic, so requests sent
-     * at the same moment can't all slip past a check made before any of
-     * them counted. Returns why it was refused, or null once reserved.
+     * Counts the email against both limits before it is sent, under one
+     * lock: a read-then-write counter is only safe when no other request
+     * can read it in between. Returns why it was refused, or the
+     * reservation to give back if the email never goes out.
+     *
+     * @return string|array<string, int> refusal message, or key => window expiry
      */
-    private function reserveEmail(string $email): ?string
+    private function reserveEmail(string $email): string|array
     {
-        if (RateLimiter::increment($this->addressLimiterKey($email), 3600) > self::EMAILS_PER_ADDRESS_PER_HOUR) {
-            RateLimiter::decrement($this->addressLimiterKey($email), 3600);
+        $limits = [
+            $this->addressLimiterKey($email) => [
+                self::EMAILS_PER_ADDRESS_PER_HOUR, 3600,
+                'This address was already sent '.self::EMAILS_PER_ADDRESS_PER_HOUR.' invite emails in the last hour.',
+            ],
+            $this->staffLimiterKey() => [
+                self::EMAILS_PER_STAFF_PER_DAY, 86400,
+                'You’ve sent '.self::EMAILS_PER_STAFF_PER_DAY.' invite emails today. Try again tomorrow.',
+            ],
+        ];
 
-            return 'This address was already sent '.self::EMAILS_PER_ADDRESS_PER_HOUR.' invite emails in the last hour.';
+        try {
+            return Cache::lock(self::LIMITS_LOCK, 10)->block(self::LIMITS_LOCK_WAIT_SECONDS, function () use ($limits): string|array {
+                $windows = [];
+
+                foreach ($limits as $key => [$max, $decay, $refusal]) {
+                    $window = $this->currentWindow($key)
+                        ?? $this->legacyWindow($key, $decay)
+                        ?? ['hits' => 0, 'expires' => now()->getTimestamp() + $decay];
+
+                    if ($window['hits'] >= $max) {
+                        return $refusal;
+                    }
+
+                    $windows[$key] = $window;
+                }
+
+                foreach ($windows as $key => $window) {
+                    $this->storeWindow($key, $window['hits'] + 1, $window['expires']);
+                }
+
+                return array_map(fn (array $window): int => $window['expires'], $windows);
+            });
+        } catch (LockTimeoutException) {
+            return 'Another invite email is being sent right now. Try again in a moment.';
         }
-
-        if (RateLimiter::increment($this->staffLimiterKey(), 86400) > self::EMAILS_PER_STAFF_PER_DAY) {
-            $this->releaseEmail($email);
-
-            return 'You’ve sent '.self::EMAILS_PER_STAFF_PER_DAY.' invite emails today. Try again tomorrow.';
-        }
-
-        return null;
     }
 
     /**
-     * Gives back a reservation whose email never went out. A counter that
-     * expired in the meantime is left alone: decrementing it would start a
-     * new one below zero and hand out an extra email.
+     * Gives back a reservation whose email never went out — but only to
+     * the window it was taken from. Once that window has ended, the
+     * counter under the same key belongs to later emails, and taking a
+     * slot off it would let one more through than the limit allows.
+     *
+     * @param  array<string, int>  $reservation
      */
-    private function releaseEmail(string $email): void
+    private function releaseEmail(array $reservation): void
     {
-        foreach ([$this->addressLimiterKey($email) => 3600, $this->staffLimiterKey() => 86400] as $key => $decay) {
-            if (RateLimiter::attempts($key) > 0) {
-                RateLimiter::decrement($key, $decay);
-            }
+        try {
+            Cache::lock(self::LIMITS_LOCK, 10)->block(self::LIMITS_LOCK_WAIT_SECONDS, function () use ($reservation): void {
+                foreach ($reservation as $key => $expires) {
+                    $window = $this->currentWindow($key);
+
+                    if ($window !== null && $window['expires'] === $expires && $window['hits'] > 0) {
+                        $this->storeWindow($key, $window['hits'] - 1, $expires);
+                    }
+                }
+            });
+        } catch (LockTimeoutException) {
+            // Keeping the slot fails closed: the limit only gets stricter.
         }
+    }
+
+    /** @return array{hits: int, expires: int}|null */
+    private function currentWindow(string $key): ?array
+    {
+        $window = Cache::get($key);
+
+        if (! is_array($window) || ! is_int($window['hits'] ?? null) || ! is_int($window['expires'] ?? null)) {
+            return null;
+        }
+
+        return $window['expires'] > now()->getTimestamp()
+            ? ['hits' => $window['hits'], 'expires' => $window['expires']]
+            : null;
+    }
+
+    /**
+     * A bare count under the same key is RateLimiter's format, which these
+     * limits used before. Its own expiry can't be read back, so it is
+     * treated as a window starting now: the limit can only get stricter.
+     *
+     * @return array{hits: int, expires: int}|null
+     */
+    private function legacyWindow(string $key, int $decay): ?array
+    {
+        $hits = Cache::get($key);
+
+        if (! is_numeric($hits) || (int) $hits <= 0) {
+            return null;
+        }
+
+        return ['hits' => (int) $hits, 'expires' => now()->getTimestamp() + $decay];
+    }
+
+    private function storeWindow(string $key, int $hits, int $expires): void
+    {
+        Cache::put($key, ['hits' => $hits, 'expires' => $expires], Carbon::createFromTimestamp($expires));
     }
 
     /**
      * The invite already exists when this runs, so a queue that can't be
      * reached leaves a pending invite whose email can be resent, and its
      * reservation is given back.
+     *
+     * @param  array<string, int>  $reservation
      */
-    private function sendInviteEmail(Invite $invite): void
+    private function sendInviteEmail(Invite $invite, array $reservation): void
     {
         try {
             Mail::to($invite->email)->queue(new InviteSent($invite));
         } catch (Throwable $exception) {
             report($exception);
-            $this->releaseEmail($invite->email);
+            $this->releaseEmail($reservation);
             $this->addError('resend', 'The invite for '.$invite->email.' was saved, but its email couldn’t be sent. Use Resend to try again.');
 
             return;
