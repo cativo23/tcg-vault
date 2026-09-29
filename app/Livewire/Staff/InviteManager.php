@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Livewire\Staff;
 
+use App\Mail\InviteSent;
 use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -22,7 +24,12 @@ final class InviteManager extends Component
 
     private const PER_PAGE = 24;
 
+    private const RESENDS_PER_HOUR = 3;
+
     public string $email = '';
+
+    /** The address the last invite email was queued for, shown as a notice. */
+    public ?string $sentTo = null;
 
     public function mount(): void
     {
@@ -70,13 +77,15 @@ final class InviteManager extends Component
             'expires_at' => now()->addDays(config('tcgvault.invite_ttl_days', 7)),
         ];
 
+        $this->sentTo = null;
+
         try {
             // Wrapped explicitly so a violation only rolls back THIS
             // statement (via a savepoint when nested inside a wider
             // transaction, e.g. under RefreshDatabase in tests) —
             // without this, a failed INSERT can otherwise poison every
             // later query in an enclosing transaction.
-            DB::transaction(fn () => Invite::create($attributes));
+            $invite = DB::transaction(fn () => Invite::create($attributes));
         } catch (QueryException $exception) {
             // The validation check above already covers the common
             // sequential case; this catches the genuine race it can't
@@ -109,7 +118,7 @@ final class InviteManager extends Component
             $stale->revoke(auth()->user()?->id);
 
             try {
-                DB::transaction(fn () => Invite::create($attributes));
+                $invite = DB::transaction(fn () => Invite::create($attributes));
             } catch (QueryException $retryException) {
                 // The row that conflicted a moment ago was the stale one
                 // just revoked above — but between that revoke and this
@@ -131,6 +140,41 @@ final class InviteManager extends Component
         }
 
         $this->reset('email');
+        $this->sendInviteEmail($invite);
+    }
+
+    /**
+     * For an invite email that never arrived or got lost. Limited per
+     * invite so the button can't be used to flood someone's inbox.
+     */
+    public function resendInvite(int $inviteId): void
+    {
+        Gate::authorize('manage-invites');
+
+        $this->sentTo = null;
+        $invite = Invite::findOrFail($inviteId);
+
+        if (! $invite->isUsable()) {
+            return;
+        }
+
+        $limiterKey = 'resend-invite:'.$invite->id;
+
+        if (RateLimiter::tooManyAttempts($limiterKey, self::RESENDS_PER_HOUR)) {
+            $this->addError('resend', 'This invite was already resent '.self::RESENDS_PER_HOUR.' times in the last hour.');
+
+            return;
+        }
+
+        RateLimiter::hit($limiterKey, 3600);
+
+        $this->sendInviteEmail($invite);
+    }
+
+    private function sendInviteEmail(Invite $invite): void
+    {
+        Mail::to($invite->email)->queue(new InviteSent($invite));
+        $this->sentTo = $invite->email;
     }
 
     public function revokeInvite(int $inviteId): void
