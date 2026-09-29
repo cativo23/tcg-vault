@@ -36,8 +36,10 @@ class LoginForm extends Form
         // attemptWhen runs the callback only after the password checks out,
         // so a wrong password never reveals that an account is suspended.
         $suspended = false;
+        // Emails and usernames are both stored lowercase, and the provider
+        // matches exactly, so the typed identifier is lowered to match.
         $signedIn = Auth::attemptWhen(
-            [$column => $this->email, 'password' => $this->password],
+            [$column => Str::lower($this->email), 'password' => $this->password],
             function (User $user) use (&$suspended): bool {
                 $suspended = $user->isSuspended();
 

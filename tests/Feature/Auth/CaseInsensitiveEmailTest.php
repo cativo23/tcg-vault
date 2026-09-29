@@ -87,8 +87,63 @@ test('the migration stops instead of choosing between two accounts for one inbox
     $second = User::factory()->create(['email' => 'Dup@example.com']);
 
     expect(fn () => (require database_path(USER_EMAIL_MIGRATION))->up())
-        ->toThrow(RuntimeException::class, 'dup@example.com');
+        ->toThrow(RuntimeException::class);
 
     expect($first->refresh()->email)->toBe('dup@example.com')
         ->and($second->refresh()->email)->toBe('Dup@example.com');
+});
+
+test('signing in works with the email typed in any case', function () {
+    $user = User::factory()->create(['email' => 'ash@example.com']);
+
+    Volt::test('pages.auth.login')
+        ->set('form.email', 'Ash@EXAMPLE.com')
+        ->set('form.password', 'password')
+        ->call('login')
+        ->assertHasNoErrors();
+
+    $this->assertAuthenticatedAs($user);
+});
+
+test('the migration moves pending reset links to the lowercased address', function () {
+    DB::statement('DROP INDEX IF EXISTS users_email_lower_unique');
+    User::factory()->create(['email' => 'Mixed@Example.com']);
+    DB::table('password_reset_tokens')->insert([
+        'email' => 'Mixed@Example.com', 'token' => 'hashed', 'created_at' => now(),
+    ]);
+
+    (require database_path(USER_EMAIL_MIGRATION))->up();
+
+    expect(DB::table('password_reset_tokens')->where('email', 'mixed@example.com')->exists())->toBeTrue();
+});
+
+test('the admin seeder stores the admin email in lowercase and finds it again on a re-seed', function () {
+    Role::findOrCreate('super-admin');
+    config([
+        'tcgvault.admin_email' => 'Carlos@Example.com',
+        'tcgvault.admin_password' => 'a-real-password',
+        'tcgvault.admin_username' => 'carlos',
+    ]);
+
+    $this->seed();
+    $this->seed();
+
+    expect(User::where('username', 'carlos')->value('email'))->toBe('carlos@example.com')
+        ->and(User::whereRaw('LOWER(email) = ?', ['carlos@example.com'])->count())->toBe(1);
+});
+
+test('the migration names accounts by id, not address, when it stops', function () {
+    DB::statement('DROP INDEX IF EXISTS users_email_lower_unique');
+    $first = User::factory()->create(['email' => 'secret@example.com']);
+    $second = User::factory()->create(['email' => 'Secret@example.com']);
+
+    try {
+        (require database_path(USER_EMAIL_MIGRATION))->up();
+        $this->fail('The migration should have stopped.');
+    } catch (RuntimeException $exception) {
+        expect($exception->getMessage())
+            ->toContain((string) $first->id)
+            ->toContain((string) $second->id)
+            ->not->toContain('secret@example.com');
+    }
 });
