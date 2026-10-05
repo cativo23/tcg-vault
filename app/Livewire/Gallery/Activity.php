@@ -137,7 +137,7 @@ final class Activity extends Component
      * Per copy, not per card: a collector holding one normal and one
      * reverse-holofoil of the same card owns two differently priced
      * things, and pricing the card once times the total quantity charts
-     * a collection nobody has. Valuation::totalsByCurrencyAsOf() is the
+     * a collection nobody has. Valuation::totalsByCurrencyOver() is the
      * same summation the headline figure uses, so the series' last point
      * and the number printed above it always agree.
      *
@@ -157,10 +157,12 @@ final class Activity extends Component
             return collect();
         }
 
-        return $dates->map(function ($date) use ($cards, $currency, $valuation) {
-            $minor = $valuation->totalsByCurrencyAsOf($cards, $date)[$currency] ?? 0;
+        // All days in one pass over each card's history, not one pass per day.
+        $totalsByDay = $valuation->totalsByCurrencyOver($cards, $dates);
 
-            return ['date' => CarbonImmutable::parse($date), 'minor' => $minor];
-        })->values();
+        return $dates->map(fn ($date) => [
+            'date' => CarbonImmutable::parse($date),
+            'minor' => $totalsByDay[$date->toDateString()][$currency] ?? 0,
+        ])->values();
     }
 }

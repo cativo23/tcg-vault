@@ -60,6 +60,78 @@ final class CardPriceResolver
     }
 
     /**
+     * resolveForVariantAsOf() for every day in $dayKeys at once, in one
+     * pass over the card's history instead of one pass per day — what a
+     * value-over-time series needs. Each step of the priority chain is
+     * "the newest row of this subset on or before the day", so the chain
+     * is resolved per subset and the first hit wins, exactly as
+     * variantFrom() and resolveFrom() pick it.
+     *
+     * @param  Collection<int, string>  $dayKeys  'Y-m-d' days
+     * @return array<string, CardPriceSnapshot|null> keyed by day
+     */
+    public function resolveForVariantOnDays(Card $card, ?string $variant, Collection $dayKeys): array
+    {
+        $snapshots = $card->priceSnapshots;
+
+        if ($variant === null) {
+            $chain = [
+                $snapshots->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && in_array($s->variant, ['normal', 'holofoil'], true)),
+                $snapshots->filter(fn (CardPriceSnapshot $s) => $s->source === 'cardmarket' && $s->variant === 'default'),
+                $snapshots,
+            ];
+        } else {
+            $matching = $snapshots->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant);
+            $chain = [
+                $matching->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer'),
+                $matching,
+            ];
+        }
+
+        $byStep = array_map(fn (Collection $subset) => $this->newestOnOrBefore($subset, $dayKeys), $chain);
+
+        $resolved = [];
+        foreach ($dayKeys as $day) {
+            $resolved[$day] = null;
+            foreach ($byStep as $step) {
+                if ($step[$day] !== null) {
+                    $resolved[$day] = $step[$day];
+                    break;
+                }
+            }
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * For each day, the newest of $snapshots captured on or before it.
+     * Same pick as filtering to the day and taking the first after a
+     * newest-first sortByDesc(): the sort is stable, so a tie on the day
+     * goes to whichever row comes first in $snapshots.
+     *
+     * @param  Collection<int, CardPriceSnapshot>  $snapshots
+     * @param  Collection<int, string>  $dayKeys
+     * @return array<string, CardPriceSnapshot|null>
+     */
+    private function newestOnOrBefore(Collection $snapshots, Collection $dayKeys): array
+    {
+        $newestFirst = $snapshots->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->values()->all();
+        $count = count($newestFirst);
+        $i = 0;
+        $picked = [];
+
+        foreach ($dayKeys->sortDesc() as $day) {
+            while ($i < $count && $newestFirst[$i]->capturedOnKey() > $day) {
+                $i++;
+            }
+            $picked[$day] = $newestFirst[$i] ?? null;
+        }
+
+        return $picked;
+    }
+
+    /**
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
      */
     private function variantFrom(Collection $snapshots, ?string $variant): ?CardPriceSnapshot

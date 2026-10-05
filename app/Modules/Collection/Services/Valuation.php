@@ -65,6 +65,36 @@ final class Valuation
     }
 
     /**
+     * totalsByCurrencyAsOf() for every day in $days, keyed by 'Y-m-d' —
+     * the same figures, without walking each card's history once per day.
+     *
+     * @param  iterable<int, Card>  $cards
+     * @param  iterable<int, CarbonInterface>  $days
+     * @return array<string, array<string, int>>
+     */
+    public function totalsByCurrencyOver(iterable $cards, iterable $days): array
+    {
+        $dayKeys = Collection::make($days)->map(fn (CarbonInterface $day) => $day->toDateString())->values();
+        $totals = array_fill_keys($dayKeys->all(), []);
+
+        foreach ($cards as $card) {
+            foreach ($card->collectionItems as $item) {
+                $quantity = max((int) $item->quantity, 1);
+
+                foreach ($this->resolver->resolveForVariantOnDays($card, $item->variant, $dayKeys) as $day => $snapshot) {
+                    if ($snapshot === null || $snapshot->market_minor === null) {
+                        continue;
+                    }
+
+                    $totals[$day][$snapshot->currency] = ($totals[$day][$snapshot->currency] ?? 0) + $snapshot->market_minor * $quantity;
+                }
+            }
+        }
+
+        return array_map(self::order(...), $totals);
+    }
+
+    /**
      * Total of one card's owned copies, each copy valued at the price of
      * the variant it ACTUALLY is — not one resolved snapshot times the
      * total quantity. A collector's normal and reverse-holofoil copies

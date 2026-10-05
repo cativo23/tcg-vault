@@ -132,3 +132,48 @@ test('sets are annotated with distinct owned cards, not item rows', function () 
     expect($annotated->owned_card_count)->toBe(1)
         ->and($annotated->real_card_count)->toBe(1);
 });
+
+test('totals over a run of days match totalsByCurrencyAsOf day by day, on any price history', function () {
+    // Randomised but seeded: gaps between days, several sources and
+    // variants on one day (the tie-breaking case), missing market prices,
+    // copies with no variant yet. The many-days method exists only to be
+    // faster; any difference from asking day by day is a bug.
+    mt_srand(20261005);
+    $variants = [null, 'normal', 'holofoil', 'reverse-holofoil', 'default'];
+    $sources = [['tcgplayer', 'USD'], ['cardmarket', 'EUR']];
+
+    $cards = collect(range(1, 40))->map(function (int $id) use ($variants, $sources) {
+        $card = (new Card)->forceFill(['id' => $id]);
+
+        $snapshots = collect();
+        foreach (range(0, 20) as $daysAgo) {
+            if (mt_rand(0, 3) === 0) {
+                continue;
+            }
+            foreach (range(1, mt_rand(1, 4)) as $_) {
+                [$source, $currency] = $sources[mt_rand(0, 1)];
+                $snapshots->push(new CardPriceSnapshot([
+                    'source' => $source,
+                    'variant' => $variants[mt_rand(1, 4)],
+                    'captured_on' => today()->subDays($daysAgo),
+                    'currency' => $currency,
+                    'market_minor' => mt_rand(0, 5) === 0 ? null : mt_rand(1, 50000),
+                ]));
+            }
+        }
+
+        $items = collect(range(1, mt_rand(1, 3)))->map(fn () => new CollectionItem([
+            'variant' => $variants[mt_rand(0, 4)],
+            'quantity' => mt_rand(0, 3),
+        ]));
+
+        return $card->setRelation('priceSnapshots', $snapshots->shuffle())->setRelation('collectionItems', $items);
+    });
+
+    $days = collect(range(25, 0))->map(fn (int $daysAgo) => today()->subDays($daysAgo));
+    $valuation = new Valuation;
+
+    $expected = $days->mapWithKeys(fn ($day) => [$day->toDateString() => $valuation->totalsByCurrencyAsOf($cards, $day)])->all();
+
+    expect($valuation->totalsByCurrencyOver($cards, $days))->toBe($expected);
+});
