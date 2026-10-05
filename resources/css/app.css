@@ -31,8 +31,7 @@
   *,
   ::after,
   ::before,
-  ::backdrop,
-  ::file-selector-button {
+  ::backdrop {
     border-color: var(--color-gray-200, currentcolor);
   }
 
@@ -1226,8 +1225,10 @@ body::before {
 }
 
 /* design.md focus rule — same visual weight as hover so keyboard users get
-   full parity. Unlayered, so it wins over @tailwindcss/forms' focus styles
-   in the base layer. */
+   full parity. Unlayered, so it beats the layered forms/utility focus
+   styles; the doubled selector reaches (0,2,0) so it also beats earlier
+   `.x:focus { outline: none }` rules (.nw-input, .nw-pill-select) by
+   source order — a plain :focus-visible would lose to them. */
 :focus-visible,
 :focus-visible:focus {
   outline: 2px solid var(--signal);
