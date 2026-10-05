@@ -6,7 +6,7 @@ namespace App\Modules\Catalog\Services;
 
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
-use Carbon\CarbonImmutable;
+use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
@@ -51,8 +51,10 @@ final class CardPriceResolver
      */
     public function resolveForVariantAsOf(Card $card, ?string $variant, CarbonInterface $asOf): ?CardPriceSnapshot
     {
+        $asOfKey = $asOf->toDateString();
+
         return $this->variantFrom(
-            $card->priceSnapshots->filter(fn (CardPriceSnapshot $s) => $s->captured_on->lte($asOf)),
+            $card->priceSnapshots->filter(fn (CardPriceSnapshot $s) => $s->capturedOnKey() <= $asOfKey),
             $variant,
         );
     }
@@ -68,7 +70,7 @@ final class CardPriceResolver
 
         $matching = $snapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant)
-            ->sortByDesc('captured_on')
+            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
             ->values();
 
         if ($matching->isEmpty()) {
@@ -102,7 +104,7 @@ final class CardPriceResolver
     {
         return $card->priceSnapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->variant === 'default')
-            ->sortByDesc('captured_on')
+            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
             ->first();
     }
 
@@ -113,8 +115,10 @@ final class CardPriceResolver
      */
     public function resolveAsOf(Card $card, CarbonInterface $asOf): ?CardPriceSnapshot
     {
+        $asOfKey = $asOf->toDateString();
+
         $eligible = $card->priceSnapshots->filter(
-            fn (CardPriceSnapshot $s) => $s->captured_on->lte($asOf),
+            fn (CardPriceSnapshot $s) => $s->capturedOnKey() <= $asOfKey,
         );
 
         return $this->resolveFrom($eligible);
@@ -127,14 +131,14 @@ final class CardPriceResolver
      * days has one entry per day regardless of how many source/variant
      * rows exist on each day.
      *
-     * @return Collection<int, CarbonImmutable>
+     * @return Collection<int, Carbon>
      */
     public function distinctSnapshotDates(Card $card): Collection
     {
         return $card->priceSnapshots
-            ->pluck('captured_on')
-            ->unique(fn ($date) => $date->toDateString())
-            ->sortByDesc(fn ($date) => $date->toDateString())
+            ->unique(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
+            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
+            ->map(fn (CardPriceSnapshot $s) => $s->captured_on)
             ->values();
     }
 
@@ -157,13 +161,15 @@ final class CardPriceResolver
      */
     public function previousComparable(Card $card, CardPriceSnapshot $latest): ?CardPriceSnapshot
     {
+        $latestKey = $latest->capturedOnKey();
+
         return $card->priceSnapshots
-            ->filter(fn (CardPriceSnapshot $s) => $s->captured_on->lt($latest->captured_on)
+            ->filter(fn (CardPriceSnapshot $s) => $s->capturedOnKey() < $latestKey
                 && $s->source === $latest->source
                 && $s->variant === $latest->variant
                 && $s->currency === $latest->currency
                 && $s->market_minor !== null)
-            ->sortByDesc('captured_on')
+            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
             ->first();
     }
 
@@ -238,7 +244,7 @@ final class CardPriceResolver
             ->filter(fn (CardPriceSnapshot $s) => $s->source === $resolved->source
                 && $s->variant === $resolved->variant
                 && $s->market_minor !== null)
-            ->sortBy(fn (CardPriceSnapshot $s) => $s->captured_on->toDateString())
+            ->sortBy(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
             ->values();
     }
 
@@ -247,7 +253,7 @@ final class CardPriceResolver
      */
     private function resolveFrom(Collection $snapshots): ?CardPriceSnapshot
     {
-        $snapshots = $snapshots->sortByDesc('captured_on')->values();
+        $snapshots = $snapshots->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->values();
 
         if ($snapshots->isEmpty()) {
             return null;

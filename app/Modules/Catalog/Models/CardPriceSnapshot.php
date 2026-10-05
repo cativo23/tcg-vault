@@ -40,6 +40,20 @@ final class CardPriceSnapshot extends Model
         ];
     }
 
+    /**
+     * The capture day as a 'Y-m-d' string, read straight from the raw
+     * attribute. Reading `captured_on` builds a fresh Carbon on every
+     * access; CardPriceResolver sorts and filters on the day for every
+     * snapshot of every card on a gallery page, so it compares these
+     * keys instead (they order the same way the dates do). The slice
+     * covers both raw shapes: 'Y-m-d' from the database, 'Y-m-d H:i:s'
+     * on a model created in memory.
+     */
+    public function capturedOnKey(): string
+    {
+        return substr((string) $this->attributes['captured_on'], 0, 10);
+    }
+
     /** @return BelongsTo<Card, $this> */
     public function card(): BelongsTo
     {
