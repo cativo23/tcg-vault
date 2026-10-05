@@ -182,8 +182,12 @@ return [
 
         Watchers\MailWatcher::class => env('TELESCOPE_MAIL_WATCHER', true),
 
+        // Local-only by default: outside local, TelescopeServiceProvider's
+        // filter discards every model entry anyway, but the watcher still
+        // runs a listener for each `eloquent.*` event — one per hydrated
+        // row, which on a gallery page is tens of thousands of calls.
         Watchers\ModelWatcher::class => [
-            'enabled' => env('TELESCOPE_MODEL_WATCHER', true),
+            'enabled' => env('TELESCOPE_MODEL_WATCHER', env('APP_ENV') === 'local'),
             'events' => ['eloquent.*'],
             'hydrations' => true,
         ],
