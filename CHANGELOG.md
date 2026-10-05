@@ -6,6 +6,42 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-05
+
+### Fixed
+
+- The public gallery is much faster. The collection page took 5–6 s and
+  Activity 15–17 s in production; nearly all of it was PHP work over each
+  card's full price history, not the database. Listings now load only the
+  last 30 days of prices (the card page charts the full history), the
+  collection page loads its cards once instead of twice, Activity's value
+  chart prices every day in one pass, and Telescope no longer watches every
+  loaded model in production. Before this, every screen got slower each day
+  as the nightly sync added prices.
+- A card is priced from the same 30-day window everywhere, so its page can
+  no longer show a different price or currency than its tile. A card with
+  no price in that window says so instead of claiming it was never priced.
+- Sorting the collection by number while searching returned an error page.
+
+### Changed
+
+- A card with no price in the last 30 days counts as unpriced everywhere:
+  on its tile and card page (no price chart either), in collection and set
+  totals, on Activity, in the admin collection table, and in the CSV
+  export.
+- The site now needs Safari 16.4+, Chrome 111+ or Firefox 128+ (Tailwind
+  CSS 4).
+
+### Security
+
+- Updated `league/commonmark` to 2.10.3 (GHSA-3q6v-r5mr-hxv8,
+  GHSA-97jj-33gv-5xf9) and moved to Tailwind CSS 4, which drops the
+  vulnerable `braces` build dependency (GHSA-vfj7-8cjw-p6xm).
+
+### Deploy
+
+No migrations.
+
 ## [1.0.0] - 2026-09-29
 
 The wide private beta: registration stays invite-only and invites go out
