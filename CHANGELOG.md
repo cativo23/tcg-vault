@@ -27,7 +27,8 @@ All notable changes to this project are documented here. Format follows
 
 - A card with no price in the last 30 days counts as unpriced everywhere:
   on its tile and card page (no price chart either), in collection and set
-  totals, in the admin collection table, and in the CSV export.
+  totals, on Activity, in the admin collection table, and in the CSV
+  export.
 - The site now needs Safari 16.4+, Chrome 111+ or Firefox 128+ (Tailwind
   CSS 4).
 
