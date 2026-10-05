@@ -6,6 +6,7 @@ namespace App\Livewire\Gallery;
 
 use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
@@ -29,7 +30,8 @@ final class Activity extends Component
 
     private const MAX_FEED = 40;
 
-    private const MAX_SERIES_DAYS = 30;
+    /** Never longer than the price history the cards are loaded with. */
+    private const MAX_SERIES_DAYS = CardPriceSnapshot::RECENT_DAYS;
 
     public function mount(string $username): void
     {

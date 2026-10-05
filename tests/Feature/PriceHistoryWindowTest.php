@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Livewire\Admin\CollectionItems;
 use App\Livewire\Gallery\Activity;
+use App\Livewire\Gallery\CardShow;
 use App\Livewire\Gallery\Index;
 use App\Livewire\Gallery\Show;
 use App\Models\User;
@@ -93,4 +94,23 @@ test('the CSV export prices a copy from recent history only', function () {
 
     // Only rows older than the window remain, so the copy has no price.
     expect($row['market_price'])->toBe('')->and($row['price_date'])->toBe('');
+});
+
+test('the card page prices a card from the same window as the listings, but charts its full history', function () {
+    // tcgplayer stopped listing this print before the window; cardmarket
+    // still prices it. Without the window the card page would keep the old
+    // tcgplayer USD figure while every listing shows the cardmarket EUR one.
+    CardPriceSnapshot::query()->delete();
+    $old = today()->subDays(CardPriceSnapshot::RECENT_DAYS + 10);
+    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => $old, 'currency' => 'USD', 'market_minor' => 5000]);
+    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => $old, 'currency' => 'EUR', 'market_minor' => 300]);
+    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 400]);
+
+    $grid = Livewire::test(Index::class, ['username' => 'carlos'])->viewData('entries')->first();
+    $page = Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116']);
+
+    expect($page->viewData('snapshot')->market_minor)->toBe(400)
+        ->and($grid['snapshot']->market_minor)->toBe(400)
+        ->and($page->viewData('marketReads')->pluck('source')->all())->toBe(['cardmarket'])
+        ->and($page->viewData('history')->pluck('market_minor')->all())->toBe([300, 400]);
 });

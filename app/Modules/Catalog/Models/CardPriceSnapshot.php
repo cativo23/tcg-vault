@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,9 +18,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 final class CardPriceSnapshot extends Model
 {
     /**
-     * How many days of history a listing screen loads per card. Covers
-     * Activity's value-over-time chart, which is the longest look back
-     * any of them takes; the card detail page reads the full history.
+     * How far back any screen looks for a card's CURRENT price: listings
+     * load only this window, and the card page prices from it too, so a
+     * card shows the same price everywhere. Activity's value chart spans
+     * the same window; the card page's sparkline still reads the full
+     * history.
      */
     public const RECENT_DAYS = 30;
 
@@ -62,15 +65,26 @@ final class CardPriceSnapshot extends Model
         return substr((string) $this->attributes['captured_on'], 0, 10);
     }
 
+    /** The first day of the recent window: RECENT_DAYS before today, so the window holds RECENT_DAYS + 1 days. */
+    public static function recentFrom(): CarbonInterface
+    {
+        return today()->subDays(self::RECENT_DAYS);
+    }
+
+    public function isRecent(): bool
+    {
+        return $this->capturedOnKey() >= self::recentFrom()->toDateString();
+    }
+
     /**
-     * Snapshots captured within the last RECENT_DAYS days, today included.
+     * Snapshots captured on or after recentFrom().
      *
      * @param  Builder<self>  $query
      * @return Builder<self>
      */
     public function scopeRecent(Builder $query): Builder
     {
-        return $query->where('captured_on', '>=', today()->subDays(self::RECENT_DAYS));
+        return $query->where('captured_on', '>=', self::recentFrom());
     }
 
     /** @return BelongsTo<Card, $this> */
