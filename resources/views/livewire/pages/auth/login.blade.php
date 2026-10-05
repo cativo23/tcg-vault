@@ -57,7 +57,7 @@ new #[Layout('layouts.guest')] class extends Component
                      in both themes or the checkmark vanishes into a light
                      fill, so this uses the frozen --chrome-bg, not the
                      theme-flipping --ink. --}}
-                <input wire:model="form.remember" id="remember" type="checkbox" class="rounded shadow-sm" style="color: var(--chrome-bg); border-color: var(--hair)" name="remember">
+                <input wire:model="form.remember" id="remember" type="checkbox" class="rounded-sm shadow-xs" style="color: var(--chrome-bg); border-color: var(--hair)" name="remember">
                 <span class="ms-2 text-sm" style="color: var(--muted)">{{ __('Remember me') }}</span>
             </label>
         </div>

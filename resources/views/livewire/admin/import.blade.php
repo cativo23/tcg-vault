@@ -10,7 +10,7 @@
         </p>
 
         @if ($summary)
-            <div class="mb-4 p-3 rounded" style="background: var(--bone-2)">
+            <div class="mb-4 p-3 rounded-sm" style="background: var(--bone-2)">
                 {{ $summary }}
             </div>
         @endif

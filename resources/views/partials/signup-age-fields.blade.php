@@ -23,7 +23,7 @@
 
 <div class="mt-4">
     <label for="guardian_consent" class="inline-flex items-start gap-2 text-sm" style="color: var(--ink)">
-        <input wire:model="guardian_consent" id="guardian_consent" type="checkbox" class="mt-1 rounded shadow-sm" style="color: var(--chrome-bg); border-color: var(--hair)">
+        <input wire:model="guardian_consent" id="guardian_consent" type="checkbox" class="mt-1 rounded-sm shadow-xs" style="color: var(--chrome-bg); border-color: var(--hair)">
         <span>{{ __('If I’m under 18, a parent or guardian agrees to me using tcg-vault.') }}</span>
     </label>
     <x-input-error :messages="$errors->get('guardian_consent')" class="mt-2" />
