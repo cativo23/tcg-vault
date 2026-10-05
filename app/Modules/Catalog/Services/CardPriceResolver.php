@@ -6,7 +6,7 @@ namespace App\Modules\Catalog\Services;
 
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
-use Carbon\CarbonImmutable;
+use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
@@ -51,10 +51,84 @@ final class CardPriceResolver
      */
     public function resolveForVariantAsOf(Card $card, ?string $variant, CarbonInterface $asOf): ?CardPriceSnapshot
     {
+        $asOfKey = $asOf->toDateString();
+
         return $this->variantFrom(
-            $card->priceSnapshots->filter(fn (CardPriceSnapshot $s) => $s->captured_on->lte($asOf)),
+            $card->priceSnapshots->filter(fn (CardPriceSnapshot $s) => $s->capturedOnKey() <= $asOfKey),
             $variant,
         );
+    }
+
+    /**
+     * resolveForVariantAsOf() for every day in $dayKeys at once, in one
+     * pass over the card's history instead of one pass per day — what a
+     * value-over-time series needs. Each step of the priority chain is
+     * "the newest row of this subset on or before the day", so the chain
+     * is resolved per subset and the first hit wins, exactly as
+     * variantFrom() and resolveFrom() pick it.
+     *
+     * @param  Collection<int, string>  $dayKeys  'Y-m-d' days
+     * @return array<string, CardPriceSnapshot|null> keyed by day
+     */
+    public function resolveForVariantOnDays(Card $card, ?string $variant, Collection $dayKeys): array
+    {
+        $snapshots = $card->priceSnapshots;
+
+        if ($variant === null) {
+            $chain = [
+                $snapshots->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && in_array($s->variant, ['normal', 'holofoil'], true)),
+                $snapshots->filter(fn (CardPriceSnapshot $s) => $s->source === 'cardmarket' && $s->variant === 'default'),
+                $snapshots,
+            ];
+        } else {
+            $matching = $snapshots->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant);
+            $chain = [
+                $matching->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer'),
+                $matching,
+            ];
+        }
+
+        $byStep = array_map(fn (Collection $subset) => $this->newestOnOrBefore($subset, $dayKeys), $chain);
+
+        $resolved = [];
+        foreach ($dayKeys as $day) {
+            $resolved[$day] = null;
+            foreach ($byStep as $step) {
+                if ($step[$day] !== null) {
+                    $resolved[$day] = $step[$day];
+                    break;
+                }
+            }
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * For each day, the newest of $snapshots captured on or before it.
+     * Same pick as filtering to the day and taking the first after a
+     * newest-first sortByDesc(): the sort is stable, so a tie on the day
+     * goes to whichever row comes first in $snapshots.
+     *
+     * @param  Collection<int, CardPriceSnapshot>  $snapshots
+     * @param  Collection<int, string>  $dayKeys
+     * @return array<string, CardPriceSnapshot|null>
+     */
+    private function newestOnOrBefore(Collection $snapshots, Collection $dayKeys): array
+    {
+        $newestFirst = $snapshots->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->values()->all();
+        $count = count($newestFirst);
+        $i = 0;
+        $picked = [];
+
+        foreach ($dayKeys->sortDesc() as $day) {
+            while ($i < $count && $newestFirst[$i]->capturedOnKey() > $day) {
+                $i++;
+            }
+            $picked[$day] = $newestFirst[$i] ?? null;
+        }
+
+        return $picked;
     }
 
     /**
@@ -68,7 +142,7 @@ final class CardPriceResolver
 
         $matching = $snapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant)
-            ->sortByDesc('captured_on')
+            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
             ->values();
 
         if ($matching->isEmpty()) {
@@ -102,7 +176,7 @@ final class CardPriceResolver
     {
         return $card->priceSnapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->variant === 'default')
-            ->sortByDesc('captured_on')
+            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
             ->first();
     }
 
@@ -113,8 +187,10 @@ final class CardPriceResolver
      */
     public function resolveAsOf(Card $card, CarbonInterface $asOf): ?CardPriceSnapshot
     {
+        $asOfKey = $asOf->toDateString();
+
         $eligible = $card->priceSnapshots->filter(
-            fn (CardPriceSnapshot $s) => $s->captured_on->lte($asOf),
+            fn (CardPriceSnapshot $s) => $s->capturedOnKey() <= $asOfKey,
         );
 
         return $this->resolveFrom($eligible);
@@ -127,14 +203,14 @@ final class CardPriceResolver
      * days has one entry per day regardless of how many source/variant
      * rows exist on each day.
      *
-     * @return Collection<int, CarbonImmutable>
+     * @return Collection<int, Carbon>
      */
     public function distinctSnapshotDates(Card $card): Collection
     {
         return $card->priceSnapshots
-            ->pluck('captured_on')
-            ->unique(fn ($date) => $date->toDateString())
-            ->sortByDesc(fn ($date) => $date->toDateString())
+            ->unique(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
+            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
+            ->map(fn (CardPriceSnapshot $s) => $s->captured_on)
             ->values();
     }
 
@@ -157,13 +233,15 @@ final class CardPriceResolver
      */
     public function previousComparable(Card $card, CardPriceSnapshot $latest): ?CardPriceSnapshot
     {
+        $latestKey = $latest->capturedOnKey();
+
         return $card->priceSnapshots
-            ->filter(fn (CardPriceSnapshot $s) => $s->captured_on->lt($latest->captured_on)
+            ->filter(fn (CardPriceSnapshot $s) => $s->capturedOnKey() < $latestKey
                 && $s->source === $latest->source
                 && $s->variant === $latest->variant
                 && $s->currency === $latest->currency
                 && $s->market_minor !== null)
-            ->sortByDesc('captured_on')
+            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
             ->first();
     }
 
@@ -238,7 +316,7 @@ final class CardPriceResolver
             ->filter(fn (CardPriceSnapshot $s) => $s->source === $resolved->source
                 && $s->variant === $resolved->variant
                 && $s->market_minor !== null)
-            ->sortBy(fn (CardPriceSnapshot $s) => $s->captured_on->toDateString())
+            ->sortBy(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
             ->values();
     }
 
@@ -247,7 +325,7 @@ final class CardPriceResolver
      */
     private function resolveFrom(Collection $snapshots): ?CardPriceSnapshot
     {
-        $snapshots = $snapshots->sortByDesc('captured_on')->values();
+        $snapshots = $snapshots->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->values();
 
         if ($snapshots->isEmpty()) {
             return null;

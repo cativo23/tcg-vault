@@ -64,21 +64,29 @@ final class CardShow extends Component
         ]);
 
         $items = $card->collectionItems;
+        // Prices come from the same recent window the listings load, so
+        // this page never shows a different price (or currency) for the
+        // card than its grid tile does. Only the sparkline reads the full
+        // history.
+        $priced = (clone $card)->setRelation(
+            'priceSnapshots',
+            $card->priceSnapshots->filter(fn (CardPriceSnapshot $s) => $s->isRecent())->values(),
+        );
         // The collector's own copy, at the price of the variant it
         // actually is — not resolve()'s card-level priority chain, which
         // would never even consider e.g. a reverse-holofoil copy.
-        $snapshot = $valuation->headlineSnapshot($card);
-        $delta = $resolver->deltaFor($card, $snapshot);
+        $snapshot = $valuation->headlineSnapshot($priced);
+        $delta = $resolver->deltaFor($priced, $snapshot);
         $history = $resolver->historyFor($card, $snapshot);
-        $ownedTotal = $items->isNotEmpty() ? $valuation->cardTotal($card) : null;
+        $ownedTotal = $items->isNotEmpty() ? $valuation->cardTotal($priced) : null;
 
         // Latest reading per source+variant — the full market picture the
         // grid tile only summarises. Sorted so the resolved one leads.
-        $latestDay = $card->priceSnapshots->max(fn (CardPriceSnapshot $s) => $s->captured_on->toDateString());
-        $marketReads = $card->priceSnapshots
+        $latestDay = $priced->priceSnapshots->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey());
+        $marketReads = $priced->priceSnapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->market_minor !== null)
             ->groupBy(fn (CardPriceSnapshot $s) => $s->source.'|'.$s->variant)
-            ->map(fn ($group) => $group->sortByDesc(fn (CardPriceSnapshot $s) => $s->captured_on->toDateString())->first())
+            ->map(fn ($group) => $group->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->first())
             ->sortBy(fn (CardPriceSnapshot $s) => $snapshot && $s->is($snapshot) ? 0 : 1)
             ->values();
 
@@ -100,7 +108,7 @@ final class CardShow extends Component
         $related = $card->set->cards()
             ->whereKeyNot($card->id)
             ->whereHas('collectionItems', fn ($q) => $public->scopeItems($q))
-            ->with(['set', 'priceSnapshots', 'collectionItems' => fn ($q) => $public->scopeItems($q)])
+            ->with(['set', 'priceSnapshots' => fn ($q) => $q->recent(), 'collectionItems' => fn ($q) => $public->scopeItems($q)])
             ->take(8)
             ->get()
             ->map(fn (Card $c) => [
@@ -126,6 +134,11 @@ final class CardShow extends Component
             'related' => $related,
             'facts' => $this->facts($raw),
             'priceUpdatedAt' => $latestDay,
+            // Rows older than the window are not "no price yet" — the page
+            // must not claim the card was never priced.
+            'pricedBeforeWindow' => $marketReads->isEmpty()
+                && $card->priceSnapshots->contains(fn (CardPriceSnapshot $s) => $s->market_minor !== null),
+            'recentDays' => CardPriceSnapshot::RECENT_DAYS,
         ])->layoutData([
             'title' => "{$card->name} #{$card->local_id} · {$card->set->name}",
             'description' => sprintf(

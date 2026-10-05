@@ -6,6 +6,7 @@ namespace App\Livewire\Gallery;
 
 use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
@@ -29,7 +30,8 @@ final class Activity extends Component
 
     private const MAX_FEED = 40;
 
-    private const MAX_SERIES_DAYS = 30;
+    /** Never longer than the price history the cards are loaded with. */
+    private const MAX_SERIES_DAYS = CardPriceSnapshot::RECENT_DAYS;
 
     public function mount(string $username): void
     {
@@ -71,7 +73,7 @@ final class Activity extends Component
             // inside the map: resolveForVariant() reads the relation as a
             // property, so a per-row load would mean one query per feed
             // entry on a public route.
-            ->with(['card.set', 'card.priceSnapshots'])
+            ->with(['card.set', 'card.priceSnapshots' => fn ($q) => $q->recent()])
             ->take(self::MAX_FEED)
             ->get()
             ->map(fn (CollectionItem $item) => [
@@ -137,7 +139,7 @@ final class Activity extends Component
      * Per copy, not per card: a collector holding one normal and one
      * reverse-holofoil of the same card owns two differently priced
      * things, and pricing the card once times the total quantity charts
-     * a collection nobody has. Valuation::totalsByCurrencyAsOf() is the
+     * a collection nobody has. Valuation::totalsByCurrencyOver() is the
      * same summation the headline figure uses, so the series' last point
      * and the number printed above it always agree.
      *
@@ -157,10 +159,12 @@ final class Activity extends Component
             return collect();
         }
 
-        return $dates->map(function ($date) use ($cards, $currency, $valuation) {
-            $minor = $valuation->totalsByCurrencyAsOf($cards, $date)[$currency] ?? 0;
+        // All days in one pass over each card's history, not one pass per day.
+        $totalsByDay = $valuation->totalsByCurrencyOver($cards, $dates);
 
-            return ['date' => CarbonImmutable::parse($date), 'minor' => $minor];
-        })->values();
+        return $dates->map(fn ($date) => [
+            'date' => CarbonImmutable::parse($date),
+            'minor' => $totalsByDay[$date->toDateString()][$currency] ?? 0,
+        ])->values();
     }
 }

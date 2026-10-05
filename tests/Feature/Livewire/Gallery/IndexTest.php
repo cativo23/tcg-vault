@@ -9,6 +9,8 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 function seedCollection(): array
@@ -344,4 +346,58 @@ test('the old /{username}/gallery URL redirects to the shorter /{username}', fun
     seedCollection();
 
     $this->get('/carlos/gallery')->assertRedirect('/carlos');
+});
+
+test('sorting by number keeps search and rarity filters working', function () {
+    seedCollection();
+
+    // The number sort joins sets, which has its own name column, so an
+    // unqualified "name" in the search filter is ambiguous to Postgres.
+    Livewire::withQueryParams(['sort' => 'number', 'search' => 'pika', 'rarity' => 'Promo'])
+        ->test(Index::class, ['username' => 'carlos'])
+        ->assertOk()
+        ->assertSee('Pikachu on the Ball')
+        ->assertDontSee('Mega Darkrai ex');
+});
+
+test('the grid reuses the stat band\'s cards instead of loading their price history again', function (string $sort, string $search) {
+    seedCollection();
+
+    $snapshotQueries = 0;
+    DB::listen(function (QueryExecuted $query) use (&$snapshotQueries) {
+        if (str_contains($query->sql, 'from "card_price_snapshots"')) {
+            $snapshotQueries++;
+        }
+    });
+
+    Livewire::withQueryParams(['sort' => $sort, 'search' => $search])->test(Index::class, ['username' => 'carlos']);
+
+    expect($snapshotQueries)->toBe(1);
+})->with(['value', 'newest', 'number', 'name'])->with(['', 'pika']);
+
+test('a collection past the stat band\'s card cap still fills the grid with cards it did not load', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+
+    // 601 cards: one more than Index's MAX_CARDS, all named so that the
+    // name sort's last page is exactly the cards most likely to fall
+    // outside the stat band's unordered first 600.
+    $now = now();
+    DB::table('cards')->insert(collect(range(1, 601))->map(fn (int $i) => [
+        'tcgdex_id' => "me05-$i", 'set_id' => $set->id, 'local_id' => (string) $i,
+        'name' => sprintf('Card %04d', $i), 'created_at' => $now, 'updated_at' => $now,
+    ])->all());
+    DB::table('collection_items')->insert(Card::pluck('tcgdex_id', 'id')->map(fn (string $tcgdexId, int $id) => [
+        'collection_id' => $collection->id, 'card_id' => $id, 'card_tcgdex_id' => $tcgdexId,
+        'condition' => 'NM', 'quantity' => 1, 'created_at' => $now, 'updated_at' => $now,
+    ])->values()->all());
+
+    $entries = Livewire::withQueryParams(['sort' => 'name'])
+        ->test(Index::class, ['username' => 'carlos'])
+        ->set('take', 601)
+        ->viewData('entries');
+
+    expect($entries)->toHaveCount(601)
+        ->and($entries->pluck('card.name')->all())->toBe(collect(range(1, 601))->map(fn (int $i) => sprintf('Card %04d', $i))->all());
 });

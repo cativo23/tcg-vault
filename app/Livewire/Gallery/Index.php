@@ -6,6 +6,7 @@ namespace App\Livewire\Gallery;
 
 use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Services\Valuation;
@@ -105,14 +106,20 @@ final class Index extends Component
         // card) reflect the WHOLE collection, never the grid's current
         // filter/scroll position — same "stats vs grid" split Show.php
         // already uses. Bounded by MAX_CARDS, same as before.
-        $allCards = $public->cardsQuery()->take(self::MAX_CARDS)->get();
+        //
+        // Keyed by id so the grid below can reuse these already-loaded
+        // cards (and their price history) instead of loading them again.
+        $allCards = $public->cardsQuery()->take(self::MAX_CARDS)->get()->keyBy('id');
+        $headlines = $allCards->map(fn (Card $card) => $valuation->headlineSnapshot($card));
         $sets = $public->setsQuery()->orderByDesc('released_on')->get();
 
         $totals = $valuation->totalsByCurrency($allCards);
         $copies = (int) $allCards->sum(fn (Card $card) => $card->collectionItems->sum('quantity'));
-        $updatedAt = $allCards->flatMap(fn (Card $c) => $c->priceSnapshots)->max('captured_on');
+        $updatedAt = $allCards->flatMap(fn (Card $c) => $c->priceSnapshots)
+            ->reduce(fn (?CardPriceSnapshot $latest, CardPriceSnapshot $s) => $latest === null || $s->capturedOnKey() > $latest->capturedOnKey() ? $s : $latest)
+            ?->captured_on;
         $topEntry = $allCards
-            ->map(fn (Card $card) => ['card' => $card, 'valueMinor' => $valuation->headlineSnapshot($card)?->market_minor])
+            ->map(fn (Card $card) => ['card' => $card, 'valueMinor' => $headlines->get($card->id)?->market_minor])
             ->sortByDesc(fn ($e) => $e['valueMinor'] ?? -1)
             ->first();
         // tcgdex emits the literal string "None" for promos and other
@@ -128,63 +135,71 @@ final class Index extends Component
             ->sort()->values();
 
         // The grid itself: filters and (for name/newest/number) the sort
-        // order are pushed into SQL, so only the cards actually loaded
-        // ($this->take of them) ever get mapped through the price
-        // resolver — not the whole collection on every keystroke.
-        $gridQuery = $public->cardsQuery();
+        // order are pushed into SQL, which only picks card ids — the
+        // cards come from $allCards above, so their price history is
+        // loaded once per render, and only the loaded window ($this->take
+        // of them) is priced for its delta.
+        $gridQuery = $public->cardsQuery()->select('cards.id');
 
+        // Columns are table-qualified: the 'number' sort joins sets, which
+        // has its own name column.
         if ($this->search !== '') {
             // Postgres' LIKE is case-sensitive; ILIKE is the case-insensitive form.
-            $gridQuery->where('name', 'ilike', '%'.trim($this->search).'%');
+            $gridQuery->where('cards.name', 'ilike', '%'.trim($this->search).'%');
         }
         if ($this->setFilter !== '') {
             $gridQuery->whereHas('set', fn ($q) => $q->where('tcgdex_id', $this->setFilter));
         }
         if ($this->rarityFilter !== '') {
-            $gridQuery->where('rarity', $this->rarityFilter);
+            $gridQuery->where('cards.rarity', $this->rarityFilter);
         }
 
         $totalEntries = (clone $gridQuery)->count();
 
-        if ($this->sort === 'value') {
+        match ($this->sort) {
+            'newest' => $gridQuery
+                ->withMax(['collectionItems as added_at' => fn ($q) => $public->scopeItems($q)], 'created_at')
+                ->orderByDesc('added_at'),
+            'number' => $gridQuery
+                ->join('sets', 'sets.id', '=', 'cards.set_id')
+                ->orderBy('sets.tcgdex_id')
+                ->orderBy('cards.local_id'),
             // CardPriceResolver's variant-aware chain can't be expressed
-            // as a SQL ORDER BY — resolve a bounded candidate set (a real
-            // personal collection is nowhere near MAX_CARDS), sort in
-            // memory, then slice the loaded window.
-            $candidates = (clone $gridQuery)->take(self::MAX_CARDS)->get()
-                ->map(fn (Card $card) => [
-                    'card' => $card,
-                    'snapshot' => $snapshot = $valuation->headlineSnapshot($card),
-                    'delta' => $resolver->deltaFor($card, $snapshot),
-                    'items' => $card->collectionItems,
-                    'valueMinor' => $snapshot?->market_minor,
-                ])
-                ->sortByDesc(fn ($e) => $e['valueMinor'] ?? -1)
-                ->values();
+            // as a SQL ORDER BY — take a bounded candidate set (a real
+            // personal collection is nowhere near MAX_CARDS) and sort it
+            // in memory below.
+            'value' => $gridQuery,
+            default => $gridQuery->orderBy('cards.name'), // 'name'
+        };
 
-            $entries = $candidates->take($this->take)->values();
-        } else {
-            match ($this->sort) {
-                'newest' => $gridQuery
-                    ->withMax(['collectionItems as added_at' => fn ($q) => $public->scopeItems($q)], 'created_at')
-                    ->orderByDesc('added_at'),
-                'number' => $gridQuery
-                    ->join('sets', 'sets.id', '=', 'cards.set_id')
-                    ->orderBy('sets.tcgdex_id')
-                    ->orderBy('cards.local_id')
-                    ->select('cards.*'),
-                default => $gridQuery->orderBy('name'), // 'name'
-            };
+        // toBase()->get(), not pluck(): pluck() swaps the select list for
+        // its one column, which would drop the 'newest' sort's added_at.
+        $gridIds = $gridQuery
+            ->take($this->sort === 'value' ? self::MAX_CARDS : $this->take)
+            ->toBase()->get()->map(fn (object $row) => $row->id);
 
-            $entries = $gridQuery->take($this->take)->get()
-                ->map(fn (Card $card) => [
-                    'card' => $card,
-                    'snapshot' => $snapshot = $valuation->headlineSnapshot($card),
-                    'delta' => $resolver->deltaFor($card, $snapshot),
-                    'items' => $card->collectionItems,
-                    'valueMinor' => $snapshot?->market_minor,
-                ]);
+        // Only a collection past MAX_CARDS can match cards the stat band
+        // did not load.
+        $missingIds = $gridIds->diff($allCards->keys());
+        $pool = $missingIds->isEmpty()
+            ? $allCards
+            : $allCards->union($public->cardsQuery()->whereKey($missingIds)->get()->keyBy('id'));
+        $headlineOf = fn (Card $card) => $headlines->has($card->id) ? $headlines->get($card->id) : $valuation->headlineSnapshot($card);
+
+        $gridCards = $gridIds->map(fn ($id) => $pool->get($id))->filter();
+
+        if ($this->sort === 'value') {
+            $gridCards = $gridCards->sortByDesc(fn (Card $card) => $headlineOf($card)->market_minor ?? -1)
+                ->take($this->take);
         }
+
+        $entries = $gridCards->values()->map(fn (Card $card) => [
+            'card' => $card,
+            'snapshot' => $snapshot = $headlineOf($card),
+            'delta' => $resolver->deltaFor($card, $snapshot),
+            'items' => $card->collectionItems,
+            'valueMinor' => $snapshot?->market_minor,
+        ]);
 
         $name = $this->collectorName();
 
