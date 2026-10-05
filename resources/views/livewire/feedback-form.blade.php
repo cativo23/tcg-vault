@@ -16,7 +16,7 @@
         <div wire:ignore>{{-- Livewire's morph has no x-if awareness; never let it touch this. --}}
         <template x-if="sent">
         <div class="p-6" role="status">
-            <h2 id="feedback-thanks" tabindex="-1" class="text-lg font-medium focus:outline-hidden" style="color: var(--ink)">{{ __('Thanks — it’s on its way.') }}</h2>
+            <h2 id="feedback-thanks" tabindex="-1" class="nw-focus-quiet text-lg font-medium" style="color: var(--ink)">{{ __('Thanks — it’s on its way.') }}</h2>
             <p class="mt-1 text-sm" style="color: var(--muted)">{{ __('Replies come to your account email.') }}</p>
 
             <div class="mt-6 flex justify-end gap-3">

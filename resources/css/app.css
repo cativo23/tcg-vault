@@ -23,14 +23,10 @@
   --text-4xl--line-height: 2.5rem;
 }
 
-/*
-  The default border color has changed to `currentcolor` in Tailwind CSS v4,
-  so we've added these compatibility styles to make sure everything still
-  looks the same as it did with Tailwind CSS v3.
-
-  If we ever want to remove these styles, we need to add an explicit border
-  color utility to any element that depends on these defaults.
-*/
+/* Base defaults Tailwind 4's preflight no longer sets the way the views
+   expect: a light-gray default border (border utilities used without a
+   colour), the pointer cursor on buttons, and the browser's own "Choose
+   file" button on file inputs (the preflight strips it to bare text). */
 @layer base {
   *,
   ::after,
@@ -38,6 +34,16 @@
   ::backdrop,
   ::file-selector-button {
     border-color: var(--color-gray-200, currentcolor);
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  ::file-selector-button {
+    all: revert;
+    font: inherit;
   }
 }
 
@@ -1220,14 +1226,18 @@ body::before {
 }
 
 /* design.md focus rule — same visual weight as hover so keyboard users get
-   full parity. The doubled selector intentionally ties @tailwindcss/forms'
-   reset specificity so this rule wins by source order. */
+   full parity. Unlayered, so it wins over @tailwindcss/forms' focus styles
+   in the base layer. */
 :focus-visible,
 :focus-visible:focus {
   outline: 2px solid var(--signal);
   outline-offset: 3px;
   box-shadow: none;
 }
+
+/* A heading focused from script (so screen readers announce it) is not a
+   control; it gets no focus ring. */
+.nw-focus-quiet:focus-visible { outline: none; }
 
 .modal-in { animation: modal-in 180ms var(--ease); }
 @keyframes modal-in {
