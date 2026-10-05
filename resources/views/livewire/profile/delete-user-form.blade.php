@@ -27,7 +27,10 @@ new class extends Component
     }
 }; ?>
 
-<section class="space-y-6">
+{{-- mt-6 on the button, not space-y-6 on the section: the hidden modal is
+     the section's last child, and space-y spaces every child but the last,
+     which would put a gap under the button. --}}
+<section>
     <header>
         <h2 class="text-lg font-medium" style="color: var(--ink)">
             {{ __('Delete Account') }}
@@ -46,6 +49,7 @@ new class extends Component
     </header>
 
     <x-danger-button
+        class="mt-6"
         x-data=""
         x-on:click.prevent="$dispatch('open-modal', 'confirm-user-deletion')"
     >{{ __('Delete Account') }}</x-danger-button>

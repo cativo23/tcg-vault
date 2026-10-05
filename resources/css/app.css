@@ -1,6 +1,50 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@plugin '@tailwindcss/forms';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@theme {
+  --font-sans:
+    Archivo, ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+  /* Fixed line heights, not Tailwind 4's unitless ratios: a child with a
+     smaller font of its own (the admin table's variant chips, under
+     text-sm) inherits a ratio as a smaller line, which shrank every row. */
+  --text-xs--line-height: 1rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+}
+
+/* Base defaults Tailwind 4's preflight no longer sets the way the views
+   expect: a light-gray default border (border utilities used without a
+   colour), the pointer cursor on buttons, and the browser's own "Choose
+   file" button on file inputs (the preflight strips it to bare text). */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  ::file-selector-button {
+    all: revert;
+    font: inherit;
+  }
+}
 
 /* ─── Fonts — bundled with the app, never loaded from a third party ───
    The variable woff2 files come from Fontsource (OFL-1.1) and Vite
@@ -304,6 +348,11 @@ body::before {
    layout) — a long right-side label was squeezing it to 0 width on real
    phones since .nw-brand and the button group don't shrink but .nw-nav
    deliberately does. Below sm, the same 3 links live here instead. */
+/* In the components layer, not unlayered like the rest of this file: both
+   elements carry `sm:hidden` in the markup, and Tailwind's utilities live in
+   a cascade layer, which loses to any unlayered rule — so an unlayered
+   `display: flex` here would keep them visible on desktop. */
+@layer components {
 .nw-hamburger {
   display: flex;
   align-items: center;
@@ -322,6 +371,7 @@ body::before {
   display: flex;
   flex-direction: column;
   border-top: 1px solid rgba(242, 239, 230, .14);
+}
 }
 .nw-nav-mobile a {
   /* 44px-tall rows, not the ~20px a single text line would give —
@@ -1175,14 +1225,20 @@ body::before {
 }
 
 /* design.md focus rule — same visual weight as hover so keyboard users get
-   full parity. The doubled selector intentionally ties @tailwindcss/forms'
-   reset specificity so this rule wins by source order. */
+   full parity. Unlayered, so it beats the layered forms/utility focus
+   styles; the doubled selector reaches (0,2,0) so it also beats earlier
+   `.x:focus { outline: none }` rules (.nw-input, .nw-pill-select) by
+   source order — a plain :focus-visible would lose to them. */
 :focus-visible,
 :focus-visible:focus {
   outline: 2px solid var(--signal);
   outline-offset: 3px;
   box-shadow: none;
 }
+
+/* A heading focused from script (so screen readers announce it) is not a
+   control; it gets no focus ring. */
+.nw-focus-quiet:focus-visible { outline: none; }
 
 .modal-in { animation: modal-in 180ms var(--ease); }
 @keyframes modal-in {

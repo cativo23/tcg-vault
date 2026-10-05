@@ -6,7 +6,7 @@
      leftover still doing it the old way. --}}
 <x-app-layout>
     <div class="nw-wrap py-10 space-y-6">
-        <h1 class="nw-display nw-h1 nw-h1--sm mb-4">{{ __('Profile') }}</h1>
+        <h1 class="nw-display nw-h1 nw-h1--sm">{{ __('Profile') }}</h1>
 
         <div class="p-4 sm:p-8 nw-card">
             <div class="max-w-xl">

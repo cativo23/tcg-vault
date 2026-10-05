@@ -57,7 +57,7 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
     <body class="antialiased">
-        <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-[70] focus:m-2 focus:px-3 focus:py-2" style="background: var(--signal); color: var(--ink)">Skip to content</a>
+        <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-70 focus:m-2 focus:px-3 focus:py-2" style="background: var(--signal); color: var(--ink)">Skip to content</a>
 
         <header class="nw-topbar sticky top-0 z-50" x-data="{ mobileNavOpen: false }">
             <div class="nw-wrap flex items-center justify-between gap-4" style="height: 52px">
