@@ -85,9 +85,9 @@
                 <input type="file" wire:model="{{ $namePrefix }}.photo" accept="image/*">
                 @error("{$namePrefix}.photo") <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                 @if ($row['photo'] ?? null)
-                    <img src="{{ $row['photo']->temporaryUrl() }}" class="mt-2 w-32 rounded" alt="">
+                    <img src="{{ $row['photo']->temporaryUrl() }}" class="mt-2 w-32 rounded-sm" alt="">
                 @elseif ($row['photo_path'] ?? null)
-                    <img src="{{ \Illuminate\Support\Facades\Storage::disk('collection-photos')->url($row['photo_path']) }}" class="mt-2 w-32 rounded" alt="">
+                    <img src="{{ \Illuminate\Support\Facades\Storage::disk('collection-photos')->url($row['photo_path']) }}" class="mt-2 w-32 rounded-sm" alt="">
                 @endif
             </div>
         </div>

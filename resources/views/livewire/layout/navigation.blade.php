@@ -45,7 +45,7 @@ new class extends Component
                     {{-- A button styled as a nav link: it opens the feedback
                          modal (livewire:feedback-form in layouts/app) rather
                          than navigating. --}}
-                    <button type="button" x-on:click="$dispatch('open-modal', 'feedback')" class="nw-link inline-flex items-center px-1 pt-1 text-sm font-medium leading-5 focus:outline-none transition duration-150 ease-in-out">
+                    <button type="button" x-on:click="$dispatch('open-modal', 'feedback')" class="nw-link inline-flex items-center px-1 pt-1 text-sm font-medium leading-5 transition duration-150 ease-in-out">
                         {{ __('Feedback') }}
                     </button>
                     @can('manage-invites')
@@ -77,7 +77,7 @@ new class extends Component
                 <div class="hidden sm:flex sm:items-center">
                     <x-dropdown align="right" width="48">
                         <x-slot name="trigger">
-                            <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md focus:outline-none transition ease-in-out duration-150" style="color: var(--chrome-fg)">
+                            <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md transition ease-in-out duration-150" style="color: var(--chrome-fg)">
                                 <div x-data="{{ json_encode(['name' => auth()->user()->name]) }}" x-text="name" x-on:profile-updated.window="name = $event.detail.name"></div>
 
                                 <div class="ms-1">
@@ -115,7 +115,7 @@ new class extends Component
                         :aria-expanded="open.toString()"
                         aria-label="Toggle navigation menu"
                         aria-controls="admin-mobile-nav"
-                        class="nw-hover-tint inline-flex items-center justify-center p-2 rounded-md focus:outline-none transition duration-150 ease-in-out"
+                        class="nw-hover-tint inline-flex items-center justify-center p-2 rounded-md transition duration-150 ease-in-out"
                         style="color: var(--chrome-fg)"
                     >
                         <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24" aria-hidden="true">
@@ -139,7 +139,7 @@ new class extends Component
                     {{ __('View gallery') }}
                 </x-responsive-nav-link>
             @endif
-            <button type="button" x-on:click="open = false; $dispatch('open-modal', 'feedback')" class="nw-link nw-row-hover block w-full ps-3 pe-4 py-2 border-l-4 border-transparent text-start text-base font-medium focus:outline-none transition duration-150 ease-in-out">
+            <button type="button" x-on:click="open = false; $dispatch('open-modal', 'feedback')" class="nw-link nw-row-hover block w-full ps-3 pe-4 py-2 border-l-4 border-transparent text-start text-base font-medium transition duration-150 ease-in-out">
                 {{ __('Feedback') }}
             </button>
             @can('manage-invites')

@@ -17,7 +17,7 @@
                          stay dark in both themes or the checkmark vanishes
                          into a light fill, so this uses the frozen
                          --chrome-bg, not the theme-flipping --ink. --}}
-                    <input type="checkbox" wire:model="registrationOpen" class="rounded shadow-sm" style="color: var(--chrome-bg); border-color: var(--hair)">
+                    <input type="checkbox" wire:model="registrationOpen" class="rounded-sm shadow-xs" style="color: var(--chrome-bg); border-color: var(--hair)">
                     <span style="color: var(--ink)">{{ __('Open public registration') }}</span>
                 </label>
 

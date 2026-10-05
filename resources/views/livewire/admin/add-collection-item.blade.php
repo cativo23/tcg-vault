@@ -51,10 +51,10 @@
             <div wire:loading.class="opacity-40" wire:target="search,runSearch" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
                 @foreach ($results as $result)
                     <button type="button" wire:click="selectCard(@js($result->tcgdexId))"
-                            class="nw-stagger-item border rounded p-2 text-left text-sm {{ $selectedTcgdexId === $result->tcgdexId ? 'ring-2' : '' }}"
+                            class="nw-stagger-item border rounded-sm p-2 text-left text-sm {{ $selectedTcgdexId === $result->tcgdexId ? 'ring-2' : '' }}"
                             style="--nw-stagger-index: {{ min($loop->index, 10) }}; {{ $selectedTcgdexId === $result->tcgdexId ? 'box-shadow: 0 0 0 2px var(--ink)' : '' }}">
                         @if ($result->imageUrl)
-                            <img src="{{ $result->imageUrl }}" alt="{{ $result->name }}" class="w-full rounded mb-1">
+                            <img src="{{ $result->imageUrl }}" alt="{{ $result->name }}" class="w-full rounded-sm mb-1">
                         @endif
                         <div class="font-medium">{{ $result->name }}</div>
                         <div class="text-xs" style="color: var(--muted)">{{ $resultSetNames[$result->setTcgdexId] ?? $result->setTcgdexId }}</div>
@@ -75,7 +75,7 @@
         @error('selectedTcgdexId') <p class="text-sm mb-3" style="color: var(--danger)">{{ $message }}</p> @enderror
 
         @if ($selectedTcgdexId)
-            <div class="mb-4 p-3 rounded" style="background: var(--bone-2)">
+            <div class="mb-4 p-3 rounded-sm" style="background: var(--bone-2)">
                 Selected: <strong>{{ $selectedName }}</strong> ({{ $selectedTcgdexId }})
             </div>
         @endif
