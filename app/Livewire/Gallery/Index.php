@@ -133,15 +133,17 @@ final class Index extends Component
         // resolver — not the whole collection on every keystroke.
         $gridQuery = $public->cardsQuery();
 
+        // Columns are table-qualified: the 'number' sort joins sets, which
+        // has its own name column.
         if ($this->search !== '') {
             // Postgres' LIKE is case-sensitive; ILIKE is the case-insensitive form.
-            $gridQuery->where('name', 'ilike', '%'.trim($this->search).'%');
+            $gridQuery->where('cards.name', 'ilike', '%'.trim($this->search).'%');
         }
         if ($this->setFilter !== '') {
             $gridQuery->whereHas('set', fn ($q) => $q->where('tcgdex_id', $this->setFilter));
         }
         if ($this->rarityFilter !== '') {
-            $gridQuery->where('rarity', $this->rarityFilter);
+            $gridQuery->where('cards.rarity', $this->rarityFilter);
         }
 
         $totalEntries = (clone $gridQuery)->count();

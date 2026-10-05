@@ -345,3 +345,15 @@ test('the old /{username}/gallery URL redirects to the shorter /{username}', fun
 
     $this->get('/carlos/gallery')->assertRedirect('/carlos');
 });
+
+test('sorting by number keeps search and rarity filters working', function () {
+    seedCollection();
+
+    // The number sort joins sets, which has its own name column, so an
+    // unqualified "name" in the search filter is ambiguous to Postgres.
+    Livewire::withQueryParams(['sort' => 'number', 'search' => 'pika', 'rarity' => 'Promo'])
+        ->test(Index::class, ['username' => 'carlos'])
+        ->assertOk()
+        ->assertSee('Pikachu on the Ball')
+        ->assertDontSee('Mega Darkrai ex');
+});
