@@ -19,8 +19,8 @@ use Livewire\Livewire;
 
 // Every listing screen walks a card's price history in PHP, and the sync
 // adds rows for every card every day — so they load only the recent
-// window, never the whole history. The card detail page is the one place
-// that still reads it all.
+// window, never the whole history. The card detail page loads it all but
+// prices from the same window; only its sparkline uses the rest.
 
 beforeEach(function () {
     $this->user = User::factory()->create(['username' => 'carlos']);
@@ -112,5 +112,23 @@ test('the card page prices a card from the same window as the listings, but char
     expect($page->viewData('snapshot')->market_minor)->toBe(400)
         ->and($grid['snapshot']->market_minor)->toBe(400)
         ->and($page->viewData('marketReads')->pluck('source')->all())->toBe(['cardmarket'])
-        ->and($page->viewData('history')->pluck('market_minor')->all())->toBe([300, 400]);
+        ->and($page->viewData('history')->pluck('market_minor')->all())->toBe([300, 400])
+        ->and($page->viewData('ownedTotal'))->toBe(['EUR' => 400]);
+});
+
+test('a card priced only before the window says so instead of claiming it was never priced', function () {
+    CardPriceSnapshot::where('captured_on', '>=', CardPriceSnapshot::recentFrom())->delete();
+
+    $this->get('/carlos/me05/116')
+        ->assertOk()
+        ->assertSee('No market price in the last '.CardPriceSnapshot::RECENT_DAYS.' days.')
+        ->assertDontSee('No market price recorded for this card yet.');
+});
+
+test('a card never priced at all still says it has no price yet', function () {
+    CardPriceSnapshot::query()->delete();
+
+    $this->get('/carlos/me05/116')
+        ->assertOk()
+        ->assertSee('No market price recorded for this card yet.');
 });

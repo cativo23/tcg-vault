@@ -72,7 +72,9 @@
                 @endif
             </div>
 
-            @if ($marketReads->isEmpty())
+            @if ($pricedBeforeWindow)
+                <p class="text-sm py-3" style="color: var(--muted)">No market price in the last {{ $recentDays }} days.</p>
+            @elseif ($marketReads->isEmpty())
                 <p class="text-sm py-3" style="color: var(--muted)">No market price recorded for this card yet.</p>
             @else
                 <div class="nw-prices">

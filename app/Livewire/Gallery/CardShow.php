@@ -86,7 +86,7 @@ final class CardShow extends Component
         $marketReads = $priced->priceSnapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->market_minor !== null)
             ->groupBy(fn (CardPriceSnapshot $s) => $s->source.'|'.$s->variant)
-            ->map(fn ($group) => $group->sortByDesc(fn (CardPriceSnapshot $s) => $s->captured_on->toDateString())->first())
+            ->map(fn ($group) => $group->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->first())
             ->sortBy(fn (CardPriceSnapshot $s) => $snapshot && $s->is($snapshot) ? 0 : 1)
             ->values();
 
@@ -134,6 +134,11 @@ final class CardShow extends Component
             'related' => $related,
             'facts' => $this->facts($raw),
             'priceUpdatedAt' => $latestDay,
+            // Rows older than the window are not "no price yet" — the page
+            // must not claim the card was never priced.
+            'pricedBeforeWindow' => $marketReads->isEmpty()
+                && $card->priceSnapshots->contains(fn (CardPriceSnapshot $s) => $s->market_minor !== null),
+            'recentDays' => CardPriceSnapshot::RECENT_DAYS,
         ])->layoutData([
             'title' => "{$card->name} #{$card->local_id} · {$card->set->name}",
             'description' => sprintf(
