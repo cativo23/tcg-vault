@@ -33,7 +33,7 @@ test('the profile page uses the apps own display heading, not a generic Breeze o
     $response = $this->get('/profile');
 
     $response->assertOk();
-    $response->assertSee('class="nw-display nw-h1 nw-h1--sm mb-4"', false);
+    $response->assertSee('class="nw-display nw-h1 nw-h1--sm"', false);
     $response->assertDontSee('text-xl font-semibold', false);
 });
 
