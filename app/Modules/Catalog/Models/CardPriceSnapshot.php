@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Catalog\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -15,6 +16,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 final class CardPriceSnapshot extends Model
 {
+    /**
+     * How many days of history a listing screen loads per card. Covers
+     * Activity's value-over-time chart, which is the longest look back
+     * any of them takes; the card detail page reads the full history.
+     */
+    public const RECENT_DAYS = 30;
+
     protected $fillable = [
         'card_id',
         'source',
@@ -52,6 +60,17 @@ final class CardPriceSnapshot extends Model
     public function capturedOnKey(): string
     {
         return substr((string) $this->attributes['captured_on'], 0, 10);
+    }
+
+    /**
+     * Snapshots captured within the last RECENT_DAYS days, today included.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeRecent(Builder $query): Builder
+    {
+        return $query->where('captured_on', '>=', today()->subDays(self::RECENT_DAYS));
     }
 
     /** @return BelongsTo<Card, $this> */

@@ -81,7 +81,7 @@ final class Show extends Component
         $cardsQuery = $this->set->cards()
             ->with([
                 'set',
-                'priceSnapshots',
+                'priceSnapshots' => fn ($q) => $q->recent(),
                 'collectionItems' => fn ($q) => $public->scopeItems($q)->orderBy('created_at'),
             ]);
 
@@ -137,7 +137,7 @@ final class Show extends Component
             ? $allEntries->filter(fn ($e) => $e['owned'])->pluck('card')
             : $this->set->cards()
                 ->whereHas('collectionItems', fn ($q) => $public->scopeItems($q))
-                ->with(['priceSnapshots', 'collectionItems' => fn ($q) => $public->scopeItems($q)])
+                ->with(['priceSnapshots' => fn ($q) => $q->recent(), 'collectionItems' => fn ($q) => $public->scopeItems($q)])
                 ->get();
 
         $ownedTotals = $valuation->totalsByCurrency($ownedCards);

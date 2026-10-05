@@ -523,7 +523,7 @@ final class CollectionItems extends Component
 
         $itemsQuery = CollectionItem::query()
             ->whereIn('collection_id', $collectionIds)
-            ->with(['card.set', 'card.priceSnapshots']);
+            ->with(['card.set', 'card.priceSnapshots' => fn ($q) => $q->recent()]);
 
         if ($this->search !== '') {
             $term = '%'.trim($this->search).'%';

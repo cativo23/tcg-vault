@@ -36,7 +36,7 @@ final class CollectionCsvExporter
 
         CollectionItem::query()
             ->whereIn('collection_id', Collection::query()->select('id'))
-            ->with(['card.set', 'card.priceSnapshots'])
+            ->with(['card.set', 'card.priceSnapshots' => fn ($q) => $q->recent()])
             ->lazyById(200)
             ->each(fn (CollectionItem $item) => fputcsv($out, $this->row($item), escape: '', eol: "\r\n"));
     }

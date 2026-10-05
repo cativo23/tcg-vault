@@ -71,7 +71,7 @@ final class Activity extends Component
             // inside the map: resolveForVariant() reads the relation as a
             // property, so a per-row load would mean one query per feed
             // entry on a public route.
-            ->with(['card.set', 'card.priceSnapshots'])
+            ->with(['card.set', 'card.priceSnapshots' => fn ($q) => $q->recent()])
             ->take(self::MAX_FEED)
             ->get()
             ->map(fn (CollectionItem $item) => [

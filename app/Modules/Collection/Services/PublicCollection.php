@@ -69,7 +69,9 @@ final class PublicCollection
 
     /**
      * Every distinct card the user owns publicly, with everything a tile
-     * needs eager-loaded (set, price snapshots, the owned copies).
+     * needs eager-loaded (set, the recent price snapshots, the owned
+     * copies). Recent, not all: the sync adds rows for every card every
+     * day, and each screen walks them in PHP.
      *
      * @return Builder<Card>
      */
@@ -79,7 +81,7 @@ final class PublicCollection
             ->whereHas('collectionItems', fn (Builder $q) => $this->scopeItems($q))
             ->with([
                 'set',
-                'priceSnapshots',
+                'priceSnapshots' => fn ($q) => $q->recent(),
                 'collectionItems' => fn ($q) => $this->scopeItems($q)->orderBy('created_at'),
             ]);
     }
