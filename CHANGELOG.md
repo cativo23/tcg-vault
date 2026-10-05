@@ -21,17 +21,21 @@ All notable changes to this project are documented here. Format follows
 - A card is priced from the same 30-day window everywhere, so its page can
   no longer show a different price or currency than its tile. A card with
   no price in that window says so instead of claiming it was never priced.
-- Sorting the collection by number while searching or filtering by rarity
-  returned an error page.
-- Buttons show the pointer cursor and keyboard focus shows the green focus
-  ring on the admin navigation, as `design.md` specifies.
+- Sorting the collection by number while searching returned an error page.
+
+### Changed
+
+- A card with no price in the last 30 days counts as unpriced everywhere:
+  on its tile and card page (no price chart either), in collection and set
+  totals, in the admin collection table, and in the CSV export.
+- The site now needs Safari 16.4+, Chrome 111+ or Firefox 128+ (Tailwind
+  CSS 4).
 
 ### Security
 
-- `league/commonmark` 2.10.3 (GHSA-3q6v-r5mr-hxv8, GHSA-97jj-33gv-5xf9) and
-  Tailwind CSS 4, which drops the vulnerable `braces` build dependency
-  (GHSA-vfj7-8cjw-p6xm). Tailwind 4 needs Safari 16.4+, Chrome 111+ or
-  Firefox 128+.
+- Updated `league/commonmark` to 2.10.3 (GHSA-3q6v-r5mr-hxv8,
+  GHSA-97jj-33gv-5xf9) and moved to Tailwind CSS 4, which drops the
+  vulnerable `braces` build dependency (GHSA-vfj7-8cjw-p6xm).
 
 ### Deploy
 
