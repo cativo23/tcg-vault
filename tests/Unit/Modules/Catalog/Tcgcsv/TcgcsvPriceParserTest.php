@@ -34,12 +34,7 @@ test('a row with no market price keeps a null price instead of zero', function (
     expect($rows[0]->lowMinor)->toBeNull();
 });
 
-test('maps TCGplayer subtypes to base variant keys and leaves others unmapped', function () {
-    expect(TcgcsvPriceParser::baseVariantFor('Normal'))->toBe('normal');
-    expect(TcgcsvPriceParser::baseVariantFor('Holofoil'))->toBe('holofoil');
-    expect(TcgcsvPriceParser::baseVariantFor('Reverse Holofoil'))->toBe('reverse-holofoil');
-    expect(TcgcsvPriceParser::baseVariantFor('1st Edition Holofoil'))->toBeNull();
-
+test('maps a variant key to the TCGplayer subtype that prices its base print', function () {
     expect(TcgcsvPriceParser::subTypeFor('reverse-holofoil:pokeball'))->toBe('Reverse Holofoil');
     expect(TcgcsvPriceParser::subTypeFor('holofoil:cosmos+player-rewards-program'))->toBe('Holofoil');
     expect(TcgcsvPriceParser::subTypeFor('normal'))->toBe('Normal');
@@ -59,5 +54,8 @@ test('a malformed payload is rejected whole', function (mixed $payload) {
     'absurd price' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => 1e300, 'subTypeName' => 'Normal']])],
     'infinite price' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => INF, 'subTypeName' => 'Normal']])],
     'product id beyond the column' => [tcgcsvPrices([['productId' => 2_147_483_648, 'marketPrice' => 1.0, 'subTypeName' => 'Normal']])],
+    'subtype with a line break' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => 1.0, 'subTypeName' => "Normal\n[x] CRITICAL: forged"]])],
+    'subtype with a trailing line break' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => 1.0, 'subTypeName' => "Holofoil\n"]])],
+    'subtype with a NUL byte' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => 1.0, 'subTypeName' => "Nor\0mal"]])],
     'over-long subtype' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => 1.0, 'subTypeName' => str_repeat('x', 40)]])],
 ]);

@@ -89,6 +89,7 @@ test('isValid accepts the base and special key shapes and nothing else', functio
     ['holofoil:cosmos+', false],
     ['normal:<script>', false],
     ['NORMAL', false],
+    ["normal\n", false],
 ]);
 
 test('isValid rejects a key longer than the column-safe ceiling', function () {

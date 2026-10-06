@@ -128,6 +128,34 @@ docker compose -f compose.prod.yml exec app php artisan photos:strip-metadata
 docker compose -f compose.prod.yml exec app php artisan catalog:backfill-images
 ```
 
+## tcgcsv shadow sync (once, after the release that adds it)
+
+`SyncTcgcsvPricesJob` runs daily at 20:30 UTC on Horizon's `supervisor-tcgcsv`
+(connection `redis-long`, queue `tcgcsv`). It writes no prices yet: it links
+prints to TCGplayer products and compares tcgcsv's price with tcgdex's. With
+no set mapped to a TCGplayer group it compares nothing, without error — so
+map the groups after deploying:
+
+```bash
+# 1. Review the proposals (prints only; nothing is written):
+docker compose -f compose.prod.yml exec app php artisan catalog:propose-tcgplayer-groups
+# 2. Store the unambiguous ones:
+docker compose -f compose.prod.yml exec app php artisan catalog:propose-tcgplayer-groups --write
+# 3. Map the rest explicitly — ambiguous abbreviations (30C is two groups:
+#    30th → 24722, its Classic Collection → 24837), SWSH sets whose
+#    abbreviations differ between tcgcsv and tcgdex, and groups no set owns
+#    (Prize Pack 22880, Trainer Galleries), e.g.:
+docker compose -f compose.prod.yml exec app php artisan catalog:propose-tcgplayer-groups --set=30th --group=24722
+```
+
+The day's comparison is logged on the `tcgcsv` channel (stderr of the
+`horizon` container) and kept in the cache under `tcgcsv:shadow:<date>` for
+30 days. After 5–7 days, read them to decide on the next phase:
+
+```bash
+docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(cache('tcgcsv:shadow:'.now()->toDateString()));"
+```
+
 ## Acceptance checklist (first deploy)
 - [ ] `.env` on the server has `APP_DEBUG=false` and `SESSION_SECURE_COOKIE=true`
       — both are correct in `docker/prod/.env.production.example`, but that's a

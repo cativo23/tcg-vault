@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceParser;
+use GuzzleHttp\Psr7\FnStream;
+use GuzzleHttp\Psr7\Utils;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
@@ -56,4 +59,38 @@ test('a response past the size cap is refused while reading, whatever its header
 test('only an https base URL is accepted', function () {
     expect(fn () => new TcgcsvClient('http://tcgcsv.com', 'ua', new TcgcsvPriceParser))
         ->toThrow(InvalidArgumentException::class);
+});
+
+test('group names and abbreviations are plain text, and a malformed abbreviation is dropped', function () {
+    Http::fake(['tcgcsv.com/tcgplayer/3/groups' => Http::response(['success' => true, 'results' => [
+        ['groupId' => 1, 'name' => "ME: Set\e]52;c;evil\x07", 'abbreviation' => ['not', 'a', 'string'], 'isSupplemental' => false],
+    ]], 200)]);
+
+    $groups = app(TcgcsvClient::class)->groups();
+
+    expect($groups[0]['name'])->toBe('ME: Set]52;c;evil');
+    expect($groups[0]['abbreviation'])->toBeNull();
+});
+
+test('a body that breaks mid-read is a connection failure, not a crash', function () {
+    $broken = FnStream::decorate(Utils::streamFor('{"success":true'), [
+        'isSeekable' => fn () => false,
+        'eof' => fn () => false,
+        'read' => fn () => throw new RuntimeException('Unable to read from stream'),
+    ]);
+    Http::fake(['tcgcsv.com/tcgplayer/3/24688/prices' => Http::response($broken, 200)]);
+
+    expect(fn () => app(TcgcsvClient::class)->prices(24688))->toThrow(ConnectionException::class);
+});
+
+test('a body that stalls past the read deadline is a connection failure', function () {
+    $stalled = FnStream::decorate(Utils::streamFor(''), [
+        'isSeekable' => fn () => false,
+        'eof' => fn () => false,
+        'read' => fn () => '',
+    ]);
+    Http::fake(['tcgcsv.com/tcgplayer/3/24688/prices' => Http::response($stalled, 200)]);
+    $client = new TcgcsvClient('https://tcgcsv.com', 'tcg-vault/1', new TcgcsvPriceParser, bodyDeadlineSeconds: 0.0);
+
+    expect(fn () => $client->prices(24688))->toThrow(ConnectionException::class);
 });

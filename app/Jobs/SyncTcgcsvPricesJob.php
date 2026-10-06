@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
+use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceRow;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
@@ -21,7 +23,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
-use Throwable;
 use UnexpectedValueException;
 
 /**
@@ -86,7 +87,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         try {
             $build = $client->lastUpdated()->toIso8601String();
         } catch (ConnectionException|RequestException|UnexpectedValueException $e) {
-            Log::warning('tcgcsv build check failed; retrying later', ['error' => class_basename($e)]);
+            Log::channel('tcgcsv')->warning('tcgcsv build check failed; retrying later', ['error' => class_basename($e)]);
             $this->retryLaterOrStop();
 
             return;
@@ -99,7 +100,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             return;
         }
 
-        [$prices, $fetched, $failedGroups] = $this->fetchPrices($client, $build);
+        [$prices, $fetched, $failedGroups, $partialRetry] = $this->fetchPrices($client, $build);
 
         if ($failedGroups === []) {
             // Every group has this build; recorded before linking, so a
@@ -118,14 +119,22 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             }
         });
 
-        Log::info('tcgcsv shadow sync', [
+        $summary = [
             'build' => $build,
+            // A retry after a partial failure compares only the groups it
+            // re-fetched, not the whole build.
+            'partial_retry' => $partialRetry,
             'groups_ok' => count($fetched),
             'groups_fetched' => $fetched,
             'groups_failed' => count($failedGroups),
             'skipped_no_matching_subtype' => $skipped,
             ...$this->compare($prices),
-        ]);
+        ];
+
+        Log::channel('tcgcsv')->info('tcgcsv shadow sync', $summary);
+        // Kept for the shadow-phase review even after logs rotate.
+        $day = 'tcgcsv:shadow:'.now()->toDateString();
+        Cache::put($day, [...Cache::get($day, []), $summary], now()->addDays(30));
 
         if ($failedGroups !== []) {
             // Some groups are missing from this build; try them again later.
@@ -145,18 +154,20 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * This build's prices for every configured group not already fetched
      * from it, groupId → productId → subType → row. Each group remembers
      * the build it last fetched, so a retry after a partial failure pulls
-     * only the groups that failed. A failing group is skipped and named,
-     * never fatal to the rest.
+     * only the groups that failed. A group that fails for an expected
+     * reason is skipped and named; a throttle (429) or a lost connection
+     * stops the loop, since every later request would fail the same way,
+     * and the remaining groups wait for the hourly retry. Anything else is
+     * a bug and propagates.
      *
-     * @return array{array<int, array<int, array<string, TcgcsvPriceRow>>>, list<int>, list<int>}
+     * @return array{array<int, array<int, array<string, TcgcsvPriceRow>>>, list<int>, list<int>, bool}
      */
     private function fetchPrices(TcgcsvClient $client, string $build): array
     {
-        $groups = DB::table('set_tcgplayer_groups')->distinct()->pluck('group_id')
+        $all = DB::table('set_tcgplayer_groups')->distinct()->pluck('group_id')
             ->merge(CardTcgplayerLink::whereNotNull('group_id')->distinct()->pluck('group_id'))
-            ->map(fn ($g) => (int) $g)->unique()->sort()->values()
-            ->reject(fn (int $g) => Cache::get("tcgcsv:group:{$g}") === $build)
-            ->values();
+            ->map(fn ($g) => (int) $g)->unique()->sort()->values();
+        $groups = $all->reject(fn (int $g) => Cache::get("tcgcsv:group:{$g}") === $build)->values();
 
         $prices = [];
         $fetched = [];
@@ -173,19 +184,28 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 }
                 Cache::put("tcgcsv:group:{$groupId}", $build, now()->addDays(2));
                 $fetched[] = $groupId;
-            } catch (Throwable) {
+            } catch (ConnectionException|RequestException|UnexpectedValueException|MalformedCatalogResponseException $e) {
+                Log::channel('tcgcsv')->warning('tcgcsv group failed', ['group' => $groupId, 'error' => class_basename($e)]);
                 $failed[] = $groupId;
+
+                if ($e instanceof ConnectionException || ($e instanceof RequestException && $e->response->status() === 429)) {
+                    // Stop: tcgcsv throttles a client for 10 minutes, and a
+                    // dropped connection won't come back mid-loop.
+                    $failed = [...$failed, ...$groups->slice($i + 1)->values()->all()];
+
+                    break;
+                }
             }
         }
 
-        return [$prices, $fetched, $failed];
+        return [$prices, $fetched, $failed, $groups->count() < $all->count()];
     }
 
     /**
      * How tcgcsv's price for each linked print compares with the latest
-     * tcgdex-synced TCGplayer price for it (within the resolver's 3-day
+     * tcgdex-synced TCGplayer price for it (within the resolver's staleness
      * window), and how many linked prints tcgdex doesn't price at all —
-     * the gaps tcgcsv would fill.
+     * the gaps tcgcsv would fill. Covers only the groups this run fetched.
      *
      * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices
      * @return array<string, mixed>
@@ -194,7 +214,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     {
         $tcgdex = DB::table('card_price_snapshots')
             ->where('source', 'tcgplayer')->where('origin', 'tcgdex')
-            ->where('captured_on', '>=', CarbonImmutable::today()->subDays(3)->toDateString())
+            ->where('captured_on', '>=', CarbonImmutable::today()->subDays(CardPriceResolver::STALE_AFTER_DAYS)->toDateString())
             ->whereNotNull('market_minor')
             ->selectRaw('DISTINCT ON (card_id, variant) card_id, variant, market_minor')
             ->orderBy('card_id')->orderBy('variant')->orderByDesc('captured_on')
@@ -203,6 +223,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         $diffs = [];
         $outliers = [];
+        $outlierCount = 0;
         $gaps = 0;
 
         $links = CardTcgplayerLink::query()->whereNotNull('group_id')->get(['card_id', 'variant', 'product_id', 'sub_type', 'group_id']);
@@ -221,8 +242,11 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
             $diff = abs($row->marketMinor - $theirs) / $theirs;
             $diffs[] = $diff;
-            if ($diff > 0.25 && count($outliers) < 10) {
-                $outliers[] = [$link->card_id, $link->variant];
+            if ($diff > 0.25) {
+                $outlierCount++;
+                if (count($outliers) < 10) {
+                    $outliers[] = [$link->card_id, $link->variant];
+                }
             }
         }
 
@@ -230,7 +254,8 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'compared' => count($diffs),
             'within_2_percent' => count(array_filter($diffs, fn (float $d) => $d <= 0.02)),
             'median_diff_percent' => $this->medianPercent($diffs),
-            'over_25_percent' => $this->name($outliers),
+            'over_25_percent_count' => $outlierCount,
+            'over_25_percent' => $this->outlierLabels($outliers),
             'linked_without_tcgdex_price' => $gaps,
         ];
     }
@@ -250,10 +275,12 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     }
 
     /**
+     * The first outliers as "tcgdex id + variant" labels for the log.
+     *
      * @param  list<array{int, string}>  $outliers  [card_id, variant]
      * @return list<string>
      */
-    private function name(array $outliers): array
+    private function outlierLabels(array $outliers): array
     {
         $ids = Card::whereIn('id', array_column($outliers, 0))->pluck('tcgdex_id', 'id');
 

@@ -412,5 +412,7 @@ test('"Prices updated" dates the latest marketplace sync and names its origins, 
 
     $response->assertOk();
     $response->assertSeeInOrder(['Prices updated', today()->subDays(2)->format('j M'), 'via tcgdex']);
+    // Words stay in the body face; the numerals-only face is for the date.
+    $response->assertSee('<small class="word">via tcgdex</small>', false);
     $response->assertDontSee(today()->format('j M').'<small>', false);
 });

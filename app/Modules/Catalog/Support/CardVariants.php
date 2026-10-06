@@ -184,7 +184,7 @@ final class CardVariants
             // cosmos is its only holo entry, yet a product of its own — or
             // when it has no ids at all while the card's other prints carry
             // the card's own (a Prize Pack entry tcgdex hasn't filled in).
-            $isSeparateProduct = ! $sharesBaseProduct && (
+            $isSeparateProduct = (
                 self::differOnAMarketplace($entryProducts, $baseProducts)
                 || ($entryProducts === [] && $baseProducts !== [] && collect($detailed)->contains(
                     fn (array $other) => $other !== $entry && array_intersect(self::productIds($other['thirdParty'] ?? null), $baseProducts) !== [],
@@ -362,7 +362,8 @@ final class CardVariants
     {
         $base = implode('|', array_map(fn (string $b) => preg_quote($b, '/'), self::ORDER));
 
-        return '/^(?:'.$base.')(?::'.self::SEGMENT.')?(?:\\+'.self::SEGMENT.')*$/';
+        // D: `$` must not match before a trailing newline.
+        return '/^(?:'.$base.')(?::'.self::SEGMENT.')?(?:\\+'.self::SEGMENT.')*$/D';
     }
 
     public static function label(string $key): string
