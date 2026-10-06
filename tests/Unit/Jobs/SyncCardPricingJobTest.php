@@ -178,6 +178,20 @@ test('a transient tcgdex status puts the job back on the queue instead of failin
     $job->assertReleased(delay: 10);
 })->with([429, 500, 502, 503, 504]);
 
+test('each transient retry is logged with the card and the status, so an outage still leaves a trace', function () {
+    Log::spy();
+    providerThrowing(tcgdexStatus(429));
+
+    $job = (new SyncCardPricingJob('me05-116'))->withFakeQueueInteractions();
+    $job->handle(app(CatalogSyncService::class));
+
+    Log::shouldHaveReceived('warning')->once()->withArgs(
+        fn (string $message, array $context) => $message === 'SyncCardPricingJob: tcgdex unavailable, retrying'
+            && $context['tcgdex_card_id'] === 'me05-116'
+            && $context['status'] === 429,
+    );
+});
+
 test('a connection failure to tcgdex is retried the same way', function () {
     providerThrowing(new ConnectionException('cURL error 28: Operation timed out'));
 
@@ -206,13 +220,13 @@ test('a client error from tcgdex is not mistaken for a transient one', function 
     $job->assertNotReleased();
 });
 
-test('a card still failing when the deadline runs out is logged by its id', function () {
+test('a failed job is logged by its card id', function () {
     Log::spy();
 
     (new SyncCardPricingJob('me05-116'))->failed(new RuntimeException('has been attempted too many times'));
 
     Log::shouldHaveReceived('error')->once()->withArgs(
-        fn (string $message, array $context) => $message === 'SyncCardPricingJob: gave up on a card after retrying until the deadline'
+        fn (string $message, array $context) => $message === 'SyncCardPricingJob: card did not sync before the job failed'
             && $context['tcgdex_card_id'] === 'me05-116',
     );
 });

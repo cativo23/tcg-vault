@@ -96,38 +96,56 @@ final class SyncCardPricingJob implements ShouldQueue
                 'reason' => $e->getMessage(),
             ]);
         } catch (ConnectionException $e) {
-            $this->retryLater();
+            $this->retryLater(null, $e);
         } catch (RequestException $e) {
             // tcgdex's load balancer answers 503 "no available server"
             // for a few seconds on some nights, and the next attempt
-            // succeeds. Released rather than rethrown: a rethrow is
-            // reported as an error on every attempt, and failed() below
-            // already speaks up if the card never comes through. Any
-            // other client error is not transient and still propagates.
+            // succeeds. Released rather than rethrown: the worker reports
+            // a rethrown exception on every attempt, so each blip became
+            // an error report. Any other client error is still rethrown —
+            // the queue then retries it until retryUntil() as well,
+            // reporting each attempt.
             if (! $e->response->serverError() && $e->response->status() !== 429) {
                 throw $e;
             }
 
-            $this->retryLater();
+            $this->retryLater($e->response->status(), $e);
         }
     }
 
     /**
-     * Called once retryUntil() has passed with the card still failing —
-     * the only point at which a transient failure is worth reporting.
+     * Called when the job is failed — usually because retryUntil() passed
+     * before the card synced, which the worker also reports. The reason is
+     * then the framework's generic "attempted too many times"; the last
+     * tcgdex error is in the retry warnings logged before it (and in the
+     * rate limiter's releases, if the job was starved rather than refused).
      */
     public function failed(?Throwable $e): void
     {
-        Log::error('SyncCardPricingJob: gave up on a card after retrying until the deadline', [
+        Log::error('SyncCardPricingJob: card did not sync before the job failed', [
             'tcgdex_card_id' => $this->tcgdexCardId,
             'reason' => $e?->getMessage(),
         ]);
     }
 
-    private function retryLater(): void
+    /**
+     * A warning, not a report: it goes to the log (and rides along as a
+     * breadcrumb if the job later fails), so a long outage or a run of
+     * 429s still leaves a trace without one error report per attempt.
+     */
+    private function retryLater(?int $status, Throwable $e): void
     {
         $delays = $this->backoff();
+        $delay = $delays[min($this->attempts(), count($delays)) - 1];
 
-        $this->release($delays[min($this->attempts(), count($delays)) - 1]);
+        Log::warning('SyncCardPricingJob: tcgdex unavailable, retrying', [
+            'tcgdex_card_id' => $this->tcgdexCardId,
+            'status' => $status,
+            'attempt' => $this->attempts(),
+            'retry_in_seconds' => $delay,
+            'reason' => $e->getMessage(),
+        ]);
+
+        $this->release($delay);
     }
 }
