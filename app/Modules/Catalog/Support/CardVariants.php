@@ -151,7 +151,8 @@ final class CardVariants
      * offering that as a second option would split one physical card into
      * two collection rows. Such an entry is the base print when it is the
      * same product as the card's top-level pricing, or the lone entry of
-     * its type with no plain sibling.
+     * its type with no plain sibling — unless their product ids show it is
+     * a separate product.
      *
      * @param  array<string, mixed>  $raw  the card's full tcgdex payload
      * @return array<int, array{key: string, entry: array<string, mixed>}>
@@ -175,8 +176,22 @@ final class CardVariants
             $hasPlainSibling = collect($siblings)->contains(fn (array $e) => empty($e['foil']) && empty($e['stamp']));
             $isLoneSpecial = collect($siblings)->filter(fn (array $e) => self::keyFor($e) !== null)->count() === 1;
 
-            if (array_intersect(self::productIds($entry['thirdParty'] ?? null), $baseProducts) !== []
-                || (! $hasPlainSibling && $isLoneSpecial)) {
+            $entryProducts = self::productIds($entry['thirdParty'] ?? null);
+            $sharesBaseProduct = array_intersect($entryProducts, $baseProducts) !== [];
+            // A lone entry is the base print only when nothing says it is a
+            // separate product. It is one when it and the card carry ids on
+            // the same marketplace that differ — Boss's Orders' Prize Pack
+            // cosmos is its only holo entry, yet a product of its own — or
+            // when it has no ids at all while the card's other prints carry
+            // the card's own (a Prize Pack entry tcgdex hasn't filled in).
+            $isSeparateProduct = ! $sharesBaseProduct && (
+                self::differOnAMarketplace($entryProducts, $baseProducts)
+                || ($entryProducts === [] && $baseProducts !== [] && collect($detailed)->contains(
+                    fn (array $other) => $other !== $entry && array_intersect(self::productIds($other['thirdParty'] ?? null), $baseProducts) !== [],
+                ))
+            );
+
+            if ($sharesBaseProduct || (! $hasPlainSibling && $isLoneSpecial && ! $isSeparateProduct)) {
                 continue;
             }
 
@@ -235,6 +250,28 @@ final class CardVariants
     public static function isSpecial(string $key): bool
     {
         return str_contains($key, ':') || str_contains($key, '+');
+    }
+
+    /**
+     * Whether two sets of `source:id` product ids name different products on
+     * some marketplace both list — never a cardmarket id against a
+     * tcgplayer one.
+     *
+     * @param  array<int, string>  $a
+     * @param  array<int, string>  $b
+     */
+    private static function differOnAMarketplace(array $a, array $b): bool
+    {
+        foreach (['cardmarket', 'tcgplayer'] as $source) {
+            $onA = array_filter($a, fn (string $id) => str_starts_with($id, "{$source}:"));
+            $onB = array_filter($b, fn (string $id) => str_starts_with($id, "{$source}:"));
+
+            if ($onA !== [] && $onB !== [] && array_intersect($onA, $onB) === []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
