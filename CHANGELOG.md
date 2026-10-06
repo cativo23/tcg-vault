@@ -6,6 +6,47 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-06
+
+### Added
+
+- Every price records where it came from (`tcgdex`, `tcgcsv`, or entered
+  by hand) separately from the marketplace it prices, so TCGplayer prices
+  can arrive through more than one feed without splitting a print's price
+  history.
+- tcgcsv.com shadow sync. Once a day (20:30 UTC) TCGplayer prices are
+  pulled from tcgcsv — about one request per set, following tcgcsv's usage
+  rules — and each print is linked to its TCGplayer product. Nothing is
+  priced from it yet: each day's agreement with tcgdex's prices, and the
+  prints tcgdex doesn't price at all, are logged and kept for 30 days to
+  decide whether tcgcsv becomes the primary TCGplayer source. The sets to
+  pull are mapped with `catalog:propose-tcgplayer-groups`.
+
+### Changed
+
+- The card page and the gallery name where their prices came from instead
+  of crediting tcgdex for everything, and date the latest sync rather than
+  the latest manual entry. A manual price says when it was entered, and a
+  manual price copied from a feed says which. Each price tile has a tooltip
+  with its marketplace, origin and date.
+
+### Fixed
+
+- A card's only foil or stamped print is offered as its own print when it
+  is a separate product. Boss's Orders' Prize Pack cosmos was offered as a
+  plain "Holofoil" that doesn't exist; across the catalog 94 cards now
+  offer their real special print instead of a phantom base print. No
+  collected copy loses its variant.
+- Base prices are labelled by the prints a card really has: a foil price is
+  no longer filed under a print the card doesn't have.
+
+### Deploy
+
+Three migrations (additive). Run `php artisan migrate --force` against the
+new image before `up -d`. The horizon container's memory limit rises to
+320M for the new tcgcsv worker. Afterwards, map the TCGplayer groups —
+see "tcgcsv shadow sync" in `deploy/README.md`.
+
 ## [1.1.2] - 2026-10-06
 
 ### Fixed
