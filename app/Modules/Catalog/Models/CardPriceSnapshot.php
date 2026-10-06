@@ -8,6 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 /**
  * The foreign keys behind these are NOT NULL and constrained, so the
@@ -49,6 +50,17 @@ final class CardPriceSnapshot extends Model
             'raw' => 'array',
             'source_updated_at' => 'datetime',
         ];
+    }
+
+    /** Where this price came from, as a collector reads it. */
+    public function sourceLabel(): string
+    {
+        return match ($this->source) {
+            'tcgplayer' => 'TCGplayer',
+            'cardmarket' => 'Cardmarket',
+            'manual' => 'Manual',
+            default => Str::headline($this->source),
+        };
     }
 
     /**

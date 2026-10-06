@@ -82,7 +82,7 @@
                         @php $isResolved = $snapshot && $read->is($snapshot); @endphp
                         <div class="nw-price" @if ($isResolved) style="box-shadow: 0 0 0 1.5px var(--ink)" @endif>
                             <div class="src">
-                                <span>{{ $read->source === 'tcgplayer' ? 'TCGplayer' : 'Cardmarket' }}</span>
+                                <span>{{ $read->sourceLabel() }}</span>
                                 <span>{{ $read->variant === 'default' ? 'Avg' : \App\Modules\Catalog\Support\CardVariants::label($read->variant) }}</span>
                             </div>
                             <div class="amt {{ $isResolved && $delta?->isUp() ? 'up' : '' }}">{{ Money::format($read->market_minor, $read->currency) }}</div>

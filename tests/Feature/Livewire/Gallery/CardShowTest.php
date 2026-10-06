@@ -101,3 +101,16 @@ test('the card page requires no authentication', function () {
 
     $this->get('/carlos/me05/116')->assertOk();
 });
+
+test('a manually entered market price is labelled as manual, never as a marketplace', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil:cosmos+player-rewards-program']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'holofoil:cosmos+player-rewards-program', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 70]);
+
+    $response = $this->get('/carlos/me05/116');
+
+    $response->assertOk();
+    $response->assertSee('Manual');
+    $response->assertSee('Holofoil · Cosmos · Player Rewards Program');
+    $response->assertDontSee('Cardmarket');
+});

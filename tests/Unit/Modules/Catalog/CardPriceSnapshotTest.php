@@ -23,3 +23,11 @@ test('the capture day key is the Y-m-d day of a snapshot read back from the data
 
     expect(CardPriceSnapshot::find($snapshot->id)->capturedOnKey())->toBe('2026-09-14');
 });
+
+test('sourceLabel names where the price came from', function (string $source, string $label) {
+    expect((new CardPriceSnapshot(['source' => $source]))->sourceLabel())->toBe($label);
+})->with([
+    ['tcgplayer', 'TCGplayer'],
+    ['cardmarket', 'Cardmarket'],
+    ['manual', 'Manual'],
+]);
