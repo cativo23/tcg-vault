@@ -39,3 +39,9 @@ test('an explicit set and group pair is stored after checking the group exists',
 
     expect(DB::table('set_tcgplayer_groups')->pluck('group_id')->all())->toBe([24722]);
 });
+
+test('an explicit pair for an unknown set is refused', function () {
+    $this->artisan('catalog:propose-tcgplayer-groups', ['--set' => 'nope', '--group' => '24722'])->assertFailed();
+
+    expect(DB::table('set_tcgplayer_groups')->count())->toBe(0);
+});

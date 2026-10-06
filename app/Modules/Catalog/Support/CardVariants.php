@@ -184,7 +184,7 @@ final class CardVariants
             // cosmos is its only holo entry, yet a product of its own — or
             // when it has no ids at all while the card's other prints carry
             // the card's own (a Prize Pack entry tcgdex hasn't filled in).
-            $isSeparateProduct = ! $sharesBaseProduct && (
+            $isSeparateProduct = (
                 self::differOnAMarketplace($entryProducts, $baseProducts)
                 || ($entryProducts === [] && $baseProducts !== [] && collect($detailed)->contains(
                     fn (array $other) => $other !== $entry && array_intersect(self::productIds($other['thirdParty'] ?? null), $baseProducts) !== [],

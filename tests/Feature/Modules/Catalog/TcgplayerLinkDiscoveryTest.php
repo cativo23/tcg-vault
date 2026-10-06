@@ -62,19 +62,22 @@ test('a print tcgdex lists but doesn\'t price links through its product id, a lo
 
 test('base and special prints of one card link to their own products and subtypes', function () {
     // me02.5-183 Boss's Orders: one product for normal + reverse, separate Prize Pack products.
-    $card = linkCard('me02.5-183', ['variants' => ['normal' => true, 'reverse' => true, 'holo' => true], 'variants_detailed' => [
-        ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['tcgplayer' => 675995]],
-        ['type' => 'reverse', 'size' => 'standard', 'thirdParty' => ['tcgplayer' => 675995]],
-        ['type' => 'normal', 'size' => 'standard', 'stamp' => ['player-rewards-program'], 'thirdParty' => ['tcgplayer' => 704398]],
-        ['type' => 'holo', 'size' => 'standard', 'foil' => 'cosmos', 'stamp' => ['player-rewards-program'], 'thirdParty' => ['tcgplayer' => 704399]],
+    $card = linkCard('me02.5-183', ['variants' => ['normal' => true, 'reverse' => true, 'holo' => true], 'pricing' => [
+        'cardmarket' => ['unit' => 'EUR', 'idProduct' => 869794, 'avg' => 0.25],
+        'tcgplayer' => ['unit' => 'USD', 'normal' => ['productId' => 675995, 'marketPrice' => 0.24]],
+    ], 'variants_detailed' => [
+        ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 869794, 'tcgplayer' => 675995]],
+        ['type' => 'reverse', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 869794, 'tcgplayer' => 675995]],
+        ['type' => 'normal', 'size' => 'standard', 'stamp' => ['player-rewards-program'], 'thirdParty' => ['cardmarket' => 894199, 'tcgplayer' => 704398]],
+        ['type' => 'holo', 'size' => 'standard', 'foil' => 'cosmos', 'stamp' => ['player-rewards-program'], 'thirdParty' => ['cardmarket' => 894200, 'tcgplayer' => 704399]],
     ]], 'me02.5', [24600, 22880]);
 
     app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24600, [675995 => ['Normal', 'Reverse Holofoil']]) + priceIndex(22880, [704398 => ['Normal'], 704399 => ['Holofoil']]));
 
     expect(linksOf($card))->toBe([
-        // tcgdex flags this card holo only because of the Prize Pack cosmos,
-        // its lone holo entry, which CardVariants reads as the holo print.
-        ['holofoil', 704399, 'Holofoil', 'tcgdex-thirdparty', 22880],
+        // Its lone holo entry is the Prize Pack cosmos — a product of its
+        // own, so it links under its own key and no plain holo exists.
+        ['holofoil:cosmos+player-rewards-program', 704399, 'Holofoil', 'tcgdex-thirdparty', 22880],
         ['normal', 675995, 'Normal', 'tcgdex-thirdparty', 24600],
         ['normal+player-rewards-program', 704398, 'Normal', 'tcgdex-thirdparty', 22880],
         ['reverse-holofoil', 675995, 'Reverse Holofoil', 'tcgdex-thirdparty', 24600],
@@ -144,4 +147,17 @@ test('a special print listed before the plain one never lends the base print its
     app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24688, [700 => ['Holofoil'], 701 => ['Holofoil'], 702 => ['Reverse Holofoil']]));
 
     expect(collect(linksOf($card))->firstWhere(0, 'reverse-holofoil')[1])->toBe(702);
+});
+
+test('a card may also link within a group one of its links already uses', function () {
+    // A Prize Pack group isn't mapped to the card's set, but an existing
+    // (admin) link points the card at it.
+    $card = linkCard('sv06.5-061', ['variants' => ['normal' => true], 'variants_detailed' => [
+        ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['tcgplayer' => 541000]],
+    ]], 'sv06.5', [23900]);
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'holofoil:cosmos+player-rewards-program', 'product_id' => 703837, 'sub_type' => 'Holofoil', 'group_id' => 22880, 'method' => 'admin']);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(22880, [541000 => ['Normal']]));
+
+    expect(collect(linksOf($card))->firstWhere(0, 'normal'))->toBe(['normal', 541000, 'Normal', 'tcgdex-thirdparty', 22880]);
 });

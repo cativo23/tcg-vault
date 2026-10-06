@@ -472,6 +472,8 @@ body::before {
   text-overflow: ellipsis;
 }
 .nw-stat .v small { font-size: .52em; color: var(--muted); letter-spacing: 0; margin-left: 5px; font-weight: 500; }
+/* Words beside a stat (e.g. where prices came from) stay in the body face: Martian Mono is for numerals. */
+.nw-stat .v small.word { font-family: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif; font-variation-settings: normal; font-feature-settings: normal; }
 .nw-stat .v.text {
   font-family: inherit;
   font-variation-settings: 'wdth' 66, 'wght' 800;
