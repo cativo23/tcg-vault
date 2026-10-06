@@ -15,7 +15,7 @@
     // unambiguous; variant/condition are appended when they add anything.
     $rowDescription = 'variant '.($rowIndex + 1);
     if (! empty($row['variant'])) {
-        $rowDescription .= ' ('.\Illuminate\Support\Str::headline($row['variant']).', '.$row['condition'].')';
+        $rowDescription .= ' ('.\App\Modules\Catalog\Support\CardVariants::label($row['variant']).', '.$row['condition'].')';
     }
 @endphp
 <div class="p-4" style="border-bottom: 1px solid var(--hair); display: grid; grid-template-columns: 1fr 1fr 70px auto; gap: 10px; align-items: end; position: relative;" wire:key="{{ $namePrefix }}">
@@ -24,7 +24,7 @@
         <select wire:model="{{ $namePrefix }}.variant" @if($onUpdate) wire:change="{{ $onUpdate }}" @endif class="nw-input w-full">
             <option value="">— not specified —</option>
             @foreach ($availableVariants as $v)
-                <option value="{{ $v }}">{{ \Illuminate\Support\Str::headline($v) }}</option>
+                <option value="{{ $v }}">{{ \App\Modules\Catalog\Support\CardVariants::label($v) }}</option>
             @endforeach
         </select>
         @error("{$namePrefix}.variant") <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror

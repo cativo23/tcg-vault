@@ -83,7 +83,7 @@
                         <div class="nw-price" @if ($isResolved) style="box-shadow: 0 0 0 1.5px var(--ink)" @endif>
                             <div class="src">
                                 <span>{{ $read->source === 'tcgplayer' ? 'TCGplayer' : 'Cardmarket' }}</span>
-                                <span>{{ Str::headline($read->variant === 'default' ? 'avg' : $read->variant) }}</span>
+                                <span>{{ $read->variant === 'default' ? 'Avg' : \App\Modules\Catalog\Support\CardVariants::label($read->variant) }}</span>
                             </div>
                             <div class="amt {{ $isResolved && $delta?->isUp() ? 'up' : '' }}">{{ Money::format($read->market_minor, $read->currency) }}</div>
                             <div class="sub">
@@ -140,7 +140,7 @@
                                     @endif
                                 </div>
                                 <div class="meta">
-                                    @if ($item->variant){{ Str::headline($item->variant) }} · @endif
+                                    @if ($item->variant){{ \App\Modules\Catalog\Support\CardVariants::label($item->variant) }} · @endif
                                     Added {{ $item->created_at->format('j M Y') }}
                                     @if ($item->photo_path) · own photo @endif
                                 </div>

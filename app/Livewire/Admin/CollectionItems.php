@@ -213,7 +213,7 @@ final class CollectionItems extends Component
         // Same variant-sourcing priority as the old startEditingItem():
         // the card's own tcgdex print flags first, synced pricing
         // coverage only as a fallback for fixtures/pre-`variants` cards.
-        $variants = CardVariants::available($card->variants ?? []);
+        $variants = CardVariants::available($card->variants ?? [], $card->raw['variants_detailed'] ?? []);
         if ($variants === []) {
             $variants = array_values(array_intersect(
                 self::KNOWN_VARIANTS,
@@ -307,11 +307,11 @@ final class CollectionItems extends Component
         ];
     }
 
-    /** @return array<string, string> */
+    /** @return array<string, string|array<int, string>> */
     protected function rules(): array
     {
         return [
-            'editingRows.*.variant' => 'nullable|in:normal,holofoil,reverse-holofoil',
+            'editingRows.*.variant' => CardVariants::rules(),
             'editingRows.*.condition' => 'required|in:NM,LP,MP,HP,DMG',
             'editingRows.*.quantity' => 'required|integer|min:1|max:9999',
             'editingRows.*.grade_company' => 'nullable|string|max:32',
@@ -650,6 +650,17 @@ final class CollectionItems extends Component
 
         return view('livewire.admin.collection-items', [
             'cardGroups' => $cardGroups,
+            // The base prints are always offered; a special print only
+            // once this user's own collections hold one.
+            'specialVariantOptions' => CollectionItem::query()
+                ->whereIn('collection_id', $collectionIds)
+                ->whereNotNull('variant')
+                ->whereNotIn('variant', self::KNOWN_VARIANTS)
+                ->distinct()
+                ->orderBy('variant')
+                ->pluck('variant')
+                ->filter(fn (string $v) => CardVariants::isValid($v))
+                ->values(),
             'totalCards' => $groups->count(),
             'totalCopies' => (int) $groups->sum('totalQuantity'),
             'possiblyTruncated' => $possiblyTruncated,

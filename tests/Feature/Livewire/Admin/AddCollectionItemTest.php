@@ -1053,3 +1053,70 @@ test('a user over the photo limit is refused without the photo being processed',
     expect($this->photoStripper->stripped)->toBe([])
         ->and(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeFalse();
 });
+
+function budewDetail(): CardDetailData
+{
+    return new CardDetailData(
+        tcgdexId: 'sv08.5-004', setTcgdexId: 'sv08.5', localId: '004', name: 'Budew',
+        rarity: 'Common',
+        variants: ['holo' => false, 'normal' => true, 'reverse' => true],
+        officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []),
+        raw: ['variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard'],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball'],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'masterball'],
+        ]],
+    );
+}
+
+test('selecting a card also offers its special-foil prints from variants_detailed', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('sv08.5-004')->andReturn(budewDetail());
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class)
+        ->call('selectCard', 'sv08.5-004')
+        ->assertSet('availableVariants', ['normal', 'reverse-holofoil', 'reverse-holofoil:pokeball', 'reverse-holofoil:masterball'])
+        ->assertSee('Reverse Holofoil · Master Ball');
+});
+
+test('a special-foil variant can be saved', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('sv08.5-004')->andReturn(budewDetail());
+    $provider->shouldReceive('findSet')->with('sv08.5')->andReturn(new SetSummaryData(
+        tcgdexId: 'sv08.5', name: 'Prismatic Evolutions', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv08.5-004')
+        ->set('rows.0.variant', 'reverse-holofoil:masterball')
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertRedirect();
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv08.5-004')->value('variant'))->toBe('reverse-holofoil:masterball');
+});
+
+test('a variant outside the key format is rejected on save', function (string $bad) {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('sv08.5-004')->andReturn(budewDetail());
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class)
+        ->call('selectCard', 'sv08.5-004')
+        ->set('rows.0.variant', $bad)
+        ->call('save')
+        ->assertHasErrors('rows.0.variant');
+})->with(['default', 'holofoil:<b>', 'something-else']);

@@ -81,7 +81,7 @@
                             <div class="sub">
                                 {{ $card?->set?->name }}
                                 · {{ $entry['item']->grade_company ? $entry['item']->grade_company.' '.$entry['item']->grade_value : $entry['item']->condition }}
-                                @if ($entry['item']->variant) · {{ Str::headline($entry['item']->variant) }} @endif
+                                @if ($entry['item']->variant) · {{ \App\Modules\Catalog\Support\CardVariants::label($entry['item']->variant) }} @endif
                             </div>
                         </div>
                         <div class="fright">

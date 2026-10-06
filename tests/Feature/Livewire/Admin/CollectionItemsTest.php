@@ -1625,3 +1625,83 @@ test('a user over the photo limit keeps the old photo and the new one is not pro
     expect($this->photoStripper->stripped)->toBe([])
         ->and($item->fresh()->photo_path)->toBe('old-photo.jpg');
 });
+
+function budewCard(): Card
+{
+    $set = Set::create(['tcgdex_id' => 'sv08.5', 'name' => 'Prismatic Evolutions']);
+
+    return Card::create([
+        'tcgdex_id' => 'sv08.5-004', 'set_id' => $set->id, 'local_id' => '004', 'name' => 'Budew',
+        'variants' => ['holo' => false, 'normal' => true, 'reverse' => true],
+        'raw' => ['variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard'],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball'],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'masterball'],
+        ]],
+    ]);
+}
+
+test('the card editor offers special-foil prints from variants_detailed and saves one', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $card = budewCard();
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'sv08.5-004',
+        'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil',
+    ]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->assertSet('editingAvailableVariants', ['normal', 'reverse-holofoil', 'reverse-holofoil:pokeball', 'reverse-holofoil:masterball'])
+        ->set('editingRows.0.variant', 'reverse-holofoil:masterball')
+        ->call('updateRow', 0)
+        ->assertHasNoErrors();
+
+    expect($item->fresh()->variant)->toBe('reverse-holofoil:masterball');
+});
+
+test('a special-foil item is labelled and priced as its own print in the list', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $card = budewCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 32]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil:masterball', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 328]);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'sv08.5-004',
+        'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil:masterball',
+    ]);
+
+    Livewire::test(CollectionItems::class)
+        ->assertSee('Reverse Holofoil · Master Ball')
+        ->assertSee('3.28');
+});
+
+test('the variant filter offers the special prints the collection holds and narrows to one', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $card = budewCard();
+    $other = Card::create(['tcgdex_id' => 'sv08.5-005', 'set_id' => $card->set_id, 'local_id' => '005', 'name' => 'Roselia']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'sv08.5-004', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil:pokeball']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $other->id, 'card_tcgdex_id' => 'sv08.5-005', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil']);
+
+    Livewire::test(CollectionItems::class)
+        ->assertSeeHtml('<option value="reverse-holofoil:pokeball">Reverse Holofoil · Poké Ball</option>')
+        ->set('variantFilter', 'reverse-holofoil:pokeball')
+        ->assertSee('Budew')
+        ->assertDontSee('Roselia');
+});
+
+test('the variant filter never offers another users special prints', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $card = budewCard();
+    $stranger = User::factory()->create();
+    $theirs = Collection::factory()->for($stranger)->create(['name' => 'Theirs', 'slug' => 'theirs']);
+    CollectionItem::create(['collection_id' => $theirs->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'sv08.5-004', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil:masterball']);
+
+    Livewire::test(CollectionItems::class)
+        ->assertDontSeeHtml('value="reverse-holofoil:masterball"');
+});

@@ -145,12 +145,12 @@ final class AddCollectionItem extends Component
         ];
     }
 
-    /** @return array<string, string> */
+    /** @return array<string, string|array<int, string>> */
     protected function rules(): array
     {
         return [
             'rows' => 'array|max:'.self::MAX_ROWS,
-            'rows.*.variant' => 'nullable|in:normal,holofoil,reverse-holofoil',
+            'rows.*.variant' => CardVariants::rules(),
             'rows.*.condition' => 'required|string|max:16',
             'rows.*.quantity' => 'required|integer|min:1|max:9999',
             'rows.*.grade_company' => 'nullable|string|max:32',
@@ -297,7 +297,7 @@ final class AddCollectionItem extends Component
             // cardmarket importer names its only foil-tier price
             // 'holofoil' regardless of whether the card actually has a
             // straight holo print or only a reverse-holo one).
-            $this->availableVariants = CardVariants::available($card->variants);
+            $this->availableVariants = CardVariants::available($card->variants, $card->raw['variants_detailed'] ?? []);
 
             if ($this->availableVariants === []) {
                 $prices = collect($card->prices->items())->pluck('variant');

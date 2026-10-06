@@ -114,24 +114,40 @@ final class CardVariants
 
     public static function isValid(string $key): bool
     {
+        return strlen($key) <= self::MAX_KEY_LENGTH && preg_match(self::pattern(), $key) === 1;
+    }
+
+    /**
+     * Form validation for a submitted variant: the key's shape, not
+     * membership in the card's list — the dropdown's options live in a
+     * client-settable Livewire property, so they can't be the check.
+     *
+     * @return array<int, string>
+     */
+    public static function rules(): array
+    {
+        return ['nullable', 'string', 'max:'.self::MAX_KEY_LENGTH, 'regex:'.self::pattern()];
+    }
+
+    private static function pattern(): string
+    {
         $base = implode('|', array_map(fn (string $b) => preg_quote($b, '/'), self::ORDER));
 
-        return strlen($key) <= self::MAX_KEY_LENGTH
-            && preg_match('/^(?:'.$base.')(?::'.self::SEGMENT.')?(?:\+'.self::SEGMENT.')*$/', $key) === 1;
+        return '/^(?:'.$base.')(?::'.self::SEGMENT.')?(?:\\+'.self::SEGMENT.')*$/';
     }
 
     public static function label(string $key): string
     {
-        [$head, $stamps] = array_pad(explode('+', $key, 2), 2, null);
-        [$base, $foil] = array_pad(explode(':', $head, 2), 2, null);
+        $stamps = explode('+', $key);
+        $head = explode(':', array_shift($stamps), 2);
 
-        $parts = [Str::headline($base)];
+        $parts = [Str::headline($head[0])];
 
-        if ($foil !== null) {
-            $parts[] = self::FOIL_LABELS[$foil] ?? Str::headline($foil);
+        if (isset($head[1])) {
+            $parts[] = self::FOIL_LABELS[$head[1]] ?? Str::headline($head[1]);
         }
 
-        foreach ($stamps !== null ? explode('+', $stamps) : [] as $stamp) {
+        foreach ($stamps as $stamp) {
             $parts[] = Str::headline($stamp);
         }
 
