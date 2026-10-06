@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceParser;
+use GuzzleHttp\Psr7\FnStream;
+use GuzzleHttp\Psr7\Utils;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
@@ -67,4 +70,15 @@ test('group names and abbreviations are plain text, and a malformed abbreviation
 
     expect($groups[0]['name'])->toBe('ME: Set]52;c;evil');
     expect($groups[0]['abbreviation'])->toBeNull();
+});
+
+test('a body that stalls or breaks mid-read is a connection failure, not a crash', function () {
+    $broken = FnStream::decorate(Utils::streamFor('{"success":true'), [
+        'isSeekable' => fn () => false,
+        'eof' => fn () => false,
+        'read' => fn () => throw new RuntimeException('Unable to read from stream'),
+    ]);
+    Http::fake(['tcgcsv.com/tcgplayer/3/24688/prices' => Http::response($broken, 200)]);
+
+    expect(fn () => app(TcgcsvClient::class)->prices(24688))->toThrow(ConnectionException::class);
 });

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Tcgcsv;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
+use RuntimeException;
 use UnexpectedValueException;
 
 /**
@@ -21,6 +23,9 @@ final class TcgcsvClient
 
     /** Above this a response is not a price file; refused while reading, after decompression. */
     private const MAX_BODY_BYTES = 5_000_000;
+
+    /** Reading a price file (~35 KB) never takes this long unless the connection is stalling. */
+    private const BODY_DEADLINE_SECONDS = 30;
 
     public function __construct(
         private readonly string $baseUrl,
@@ -42,7 +47,7 @@ final class TcgcsvClient
     {
         $body = trim($this->boundedBody('last-updated.txt'));
 
-        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/', $body) !== 1) {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/D', $body) !== 1) {
             throw new UnexpectedValueException('tcgcsv last-updated.txt is not an ISO-8601 timestamp.');
         }
 
@@ -93,13 +98,28 @@ final class TcgcsvClient
             $stream->rewind();
         }
 
+        // A streamed body isn't covered by the request timeout, so the read
+        // keeps its own deadline; a stall or a dropped connection mid-body
+        // is a connection failure like any other.
+        $deadline = microtime(true) + self::BODY_DEADLINE_SECONDS;
         $body = '';
-        while (! $stream->eof()) {
-            $body .= $stream->read(65536);
 
-            if (strlen($body) > self::MAX_BODY_BYTES) {
-                throw new UnexpectedValueException('tcgcsv response is larger than any price file.');
+        try {
+            while (! $stream->eof()) {
+                $body .= $stream->read(65536);
+
+                if (strlen($body) > self::MAX_BODY_BYTES) {
+                    throw new UnexpectedValueException('tcgcsv response is larger than any price file.');
+                }
+
+                if (microtime(true) > $deadline) {
+                    throw new ConnectionException('tcgcsv response took too long to read.');
+                }
             }
+        } catch (UnexpectedValueException|ConnectionException $e) {
+            throw $e;
+        } catch (RuntimeException $e) {
+            throw new ConnectionException('tcgcsv response could not be read.', 0, $e);
         }
 
         return $body;
@@ -116,6 +136,8 @@ final class TcgcsvClient
             ->withUserAgent($this->userAgent)
             ->withOptions([
                 'force_ip_resolve' => 'v4',
+                // Per read on a streamed body, which `timeout` doesn't cover.
+                'read_timeout' => self::TIMEOUT,
                 // A redirect could point the horizon container anywhere.
                 'allow_redirects' => false,
             ]);
