@@ -240,7 +240,9 @@ return [
             'maxProcesses' => 1,
             'maxTime' => 0,
             'maxJobs' => 0,
-            'memory' => 128,
+            // One run holds ~30 groups' prices; 64 MB restarts the worker
+            // well before it crowds the container (docker/prod/compose.prod.yml).
+            'memory' => 64,
             'tries' => 0,
             'timeout' => 600,
             'nice' => 0,
