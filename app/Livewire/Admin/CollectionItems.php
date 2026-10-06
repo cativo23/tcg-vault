@@ -149,12 +149,23 @@ final class CollectionItems extends Component
     public string $editingCardName = '';
 
     /**
-     * @var array<int, array{id:int, variant:?string, condition:string, quantity:int, grade_company:?string, grade_value:?string, notes:?string, photo:mixed, photo_path:?string, showDetails:bool}>
+     * @var array<int, array{id:int, variant:?string, condition:string, quantity:int, grade_company:?string, grade_value:?string, notes:?string, photo:mixed, photo_path:?string, showDetails:bool, manual_price:?string}>
      */
     public array $editingRows = [];
 
     /** @var array<int, string> */
     public array $editingAvailableVariants = [];
+
+    /**
+     * The "other print" picker, for a print tcgdex doesn't list (a Prize
+     * Pack cosmos holo). One picker serves every row; useCustomVariant()
+     * says which row it applies to.
+     */
+    public string $customBase = 'holofoil';
+
+    public ?string $customFoil = null;
+
+    public ?string $customStamp = null;
 
     /**
      * Same IDOR posture as ownedItemOrFail() above, scoped to every item
@@ -205,6 +216,7 @@ final class CollectionItems extends Component
             'photo' => null,
             'photo_path' => $i->photo_path,
             'showDetails' => false,
+            'manual_price' => $this->currentManualPrice($i),
         ])->values()->all();
 
         $card = $primary->card;
@@ -304,7 +316,92 @@ final class CollectionItems extends Component
             'photo' => null,
             'photo_path' => null,
             'showDetails' => false,
+            'manual_price' => null,
         ];
+    }
+
+    public function useCustomVariant(int $index): void
+    {
+        if (! isset($this->editingRows[$index])) {
+            return;
+        }
+
+        $foil = CollectionService::nullIfEmpty($this->customFoil);
+        $stamp = CollectionService::nullIfEmpty($this->customStamp);
+        $key = CardVariants::compose($this->customBase, $foil, $stamp !== null ? [$stamp] : []);
+
+        if ($key === null) {
+            $this->addError('customFoil', 'Pick a foil or a stamp from the list — a print needs at least one to be told apart.');
+
+            return;
+        }
+
+        if (! in_array($key, $this->editingAvailableVariants, true)) {
+            $this->editingAvailableVariants[] = $key;
+        }
+
+        $this->editingRows[$index]['variant'] = $key;
+        $this->resetErrorBag('customFoil');
+    }
+
+    /**
+     * A market price for a print tcgdex doesn't price. Stored as a
+     * catalog snapshot like tcgdex's own — a print's market price is the
+     * same for every collector — so it is gated to who may edit the
+     * shared catalog, not to who owns a copy.
+     */
+    public function saveManualPrice(int $index): void
+    {
+        abort_unless(auth()->user()?->can('manage-catalog-prices') === true, 403);
+
+        if (! isset($this->editingRows[$index])) {
+            return;
+        }
+
+        $this->validateOnly("editingRows.$index.manual_price");
+
+        $price = CollectionService::nullIfEmpty($this->editingRows[$index]['manual_price'] ?? null);
+        $item = $this->ownedItemOrFail($this->editingRows[$index]['id']);
+
+        if ($price === null || $item->variant === null) {
+            $this->addError("editingRows.$index.manual_price", $item->variant === null
+                ? 'Save a variant for this copy first — the price belongs to a specific print.'
+                : 'Enter a price.');
+
+            return;
+        }
+
+        CardPriceSnapshot::updateOrCreate(
+            [
+                'card_id' => $item->card_id,
+                'source' => 'manual',
+                'variant' => $item->variant,
+                'captured_on' => today()->toDateString(),
+            ],
+            [
+                'currency' => 'USD',
+                'market_minor' => (int) round((float) $price * 100),
+                'low_minor' => null,
+                'trend_minor' => null,
+                'source_updated_at' => now(),
+                'raw' => ['set_by_user_id' => auth()->id()],
+            ],
+        );
+    }
+
+    private function currentManualPrice(CollectionItem $item): ?string
+    {
+        if ($item->variant === null) {
+            return null;
+        }
+
+        $minor = CardPriceSnapshot::where('card_id', $item->card_id)
+            ->where('source', 'manual')
+            ->where('variant', $item->variant)
+            ->orderByDesc('captured_on')
+            ->value('market_minor');
+
+        return $minor !== null ? number_format($minor / 100, 2, '.', '') : null;
     }
 
     /** @return array<string, string|array<int, string>> */
@@ -318,6 +415,7 @@ final class CollectionItems extends Component
             'editingRows.*.grade_value' => 'nullable|string|max:16',
             'editingRows.*.notes' => 'nullable|string|max:2000',
             'editingRows.*.photo' => 'nullable|image|mimes:jpeg,png,webp|max:5120',
+            'editingRows.*.manual_price' => 'nullable|numeric|decimal:0,2|min:0.01|max:99999.99',
         ];
     }
 

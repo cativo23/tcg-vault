@@ -1635,6 +1635,7 @@ function budewCard(): Card
         'variants' => ['holo' => false, 'normal' => true, 'reverse' => true],
         'raw' => ['variants_detailed' => [
             ['type' => 'normal', 'size' => 'standard'],
+            ['type' => 'reverse', 'size' => 'standard'],
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball'],
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'masterball'],
         ]],
@@ -1704,4 +1705,167 @@ test('the variant filter never offers another users special prints', function ()
 
     Livewire::test(CollectionItems::class)
         ->assertDontSeeHtml('value="reverse-holofoil:masterball"');
+});
+
+function prizePackBudew(User $user): array
+{
+    $card = budewCard();
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'sv08.5-004',
+        'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil:cosmos+player-rewards-program',
+    ]);
+
+    return [$card, $item];
+}
+
+test('the card editor can record a print tcgdex does not list, from its vocabulary', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $card = budewCard();
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'sv08.5-004',
+        'condition' => 'NM', 'quantity' => 1, 'variant' => 'normal',
+    ]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('customBase', 'holofoil')
+        ->set('customFoil', 'cosmos')
+        ->set('customStamp', 'player-rewards-program')
+        ->call('useCustomVariant', 0)
+        ->assertSet('editingRows.0.variant', 'holofoil:cosmos+player-rewards-program')
+        ->assertSee('Holofoil · Cosmos · Player Rewards Program')
+        ->call('updateRow', 0)
+        ->assertHasNoErrors();
+
+    expect($item->fresh()->variant)->toBe('holofoil:cosmos+player-rewards-program');
+});
+
+test('a hand-entered print outside tcgdex\'s vocabulary is refused', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    [$card] = prizePackBudew($user);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('customBase', 'holofoil')
+        ->set('customFoil', 'sparkly')
+        ->call('useCustomVariant', 0)
+        ->assertHasErrors('customFoil')
+        ->assertSet('editingRows.0.variant', 'holofoil:cosmos+player-rewards-program');
+});
+
+test('a super-admin can set a manual market price for a print, shared like any catalog price', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card, $item] = prizePackBudew($admin);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '0.70')
+        ->call('saveManualPrice', 0)
+        ->assertHasNoErrors();
+
+    $snapshot = CardPriceSnapshot::where('card_id', $card->id)->sole();
+    expect([$snapshot->source, $snapshot->variant, $snapshot->currency, $snapshot->market_minor, $snapshot->capturedOnKey()])
+        ->toBe(['manual', 'holofoil:cosmos+player-rewards-program', 'USD', 70, today()->toDateString()]);
+
+    Livewire::test(CollectionItems::class)->assertSee('0.70');
+});
+
+test('setting the manual price again the same day updates it instead of adding a row', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card] = prizePackBudew($admin);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '0.70')
+        ->call('saveManualPrice', 0)
+        ->set('editingRows.0.manual_price', '0.75')
+        ->call('saveManualPrice', 0);
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->pluck('market_minor')->all())->toBe([75]);
+});
+
+test('the editor preloads the print\'s current manual price', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card] = prizePackBudew($admin);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'holofoil:cosmos+player-rewards-program', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 69]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->assertSet('editingRows.0.manual_price', '0.69');
+});
+
+test('a user without manage-catalog-prices cannot set a manual price, and is not offered the field', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    [$card] = prizePackBudew($user);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->assertDontSee('Manual market price')
+        ->set('editingRows.0.manual_price', '999')
+        ->call('saveManualPrice', 0)
+        ->assertForbidden();
+
+    expect(CardPriceSnapshot::count())->toBe(0);
+});
+
+test('a manual price must be a sane positive amount', function (string $bad) {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card] = prizePackBudew($admin);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', $bad)
+        ->call('saveManualPrice', 0)
+        ->assertHasErrors('editingRows.0.manual_price');
+
+    expect(CardPriceSnapshot::count())->toBe(0);
+})->with(['-1', 'abc', '1000000', '0.001']);
+
+test('a manual price needs the item to have a saved variant', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card, $item] = prizePackBudew($admin);
+    $item->update(['variant' => null]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '0.70')
+        ->call('saveManualPrice', 0)
+        ->assertHasErrors('editingRows.0.manual_price');
+
+    expect(CardPriceSnapshot::count())->toBe(0);
+});
+
+test('a super-admin sees the manual price field and everyone sees the other-print picker', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card] = prizePackBudew($admin);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->assertSee('Manual market price (USD)')
+        ->assertSee('Other print')
+        ->assertSeeHtml('<option value="player-rewards-program">Player Rewards Program</option>')
+        ->assertSeeHtml('<option value="cosmos">Cosmos</option>');
 });
