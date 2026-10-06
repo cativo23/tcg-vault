@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Livewire\Concerns\PicksCustomPrint;
 use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
@@ -29,6 +30,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 #[Layout('layouts.app')]
 final class CollectionItems extends Component
 {
+    use PicksCustomPrint;
     use StripsUploadedPhotos;
     use WithFileUploads;
     use WithPagination;
@@ -149,7 +151,7 @@ final class CollectionItems extends Component
     public string $editingCardName = '';
 
     /**
-     * @var array<int, array{id:int, variant:?string, condition:string, quantity:int, grade_company:?string, grade_value:?string, notes:?string, photo:mixed, photo_path:?string, showDetails:bool}>
+     * @var array<int, array{id:int, variant:?string, condition:string, quantity:int, grade_company:?string, grade_value:?string, notes:?string, photo:mixed, photo_path:?string, showDetails:bool, manual_price:?string}>
      */
     public array $editingRows = [];
 
@@ -205,6 +207,7 @@ final class CollectionItems extends Component
             'photo' => null,
             'photo_path' => $i->photo_path,
             'showDetails' => false,
+            'manual_price' => $this->currentManualPrice($i),
         ])->values()->all();
 
         $card = $primary->card;
@@ -220,6 +223,7 @@ final class CollectionItems extends Component
                 CardPriceSnapshot::where('card_id', $card->id)->distinct()->pluck('variant')->all(),
             ));
         }
+        $fromCardData = $variants !== [];
         if ($variants === []) {
             // No tcgdex print flags AND no synced pricing at all for this
             // card — fall back to just the primary item's own already-set
@@ -229,7 +233,18 @@ final class CollectionItems extends Component
             // dropdown as a selectable option.
             $variants = array_filter([$primary->variant]);
         }
-        $this->editingAvailableVariants = $variants;
+        // A copy's own saved print stays selectable even when the card's
+        // list doesn't offer it — a hand-entered print tcgdex doesn't
+        // list — or the dropdown would show it as unset. Not in the
+        // no-data fallback above, which deliberately offers one row's
+        // variant only.
+        $stored = ! $fromCardData ? [] : $items->pluck('variant')
+            ->filter(fn (?string $v) => $v !== null && CardVariants::isValid($v))
+            ->reject(fn (string $v) => in_array($v, $variants, true))
+            ->unique()
+            ->values()
+            ->all();
+        $this->editingAvailableVariants = [...array_values($variants), ...$stored];
 
         // Only one real variant for this card and a row has no explicit
         // choice yet — default it instead of leaving the dropdown blank.
@@ -304,7 +319,105 @@ final class CollectionItems extends Component
             'photo' => null,
             'photo_path' => null,
             'showDetails' => false,
+            'manual_price' => null,
         ];
+    }
+
+    public function useCustomVariant(int $index): void
+    {
+        if (! isset($this->editingRows[$index]) || ($key = $this->composeCustomVariant($index)) === null) {
+            return;
+        }
+
+        if (! in_array($key, $this->editingAvailableVariants, true)) {
+            $this->editingAvailableVariants[] = $key;
+        }
+
+        $this->editingRows[$index]['variant'] = $key;
+
+        // The dropdown saves on change; a programmatic pick fires no
+        // change event, so save here — otherwise a manual price entered
+        // next would land on the print still stored, not the one shown.
+        $this->updateRow($index);
+    }
+
+    /**
+     * A market price for a print tcgdex doesn't price. Stored as a
+     * catalog snapshot like tcgdex's own — a print's market price is the
+     * same for every collector — so it is gated to who may edit the
+     * shared catalog, not to who owns a copy.
+     */
+    public function saveManualPrice(int $index): void
+    {
+        abort_unless(auth()->user()?->can('manage-catalog-prices') === true, 403);
+
+        if (! isset($this->editingRows[$index])) {
+            return;
+        }
+
+        $this->validateOnly("editingRows.$index.manual_price");
+
+        $price = CollectionService::nullIfEmpty($this->editingRows[$index]['manual_price'] ?? null);
+        $item = $this->ownedItemOrFail($this->editingRows[$index]['id']);
+
+        $refusal = match (true) {
+            $item->variant === null => 'Save a variant for this copy first — the price belongs to a specific print.',
+            $item->variant !== CollectionService::nullIfEmpty($this->editingRows[$index]['variant']) => 'Save this copy\'s variant first — the price would go to the print still stored.',
+            $this->hasMarketPrice($item->card_id, $item->variant) => 'tcgdex already prices this print — a manual price is only for prints it doesn\'t.',
+            $price === null => 'Enter a price.',
+            default => null,
+        };
+
+        if ($refusal !== null) {
+            $this->addError("editingRows.$index.manual_price", $refusal);
+
+            return;
+        }
+
+        CardPriceSnapshot::updateOrCreate(
+            [
+                'card_id' => $item->card_id,
+                'source' => 'manual',
+                'variant' => $item->variant,
+                'captured_on' => today()->toDateString(),
+            ],
+            [
+                'currency' => 'USD',
+                'market_minor' => (int) round((float) $price * 100),
+                'low_minor' => null,
+                'trend_minor' => null,
+                'source_updated_at' => now(),
+                'raw' => ['set_by_user_id' => auth()->id()],
+            ],
+        );
+    }
+
+    /**
+     * Whether a marketplace already prices this print. A manual row
+     * beside it would compete with real market data in the resolver, so
+     * manual prices are kept to prints tcgdex has nothing for.
+     */
+    private function hasMarketPrice(int $cardId, string $variant): bool
+    {
+        return CardPriceSnapshot::where('card_id', $cardId)
+            ->where('variant', $variant)
+            ->where('source', '!=', 'manual')
+            ->exists();
+    }
+
+    private function currentManualPrice(CollectionItem $item): ?string
+    {
+        if ($item->variant === null) {
+            return null;
+        }
+
+        $minor = CardPriceSnapshot::where('card_id', $item->card_id)
+            ->where('source', 'manual')
+            ->where('variant', $item->variant)
+            ->orderByDesc('captured_on')
+            ->value('market_minor');
+
+        return $minor !== null ? number_format($minor / 100, 2, '.', '') : null;
     }
 
     /** @return array<string, string|array<int, string>> */
@@ -318,6 +431,7 @@ final class CollectionItems extends Component
             'editingRows.*.grade_value' => 'nullable|string|max:16',
             'editingRows.*.notes' => 'nullable|string|max:2000',
             'editingRows.*.photo' => 'nullable|image|mimes:jpeg,png,webp|max:5120',
+            'editingRows.*.manual_price' => 'nullable|numeric|decimal:0,2|min:0.01|max:99999.99',
         ];
     }
 
@@ -422,6 +536,14 @@ final class CollectionItems extends Component
             $this->addError("editingRows.$index.variant", 'This matches another row for this card — remove or adjust one of them instead.');
 
             return;
+        }
+
+        // The manual price shown belongs to the print stored; a new
+        // variant means a different print's price, or none. Any other
+        // field leaves it alone, so a price typed but not yet saved
+        // survives a condition or quantity change.
+        if ($item->wasChanged('variant')) {
+            $this->editingRows[$index]['manual_price'] = $this->currentManualPrice($item);
         }
 
         $this->dispatch('row-saved', index: $index);

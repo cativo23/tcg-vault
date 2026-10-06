@@ -29,6 +29,9 @@ class PermissionSeeder extends Seeder
         'manage-platform-settings',
         'manage-members',
         'use-collection',
+        // Writing a manual market price into the shared catalog — what
+        // every collector of that print sees — not a per-collection right.
+        'manage-catalog-prices',
     ];
 
     public function run(): void

@@ -132,7 +132,7 @@ test('several special entries of a type with no plain sibling stay separate prin
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'friendball', 'thirdParty' => ['tcgplayer' => 1]],
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'energy', 'thirdParty' => ['tcgplayer' => 2]],
         ],
-    ]))->toBe(['normal', 'reverse-holofoil', 'reverse-holofoil:friendball', 'reverse-holofoil:energy']);
+    ]))->toBe(['normal', 'reverse-holofoil:friendball', 'reverse-holofoil:energy']);
 });
 
 test('isSpecial tells a special print key from a base one', function () {
@@ -140,4 +140,54 @@ test('isSpecial tells a special print key from a base one', function () {
     expect(CardVariants::isSpecial('normal+staff'))->toBeTrue();
     expect(CardVariants::isSpecial('reverse-holofoil'))->toBeFalse();
     expect(CardVariants::isSpecial('default'))->toBeFalse();
+});
+
+test('compose builds a key for a print tcgdex does not list, from its own vocabulary', function () {
+    // A Prize Pack cosmos holo: tcgdex's stamp for the Play! Pokémon Prize Pack.
+    expect(CardVariants::compose('holofoil', 'cosmos', ['player-rewards-program']))
+        ->toBe('holofoil:cosmos+player-rewards-program');
+    expect(CardVariants::compose('normal', null, ['staff', 'pre-release']))->toBe('normal+pre-release+staff');
+    expect(CardVariants::compose('reverse-holofoil', 'pokeball', []))->toBe('reverse-holofoil:pokeball');
+});
+
+test('compose refuses anything outside tcgdex\'s vocabulary, or a key with nothing special', function () {
+    expect(CardVariants::compose('holofoil', 'sparkly', []))->toBeNull();
+    expect(CardVariants::compose('holofoil', null, ['my-own-stamp']))->toBeNull();
+    expect(CardVariants::compose('default', 'cosmos', []))->toBeNull();
+    expect(CardVariants::compose('normal', null, []))->toBeNull();
+});
+
+test('the foil and stamp options are tcgdex\'s, labelled', function () {
+    expect(CardVariants::foilOptions())->toHaveKey('cosmos', 'Cosmos');
+    expect(CardVariants::foilOptions())->toHaveKey('masterball', 'Master Ball');
+    expect(CardVariants::stampOptions())->toHaveKey('player-rewards-program', 'Player Rewards Program');
+});
+
+test('a base print tcgdex lists only as special prints is not offered on its own', function () {
+    // N's Zorua (me02.5-136, Ascended Heroes): the set has no plain
+    // reverse — every reverse is a Poké Ball or an Energy pattern — even
+    // though tcgdex's `reverse` flag is true.
+    expect(CardVariants::available(['normal' => true, 'reverse' => true], [
+        'variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['tcgplayer' => 675948]],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball', 'thirdParty' => ['tcgplayer' => 676960]],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'energy', 'thirdParty' => ['tcgplayer' => 677100]],
+        ],
+    ]))->toBe(['normal', 'reverse-holofoil:pokeball', 'reverse-holofoil:energy']);
+});
+
+test('a card with no variants_detailed keeps every flagged base print', function () {
+    expect(CardVariants::available(['normal' => true, 'reverse' => true], []))->toBe(['normal', 'reverse-holofoil']);
+});
+
+test('a base print tcgdex files with a stamp still counts as present beside another special print', function () {
+    // Quaquaval (svp-005): the regular promo is {holo, set-logo} — the
+    // card's own cardmarket product — and the staff promo is separate.
+    expect(CardVariants::available(['holo' => true], [
+        'pricing' => ['cardmarket' => ['unit' => 'EUR', 'idProduct' => 692227, 'avg' => 0.5]],
+        'variants_detailed' => [
+            ['type' => 'holo', 'size' => 'standard', 'stamp' => ['set-logo'], 'thirdParty' => ['cardmarket' => 692227, 'tcgplayer' => 487751]],
+            ['type' => 'holo', 'size' => 'standard', 'stamp' => ['set-logo', 'staff'], 'thirdParty' => ['cardmarket' => 761119, 'tcgplayer' => 522650]],
+        ],
+    ]))->toBe(['holofoil', 'holofoil+set-logo+staff']);
 });

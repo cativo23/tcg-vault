@@ -31,7 +31,9 @@ final class CheckPricingFreshness extends Command
 
     public function handle(DiscordAlerter $alerter): int
     {
-        $newest = CardPriceSnapshot::query()->max('created_at');
+        // A hand-entered price is written whenever someone saves one, so
+        // counting it would let a single save mask a sync that stopped.
+        $newest = CardPriceSnapshot::query()->where('source', '!=', 'manual')->max('created_at');
 
         if ($newest === null) {
             $alerter->send('⚠️ tcg-vault: no price snapshot exists at all — the daily pricing sync may have never run.');

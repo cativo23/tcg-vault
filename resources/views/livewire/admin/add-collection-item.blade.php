@@ -90,6 +90,9 @@
                     'onRemove' => count($rows) > 1 ? "removeRow($index)" : null,
                     'onUpdate' => null,
                 ])
+                <div class="px-4 pb-4" style="border-bottom: 1px solid var(--hair);">
+                    @include('livewire.admin.partials.custom-print-picker', ['index' => $index])
+                </div>
             @endforeach
 
             <div class="mb-4">

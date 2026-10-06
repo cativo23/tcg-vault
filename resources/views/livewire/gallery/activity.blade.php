@@ -59,7 +59,7 @@
                                 @if ($href)<a href="{{ $href }}" wire:navigate>{{ $card->name }} <span class="mono" style="font-weight: 600">#{{ $card->local_id }}</span></a>@else {{ $card->name }} @endif
                                 {{ $up ? 'went up' : 'went down' }}
                             </div>
-                            <div class="sub">{{ Rarity::label($card->rarity) ?: 'Card' }} · {{ $card->set?->name }} · {{ $entry['delta']->latest->source === 'tcgplayer' ? 'TCGplayer' : 'Cardmarket' }}</div>
+                            <div class="sub">{{ Rarity::label($card->rarity) ?: 'Card' }} · {{ $card->set?->name }} · {{ $entry['delta']->latest->sourceLabel() }}</div>
                         </div>
                         <div class="fright">
                             <div class="famt {{ $up ? 'up' : 'down' }}">{{ Money::signed($entry['delta']->deltaMinor, $entry['delta']->latest->currency) }}</div>

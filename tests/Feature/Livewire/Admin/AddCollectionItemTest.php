@@ -1064,6 +1064,7 @@ function budewDetail(): CardDetailData
         prices: new DataCollection(PriceEntryData::class, []),
         raw: ['variants_detailed' => [
             ['type' => 'normal', 'size' => 'standard'],
+            ['type' => 'reverse', 'size' => 'standard'],
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball'],
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'masterball'],
         ]],
@@ -1120,3 +1121,46 @@ test('a variant outside the key format is rejected on save', function (string $b
         ->call('save')
         ->assertHasErrors('rows.0.variant');
 })->with(['default', 'holofoil:<b>', 'something-else']);
+
+test('a print tcgdex does not list can be added straight away', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('sv08.5-004')->andReturn(budewDetail());
+    $provider->shouldReceive('findSet')->with('sv08.5')->andReturn(new SetSummaryData(
+        tcgdexId: 'sv08.5', name: 'Prismatic Evolutions', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->call('selectCard', 'sv08.5-004')
+        ->assertSee('Other print')
+        ->set('customBase', 'holofoil')
+        ->set('customFoil', 'cosmos')
+        ->set('customStamp', 'player-rewards-program')
+        ->call('useCustomVariant', 0)
+        ->assertSet('rows.0.variant', 'holofoil:cosmos+player-rewards-program')
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertRedirect();
+
+    expect(CollectionItem::where('card_tcgdex_id', 'sv08.5-004')->value('variant'))->toBe('holofoil:cosmos+player-rewards-program');
+});
+
+test('the add form refuses a hand-entered print outside tcgdex\'s vocabulary', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('sv08.5-004')->andReturn(budewDetail());
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    Livewire::test(AddCollectionItem::class)
+        ->call('selectCard', 'sv08.5-004')
+        ->set('customStamp', 'my-own-stamp')
+        ->call('useCustomVariant', 0)
+        ->assertHasErrors('customPrint.0')
+        ->assertSet('rows.0.variant', null);
+});
