@@ -26,7 +26,7 @@
                 <div class="k">Prices updated</div>
                 <div class="v">
                     @if ($updatedAt)
-                        {{ $updatedAt->format('j M') }}<small>tcgdex</small>
+                        {{ $updatedAt->format('j M') }}<small>via {{ $priceOrigins->implode(' · ') }}</small>
                     @else
                         —
                     @endif

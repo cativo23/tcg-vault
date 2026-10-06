@@ -401,3 +401,16 @@ test('a collection past the stat band\'s card cap still fills the grid with card
     expect($entries)->toHaveCount(601)
         ->and($entries->pluck('card.name')->all())->toBe(collect(range(1, 601))->map(fn (int $i) => sprintf('Card %04d', $i))->all());
 });
+
+test('"Prices updated" dates the latest marketplace sync and names its origins, never a manual entry', function () {
+    ['darkrai' => $darkrai] = seedCollection();
+    CardPriceSnapshot::query()->delete(); // start from this test's own prices only
+    CardPriceSnapshot::create(['card_id' => $darkrai->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today()->subDays(2), 'currency' => 'EUR', 'market_minor' => 100]);
+    CardPriceSnapshot::create(['card_id' => $darkrai->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 500]);
+
+    $response = $this->get('/carlos');
+
+    $response->assertOk();
+    $response->assertSeeInOrder(['Prices updated', today()->subDays(2)->format('j M'), 'via tcgdex']);
+    $response->assertDontSee(today()->format('j M').'<small>', false);
+});

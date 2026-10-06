@@ -159,13 +159,16 @@ test('the market header names the origins of the prices shown, and dates the lat
     ['collection' => $collection, 'card' => $card] = seedCardPage();
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil']);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 16027]);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'origin' => 'tcgcsv', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'EUR', 'market_minor' => 15000]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 15000]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 500]);
 
     $response = $this->get('/carlos/me05/116');
 
     $response->assertOk();
-    $response->assertSee(today()->subDay()->format('j M Y').' · via tcgcsv · tcgdex');
+    $response->assertSee(today()->subDay()->format('j M Y'));
+    $response->assertSee('· via tcgcsv · tcgdex');
+    // Only the date is set in the numeral face; the words stay in the body face.
+    $response->assertSee('<span class="mono" style="letter-spacing: -.02em">'.today()->subDay()->format('j M Y').'</span>', false);
     $response->assertDontSee(today()->format('j M Y').' · via');
 });
 
@@ -181,4 +184,29 @@ test('a manual price says when it was entered, and every tile says where its pri
     $response->assertSee('entered '.today()->subDays(2)->format('j M'));
     $response->assertSee('title="TCGplayer market price via tcgdex, '.today()->format('j M Y').'"', false);
     $response->assertSee('title="Manual price entered by hand, '.today()->subDays(2)->format('j M Y').'"', false);
+});
+
+test('a card priced only by hand shows no marketplace attribution', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil:cosmos']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 500]);
+
+    $response = $this->get('/carlos/me05/116');
+
+    $response->assertOk();
+    $response->assertDontSee('· via');
+});
+
+test('a manual price copied from a feed says so, is never shown as a move, and dates older entries with the year', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil:cosmos']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subYear(), 'currency' => 'USD', 'market_minor' => 400]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subYear()->addDay(), 'currency' => 'USD', 'market_minor' => 500, 'raw' => ['origin' => 'tcgcsv']]);
+
+    $response = $this->get('/carlos/me05/116');
+
+    $response->assertOk();
+    $response->assertSee('copied by hand from TCGplayer (tcgcsv)');
+    $response->assertSee('entered '.today()->subYear()->addDay()->format('j M Y'));
+    $response->assertDontSee('class="amt up"', false);
 });
