@@ -69,11 +69,14 @@ services:
         # into at once (idle baseline already ~66% of the cap), and the
         # container has hit that limit repeatedly. 256M brought idle
         # baseline down to ~50% and gave both workers real room during
-        # the nightly catalog:refresh-prices drain. A third process now
-        # runs here (supervisor-tcgcsv, the daily tcgcsv pull, ~40M idle,
-        # restarted past 64MB), so 320M keeps that same headroom — check
-        # `docker stats` after a deploy that changes the supervisors.
-        limits: { cpus: '0.5', memory: 320M }
+        # the nightly catalog:refresh-prices drain. supervisor-tcgcsv (the
+        # daily tcgcsv pull) adds two processes, its supervisor and its
+        # worker, not one: measured after the v1.2.0 deploy, 5 processes
+        # at ~75M each put the container at 255M idle. The nightly drain
+        # starts a second default worker (~75M more), past 320M; 448M
+        # covers that 6th process with ~40% headroom (host has ~3G free).
+        # Check `docker stats` after any deploy that changes the supervisors.
+        limits: { cpus: '0.5', memory: 448M }
         reservations: { cpus: '0.1', memory: 96M }
 
   scheduler:
