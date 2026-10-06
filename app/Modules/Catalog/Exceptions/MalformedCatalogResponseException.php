@@ -34,4 +34,9 @@ final class MalformedCatalogResponseException extends RuntimeException
         // string is built, rather than trusted to every future caller.
         return new self('Malformed tcgdex search response for query ['.self::sanitizeForLog($query)."]: {$reason}");
     }
+
+    public static function forTcgcsvGroup(int $groupId, string $reason): self
+    {
+        return new self("Malformed tcgcsv prices response for group [{$groupId}]: {$reason}");
+    }
 }
