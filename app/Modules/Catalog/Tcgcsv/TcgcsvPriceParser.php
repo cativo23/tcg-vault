@@ -17,6 +17,9 @@ final class TcgcsvPriceParser
     /** No single card's market price is anywhere near this; above it the feed is wrong. */
     private const MAX_PRICE = 1_000_000;
 
+    /** card_tcgplayer_links.product_id is a Postgres integer. */
+    private const MAX_PRODUCT_ID = 2_147_483_647;
+
     /** card_tcgplayer_links.sub_type is 32 characters. */
     private const MAX_SUBTYPE_LENGTH = 32;
 
@@ -58,7 +61,7 @@ final class TcgcsvPriceParser
 
     private function row(int $groupId, mixed $row): TcgcsvPriceRow
     {
-        if (! is_array($row) || ! is_int($row['productId'] ?? null) || $row['productId'] <= 0
+        if (! is_array($row) || ! is_int($row['productId'] ?? null) || $row['productId'] <= 0 || $row['productId'] > self::MAX_PRODUCT_ID
             || ! is_string($row['subTypeName'] ?? null) || strlen($row['subTypeName']) > self::MAX_SUBTYPE_LENGTH) {
             throw MalformedCatalogResponseException::forTcgcsvGroup($groupId, 'a row lacks a positive integer "productId" or a short string "subTypeName".');
         }

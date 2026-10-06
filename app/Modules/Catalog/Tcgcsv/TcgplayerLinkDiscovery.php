@@ -22,9 +22,12 @@ use Illuminate\Support\Facades\Log;
  */
 final class TcgplayerLinkDiscovery
 {
+    /** @var array<int, array<int, int>> set id → its groups, looked up once per set per run */
+    private array $setGroups = [];
+
     /**
      * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices  groupId → productId → subType → row
-     * @return int how many candidate prints were skipped for a subtype this app has no key for
+     * @return int how many candidate prints were skipped because their product has no subtype that prices them
      */
     public function discover(Card $card, array $prices): int
     {
@@ -59,7 +62,10 @@ final class TcgplayerLinkDiscovery
      */
     private function productsInGroupsOf(Card $card, array $prices): array
     {
-        $groups = DB::table('set_tcgplayer_groups')->where('set_id', $card->set_id)->pluck('group_id')
+        $this->setGroups[$card->set_id] ??= DB::table('set_tcgplayer_groups')->where('set_id', $card->set_id)
+            ->pluck('group_id')->map(fn ($g) => (int) $g)->all();
+
+        $groups = collect($this->setGroups[$card->set_id])
             ->merge(CardTcgplayerLink::where('card_id', $card->id)->whereNotNull('group_id')->pluck('group_id'))
             ->unique();
 

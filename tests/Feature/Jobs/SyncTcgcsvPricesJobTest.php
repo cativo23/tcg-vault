@@ -60,7 +60,7 @@ test('in shadow mode it links prints and compares prices, writing no price at al
     Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context) => $message === 'tcgcsv shadow sync'
         && $context['groups_ok'] === 2 && $context['groups_failed'] === 0
         && $context['compared'] === 1 && $context['within_2_percent'] === 1
-        && $context['linked_without_tcgdex_price'] === 1);
+        && $context['linked_without_tcgdex_price'] === 1 && $context['groups_fetched'] === [24688, 24722]);
     Http::assertSent(fn ($request) => str_starts_with($request->header('User-Agent')[0] ?? '', 'tcg-vault/'));
 });
 
@@ -177,4 +177,29 @@ test('a partly failed build is not marked as pulled, so its groups are retried',
     runShadowSync();
 
     expect(Cache::get('tcgcsv:last_build'))->toBeNull();
+});
+
+test('a retry of a partly failed build fetches only the groups that failed', function () {
+    shadowFixture();
+    $calls = 0;
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::response('2026-10-05T20:05:57+0000', 200),
+        'tcgcsv.com/tcgplayer/3/24688/prices' => function () use (&$calls) {
+            return ++$calls === 1
+                ? Http::response('down', 503)
+                : Http::response(tcgcsvPricesResponse([['productId' => 704873, 'marketPrice' => 160.63, 'subTypeName' => 'Holofoil']]), 200);
+        },
+        'tcgcsv.com/tcgplayer/3/24722/prices' => Http::response(tcgcsvPricesResponse([]), 200),
+    ]);
+
+    runShadowSync();
+    runShadowSync();
+
+    $sent = Http::recorded()->map(fn ($r) => $r[0]->url())->all();
+    expect(array_count_values($sent))->toBe([
+        'https://tcgcsv.com/last-updated.txt' => 2,
+        'https://tcgcsv.com/tcgplayer/3/24688/prices' => 2,
+        'https://tcgcsv.com/tcgplayer/3/24722/prices' => 1,
+    ]);
+    expect(Cache::get('tcgcsv:last_build'))->toBe('2026-10-05T20:05:57+00:00');
 });

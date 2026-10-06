@@ -99,10 +99,11 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             return;
         }
 
-        [$prices, $ok, $failedGroups] = $this->fetchPrices($client);
+        [$prices, $fetched, $failedGroups] = $this->fetchPrices($client, $build);
 
         if ($failedGroups === []) {
-            // Recorded before linking, so a later failure never re-pulls it.
+            // Every group has this build; recorded before linking, so a
+            // later failure never re-pulls it.
             Cache::forever(self::BUILD_CACHE_KEY, $build);
         } else {
             // One report per run, not one per group.
@@ -119,9 +120,10 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         Log::info('tcgcsv shadow sync', [
             'build' => $build,
-            'groups_ok' => $ok,
+            'groups_ok' => count($fetched),
+            'groups_fetched' => $fetched,
             'groups_failed' => count($failedGroups),
-            'skipped_unknown_subtype' => $skipped,
+            'skipped_no_matching_subtype' => $skipped,
             ...$this->compare($prices),
         ]);
 
@@ -140,19 +142,24 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     }
 
     /**
-     * Every configured group's prices, groupId → productId → subType → row.
-     * A group that fails is skipped and named, never fatal to the rest.
+     * This build's prices for every configured group not already fetched
+     * from it, groupId → productId → subType → row. Each group remembers
+     * the build it last fetched, so a retry after a partial failure pulls
+     * only the groups that failed. A failing group is skipped and named,
+     * never fatal to the rest.
      *
-     * @return array{array<int, array<int, array<string, TcgcsvPriceRow>>>, int, list<int>}
+     * @return array{array<int, array<int, array<string, TcgcsvPriceRow>>>, list<int>, list<int>}
      */
-    private function fetchPrices(TcgcsvClient $client): array
+    private function fetchPrices(TcgcsvClient $client, string $build): array
     {
         $groups = DB::table('set_tcgplayer_groups')->distinct()->pluck('group_id')
             ->merge(CardTcgplayerLink::whereNotNull('group_id')->distinct()->pluck('group_id'))
-            ->map(fn ($g) => (int) $g)->unique()->sort()->values();
+            ->map(fn ($g) => (int) $g)->unique()->sort()->values()
+            ->reject(fn (int $g) => Cache::get("tcgcsv:group:{$g}") === $build)
+            ->values();
 
         $prices = [];
-        $ok = 0;
+        $fetched = [];
         $failed = [];
 
         foreach ($groups as $i => $groupId) {
@@ -164,13 +171,14 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 foreach ($client->prices($groupId) as $row) {
                     $prices[$groupId][$row->productId][$row->subType] = $row;
                 }
-                $ok++;
+                Cache::put("tcgcsv:group:{$groupId}", $build, now()->addDays(2));
+                $fetched[] = $groupId;
             } catch (Throwable) {
                 $failed[] = $groupId;
             }
         }
 
-        return [$prices, $ok, $failed];
+        return [$prices, $fetched, $failed];
     }
 
     /**

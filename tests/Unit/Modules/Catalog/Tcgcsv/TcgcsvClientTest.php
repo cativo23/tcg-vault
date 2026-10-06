@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
+use App\Modules\Catalog\Tcgcsv\TcgcsvPriceParser;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
@@ -44,4 +45,15 @@ test('a groups payload that is not a success is an error, not an empty list', fu
     Http::fake(['tcgcsv.com/tcgplayer/3/groups' => Http::response(['success' => false], 200)]);
 
     expect(fn () => app(TcgcsvClient::class)->groups())->toThrow(UnexpectedValueException::class);
+});
+
+test('a response past the size cap is refused while reading, whatever its headers say', function () {
+    Http::fake(['tcgcsv.com/tcgplayer/3/24688/prices' => Http::response(str_repeat(' ', 5_000_001), 200)]);
+
+    expect(fn () => app(TcgcsvClient::class)->prices(24688))->toThrow(UnexpectedValueException::class);
+});
+
+test('only an https base URL is accepted', function () {
+    expect(fn () => new TcgcsvClient('http://tcgcsv.com', 'ua', new TcgcsvPriceParser))
+        ->toThrow(InvalidArgumentException::class);
 });
