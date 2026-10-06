@@ -142,6 +142,10 @@ final class CatalogSyncService
                     'captured_on' => $today,
                 ],
                 [
+                    // Explicit, not the column default: a default only
+                    // applies on insert, and this may update a row another
+                    // origin wrote for the same day.
+                    'origin' => 'tcgdex',
                     'currency' => $price->currency,
                     'market_minor' => $price->marketMinor,
                     'low_minor' => $price->lowMinor,

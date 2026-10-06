@@ -279,3 +279,18 @@ test('an image tcgdex does send is used without any extra request', function () 
     expect($card->official_image_url)->toBe('https://assets.tcgdex.net/en/me/me05/116/high.webp');
     Http::assertNothingSent();
 });
+
+test('a tcgdex sync marks the prices it writes as from tcgdex, even over a row another origin wrote', function () {
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->twice()->andReturn(fakeCardDetail());
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $service = new CatalogSyncService($provider);
+    $service->syncCard('me05-116');
+    CardPriceSnapshot::query()->update(['origin' => 'tcgcsv']);
+
+    $service->syncCard('me05-116');
+
+    expect(CardPriceSnapshot::sole()->origin)->toBe('tcgdex');
+});
