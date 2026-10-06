@@ -1869,3 +1869,54 @@ test('a super-admin sees the manual price field and everyone sees the other-prin
         ->assertSeeHtml('<option value="player-rewards-program">Player Rewards Program</option>')
         ->assertSeeHtml('<option value="cosmos">Cosmos</option>');
 });
+
+test('picking an other print saves it on the copy right away', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    [$card, $item] = prizePackBudew($user);
+    $item->update(['variant' => 'holofoil']);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('customBase', 'holofoil')
+        ->set('customFoil', 'cosmos')
+        ->set('customStamp', 'player-rewards-program')
+        ->call('useCustomVariant', 0);
+
+    expect($item->fresh()->variant)->toBe('holofoil:cosmos+player-rewards-program');
+});
+
+test('a manual price is refused when the copy on screen is not the print saved', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card] = prizePackBudew($admin);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.variant', 'reverse-holofoil:masterball')
+        ->set('editingRows.0.manual_price', '0.70')
+        ->call('saveManualPrice', 0)
+        ->assertHasErrors('editingRows.0.manual_price');
+
+    expect(CardPriceSnapshot::count())->toBe(0);
+});
+
+test('a manual price is refused for a print tcgdex already prices', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card, $item] = prizePackBudew($admin);
+    $item->update(['variant' => 'reverse-holofoil:masterball']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'reverse-holofoil:masterball', 'captured_on' => today()->subDays(3), 'currency' => 'EUR', 'market_minor' => 266]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '0.70')
+        ->call('saveManualPrice', 0)
+        ->assertHasErrors('editingRows.0.manual_price');
+
+    expect(CardPriceSnapshot::where('source', 'manual')->count())->toBe(0);
+});

@@ -322,6 +322,11 @@ final class CollectionItems extends Component
         }
 
         $this->editingRows[$index]['variant'] = $key;
+
+        // The dropdown saves on change; a programmatic pick fires no
+        // change event, so save here — otherwise a manual price entered
+        // next would land on the print still stored, not the one shown.
+        $this->updateRow($index);
     }
 
     /**
@@ -343,10 +348,16 @@ final class CollectionItems extends Component
         $price = CollectionService::nullIfEmpty($this->editingRows[$index]['manual_price'] ?? null);
         $item = $this->ownedItemOrFail($this->editingRows[$index]['id']);
 
-        if ($price === null || $item->variant === null) {
-            $this->addError("editingRows.$index.manual_price", $item->variant === null
-                ? 'Save a variant for this copy first — the price belongs to a specific print.'
-                : 'Enter a price.');
+        $refusal = match (true) {
+            $item->variant === null => 'Save a variant for this copy first — the price belongs to a specific print.',
+            $item->variant !== CollectionService::nullIfEmpty($this->editingRows[$index]['variant']) => 'Save this copy\'s variant first — the price would go to the print still stored.',
+            $this->hasMarketPrice($item->card_id, $item->variant) => 'tcgdex already prices this print — a manual price is only for prints it doesn\'t.',
+            $price === null => 'Enter a price.',
+            default => null,
+        };
+
+        if ($refusal !== null) {
+            $this->addError("editingRows.$index.manual_price", $refusal);
 
             return;
         }
@@ -367,6 +378,19 @@ final class CollectionItems extends Component
                 'raw' => ['set_by_user_id' => auth()->id()],
             ],
         );
+    }
+
+    /**
+     * Whether a marketplace already prices this print. A manual row
+     * beside it would compete with real market data in the resolver, so
+     * manual prices are kept to prints tcgdex has nothing for.
+     */
+    private function hasMarketPrice(int $cardId, string $variant): bool
+    {
+        return CardPriceSnapshot::where('card_id', $cardId)
+            ->where('variant', $variant)
+            ->where('source', '!=', 'manual')
+            ->exists();
     }
 
     private function currentManualPrice(CollectionItem $item): ?string
