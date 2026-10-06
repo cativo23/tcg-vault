@@ -6,6 +6,49 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-06
+
+### Added
+
+- Special prints are their own variants. Poké Ball, Master Ball, Friend
+  Ball and other pattern reverses, Energy reverses, cosmos holos and
+  stamped promos are separate products with their own prices, and tcgdex
+  lists them per card. Adding or editing a copy now offers the prints that
+  card actually has, each priced on its own — a Master Ball reverse is no
+  longer valued as a plain reverse at a tenth of its price. Labels read the
+  way collectors say them ("Reverse Holofoil · Poké Ball"), and the
+  collection's variant filter lists the special prints you own.
+- Prints tcgdex doesn't list can be recorded by hand. "Other print"
+  composes one from tcgdex's own foil and stamp names — a Prize Pack cosmos
+  holo is Holofoil · Cosmos · Player Rewards Program — so it gets the same
+  key tcgdex would give it if it adds that print later.
+- Manual market prices for those prints. A price entered in the card editor
+  is shared catalog data, shown to everyone like tcgdex's prices and
+  labelled "Manual" on the card page. Only accounts with the new
+  `manage-catalog-prices` permission can set one (super-admins pass
+  automatically). It is refused for a print tcgdex already prices, and it
+  stands until replaced rather than leaving the 30-day price window.
+
+### Fixed
+
+- Ascended Heroes cards no longer offer a plain reverse holo; that set has
+  only Poké Ball and Energy pattern reverses.
+- A card whose only print tcgdex files with a foil or stamp (a gold Hyper
+  rare, a set-logo promo) is still offered as one print, not split into two.
+- The card-level price no longer falls back to a special print's price.
+- The card page and Activity name every price source instead of labelling
+  anything that isn't TCGplayer as Cardmarket.
+- The stalled-sync alert ignores manual prices, so saving one can't hide a
+  sync that stopped.
+
+### Deploy
+
+No migrations. After deploying, create the new permission:
+
+```
+php artisan db:seed --class=PermissionSeeder --force
+```
+
 ## [1.0.2] - 2026-10-06
 
 ### Fixed
