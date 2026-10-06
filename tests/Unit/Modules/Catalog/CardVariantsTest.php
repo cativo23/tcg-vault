@@ -117,8 +117,9 @@ test('a special entry that is the same product as the card\'s top-level pricing 
     ]))->toBe(['holofoil']);
 });
 
-test('the only entry of a type with no plain sibling is the base print, even without product ids', function () {
-    // Lugia ex (sv08.5-082): its only normal print carries the set logo.
+test('the only entry of a type with no plain sibling is the base print when nothing says otherwise', function () {
+    // A promo whose only print carries the set logo, with no product ids
+    // anywhere to tell it apart from the card itself.
     expect(CardVariants::available(['normal' => true], [
         'variants_detailed' => [['type' => 'normal', 'size' => 'standard', 'stamp' => ['set-logo']]],
     ]))->toBe(['normal']);
@@ -208,4 +209,28 @@ test('a lone special print that is a different product from the card\'s own is a
             ['type' => 'holo', 'size' => 'standard', 'foil' => 'cosmos', 'stamp' => ['player-rewards-program'], 'thirdParty' => ['cardmarket' => 894200, 'tcgplayer' => 704399]],
         ],
     ]))->toBe(['normal', 'reverse-holofoil', 'normal+player-rewards-program', 'holofoil:cosmos+player-rewards-program']);
+});
+
+test('a lone special print with no ids of its own is separate when the card\'s base prints carry the card\'s own ids', function () {
+    // me01-075 Solrock: plain normal and reverse are the card's product;
+    // the Prize Pack cosmos entry has no ids yet.
+    expect(CardVariants::available(['normal' => true, 'reverse' => true, 'holo' => true], [
+        'pricing' => ['tcgplayer' => ['unit' => 'USD', 'normal' => ['productId' => 640001, 'marketPrice' => 0.1]]],
+        'variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['tcgplayer' => 640001]],
+            ['type' => 'reverse', 'size' => 'standard', 'thirdParty' => ['tcgplayer' => 640001]],
+            ['type' => 'holo', 'size' => 'standard', 'foil' => 'cosmos', 'stamp' => ['player-rewards-program']],
+        ],
+    ]))->toBe(['normal', 'reverse-holofoil', 'holofoil:cosmos+player-rewards-program']);
+});
+
+test('product ids are only compared within one marketplace', function () {
+    // A gold Hyper rare whose entry carries only a cardmarket id while the
+    // card's own prices list only tcgplayer ids: nothing says it differs.
+    expect(CardVariants::available(['holo' => true], [
+        'pricing' => ['tcgplayer' => ['unit' => 'USD', 'holofoil' => ['productId' => 610535, 'marketPrice' => 40.0]]],
+        'variants_detailed' => [
+            ['type' => 'holo', 'size' => 'standard', 'foil' => 'gold', 'thirdParty' => ['cardmarket' => 812345]],
+        ],
+    ]))->toBe(['holofoil']);
 });
