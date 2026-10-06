@@ -89,7 +89,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             variants: $json['variants'] ?? [],
             officialImageUrl: isset($json['image']) ? "{$json['image']}/high.webp" : null,
             prices: new DataCollection(PriceEntryData::class, [
-                ...$this->extractPrices($json['pricing'] ?? [], $this->basePrintFlags($json)),
+                ...$this->extractPrices($json['pricing'] ?? [], $this->basePrintFlags($json), $this->hasDetailedPrints($json)),
                 ...$this->extractSpecialPrintPrices($json),
             ]),
             raw: $json,
@@ -187,10 +187,11 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     /**
      * @param  array<string, mixed>  $pricing
-     * @param  array<string, mixed>  $variants  the card's own tcgdex `variants` flags
+     * @param  array<string, mixed>  $variants  the card's base-print flags (see basePrintFlags())
+     * @param  bool  $flagsCorrected  whether $variants came from the corrected print list
      * @return array<int, PriceEntryData>
      */
-    private function extractPrices(array $pricing, array $variants = []): array
+    private function extractPrices(array $pricing, array $variants = [], bool $flagsCorrected = false): array
     {
         $entries = [];
 
@@ -237,6 +238,10 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
                     ($variants['holo'] ?? false) === true && ($variants['reverse'] ?? false) === true => ['holofoil', 'reverse-holofoil'],
                     ($variants['holo'] ?? false) === true => ['holofoil'],
                     ($variants['reverse'] ?? false) === true => ['reverse-holofoil'],
+                    // The corrected print list has no plain foil print (only
+                    // pattern reverses, each priced on its own entry): the
+                    // figure belongs to none of the card's base prints.
+                    $flagsCorrected => [],
                     // No usable flags (older/incomplete sync): keep the
                     // prior fallback rather than guess wrong with silence.
                     default => ['holofoil'],
@@ -297,7 +302,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     {
         $flags = is_array($json['variants'] ?? null) ? $json['variants'] : [];
 
-        if (! is_array($json['variants_detailed'] ?? null) || $json['variants_detailed'] === []) {
+        if (! $this->hasDetailedPrints($json)) {
             return $flags;
         }
 
@@ -308,6 +313,12 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             'holo' => in_array('holofoil', $offered, true),
             'reverse' => in_array('reverse-holofoil', $offered, true),
         ];
+    }
+
+    /** @param  array<string, mixed>  $json */
+    private function hasDetailedPrints(array $json): bool
+    {
+        return is_array($json['variants_detailed'] ?? null) && $json['variants_detailed'] !== [];
     }
 
     /**

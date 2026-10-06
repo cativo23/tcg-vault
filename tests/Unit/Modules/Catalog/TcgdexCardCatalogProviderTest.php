@@ -326,6 +326,26 @@ test('a card whose only normal entry is a stamped reprint prices its cardmarket 
     expect($card->prices->toCollection()->where('source', 'cardmarket')->pluck('variant')->all())->toBe(['default']);
 });
 
+test('a foil price is not filed under a print the card does not have', function () {
+    // me02.5-175 Larry's Komala: no plain holo and no plain reverse — only
+    // Poké Ball and Energy pattern reverses, each priced on its own entry.
+    Http::fake(['api.tcgdex.net/v2/en/cards/me02.5-175' => Http::response([
+        'id' => 'me02.5-175', 'localId' => '175', 'name' => "Larry's Komala",
+        'set' => ['id' => 'me02.5', 'name' => 'Ascended Heroes'],
+        'variants' => ['normal' => true, 'reverse' => true, 'holo' => false],
+        'pricing' => ['cardmarket' => ['unit' => 'EUR', 'idProduct' => 869786, 'avg' => 0.05, 'avg-holo' => 0.21]],
+        'variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 869786]],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball', 'thirdParty' => ['cardmarket' => 870408]],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'energy', 'thirdParty' => ['cardmarket' => 870408]],
+        ],
+    ], 200)]);
+
+    $card = (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('me02.5-175');
+
+    expect($card->prices->toCollection()->where('source', 'cardmarket')->pluck('variant')->all())->toBe(['normal']);
+});
+
 test('findCard throws MalformedCatalogResponseException when a variants_detailed currency is not 3 characters', function () {
     $payload = fakeBudewPayload();
     $payload['variants_detailed'][3]['pricing']['tcgplayer']['unit'] = 'DOLLARS';
