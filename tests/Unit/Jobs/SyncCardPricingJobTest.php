@@ -192,13 +192,19 @@ test('each transient retry is logged with the card and the status, so an outage 
     );
 });
 
-test('a connection failure to tcgdex is retried the same way', function () {
+test('a connection failure to tcgdex is retried the same way, logged with no status', function () {
+    Log::spy();
     providerThrowing(new ConnectionException('cURL error 28: Operation timed out'));
 
     $job = (new SyncCardPricingJob('me05-116'))->withFakeQueueInteractions();
     $job->handle(app(CatalogSyncService::class));
 
     $job->assertReleased(delay: 10);
+    Log::shouldHaveReceived('warning')->once()->withArgs(
+        fn (string $message, array $context) => $message === 'SyncCardPricingJob: tcgdex unavailable, retrying'
+            && $context['status'] === null
+            && $context['retry_in_seconds'] === 10,
+    );
 });
 
 test('each later retry waits longer, up to a minute', function (int $attempt, int $delay) {

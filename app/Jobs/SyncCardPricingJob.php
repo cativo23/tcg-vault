@@ -117,8 +117,8 @@ final class SyncCardPricingJob implements ShouldQueue
      * Called when the job is failed — usually because retryUntil() passed
      * before the card synced, which the worker also reports. The reason is
      * then the framework's generic "attempted too many times"; the last
-     * tcgdex error is in the retry warnings logged before it (and in the
-     * rate limiter's releases, if the job was starved rather than refused).
+     * tcgdex error is in the retry warnings logged before it. A job starved
+     * by the rate limiter never reached tcgdex and leaves no warning.
      */
     public function failed(?Throwable $e): void
     {
@@ -129,9 +129,10 @@ final class SyncCardPricingJob implements ShouldQueue
     }
 
     /**
-     * A warning, not a report: it goes to the log (and rides along as a
-     * breadcrumb if the job later fails), so a long outage or a run of
-     * 429s still leaves a trace without one error report per attempt.
+     * A warning, not a report: it goes to the log, so a long outage or a
+     * run of 429s still leaves a trace without one error report per
+     * attempt. queue_attempt counts trips through the queue, including the
+     * rate limiter's releases, not calls to tcgdex.
      */
     private function retryLater(?int $status, Throwable $e): void
     {
@@ -141,7 +142,7 @@ final class SyncCardPricingJob implements ShouldQueue
         Log::warning('SyncCardPricingJob: tcgdex unavailable, retrying', [
             'tcgdex_card_id' => $this->tcgdexCardId,
             'status' => $status,
-            'attempt' => $this->attempts(),
+            'queue_attempt' => $this->attempts(),
             'retry_in_seconds' => $delay,
             'reason' => $e->getMessage(),
         ]);
