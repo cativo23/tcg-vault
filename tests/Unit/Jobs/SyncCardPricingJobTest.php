@@ -188,7 +188,8 @@ test('each transient retry is logged with the card and the status, so an outage 
     Log::shouldHaveReceived('warning')->once()->withArgs(
         fn (string $message, array $context) => $message === 'SyncCardPricingJob: tcgdex unavailable, retrying'
             && $context['tcgdex_card_id'] === 'me05-116'
-            && $context['status'] === 429,
+            && $context['status'] === 429
+            && $context['queue_attempt'] === 1,
     );
 });
 
