@@ -264,10 +264,13 @@ test('a bug in a group\'s handling is not swallowed as a failed group', function
     expect(fn () => runShadowSync())->toThrow(LogicException::class);
 });
 
-test('a run after the evening cutoff still gets an hour, and a partial build is released for its retry', function () {
+test('a run after the evening cutoff still gets an hour', function () {
     $this->travelTo(today()->setTime(23, 45));
-    expect((new SyncTcgcsvPricesJob)->retryUntil()->format('H:i'))->toBe('00:45');
 
+    expect((new SyncTcgcsvPricesJob)->retryUntil()->format('H:i'))->toBe('00:45');
+});
+
+test('a partly failed build is released for its retry', function () {
     $this->travelTo(today()->setTime(20, 30));
     shadowFixture();
     Http::fake([
