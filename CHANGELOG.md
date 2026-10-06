@@ -6,6 +6,27 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-06
+
+### Fixed
+
+- The nightly pricing sync no longer reports an error each time tcgdex
+  briefly refuses a request (a 5xx such as 503 "no available server", a
+  429, or a dropped or timed-out connection). Those requests were already
+  retried and succeeded — no card went unpriced in the nights checked —
+  but every failed attempt reached Bugsink. They are now retried quietly,
+  with a warning in the log naming the card and the status. A card that
+  still fails when the sync's three-hour window closes is reported once.
+
+### Security
+
+- Updated `source-map-js` to 1.2.2 (GHSA-68fv-2mgg-jv7q), a build-time
+  dependency; the built assets are unchanged.
+
+### Deploy
+
+No migrations.
+
 ## [1.0.1] - 2026-10-05
 
 ### Fixed
