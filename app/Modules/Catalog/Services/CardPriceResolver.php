@@ -144,7 +144,8 @@ final class CardPriceResolver
      * For a variant: that exact variant on tcgplayer, then on any
      * marketplace, then a manual price for it (entered for a print tcgdex
      * doesn't price — current market data still beats it), then, for a
-     * base print whose own price froze, the card-wide 'default' row.
+     * normal or holo print whose own price froze, the card-wide
+     * 'default' row.
      * Never another print's row otherwise: a variant with no price of its
      * own resolves to nothing rather than to a different print's value.
      *
@@ -176,7 +177,10 @@ final class CardPriceResolver
         // pricing on TCGplayer, while cardmarket files the card as
         // 'default') may fall back to the card-wide row; borrowedOnlyIfOwnPriced()
         // drops that pick unless the print has a priced row of its own.
-        if (! CardVariants::isSpecial($variant)) {
+        // Only the prints 'default' can stand for — cardmarket's primary
+        // listing is the normal print, or the holo on a holo-only card;
+        // never a reverse.
+        if (in_array($variant, ['normal', 'holofoil'], true)) {
             $chain[] = $snapshots->filter(fn (CardPriceSnapshot $s) => $s->variant === 'default');
         }
 

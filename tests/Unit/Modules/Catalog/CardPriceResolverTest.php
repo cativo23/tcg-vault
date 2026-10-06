@@ -392,3 +392,11 @@ test('staleness is measured against the card\'s latest sync, not just the varian
     $today = today()->toDateString();
     expect($resolver->resolveForVariantOnDays($card->fresh(), 'normal', collect([$today]))[$today]->id)->toBe($manual->id);
 });
+
+test('a frozen reverse holo never borrows the card-wide price of the primary print', function () {
+    $card = staleTcgplayerCard();
+    $own = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 300]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'reverse-holofoil')->id)->toBe($own->id);
+});
