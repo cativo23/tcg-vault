@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Tcgcsv;
 
 use App\Modules\Catalog\Models\Card;
-use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Support\CardVariants;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -16,23 +16,59 @@ use Illuminate\Support\Facades\Log;
  * product ids inconsistently, so a print keeps its link until a method at
  * least as trusted disagrees (CardTcgplayerLink::TRUST).
  *
- * A link is only made for a product found in this run's prices, which
- * also gives its subtype and group.
+ * A link is only made for a product found in this run's prices, within
+ * the groups the card's own set pulls (or a group one of its links already
+ * uses) — so one group's payload can never price another set's card.
  */
 final class TcgplayerLinkDiscovery
 {
-    /** @param  array<int, array<string, TcgcsvPriceRow>>  $prices  productId → subType → row */
-    public function discover(Card $card, array $prices): void
+    /**
+     * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices  groupId → productId → subType → row
+     * @return int how many candidate prints were skipped for a subtype this app has no key for
+     */
+    public function discover(Card $card, array $prices): int
     {
-        foreach ($this->candidates($card) as $variant => [$productId, $method]) {
-            $subType = $this->subTypeFor($variant, $prices[$productId] ?? []);
+        $products = $this->productsInGroupsOf($card, $prices);
+        $skipped = 0;
 
-            if ($subType === null) {
+        foreach ($this->candidates($card) as $variant => [$productId, $method]) {
+            if (! isset($products[$productId])) {
                 continue;
             }
 
-            $this->store($card, $variant, $productId, $subType, $prices[$productId][$subType]->groupId, $method);
+            $subType = $this->subTypeFor($variant, $products[$productId]);
+
+            if ($subType === null) {
+                $skipped++;
+
+                continue;
+            }
+
+            $this->store($card, $variant, $productId, $subType, $products[$productId][$subType]->groupId, $method);
         }
+
+        return $skipped;
+    }
+
+    /**
+     * The fetched products this card may link to: those in its set's
+     * groups, or in a group one of its links already points at.
+     *
+     * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices
+     * @return array<int, array<string, TcgcsvPriceRow>>
+     */
+    private function productsInGroupsOf(Card $card, array $prices): array
+    {
+        $groups = DB::table('set_tcgplayer_groups')->where('set_id', $card->set_id)->pluck('group_id')
+            ->merge(CardTcgplayerLink::where('card_id', $card->id)->whereNotNull('group_id')->pluck('group_id'))
+            ->unique();
+
+        $products = [];
+        foreach ($groups as $group) {
+            $products += $prices[(int) $group] ?? [];
+        }
+
+        return $products;
     }
 
     /**
@@ -45,7 +81,9 @@ final class TcgplayerLinkDiscovery
     {
         $candidates = [];
         $raw = is_array($card->raw) ? $card->raw : [];
-        $specialEntries = array_column(CardVariants::specialPrints($raw), 'entry', 'key');
+        // Matched by position, not by key: two entries can share a key.
+        $specialPrints = CardVariants::specialPrints($raw);
+        $specialEntries = array_column($specialPrints, 'entry');
 
         foreach (is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [] as $entry) {
             $productId = is_array($entry) ? ($entry['thirdParty']['tcgplayer'] ?? null) : null;
@@ -53,8 +91,10 @@ final class TcgplayerLinkDiscovery
                 continue;
             }
 
-            $key = array_search($entry, $specialEntries, true);
-            if ($key === false) {
+            $position = array_search($entry, $specialEntries, true);
+            if ($position !== false) {
+                $key = $specialPrints[$position]['key'];
+            } else {
                 // A plain entry, or a lone foil/stamped one that is the base print.
                 $plain = empty($entry['foil']) && empty($entry['stamp']);
                 $key = $plain || CardVariants::keyFor($entry) !== null
@@ -67,17 +107,18 @@ final class TcgplayerLinkDiscovery
             }
         }
 
-        // Queried, not the loaded relation: callers load snapshots through
-        // a date window, and this needs every tcgdex-priced print.
-        $priced = $card->priceSnapshots()->where('source', 'tcgplayer')->where('origin', 'tcgdex')->get()
-            ->filter(fn (CardPriceSnapshot $s) => is_int($s->raw['productId'] ?? null))
-            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
-            ->unique('variant');
+        // The newest tcgdex-priced TCGplayer product per print — one row
+        // each, not the card's whole price history.
+        $priced = $card->priceSnapshots()
+            ->where('source', 'tcgplayer')->where('origin', 'tcgdex')
+            ->whereNotNull('raw->productId')
+            ->selectRaw("DISTINCT ON (variant) variant, raw->>'productId' AS product_id")
+            ->orderBy('variant')->orderByDesc('captured_on')
+            ->toBase()->get();
 
-        foreach ($priced as $snapshot) {
-            $productId = $snapshot->raw['productId'] ?? null;
-            if (is_int($productId)) {
-                $candidates[$snapshot->variant] = [$productId, 'tcgdex-price'];
+        foreach ($priced as $row) {
+            if (is_numeric($row->product_id) && (int) $row->product_id > 0) {
+                $candidates[(string) $row->variant] = [(int) $row->product_id, 'tcgdex-price'];
             }
         }
 
@@ -85,16 +126,17 @@ final class TcgplayerLinkDiscovery
     }
 
     /**
-     * The product's subtype that prices this print: its only one, or the
-     * one matching the key's base print. Null when the product isn't in
-     * this run's prices or the subtype can't be told.
+     * The product's subtype that prices this print. A base print needs its
+     * own subtype (Normal / Holofoil / Reverse Holofoil); a special print is
+     * a product of its own, so its only subtype is it. Null otherwise —
+     * e.g. an old set's "1st Edition Holofoil", which this app has no key for.
      *
      * @param  array<string, TcgcsvPriceRow>  $subTypes
      */
     private function subTypeFor(string $variant, array $subTypes): ?string
     {
-        if (count($subTypes) === 1) {
-            return array_key_first($subTypes);
+        if (CardVariants::isSpecial($variant) && count($subTypes) === 1) {
+            return (string) array_key_first($subTypes);
         }
 
         $wanted = TcgcsvPriceParser::subTypeFor($variant);
@@ -106,7 +148,7 @@ final class TcgplayerLinkDiscovery
     {
         $existing = CardTcgplayerLink::where('card_id', $card->id)->where('variant', $variant)->first();
 
-        if ($existing !== null && CardTcgplayerLink::TRUST[$existing->method] > CardTcgplayerLink::TRUST[$method]) {
+        if ($existing !== null && (CardTcgplayerLink::TRUST[$existing->method] ?? 0) > CardTcgplayerLink::TRUST[$method]) {
             return;
         }
 

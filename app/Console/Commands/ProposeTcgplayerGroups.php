@@ -8,6 +8,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 /**
  * Proposes which TCGplayer group(s) each catalog set pulls prices from,
@@ -45,7 +46,8 @@ final class ProposeTcgplayerGroups extends Command
                 default => 'match',
             };
 
-            $rows[] = [$set->tcgdex_id, $set->name, $set->abbreviation ?? '—', $matches->map(fn (array $g) => "{$g['groupId']} {$g['name']}".($g['isSupplemental'] ? ' (supplemental)' : ''))->implode('; '), $status];
+            // Group names come from tcgcsv: escaped so console style tags in them render as text.
+            $rows[] = [$set->tcgdex_id, $set->name, $set->abbreviation ?? '—', OutputFormatter::escape($matches->map(fn (array $g) => "{$g['groupId']} {$g['name']}".($g['isSupplemental'] ? ' (supplemental)' : ''))->implode('; ')), $status];
 
             if ($status === 'match' && $this->option('write')) {
                 DB::table('set_tcgplayer_groups')->insertOrIgnore(['set_id' => $set->id, 'group_id' => $matches[0]['groupId']]);
