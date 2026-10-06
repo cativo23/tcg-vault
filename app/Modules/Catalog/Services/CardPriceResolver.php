@@ -207,6 +207,31 @@ final class CardPriceResolver
     }
 
     /**
+     * Whether a marketplace still prices this exact print — a priced
+     * tcgplayer/cardmarket row within STALE_AFTER_DAYS of the card's
+     * latest sync. A frozen row (a source tcgdex stopped sending) doesn't
+     * count, so a manual price can stand in for it.
+     */
+    public function hasCurrentMarketPrice(Card $card, string $variant): bool
+    {
+        $snapshots = $card->priceSnapshots;
+        $newest = $this->marketPriced($snapshots)
+            ->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant)
+            ->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey());
+        $cutoff = $this->currentFrom($this->marketPriced($snapshots)->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey()));
+
+        return $newest !== null && ($cutoff === null || $newest >= $cutoff);
+    }
+
+    /** The earliest capture day still current against $syncedOn, or null when nothing is dated. */
+    private function currentFrom(?string $syncedOn): ?string
+    {
+        return $syncedOn === null
+            ? null
+            : Carbon::parse($syncedOn)->subDays(self::STALE_AFTER_DAYS)->toDateString();
+    }
+
+    /**
      * The card's rows that come from a marketplace sync and carry a price
      * — the ones that say how recently tcgdex priced this card at all.
      *
@@ -234,9 +259,7 @@ final class CardPriceResolver
      */
     private function firstCurrent(array $picks, ?string $syncedOn): ?CardPriceSnapshot
     {
-        $cutoff = $syncedOn === null
-            ? null
-            : Carbon::parse($syncedOn)->subDays(self::STALE_AFTER_DAYS)->toDateString();
+        $cutoff = $this->currentFrom($syncedOn);
 
         foreach ($picks as $pick) {
             if ($pick === null || $pick->market_minor === null) {

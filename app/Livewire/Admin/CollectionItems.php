@@ -363,7 +363,7 @@ final class CollectionItems extends Component
         $refusal = match (true) {
             $item->variant === null => 'Save a variant for this copy first — the price belongs to a specific print.',
             $item->variant !== CollectionService::nullIfEmpty($this->editingRows[$index]['variant']) => 'Save this copy\'s variant first — the price would go to the print still stored.',
-            $this->hasMarketPrice($item->card_id, $item->variant) => 'tcgdex already prices this print — a manual price is only for prints it doesn\'t.',
+            (new CardPriceResolver)->hasCurrentMarketPrice($item->card, $item->variant) => 'tcgdex already prices this print — a manual price is only for prints it doesn\'t price, or stopped pricing.',
             $price === null => 'Enter a price.',
             default => null,
         };
@@ -390,19 +390,6 @@ final class CollectionItems extends Component
                 'raw' => ['set_by_user_id' => auth()->id()],
             ],
         );
-    }
-
-    /**
-     * Whether a marketplace already prices this print. A manual row
-     * beside it would compete with real market data in the resolver, so
-     * manual prices are kept to prints tcgdex has nothing for.
-     */
-    private function hasMarketPrice(int $cardId, string $variant): bool
-    {
-        return CardPriceSnapshot::where('card_id', $cardId)
-            ->where('variant', $variant)
-            ->where('source', '!=', 'manual')
-            ->exists();
     }
 
     private function currentManualPrice(CollectionItem $item): ?string

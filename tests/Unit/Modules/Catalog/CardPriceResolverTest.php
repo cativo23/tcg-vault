@@ -400,3 +400,21 @@ test('a frozen reverse holo never borrows the card-wide price of the primary pri
 
     expect((new CardPriceResolver)->resolveForVariant($card, 'reverse-holofoil')->id)->toBe($own->id);
 });
+
+test('hasCurrentMarketPrice is true only for a marketplace price that is still current', function () {
+    $card = staleTcgplayerCard();
+    $resolver = new CardPriceResolver;
+
+    expect($resolver->hasCurrentMarketPrice($card, 'normal'))->toBeFalse();
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 571]);
+    expect($resolver->hasCurrentMarketPrice($card->fresh(), 'normal'))->toBeFalse();
+
+    // Frozen: 12 days behind the card's latest sync.
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+    expect($resolver->hasCurrentMarketPrice($card->fresh(), 'normal'))->toBeFalse();
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'EUR', 'market_minor' => 1500]);
+    expect($resolver->hasCurrentMarketPrice($card->fresh(), 'normal'))->toBeTrue();
+});
