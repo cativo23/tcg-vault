@@ -76,6 +76,9 @@
                 <option value="normal">Normal</option>
                 <option value="holofoil">Holofoil</option>
                 <option value="reverse-holofoil">Reverse Holofoil</option>
+                @foreach ($specialVariantOptions as $v)
+                    <option value="{{ $v }}">{{ \App\Modules\Catalog\Support\CardVariants::label($v) }}</option>
+                @endforeach
                 <option value="__none__">Not specified</option>
             </select>
 
@@ -118,7 +121,7 @@
                             <div class="flex flex-wrap gap-1.5">
                                 @foreach ($group->items as $item)
                                     <span class="nw-variant-chip">
-                                        {{ $item->variant ? \Illuminate\Support\Str::headline($item->variant) : '— unspecified' }} · {{ $item->condition }}
+                                        {{ $item->variant ? \App\Modules\Catalog\Support\CardVariants::label($item->variant) : '— unspecified' }} · {{ $item->condition }}
                                         <span class="mono" style="color: var(--muted)">×{{ $item->quantity }}</span>
                                     </span>
                                 @endforeach

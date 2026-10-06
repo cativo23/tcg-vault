@@ -167,6 +167,127 @@ test('a straight-holo-only card still labels its foil-tier price holofoil', func
     expect($foil->variant)->toBe('holofoil');
 });
 
+function fakeBudewPayload(): array
+{
+    // Trimmed real response for sv08.5-004 (Budew, Prismatic Evolutions):
+    // a normal + reverse common whose Poké Ball and Master Ball pattern
+    // reverses are separate products, each priced on its own entry.
+    return [
+        'id' => 'sv08.5-004',
+        'localId' => '004',
+        'name' => 'Budew',
+        'set' => ['id' => 'sv08.5', 'name' => 'Prismatic Evolutions'],
+        'variants' => ['holo' => false, 'normal' => true, 'reverse' => true],
+        'pricing' => [
+            'cardmarket' => ['unit' => 'EUR', 'avg' => 0.09, 'avg-holo' => 0.15],
+            'tcgplayer' => [
+                'unit' => 'USD',
+                'normal' => ['marketPrice' => 0.21, 'lowPrice' => 0.01],
+                'reverse-holofoil' => ['marketPrice' => 0.32, 'lowPrice' => 0.01],
+            ],
+        ],
+        'variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard', 'pricing' => ['tcgplayer' => ['unit' => 'USD', 'normal' => ['marketPrice' => 0.21]]]],
+            ['type' => 'reverse', 'size' => 'standard', 'pricing' => ['tcgplayer' => ['unit' => 'USD', 'reverse-holofoil' => ['marketPrice' => 0.32]]]],
+            [
+                'type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball',
+                'pricing' => [
+                    'cardmarket' => ['unit' => 'EUR', 'avg' => null, 'low' => 0.08, 'trend' => 0.25, 'avg-holo' => 0.46, 'low-holo' => 0.08, 'trend-holo' => 0.43],
+                    'tcgplayer' => ['unit' => 'USD', 'holofoil' => ['marketPrice' => 0.58, 'lowPrice' => 0.18]],
+                ],
+            ],
+            [
+                'type' => 'reverse', 'size' => 'standard', 'foil' => 'masterball',
+                'pricing' => [
+                    'tcgplayer' => ['unit' => 'USD', 'holofoil' => ['marketPrice' => 3.28, 'lowPrice' => 2.39]],
+                ],
+            ],
+        ],
+    ];
+}
+
+test('a special-foil print is priced from its own variants_detailed entry, under its own key', function () {
+    Http::fake(['api.tcgdex.net/v2/en/cards/sv08.5-004' => Http::response(fakeBudewPayload(), 200)]);
+
+    $card = (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('sv08.5-004');
+
+    $priceOf = fn (string $source, string $variant) => $card->prices->toCollection()
+        ->first(fn ($p) => $p->source === $source && $p->variant === $variant);
+
+    expect($priceOf('tcgplayer', 'reverse-holofoil:masterball')->marketMinor)->toBe(328);
+    expect($priceOf('tcgplayer', 'reverse-holofoil:masterball')->lowMinor)->toBe(239);
+    expect($priceOf('tcgplayer', 'reverse-holofoil:pokeball')->marketMinor)->toBe(58);
+    // The pattern product is foil-only, so cardmarket's -holo figures are its price.
+    expect($priceOf('cardmarket', 'reverse-holofoil:pokeball')->marketMinor)->toBe(46);
+    expect($priceOf('cardmarket', 'reverse-holofoil:pokeball')->trendMinor)->toBe(43);
+    expect($priceOf('cardmarket', 'reverse-holofoil:pokeball')->currency)->toBe('EUR');
+    // The plain reverse keeps its own, much lower price.
+    expect($priceOf('tcgplayer', 'reverse-holofoil')->marketMinor)->toBe(32);
+});
+
+test('base entries in variants_detailed add no duplicate price rows', function () {
+    Http::fake(['api.tcgdex.net/v2/en/cards/sv08.5-004' => Http::response(fakeBudewPayload(), 200)]);
+
+    $card = (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('sv08.5-004');
+
+    $keys = $card->prices->toCollection()->map(fn ($p) => $p->source.'|'.$p->variant)->all();
+
+    expect($keys)->toHaveCount(7);
+    expect(array_unique($keys))->toHaveCount(7);
+});
+
+test('a special print with no pricing of its own, or one this app cannot key, adds no price rows', function () {
+    $payload = fakeBudewPayload();
+    $payload['variants_detailed'] = [
+        ['type' => 'normal', 'stamp' => ['staff']],
+        ['type' => 'holo', 'size' => 'jumbo', 'foil' => 'cosmos', 'pricing' => ['tcgplayer' => ['unit' => 'USD', 'holofoil' => ['marketPrice' => 9.99]]]],
+    ];
+    Http::fake(['api.tcgdex.net/v2/en/cards/sv08.5-004' => Http::response($payload, 200)]);
+
+    $card = (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('sv08.5-004');
+
+    expect($card->prices->toCollection()->pluck('variant')->unique()->sort()->values()->all())
+        ->toBe(['normal', 'reverse-holofoil']);
+});
+
+test('a gold-foil entry that is the card\'s own product is priced as the base print, not a second one', function () {
+    Http::fake(['api.tcgdex.net/v2/en/cards/sv08.5-180' => Http::response([
+        'id' => 'sv08.5-180', 'localId' => '180', 'name' => 'Terapagos ex',
+        'set' => ['id' => 'sv08.5', 'name' => 'Prismatic Evolutions'],
+        'variants' => ['holo' => true],
+        'pricing' => ['tcgplayer' => ['unit' => 'USD', 'holofoil' => ['productId' => 610535, 'marketPrice' => 40.0]]],
+        'variants_detailed' => [[
+            'type' => 'holo', 'size' => 'standard', 'foil' => 'gold', 'thirdParty' => ['tcgplayer' => 610535],
+            'pricing' => ['tcgplayer' => ['unit' => 'USD', 'holofoil' => ['productId' => 610535, 'marketPrice' => 40.0]]],
+        ]],
+    ], 200)]);
+
+    $card = (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('sv08.5-180');
+
+    expect($card->prices->toCollection()->pluck('variant')->all())->toBe(['holofoil']);
+});
+
+test('a special print with only plain cardmarket figures is priced from those', function () {
+    // Most cosmos holos and set-logo promos carry only avg/low/trend.
+    $payload = fakeBudewPayload();
+    $payload['variants_detailed'][2]['pricing'] = ['cardmarket' => ['unit' => 'EUR', 'avg' => 1.15, 'low' => 0.5, 'trend' => 1.2]];
+    Http::fake(['api.tcgdex.net/v2/en/cards/sv08.5-004' => Http::response($payload, 200)]);
+
+    $card = (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('sv08.5-004');
+    $pokeball = $card->prices->toCollection()->first(fn ($p) => $p->variant === 'reverse-holofoil:pokeball');
+
+    expect([$pokeball->marketMinor, $pokeball->lowMinor, $pokeball->trendMinor])->toBe([115, 50, 120]);
+});
+
+test('findCard throws MalformedCatalogResponseException when a variants_detailed currency is not 3 characters', function () {
+    $payload = fakeBudewPayload();
+    $payload['variants_detailed'][3]['pricing']['tcgplayer']['unit'] = 'DOLLARS';
+    Http::fake(['api.tcgdex.net/v2/en/cards/sv08.5-004' => Http::response($payload, 200)]);
+
+    expect(fn () => (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('sv08.5-004'))
+        ->toThrow(MalformedCatalogResponseException::class);
+});
+
 test('findCard throws CardNotFoundException on a 404', function () {
     Http::fake([
         'api.tcgdex.net/v2/en/cards/does-not-exist' => Http::response(null, 404),
