@@ -279,6 +279,53 @@ test('a special print with only plain cardmarket figures is priced from those', 
     expect([$pokeball->marketMinor, $pokeball->lowMinor, $pokeball->trendMinor])->toBe([115, 50, 120]);
 });
 
+test('base prices are labelled by the prints the card really has, not tcgdex\'s raw flags', function () {
+    // me02.5-183 Boss's Orders: flagged holo only because of its Prize Pack
+    // cosmos, so cardmarket's foil figure is the reverse holo's price, and
+    // the cosmos is priced from its own entry.
+    Http::fake(['api.tcgdex.net/v2/en/cards/me02.5-183' => Http::response([
+        'id' => 'me02.5-183', 'localId' => '183', 'name' => "Boss's Orders",
+        'set' => ['id' => 'me02.5', 'name' => 'Ascended Heroes'],
+        'variants' => ['normal' => true, 'reverse' => true, 'holo' => true],
+        'pricing' => [
+            'cardmarket' => ['unit' => 'EUR', 'idProduct' => 869794, 'avg' => 0.25, 'avg-holo' => 0.63],
+            'tcgplayer' => ['unit' => 'USD', 'normal' => ['productId' => 675995, 'marketPrice' => 0.24], 'reverse-holofoil' => ['productId' => 675995, 'marketPrice' => 0.57]],
+        ],
+        'variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 869794, 'tcgplayer' => 675995]],
+            ['type' => 'reverse', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 869794, 'tcgplayer' => 675995]],
+            ['type' => 'holo', 'size' => 'standard', 'foil' => 'cosmos', 'stamp' => ['player-rewards-program'], 'thirdParty' => ['cardmarket' => 894200, 'tcgplayer' => 704399],
+                'pricing' => ['cardmarket' => ['unit' => 'EUR', 'avg' => 1.69]]],
+        ],
+    ], 200)]);
+
+    $card = (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('me02.5-183');
+    $cardmarket = $card->prices->toCollection()->where('source', 'cardmarket')->mapWithKeys(fn ($p) => [$p->variant => $p->marketMinor])->all();
+
+    expect($cardmarket)->toBe(['normal' => 25, 'reverse-holofoil' => 63, 'holofoil:cosmos+player-rewards-program' => 169]);
+});
+
+test('a card whose only normal entry is a stamped reprint prices its cardmarket average as the card, not as a normal print', function () {
+    // Lugia ex sv08.5-082: holo is the card; the only normal is the set-logo reprint.
+    Http::fake(['api.tcgdex.net/v2/en/cards/sv08.5-082' => Http::response([
+        'id' => 'sv08.5-082', 'localId' => '082', 'name' => 'Lugia ex',
+        'set' => ['id' => 'sv08.5', 'name' => 'Prismatic Evolutions'],
+        'variants' => ['normal' => true, 'holo' => true],
+        'pricing' => [
+            'cardmarket' => ['unit' => 'EUR', 'idProduct' => 805500, 'avg' => 2.41],
+            'tcgplayer' => ['unit' => 'USD', 'holofoil' => ['productId' => 610437, 'marketPrice' => 3.1]],
+        ],
+        'variants_detailed' => [
+            ['type' => 'holo', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 805500, 'tcgplayer' => 610437]],
+            ['type' => 'normal', 'size' => 'standard', 'stamp' => ['set-logo'], 'thirdParty' => ['cardmarket' => 841280]],
+        ],
+    ], 200)]);
+
+    $card = (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('sv08.5-082');
+
+    expect($card->prices->toCollection()->where('source', 'cardmarket')->pluck('variant')->all())->toBe(['default']);
+});
+
 test('findCard throws MalformedCatalogResponseException when a variants_detailed currency is not 3 characters', function () {
     $payload = fakeBudewPayload();
     $payload['variants_detailed'][3]['pricing']['tcgplayer']['unit'] = 'DOLLARS';
