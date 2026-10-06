@@ -101,7 +101,7 @@ final class TcgplayerLinkDiscovery
             if ($position !== false) {
                 $key = $specialPrints[$position]['key'];
             } else {
-                // A plain entry, or a lone foil/stamped one that is the base print.
+                // A plain entry, or a foil/stamped one specialPrints() treats as the base print.
                 $plain = empty($entry['foil']) && empty($entry['stamp']);
                 $key = $plain || CardVariants::keyFor($entry) !== null
                     ? CardVariants::baseKey((string) ($entry['type'] ?? ''))
@@ -159,7 +159,7 @@ final class TcgplayerLinkDiscovery
         }
 
         if ($existing !== null && ($existing->product_id !== $productId || $existing->sub_type !== $subType)) {
-            Log::info('TCGplayer link changed', [
+            Log::channel('tcgcsv')->info('TCGplayer link changed', [
                 'card' => $card->tcgdex_id, 'variant' => $variant,
                 'from' => [$existing->product_id, $existing->sub_type, $existing->method],
                 'to' => [$productId, $subType, $method],
