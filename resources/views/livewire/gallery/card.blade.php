@@ -87,7 +87,15 @@
                             </div>
                             <div class="amt {{ $isResolved && $delta?->isUp() ? 'up' : '' }}">{{ Money::format($read->market_minor, $read->currency) }}</div>
                             <div class="sub">
-                                @if (! $isResolved && $read->source !== 'manual' && $newestMarketDay && $read->capturedOnKey() < $newestMarketDay)
+                                @php
+                                    // A read from a source that stopped updating must not read
+                                    // as current. The headline may trail by the resolver's own
+                                    // tolerance before it counts as frozen.
+                                    $frozenBefore = $isResolved
+                                        ? \Carbon\CarbonImmutable::parse($newestMarketDay ?? 'today')->subDays(\App\Modules\Catalog\Services\CardPriceResolver::STALE_AFTER_DAYS)->toDateString()
+                                        : $newestMarketDay;
+                                @endphp
+                                @if ($read->source !== 'manual' && $newestMarketDay && $read->capturedOnKey() < $frozenBefore)
                                     {{-- A source that stopped updating (tcgdex dropped it) must not read as current. --}}
                                     as of {{ $read->captured_on->format('j M') }}
                                 @elseif ($isResolved && $delta)
