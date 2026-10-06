@@ -90,7 +90,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             officialImageUrl: isset($json['image']) ? "{$json['image']}/high.webp" : null,
             prices: new DataCollection(PriceEntryData::class, [
                 ...$this->extractPrices($json['pricing'] ?? [], $json['variants'] ?? []),
-                ...$this->extractSpecialPrintPrices($json['variants_detailed'] ?? []),
+                ...$this->extractSpecialPrintPrices($json),
             ]),
             raw: $json,
         );
@@ -289,23 +289,19 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      * promo. Each is its own product with its own `pricing`, stored
      * under its CardVariants key so it never borrows the base print's
      * price (a Master Ball reverse sells for ten times the plain one).
-     * Base entries are skipped: the top-level `pricing` already covers
-     * them.
+     * Base prints — including one tcgdex files with its foil or stamp,
+     * see CardVariants::specialPrints() — are skipped: the top-level
+     * `pricing` already covers them.
      *
-     * @param  array<int, mixed>  $detailed
+     * @param  array<string, mixed>  $json  the card's full tcgdex payload
      * @return array<int, PriceEntryData>
      */
-    private function extractSpecialPrintPrices(array $detailed): array
+    private function extractSpecialPrintPrices(array $json): array
     {
         $entries = [];
 
-        foreach ($detailed as $entry) {
-            if (! is_array($entry) || ! is_array($entry['pricing'] ?? null)) {
-                continue;
-            }
-
-            $key = CardVariants::keyFor($entry);
-            if ($key === null) {
+        foreach (CardVariants::specialPrints($json) as ['key' => $key, 'entry' => $entry]) {
+            if (! is_array($entry['pricing'] ?? null)) {
                 continue;
             }
 

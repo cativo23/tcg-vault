@@ -250,6 +250,35 @@ test('a special print with no pricing of its own, or one this app cannot key, ad
         ->toBe(['normal', 'reverse-holofoil']);
 });
 
+test('a gold-foil entry that is the card\'s own product is priced as the base print, not a second one', function () {
+    Http::fake(['api.tcgdex.net/v2/en/cards/sv08.5-180' => Http::response([
+        'id' => 'sv08.5-180', 'localId' => '180', 'name' => 'Terapagos ex',
+        'set' => ['id' => 'sv08.5', 'name' => 'Prismatic Evolutions'],
+        'variants' => ['holo' => true],
+        'pricing' => ['tcgplayer' => ['unit' => 'USD', 'holofoil' => ['productId' => 610535, 'marketPrice' => 40.0]]],
+        'variants_detailed' => [[
+            'type' => 'holo', 'size' => 'standard', 'foil' => 'gold', 'thirdParty' => ['tcgplayer' => 610535],
+            'pricing' => ['tcgplayer' => ['unit' => 'USD', 'holofoil' => ['productId' => 610535, 'marketPrice' => 40.0]]],
+        ]],
+    ], 200)]);
+
+    $card = (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('sv08.5-180');
+
+    expect($card->prices->toCollection()->pluck('variant')->all())->toBe(['holofoil']);
+});
+
+test('a special print with only plain cardmarket figures is priced from those', function () {
+    // Most cosmos holos and set-logo promos carry only avg/low/trend.
+    $payload = fakeBudewPayload();
+    $payload['variants_detailed'][2]['pricing'] = ['cardmarket' => ['unit' => 'EUR', 'avg' => 1.15, 'low' => 0.5, 'trend' => 1.2]];
+    Http::fake(['api.tcgdex.net/v2/en/cards/sv08.5-004' => Http::response($payload, 200)]);
+
+    $card = (new TcgdexCardCatalogProvider(config('tcgdex.base_url')))->findCard('sv08.5-004');
+    $pokeball = $card->prices->toCollection()->first(fn ($p) => $p->variant === 'reverse-holofoil:pokeball');
+
+    expect([$pokeball->marketMinor, $pokeball->lowMinor, $pokeball->trendMinor])->toBe([115, 50, 120]);
+});
+
 test('findCard throws MalformedCatalogResponseException when a variants_detailed currency is not 3 characters', function () {
     $payload = fakeBudewPayload();
     $payload['variants_detailed'][3]['pricing']['tcgplayer']['unit'] = 'DOLLARS';

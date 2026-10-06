@@ -213,7 +213,7 @@ final class CollectionItems extends Component
         // Same variant-sourcing priority as the old startEditingItem():
         // the card's own tcgdex print flags first, synced pricing
         // coverage only as a fallback for fixtures/pre-`variants` cards.
-        $variants = CardVariants::available($card->variants ?? [], $card->raw['variants_detailed'] ?? []);
+        $variants = CardVariants::available($card->variants ?? [], $card->raw ?? []);
         if ($variants === []) {
             $variants = array_values(array_intersect(
                 self::KNOWN_VARIANTS,

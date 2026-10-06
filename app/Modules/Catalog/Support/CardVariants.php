@@ -38,8 +38,8 @@ final class CardVariants
 
     /**
      * Every key is built from these, and the same pattern validates keys
-     * coming back from a form — the key is stored and echoed into views,
-     * so a foil/stamp value outside it is dropped rather than escaped.
+     * coming back from a form. A tcgdex foil/stamp value outside it never
+     * becomes a key; a submitted key only has its shape checked.
      */
     private const SEGMENT = '[a-z0-9]+(?:-[a-z0-9]+)*';
 
@@ -60,24 +60,103 @@ final class CardVariants
 
     /**
      * @param  array<string, mixed>  $tcgdexVariants  a Card's `variants` column
-     * @param  array<int, mixed>  $detailed  tcgdex's `variants_detailed`, from the Card's `raw` column
+     * @param  array<string, mixed>  $raw  the card's full tcgdex payload (a Card's `raw` column)
      * @return array<int, string>
      */
-    public static function available(array $tcgdexVariants, array $detailed = []): array
+    public static function available(array $tcgdexVariants, array $raw = []): array
     {
         $mapped = collect(self::MAP)
             ->filter(fn (string $_, string $tcgdex) => ($tcgdexVariants[$tcgdex] ?? false) === true)
             ->values()
             ->all();
 
-        $special = collect($detailed)
-            ->map(fn (mixed $entry) => is_array($entry) ? self::keyFor($entry) : null)
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+        $special = collect(self::specialPrints($raw))->pluck('key')->unique()->values()->all();
 
         return [...collect(self::ORDER)->intersect($mapped)->values()->all(), ...$special];
+    }
+
+    /**
+     * The `variants_detailed` entries that are prints of their own, beside
+     * the base ones the flags already cover. tcgdex also files a card's
+     * ONLY print of a type with its foil or stamp — a gold Hyper rare is
+     * `{holo, foil: gold}`, a promo's sole print carries its stamp — and
+     * offering that as a second option would split one physical card into
+     * two collection rows. Such an entry is the base print when it is the
+     * same product as the card's top-level pricing, or the lone entry of
+     * its type with no plain sibling.
+     *
+     * @param  array<string, mixed>  $raw  the card's full tcgdex payload
+     * @return array<int, array{key: string, entry: array<string, mixed>}>
+     */
+    public static function specialPrints(array $raw): array
+    {
+        $detailed = array_values(array_filter(
+            is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [],
+            fn (mixed $entry) => is_array($entry),
+        ));
+        $baseProducts = self::baseProductIds(is_array($raw['pricing'] ?? null) ? $raw['pricing'] : []);
+
+        $prints = [];
+        foreach ($detailed as $entry) {
+            $key = self::keyFor($entry);
+            if ($key === null) {
+                continue;
+            }
+
+            $siblings = array_filter($detailed, fn (array $e) => ($e['type'] ?? null) === $entry['type']);
+            $hasPlainSibling = collect($siblings)->contains(fn (array $e) => empty($e['foil']) && empty($e['stamp']));
+            $isLoneSpecial = collect($siblings)->filter(fn (array $e) => self::keyFor($e) !== null)->count() === 1;
+
+            if (array_intersect(self::productIds($entry['thirdParty'] ?? null), $baseProducts) !== []
+                || (! $hasPlainSibling && $isLoneSpecial)) {
+                continue;
+            }
+
+            $prints[] = ['key' => $key, 'entry' => $entry];
+        }
+
+        return $prints;
+    }
+
+    /** A key for a print only `variants_detailed` describes (a foil or stamp suffix). */
+    public static function isSpecial(string $key): bool
+    {
+        return str_contains($key, ':') || str_contains($key, '+');
+    }
+
+    /**
+     * @param  array<string, mixed>  $pricing
+     * @return array<int, string>
+     */
+    private static function baseProductIds(array $pricing): array
+    {
+        $ids = [];
+
+        if (isset($pricing['cardmarket']['idProduct'])) {
+            $ids[] = 'cardmarket:'.$pricing['cardmarket']['idProduct'];
+        }
+
+        foreach (is_array($pricing['tcgplayer'] ?? null) ? $pricing['tcgplayer'] : [] as $label) {
+            if (is_array($label) && isset($label['productId'])) {
+                $ids[] = 'tcgplayer:'.$label['productId'];
+            }
+        }
+
+        return $ids;
+    }
+
+    /** @return array<int, string> */
+    private static function productIds(mixed $thirdParty): array
+    {
+        if (! is_array($thirdParty)) {
+            return [];
+        }
+
+        return collect(['cardmarket', 'tcgplayer'])
+            ->filter(fn (string $source) => isset($thirdParty[$source]) && is_scalar($thirdParty[$source]))
+            ->map(fn (string $source) => $source.':'.$thirdParty[$source])
+            ->values()
+            ->all();
     }
 
     /**

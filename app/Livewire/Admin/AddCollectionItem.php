@@ -297,7 +297,7 @@ final class AddCollectionItem extends Component
             // cardmarket importer names its only foil-tier price
             // 'holofoil' regardless of whether the card actually has a
             // straight holo print or only a reverse-holo one).
-            $this->availableVariants = CardVariants::available($card->variants, $card->raw['variants_detailed'] ?? []);
+            $this->availableVariants = CardVariants::available($card->variants, $card->raw);
 
             if ($this->availableVariants === []) {
                 $prices = collect($card->prices->items())->pluck('variant');

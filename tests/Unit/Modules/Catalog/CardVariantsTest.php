@@ -45,12 +45,12 @@ test('a special foil from variants_detailed becomes its own variant after the ba
     // own prices.
     expect(CardVariants::available(
         ['normal' => true, 'reverse' => true, 'holo' => false],
-        [
+        ['variants_detailed' => [
             ['type' => 'normal', 'size' => 'standard'],
             ['type' => 'reverse', 'size' => 'standard'],
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball'],
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'masterball'],
-        ],
+        ]],
     ))->toBe(['normal', 'reverse-holofoil', 'reverse-holofoil:pokeball', 'reverse-holofoil:masterball']);
 });
 
@@ -105,3 +105,39 @@ test('label reads like a collector would say it', function (string $key, string 
     ['holofoil:cosmos+player-rewards-program', 'Holofoil · Cosmos · Player Rewards Program'],
     ['default', 'Default'],
 ]);
+
+test('a special entry that is the same product as the card\'s top-level pricing is just the base print', function () {
+    // Terapagos ex (sv08.5-180), a gold Hyper rare: tcgdex's only entry is
+    // {holo, foil: gold}, the same tcgplayer product as the card itself.
+    expect(CardVariants::available(['holo' => true], [
+        'pricing' => ['tcgplayer' => ['unit' => 'USD', 'holofoil' => ['productId' => 610535, 'marketPrice' => 40.0]]],
+        'variants_detailed' => [
+            ['type' => 'holo', 'size' => 'standard', 'foil' => 'gold', 'thirdParty' => ['tcgplayer' => 610535]],
+        ],
+    ]))->toBe(['holofoil']);
+});
+
+test('the only entry of a type with no plain sibling is the base print, even without product ids', function () {
+    // Lugia ex (sv08.5-082): its only normal print carries the set logo.
+    expect(CardVariants::available(['normal' => true], [
+        'variants_detailed' => [['type' => 'normal', 'size' => 'standard', 'stamp' => ['set-logo']]],
+    ]))->toBe(['normal']);
+});
+
+test('several special entries of a type with no plain sibling stay separate prints', function () {
+    // me02.5-016 Budew: no plain reverse, but Friend Ball and Energy reverses.
+    expect(CardVariants::available(['normal' => true, 'reverse' => true], [
+        'variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard'],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'friendball', 'thirdParty' => ['tcgplayer' => 1]],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'energy', 'thirdParty' => ['tcgplayer' => 2]],
+        ],
+    ]))->toBe(['normal', 'reverse-holofoil', 'reverse-holofoil:friendball', 'reverse-holofoil:energy']);
+});
+
+test('isSpecial tells a special print key from a base one', function () {
+    expect(CardVariants::isSpecial('reverse-holofoil:pokeball'))->toBeTrue();
+    expect(CardVariants::isSpecial('normal+staff'))->toBeTrue();
+    expect(CardVariants::isSpecial('reverse-holofoil'))->toBeFalse();
+    expect(CardVariants::isSpecial('default'))->toBeFalse();
+});
