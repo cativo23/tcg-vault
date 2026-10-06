@@ -30,6 +30,7 @@ final class CardPriceSnapshot extends Model
     protected $fillable = [
         'card_id',
         'source',
+        'origin',
         'variant',
         'captured_on',
         'currency',
@@ -50,6 +51,15 @@ final class CardPriceSnapshot extends Model
             'raw' => 'array',
             'source_updated_at' => 'datetime',
         ];
+    }
+
+    /** How this price reached the app: synced from tcgdex or tcgcsv, or typed in. */
+    public function originLabel(): string
+    {
+        return match ($this->origin) {
+            'hand' => 'entered by hand',
+            default => (string) $this->origin,
+        };
     }
 
     /** Where this price came from, as a collector reads it. */
