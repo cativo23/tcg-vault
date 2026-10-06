@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\SyncTcgcsvPricesJob;
 use App\Models\ModerationAction;
 use App\Modules\Invites\Models\Invite;
 use App\Support\DiscordAlerter;
@@ -26,6 +27,10 @@ Schedule::command('catalog:refresh-prices')
 // day's worth of jobs takes to drain — see CheckPricingFreshness's own
 // docblock for the staleness threshold and why it exists.
 Schedule::command('catalog:check-pricing-freshness')->dailyAt('04:00');
+
+// tcgcsv rebuilds around 20:00 UTC; shadow mode only compares its TCGplayer
+// prices with tcgdex's and writes none (ROADMAP: tcgcsv as primary source).
+Schedule::job(new SyncTcgcsvPricesJob)->dailyAt('20:30');
 
 // The `backup` container writes its nightly dump at 03:00 UTC (see
 // docker/prod/backup/backup.sh); this runs three hours later so a slow night
