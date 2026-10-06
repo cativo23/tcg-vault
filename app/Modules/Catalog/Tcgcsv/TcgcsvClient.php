@@ -29,6 +29,24 @@ final class TcgcsvClient
         return CarbonImmutable::parse(trim($this->http()->get('last-updated.txt')->throw()->body()));
     }
 
+    /**
+     * TCGplayer's Pokémon groups (sets), as tcgcsv lists them.
+     *
+     * @return list<array{groupId: int, name: string, abbreviation: ?string, isSupplemental: bool}>
+     */
+    public function groups(): array
+    {
+        $json = $this->http()->get('tcgplayer/3/groups')->throw()->json();
+        $results = is_array($json) && is_array($json['results'] ?? null) ? $json['results'] : [];
+
+        return array_values(array_map(fn (array $g) => [
+            'groupId' => (int) $g['groupId'],
+            'name' => (string) $g['name'],
+            'abbreviation' => isset($g['abbreviation']) ? (string) $g['abbreviation'] : null,
+            'isSupplemental' => (bool) ($g['isSupplemental'] ?? false),
+        ], array_filter($results, fn (mixed $g) => is_array($g) && is_int($g['groupId'] ?? null) && is_string($g['name'] ?? null))));
+    }
+
     /** @return list<TcgcsvPriceRow> */
     public function prices(int $groupId): array
     {
