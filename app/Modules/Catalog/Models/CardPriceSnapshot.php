@@ -83,20 +83,28 @@ final class CardPriceSnapshot extends Model
         return today()->subDays(self::RECENT_DAYS);
     }
 
+    /**
+     * A manual price counts as recent at any age: tcgdex rows are written
+     * daily, but a manual one is written once and stands until replaced —
+     * dropping it after the window would leave its print unpriced.
+     */
     public function isRecent(): bool
     {
-        return $this->capturedOnKey() >= self::recentFrom()->toDateString();
+        return $this->source === 'manual' || $this->capturedOnKey() >= self::recentFrom()->toDateString();
     }
 
     /**
-     * Snapshots captured on or after recentFrom().
+     * Snapshots captured on or after recentFrom(), plus every manual one
+     * (see isRecent()).
      *
      * @param  Builder<self>  $query
      * @return Builder<self>
      */
     public function scopeRecent(Builder $query): Builder
     {
-        return $query->where('captured_on', '>=', self::recentFrom());
+        return $query->where(fn (Builder $q) => $q
+            ->where('captured_on', '>=', self::recentFrom())
+            ->orWhere('source', 'manual'));
     }
 
     /** @return BelongsTo<Card, $this> */
