@@ -207,6 +207,41 @@ final class CardPriceResolver
     }
 
     /**
+     * Whether a marketplace still prices this exact print, judged the way
+     * a pick is made: the newest tcgplayer row and the newest marketplace
+     * row for the variant (priced or not, as chainFor() picks them), and
+     * whether either is priced and within STALE_AFTER_DAYS of the card's
+     * latest sync. A frozen or unpriced row doesn't count, so a manual
+     * price can stand in for it. Callers should pass a card whose
+     * snapshots are loaded through the same recent() window the listings
+     * use, or a row no screen shows any more would still block.
+     */
+    public function hasCurrentMarketPrice(Card $card, string $variant): bool
+    {
+        $snapshots = $card->priceSnapshots;
+        $cutoff = $this->currentFrom($this->marketPriced($snapshots)->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey()));
+        [$tcgplayer, $market] = $this->chainFor($snapshots, $variant);
+
+        foreach ([$tcgplayer, $market] as $step) {
+            $pick = $step->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->first();
+
+            if ($pick !== null && $pick->market_minor !== null && $pick->capturedOnKey() >= $cutoff) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** The earliest capture day still current against $syncedOn, or null when nothing is dated. */
+    private function currentFrom(?string $syncedOn): ?string
+    {
+        return $syncedOn === null
+            ? null
+            : Carbon::parse($syncedOn)->subDays(self::STALE_AFTER_DAYS)->toDateString();
+    }
+
+    /**
      * The card's rows that come from a marketplace sync and carry a price
      * — the ones that say how recently tcgdex priced this card at all.
      *
@@ -234,9 +269,7 @@ final class CardPriceResolver
      */
     private function firstCurrent(array $picks, ?string $syncedOn): ?CardPriceSnapshot
     {
-        $cutoff = $syncedOn === null
-            ? null
-            : Carbon::parse($syncedOn)->subDays(self::STALE_AFTER_DAYS)->toDateString();
+        $cutoff = $this->currentFrom($syncedOn);
 
         foreach ($picks as $pick) {
             if ($pick === null || $pick->market_minor === null) {

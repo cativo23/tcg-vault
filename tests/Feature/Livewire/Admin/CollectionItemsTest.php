@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Http\UploadedFile;
@@ -1988,4 +1989,43 @@ test('saving another field keeps a manual price typed but not yet saved', functi
         ->set('editingRows.0.condition', 'LP')
         ->call('updateRow', 0)
         ->assertSet('editingRows.0.manual_price', '1.25');
+});
+
+test('a manual price is allowed when the print\'s only market price has frozen', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card, $item] = prizePackBudew($admin);
+    $item->update(['variant' => 'normal']);
+    // 30th Celebration's shape: TCGplayer froze 12 days ago, cardmarket syncs daily as 'default'.
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '5.71')
+        ->call('saveManualPrice', 0)
+        ->assertHasNoErrors();
+
+    expect(CardPriceSnapshot::where('source', 'manual')->where('variant', 'normal')->value('market_minor'))->toBe(571);
+    expect((new CardPriceResolver)->resolveForVariant($card->fresh(), 'normal')->source)->toBe('manual');
+});
+
+test('a manual price is allowed when every market price froze before the listing window', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card, $item] = prizePackBudew($admin);
+    $item->update(['variant' => 'normal']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(40), 'currency' => 'USD', 'market_minor' => 1231]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '5.71')
+        ->call('saveManualPrice', 0)
+        ->assertHasNoErrors();
+
+    expect(CardPriceSnapshot::where('source', 'manual')->count())->toBe(1);
 });
