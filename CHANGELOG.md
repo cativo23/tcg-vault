@@ -6,6 +6,35 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-06
+
+### Fixed
+
+- A price source that stopped updating no longer outranks one updated
+  today. tcgdex stopped sending TCGplayer prices for 30th Celebration, so
+  those cards kept showing a TCGplayer price from 24 September — with a
+  price move computed from it — over that day's Cardmarket price. A
+  higher-priority price now has to be within three days of the card's
+  latest sync to win; one missed sync still doesn't switch the currency.
+- A normal or holo copy whose own price froze falls back to the card's
+  current Cardmarket price. A copy with no price of its own, a reverse
+  holo, or a special print is never priced from another print's row.
+- Manual prices count as current at any age and rank after a current
+  marketplace price for the same print.
+- The card page marks a price older than the latest sync "as of" its date
+  instead of showing a move, including the headline price when nothing
+  current is left.
+
+### Changed
+
+- A copy priced in USD can switch to EUR on the Activity chart when its
+  TCGplayer price freezes and Cardmarket takes over; the USD line then
+  drops by that copy's value without anything being sold.
+
+### Deploy
+
+No migrations.
+
 ## [1.1.0] - 2026-10-06
 
 ### Added
