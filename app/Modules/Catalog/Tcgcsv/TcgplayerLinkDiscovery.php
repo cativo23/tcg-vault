@@ -75,7 +75,10 @@ final class TcgplayerLinkDiscovery
             ->unique('variant');
 
         foreach ($priced as $snapshot) {
-            $candidates[$snapshot->variant] = [$snapshot->raw['productId'], 'tcgdex-price'];
+            $productId = $snapshot->raw['productId'] ?? null;
+            if (is_int($productId)) {
+                $candidates[$snapshot->variant] = [$productId, 'tcgdex-price'];
+            }
         }
 
         return $candidates;
