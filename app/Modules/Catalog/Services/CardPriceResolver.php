@@ -13,6 +13,9 @@ use Illuminate\Support\Collection;
 
 final class CardPriceResolver
 {
+    /** How far behind the newest price a higher-priority one may be and still win. */
+    public const STALE_AFTER_DAYS = 3;
+
     public function resolve(Card $card): ?CardPriceSnapshot
     {
         // Read the relation as a PROPERTY, not a method call. A property
@@ -65,41 +68,24 @@ final class CardPriceResolver
      * pass over the card's history instead of one pass per day — what a
      * value-over-time series needs. Each step of the priority chain is
      * "the newest row of this subset on or before the day", so the chain
-     * is resolved per subset and the first hit wins, exactly as
-     * variantFrom() and resolveFrom() pick it.
+     * is resolved per subset and the first current hit wins (see
+     * firstCurrent()), exactly as variantFrom() and resolveFrom() pick it.
      *
      * @param  Collection<int, string>  $dayKeys  'Y-m-d' days
      * @return array<string, CardPriceSnapshot|null> keyed by day
      */
     public function resolveForVariantOnDays(Card $card, ?string $variant, Collection $dayKeys): array
     {
-        $snapshots = $card->priceSnapshots;
-
-        if ($variant === null) {
-            $chain = [
-                $snapshots->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && in_array($s->variant, ['normal', 'holofoil'], true)),
-                $snapshots->filter(fn (CardPriceSnapshot $s) => $s->source === 'cardmarket' && $s->variant === 'default'),
-                $snapshots->reject(fn (CardPriceSnapshot $s) => CardVariants::isSpecial($s->variant)),
-            ];
-        } else {
-            $matching = $snapshots->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant);
-            $chain = [
-                $matching->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer'),
-                $matching,
-            ];
-        }
-
+        $chain = $this->chainFor($card->priceSnapshots, $variant);
         $byStep = array_map(fn (Collection $subset) => $this->newestOnOrBefore($subset, $dayKeys), $chain);
+        $synced = $this->newestOnOrBefore($this->marketPriced($card->priceSnapshots), $dayKeys);
 
         $resolved = [];
         foreach ($dayKeys as $day) {
-            $resolved[$day] = null;
-            foreach ($byStep as $step) {
-                if ($step[$day] !== null) {
-                    $resolved[$day] = $step[$day];
-                    break;
-                }
-            }
+            $resolved[$day] = $this->firstCurrent(
+                $this->borrowedOnlyIfOwnPriced(array_map(fn (array $step) => $step[$day], $byStep), $variant),
+                $synced[$day]?->capturedOnKey(),
+            );
         }
 
         return $resolved;
@@ -137,25 +123,135 @@ final class CardPriceResolver
      */
     private function variantFrom(Collection $snapshots, ?string $variant): ?CardPriceSnapshot
     {
+        return $this->firstCurrent(
+            $this->borrowedOnlyIfOwnPriced(array_map(
+                fn (Collection $step) => $step->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->first(),
+                $this->chainFor($snapshots, $variant),
+            ), $variant),
+            $this->marketPriced($snapshots)->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey()),
+        );
+    }
+
+    /**
+     * The priority chain a price is picked from, best first.
+     *
+     * Card-level (no variant): tcgplayer normal/holofoil, then
+     * cardmarket's 'default' row, then any base-print row. A special
+     * print (a Master Ball reverse, a stamped promo) is a separate
+     * product; pricing the card as a whole from one would show a plain
+     * copy at a price it doesn't fetch.
+     *
+     * For a variant: that exact variant on tcgplayer, then on any
+     * marketplace, then a manual price for it (entered for a print tcgdex
+     * doesn't price — current market data still beats it), then, for a
+     * normal or holo print whose own price froze, the card-wide
+     * 'default' row.
+     * Never another print's row otherwise: a variant with no price of its
+     * own resolves to nothing rather than to a different print's value.
+     *
+     * @param  Collection<int, CardPriceSnapshot>  $snapshots
+     * @return array<int, Collection<int, CardPriceSnapshot>>
+     */
+    private function chainFor(Collection $snapshots, ?string $variant): array
+    {
         if ($variant === null) {
-            return $this->resolveFrom($snapshots);
+            $base = $snapshots->reject(fn (CardPriceSnapshot $s) => CardVariants::isSpecial($s->variant));
+
+            return [
+                $base->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && in_array($s->variant, ['normal', 'holofoil'], true)),
+                $base->filter(fn (CardPriceSnapshot $s) => $s->source === 'cardmarket' && $s->variant === 'default'),
+                $base,
+            ];
         }
 
-        $matching = $snapshots
-            ->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant)
-            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
-            ->values();
+        $matching = $snapshots->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant);
+        $market = $matching->reject(fn (CardPriceSnapshot $s) => $s->source === 'manual');
 
-        if ($matching->isEmpty()) {
-            return null;
+        $chain = [
+            $market->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer'),
+            $market,
+            $matching->filter(fn (CardPriceSnapshot $s) => $s->source === 'manual'),
+        ];
+
+        // A base print whose own market price froze (a set tcgdex stopped
+        // pricing on TCGplayer, while cardmarket files the card as
+        // 'default') may fall back to the card-wide row; borrowedOnlyIfOwnPriced()
+        // drops that pick unless the print has a priced row of its own.
+        // Only the prints 'default' can stand for — cardmarket's primary
+        // listing is the normal print, or the holo on a holo-only card;
+        // never a reverse.
+        if (in_array($variant, ['normal', 'holofoil'], true)) {
+            $chain[] = $snapshots->filter(fn (CardPriceSnapshot $s) => $s->variant === 'default');
         }
 
-        // Same source preference as resolve(): tcgplayer over cardmarket
-        // when both cover this exact variant. $matching is already
-        // latest-first, so the first tcgplayer row is also the most
-        // recent one.
-        return $matching->first(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer')
-            ?? $matching->first();
+        return $chain;
+    }
+
+    /**
+     * Drops a variant chain's card-wide 'default' pick (its fourth step)
+     * unless the variant's own marketplace pick (second step) exists and
+     * is priced — a print with no price of its own must not borrow
+     * another's. Decided on the picks, not the whole history, so a series
+     * day and a single as-of day agree.
+     *
+     * @param  array<int, CardPriceSnapshot|null>  $picks
+     * @return array<int, CardPriceSnapshot|null>
+     */
+    private function borrowedOnlyIfOwnPriced(array $picks, ?string $variant): array
+    {
+        if ($variant !== null && isset($picks[3]) && ($picks[1] === null || $picks[1]->market_minor === null)) {
+            $picks[3] = null;
+        }
+
+        return $picks;
+    }
+
+    /**
+     * The card's rows that come from a marketplace sync and carry a price
+     * — the ones that say how recently tcgdex priced this card at all.
+     *
+     * @param  Collection<int, CardPriceSnapshot>  $snapshots
+     * @return Collection<int, CardPriceSnapshot>
+     */
+    private function marketPriced(Collection $snapshots): Collection
+    {
+        return $snapshots->filter(fn (CardPriceSnapshot $s) => $s->source !== 'manual' && $s->market_minor !== null);
+    }
+
+    /**
+     * The first step's pick that is current — captured within
+     * STALE_AFTER_DAYS of $syncedOn, the card's latest priced marketplace
+     * row of any variant. Priority alone would keep a source tcgdex
+     * stopped sending (a set whose TCGplayer prices froze) ahead of one
+     * updated today, and measuring only against the chain's own picks
+     * would let a frozen row pass whenever nothing else of its variant is
+     * dated. The tolerance keeps a single missed sync from flipping the
+     * price to another source. A manual price is written once and stands
+     * until replaced (see CardPriceSnapshot::isRecent()), so it is current
+     * at any age. A pick with no price never wins.
+     *
+     * @param  array<int, CardPriceSnapshot|null>  $picks  one per chain step, best first
+     */
+    private function firstCurrent(array $picks, ?string $syncedOn): ?CardPriceSnapshot
+    {
+        $cutoff = $syncedOn === null
+            ? null
+            : Carbon::parse($syncedOn)->subDays(self::STALE_AFTER_DAYS)->toDateString();
+
+        foreach ($picks as $pick) {
+            if ($pick === null || $pick->market_minor === null) {
+                continue;
+            }
+
+            if ($pick->source === 'manual' || $cutoff === null || $pick->capturedOnKey() >= $cutoff) {
+                return $pick;
+            }
+        }
+
+        // Nothing current and priced: keep the old behaviour of returning
+        // the best row there is, so callers still tell "synced, no price"
+        // or "only an old price" apart from "never synced".
+        return array_values(array_filter($picks))[0] ?? null;
     }
 
     /**
@@ -326,33 +422,6 @@ final class CardPriceResolver
      */
     private function resolveFrom(Collection $snapshots): ?CardPriceSnapshot
     {
-        // A special print (a Master Ball reverse, a stamped promo) is a
-        // separate product; pricing the card as a whole from one would
-        // show a collector's plain copy at a price it doesn't fetch.
-        $snapshots = $snapshots
-            ->reject(fn (CardPriceSnapshot $s) => CardVariants::isSpecial($s->variant))
-            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->values();
-
-        if ($snapshots->isEmpty()) {
-            return null;
-        }
-
-        $tcgplayerPreferred = $snapshots->first(
-            fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && in_array($s->variant, ['normal', 'holofoil'], true),
-        );
-
-        if ($tcgplayerPreferred) {
-            return $tcgplayerPreferred;
-        }
-
-        $cardmarketDefault = $snapshots->first(
-            fn (CardPriceSnapshot $s) => $s->source === 'cardmarket' && $s->variant === 'default',
-        );
-
-        if ($cardmarketDefault) {
-            return $cardmarketDefault;
-        }
-
-        return $snapshots->first();
+        return $this->variantFrom($snapshots, null);
     }
 }

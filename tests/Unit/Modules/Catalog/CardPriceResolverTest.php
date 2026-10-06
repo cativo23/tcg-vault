@@ -263,3 +263,140 @@ test('a special print is still priced when asked for by its own key', function (
 
     expect((new CardPriceResolver)->resolveForVariant($card, 'normal+worlds-2025')->id)->toBe($stamped->id);
 });
+
+function staleTcgplayerCard(): Card
+{
+    // 30th-130 Moltres: tcgdex stopped sending TCGplayer prices for the set,
+    // so its last TCGplayer row is 12 days old while cardmarket is current.
+    $set = Set::create(['tcgdex_id' => '30th', 'name' => '30th Celebration']);
+
+    return Card::create(['tcgdex_id' => '30th-130', 'set_id' => $set->id, 'local_id' => '130', 'name' => 'Moltres']);
+}
+
+test('a stale TCGplayer price no longer outranks a current cardmarket one', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
+    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolve($card)->id)->toBe($fresh->id);
+});
+
+test('a TCGplayer price a day or two behind still wins, so one missed sync does not flip the currency', function () {
+    $card = staleTcgplayerCard();
+    $tcgplayer = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolve($card)->id)->toBe($tcgplayer->id);
+});
+
+test('a variant with no row of its own, or a special print, is never priced from the card-wide row', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 900]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'reverse-holofoil'))->toBeNull();
+    expect((new CardPriceResolver)->resolveForVariant($card, 'holofoil:cosmos')->market_minor)->toBe(900);
+});
+
+test('a manual price stays the pick at any age, ahead of a frozen TCGplayer row', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(20), 'currency' => 'USD', 'market_minor' => 1231]);
+    $manual = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'normal', 'captured_on' => today()->subDays(10), 'currency' => 'USD', 'market_minor' => 571]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'normal')->id)->toBe($manual->id);
+});
+
+test('a current market price for the same print beats a manual one', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'normal+player-rewards-program', 'captured_on' => today()->subDays(10), 'currency' => 'USD', 'market_minor' => 25]);
+    $cardmarket = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal+player-rewards-program', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 52]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'normal+player-rewards-program')->id)->toBe($cardmarket->id);
+});
+
+test('a copy whose own price froze falls back to the current card-wide price', function () {
+    // Production's 30th cards with no manual price: the copy is 'normal',
+    // its only 'normal' row is frozen TCGplayer, cardmarket is 'default'.
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
+    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'normal')->id)->toBe($fresh->id);
+    $today = today()->toDateString();
+    expect((new CardPriceResolver)->resolveForVariantOnDays($card->fresh(), 'normal', collect([$today]))[$today]->id)->toBe($fresh->id);
+});
+
+test('a newer row with no price does not push out an older priced one', function () {
+    $card = staleTcgplayerCard();
+    $priced = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(5), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => null]);
+
+    expect((new CardPriceResolver)->resolve($card)->id)->toBe($priced->id);
+});
+
+test('exactly three days behind is still current; four is stale', function () {
+    $card = staleTcgplayerCard();
+    $tcgplayer = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(3), 'currency' => 'USD', 'market_minor' => 1231]);
+    $cardmarket = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'normal')->id)->toBe($tcgplayer->id);
+
+    $tcgplayer->update(['captured_on' => today()->subDays(4)]);
+    expect((new CardPriceResolver)->resolveForVariant($card->fresh(), 'normal')->id)->toBe($cardmarket->id);
+});
+
+test('a stale TCGplayer price for a variant yields to that variant\'s current cardmarket price', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 300]);
+    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 250]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'reverse-holofoil')->id)->toBe($fresh->id);
+});
+
+test('the per-day series applies the same staleness rule as the single-day pick', function () {
+    $card = staleTcgplayerCard();
+    $old = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'EUR', 'market_minor' => 1200]);
+    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    $days = collect([today()->subDays(12)->toDateString(), today()->toDateString()]);
+    $series = (new CardPriceResolver)->resolveForVariantOnDays($card->fresh(), 'normal', $days);
+
+    expect($series[today()->subDays(12)->toDateString()]->id)->toBe($old->id);
+    expect($series[today()->toDateString()]->id)->toBe($fresh->id);
+    expect((new CardPriceResolver)->resolveForVariant($card->fresh(), 'normal')->id)->toBe($fresh->id);
+});
+
+test('a current TCGplayer price still beats a manual one', function () {
+    $card = staleTcgplayerCard();
+    $tcgplayer = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 600]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'normal', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 571]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'normal')->id)->toBe($tcgplayer->id);
+});
+
+test('staleness is measured against the card\'s latest sync, not just the variant\'s own rows', function () {
+    // Production's 30th-130: cardmarket rows are labelled 'default', the
+    // copy is 'normal', and only a frozen TCGplayer row and a manual price
+    // carry 'normal'. The frozen row must not count as current just
+    // because nothing else of its variant is dated.
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+    $manual = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 571]);
+
+    $resolver = new CardPriceResolver;
+    expect($resolver->resolveForVariant($card, 'normal')->id)->toBe($manual->id);
+
+    $today = today()->toDateString();
+    expect($resolver->resolveForVariantOnDays($card->fresh(), 'normal', collect([$today]))[$today]->id)->toBe($manual->id);
+});
+
+test('a frozen reverse holo never borrows the card-wide price of the primary print', function () {
+    $card = staleTcgplayerCard();
+    $own = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 300]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'reverse-holofoil')->id)->toBe($own->id);
+});

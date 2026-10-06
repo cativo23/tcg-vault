@@ -219,6 +219,17 @@ interesting it is to build.
 - Deck lists
 - Trade and sale tracking
 - Usage analytics
+- **TCGplayer prices from tcgcsv.com as a second source.** tcgdex
+  only prices TCGplayer for sets it has a set-level group id for, and its
+  API only changes on a release, so whole sets go without USD prices for
+  weeks (30th Celebration, MEP promos) and prints it doesn't list (Prize
+  Pack cosmos holos and stamped reprints) never get one. tcgcsv publishes
+  TCGplayer's per-group products and prices
+  (`tcgcsv.com/tcgplayer/3/<groupId>/prices`), and tcgdex already
+  carries each print's TCGplayer product id. Fill only what tcgdex leaves
+  empty, keyed by product id, as its own snapshot source; replaces the
+  hand-entered prices used for those prints today. Check tcgcsv's usage
+  terms and update cadence before building.
 - **Give the cache its own Redis instance.** It currently shares the
   Horizon queue's Redis, and the two need conflicting
   `maxmemory-policy` values (`noeviction` for queue data, `allkeys-lru`
