@@ -141,3 +141,24 @@ test('isSpecial tells a special print key from a base one', function () {
     expect(CardVariants::isSpecial('reverse-holofoil'))->toBeFalse();
     expect(CardVariants::isSpecial('default'))->toBeFalse();
 });
+
+test('compose builds a key for a print tcgdex does not list, from its own vocabulary', function () {
+    // A Prize Pack cosmos holo: tcgdex's stamp for the Play! Pokémon Prize Pack.
+    expect(CardVariants::compose('holofoil', 'cosmos', ['player-rewards-program']))
+        ->toBe('holofoil:cosmos+player-rewards-program');
+    expect(CardVariants::compose('normal', null, ['staff', 'pre-release']))->toBe('normal+pre-release+staff');
+    expect(CardVariants::compose('reverse-holofoil', 'pokeball', []))->toBe('reverse-holofoil:pokeball');
+});
+
+test('compose refuses anything outside tcgdex\'s vocabulary, or a key with nothing special', function () {
+    expect(CardVariants::compose('holofoil', 'sparkly', []))->toBeNull();
+    expect(CardVariants::compose('holofoil', null, ['my-own-stamp']))->toBeNull();
+    expect(CardVariants::compose('default', 'cosmos', []))->toBeNull();
+    expect(CardVariants::compose('normal', null, []))->toBeNull();
+});
+
+test('the foil and stamp options are tcgdex\'s, labelled', function () {
+    expect(CardVariants::foilOptions())->toHaveKey('cosmos', 'Cosmos');
+    expect(CardVariants::foilOptions())->toHaveKey('masterball', 'Master Ball');
+    expect(CardVariants::stampOptions())->toHaveKey('player-rewards-program', 'Player Rewards Program');
+});

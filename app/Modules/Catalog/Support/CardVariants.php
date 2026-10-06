@@ -46,6 +46,51 @@ final class CardVariants
     /** Well under collection_items.variant's 255, with room to spare. */
     private const MAX_KEY_LENGTH = 120;
 
+    /**
+     * tcgdex's own `foil` and `stamp` vocabulary (VariantStamps and
+     * variant_detailed.foil in tcgdex/cards-database interfaces.d.ts), so
+     * a print entered by hand gets the key tcgdex would give it if it
+     * later lists that print.
+     */
+    private const FOILS = [
+        'pokeball', 'greatball', 'ultraball', 'masterball', 'gold', 'cosmos', 'galaxy',
+        'starlight', 'energy', 'cracked-ice', 'mirror', 'league', 'player-reward',
+        'professor-program', 'tinsel', 'loveball', 'friendball', 'quickball', 'team-rocket',
+        'duskball', 'rainbow', 'glitter',
+    ];
+
+    private const STAMPS = [
+        '10th-anniversary', '1st-edition', '1st-edition-error', '1st-edition-scratch-error',
+        '1st-movie', '1st-movie-inverted', '25th-celebration', '30th-anniversary', '30th-pokeday',
+        'ace-trainer', 'akira-miyazaki', 'asia-2023-24', 'asia-promo', 'bulbasaur', 'champion',
+        'charmander', 'chase-moloney', 'chicago-2009', 'chris-fulop', 'christopher-kan',
+        'city-championships', 'comic-con', 'countdown-calendar', 'curran-hill', 'd-edition-error',
+        'david-cohen', 'destiny-deoxys', 'distributor-meeting', 'dylan-lefavour', 'eb-games',
+        'finalist', 'fossil-museum', 'gabriel-fernandez', 'games-expo', 'gamestop', 'gen-con',
+        'great-ball-league', 'grey-star', 'gustavo-wada', 'gym-challenge', 'hiroki-yano',
+        'horizons', 'igor-costa', 'illustration-contest-2022', 'illustration-contest-2024',
+        'inquest-gamer', 'international-championship-europe',
+        'international-championship-latin-america', 'international-championship-north-america',
+        'international-championships', 'jason-klaczynski', 'jason-martinez', 'jeremy-maron',
+        'jeremy-scharff-kim', 'jesse-parker', 'jimmy-ballard', 'jose-cruz-galindo-resendiz',
+        'jr-stamp-rally', 'judge', 'jun-hasebe', 'kevin-nguyen', 'kraze-club', 'liao-fu-guan',
+        'master-ball-league', 'mcdonalds', 'michael-gonzalez', 'michael-pramawat', 'miska-saari',
+        'mychael-bryan', 'national-championships', 'nintendo-world', 'origins', 'origins-2008',
+        'paul-atanassov', 'pikachu', 'pikachu-tail', 'platinum', 'player-rewards-program',
+        'poke-ball-league', 'pokeball', 'pokemon-4-ever', 'pokemon-center', 'pokemon-center-ny',
+        'pokemon-day', 'pokemon-rocks-america', 'pokemon-together', 'poketour-99',
+        'pop-tournament', 'pre-release', 'professor-program', 'quarter-finalist', 'rain-city',
+        'reed-weichler', 'regional-championships', 'ross-cawthorn', 'sakuya-ota', 'scrye',
+        'semi-finalist', 'set-logo', 'shao-tong-yen', 'shuto-itagaki', 'snowflake', 'squirtle',
+        'stadium-challenge', 'staff', 'state-championships', 'stephen-silvestro', 'takashi-yoneda',
+        'thank-you', 'tom-roos', 'top-eight', 'top-sixteen', 'top-thirty-two',
+        'tournament-collection', 'trick-or-trade', 'tristan-robinson', 'tsubasa-nakamura',
+        'tsuguyoshi-yamato', 'ultra-ball-league', 'w-promo', 'winner', 'wizard-world-chicago',
+        'wizard-world-philadelphia', 'worlds-2004', 'worlds-2005', 'worlds-2007', 'worlds-2008',
+        'worlds-2009', 'worlds-2010', 'worlds-2022', 'worlds-2023', 'worlds-2024', 'worlds-2025',
+        'wotc', 'yuka-furusawa', 'yuta-komatsuda', 'zachary-bokhari',
+    ];
+
     /** Ball names collectors write with their own spelling. */
     private const FOIL_LABELS = [
         'pokeball' => 'Poké Ball',
@@ -116,6 +161,45 @@ final class CardVariants
         }
 
         return $prints;
+    }
+
+    /**
+     * The key for a print entered by hand — one tcgdex doesn't list, like
+     * a Prize Pack cosmos holo — built only from tcgdex's own foil and
+     * stamp vocabulary. Null for anything outside it, or for a plain base
+     * print, which needs no composing.
+     *
+     * @param  array<int, string>  $stamps
+     */
+    public static function compose(string $base, ?string $foil, array $stamps): ?string
+    {
+        if (! in_array($base, self::ORDER, true)
+            || ($foil !== null && ! in_array($foil, self::FOILS, true))
+            || array_diff($stamps, self::STAMPS) !== []
+            || ($foil === null && $stamps === [])) {
+            return null;
+        }
+
+        $stamps = array_values(array_unique($stamps));
+        sort($stamps);
+        $key = $base.($foil !== null ? ":{$foil}" : '').implode('', array_map(fn (string $s) => "+{$s}", $stamps));
+
+        return self::isValid($key) ? $key : null;
+    }
+
+    /** @return array<string, string> foil => label */
+    public static function foilOptions(): array
+    {
+        return collect(self::FOILS)
+            ->mapWithKeys(fn (string $f) => [$f => self::FOIL_LABELS[$f] ?? Str::headline($f)])
+            ->sort()
+            ->all();
+    }
+
+    /** @return array<string, string> stamp => label */
+    public static function stampOptions(): array
+    {
+        return collect(self::STAMPS)->mapWithKeys(fn (string $s) => [$s => Str::headline($s)])->sort()->all();
     }
 
     /** A key for a print only `variants_detailed` describes (a foil or stamp suffix). */
