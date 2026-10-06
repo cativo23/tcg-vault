@@ -206,7 +206,7 @@
                                     <label class="nw-label block mb-1" for="manual-price-{{ $index }}">Manual market price (USD)</label>
                                     <input id="manual-price-{{ $index }}" type="number" step="0.01" min="0.01" wire:model="editingRows.{{ $index }}.manual_price" class="nw-input w-full" placeholder="For a print tcgdex doesn't price">
                                 </div>
-                                <button type="button" wire:click="saveManualPrice({{ $index }})" class="nw-btn-secondary" style="height: 34px;">Save price</button>
+                                <button type="button" wire:click="saveManualPrice({{ $index }})" class="nw-btn-secondary" style="height: 34px;" aria-label="Save manual price for variant {{ $index + 1 }}">Save price</button>
                             </div>
                             @error("editingRows.$index.manual_price") <p class="text-sm mt-1" style="color: var(--danger)">{{ $message }}</p> @enderror
                         @endcan

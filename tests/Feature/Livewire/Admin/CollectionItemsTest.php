@@ -1753,7 +1753,7 @@ test('a hand-entered print outside tcgdex\'s vocabulary is refused', function ()
         ->set('customBase', 'holofoil')
         ->set('customFoil', 'sparkly')
         ->call('useCustomVariant', 0)
-        ->assertHasErrors('customFoil')
+        ->assertHasErrors('customPrint.0')
         ->assertSet('editingRows.0.variant', 'holofoil:cosmos+player-rewards-program');
 });
 
@@ -1919,4 +1919,58 @@ test('a manual price is refused for a print tcgdex already prices', function () 
         ->assertHasErrors('editingRows.0.manual_price');
 
     expect(CardPriceSnapshot::where('source', 'manual')->count())->toBe(0);
+});
+
+test('reopening the editor still shows a hand-entered print as the copy\'s variant', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    [$card] = prizePackBudew($user);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->assertSet('editingAvailableVariants', ['normal', 'reverse-holofoil', 'reverse-holofoil:pokeball', 'reverse-holofoil:masterball', 'holofoil:cosmos+player-rewards-program'])
+        ->assertSeeHtml('<option value="holofoil:cosmos+player-rewards-program">');
+});
+
+test('changing a copy\'s variant reloads the manual price shown for it', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card] = prizePackBudew($admin);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'holofoil:cosmos+player-rewards-program', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 70]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->assertSet('editingRows.0.manual_price', '0.70')
+        ->set('editingRows.0.variant', 'reverse-holofoil:pokeball')
+        ->call('updateRow', 0)
+        ->assertSet('editingRows.0.manual_price', null);
+});
+
+test('a manual price entered long ago still values the copy', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    [$card] = prizePackBudew($user);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'holofoil:cosmos+player-rewards-program', 'captured_on' => today()->subDays(60), 'currency' => 'USD', 'market_minor' => 70]);
+
+    Livewire::test(CollectionItems::class)->assertSee('$0.70');
+});
+
+test('a picker error shows under the row that caused it only, and the picker resets after a good pick', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    [$card] = prizePackBudew($user);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->call('useCustomVariant', 0)
+        ->assertHasErrors('customPrint.0')
+        ->assertHasNoErrors('customPrint.1')
+        ->set('customFoil', 'cosmos')
+        ->call('useCustomVariant', 0)
+        ->assertHasNoErrors('customPrint.0')
+        ->assertSet('customFoil', null)
+        ->assertSet('customStamp', null)
+        ->assertSeeHtml('aria-label="Use this print for variant 1');
 });

@@ -182,7 +182,7 @@ final class AddCollectionItem extends Component
 
     public function useCustomVariant(int $index): void
     {
-        if (! isset($this->rows[$index]) || ($key = $this->composeCustomVariant()) === null) {
+        if (! isset($this->rows[$index]) || ($key = $this->composeCustomVariant($index)) === null) {
             return;
         }
 

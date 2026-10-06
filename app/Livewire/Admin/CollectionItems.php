@@ -223,6 +223,7 @@ final class CollectionItems extends Component
                 CardPriceSnapshot::where('card_id', $card->id)->distinct()->pluck('variant')->all(),
             ));
         }
+        $fromCardData = $variants !== [];
         if ($variants === []) {
             // No tcgdex print flags AND no synced pricing at all for this
             // card — fall back to just the primary item's own already-set
@@ -232,7 +233,18 @@ final class CollectionItems extends Component
             // dropdown as a selectable option.
             $variants = array_filter([$primary->variant]);
         }
-        $this->editingAvailableVariants = $variants;
+        // A copy's own saved print stays selectable even when the card's
+        // list doesn't offer it — a hand-entered print tcgdex doesn't
+        // list — or the dropdown would show it as unset. Not in the
+        // no-data fallback above, which deliberately offers one row's
+        // variant only.
+        $stored = ! $fromCardData ? [] : $items->pluck('variant')
+            ->filter(fn (?string $v) => $v !== null && CardVariants::isValid($v))
+            ->reject(fn (string $v) => in_array($v, $variants, true))
+            ->unique()
+            ->values()
+            ->all();
+        $this->editingAvailableVariants = [...array_values($variants), ...$stored];
 
         // Only one real variant for this card and a row has no explicit
         // choice yet — default it instead of leaving the dropdown blank.
@@ -313,7 +325,7 @@ final class CollectionItems extends Component
 
     public function useCustomVariant(int $index): void
     {
-        if (! isset($this->editingRows[$index]) || ($key = $this->composeCustomVariant()) === null) {
+        if (! isset($this->editingRows[$index]) || ($key = $this->composeCustomVariant($index)) === null) {
             return;
         }
 
@@ -525,6 +537,10 @@ final class CollectionItems extends Component
 
             return;
         }
+
+        // The manual price shown belongs to the print stored; a new
+        // variant means a different print's price, or none.
+        $this->editingRows[$index]['manual_price'] = $this->currentManualPrice($item);
 
         $this->dispatch('row-saved', index: $index);
     }

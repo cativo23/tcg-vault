@@ -27,22 +27,25 @@ trait PicksCustomPrint
 
     /**
      * The key for the picker's current choice, or null (with an error on
-     * customFoil) when it isn't a print — nothing picked, or a value
-     * outside tcgdex's vocabulary.
+     * that row's picker) when it isn't a print — nothing picked, or a
+     * value outside tcgdex's vocabulary. A good pick clears the picker so
+     * it doesn't carry over to the next row or card.
      */
-    protected function composeCustomVariant(): ?string
+    protected function composeCustomVariant(int $index): ?string
     {
         $foil = CollectionService::nullIfEmpty($this->customFoil);
         $stamp = CollectionService::nullIfEmpty($this->customStamp);
         $key = CardVariants::compose($this->customBase, $foil, $stamp !== null ? [$stamp] : []);
 
         if ($key === null) {
-            $this->addError('customFoil', 'Pick a foil or a stamp from the list — a print needs at least one to be told apart.');
+            $this->addError("customPrint.$index", 'Pick a foil or a stamp from the list — a print needs at least one to be told apart.');
 
             return null;
         }
 
-        $this->resetErrorBag('customFoil');
+        $this->resetErrorBag("customPrint.$index");
+        $this->customFoil = null;
+        $this->customStamp = null;
 
         return $key;
     }

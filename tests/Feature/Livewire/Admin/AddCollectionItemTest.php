@@ -1161,6 +1161,6 @@ test('the add form refuses a hand-entered print outside tcgdex\'s vocabulary', f
         ->call('selectCard', 'sv08.5-004')
         ->set('customStamp', 'my-own-stamp')
         ->call('useCustomVariant', 0)
-        ->assertHasErrors('customFoil')
+        ->assertHasErrors('customPrint.0')
         ->assertSet('rows.0.variant', null);
 });
