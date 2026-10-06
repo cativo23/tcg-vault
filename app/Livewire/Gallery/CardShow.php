@@ -138,7 +138,7 @@ final class CardShow extends Component
             // from a source that stopped updating; manual prices don't
             // count, since they are entered once and stand.
             'newestMarketDay' => $priced->priceSnapshots
-                ->reject(fn (CardPriceSnapshot $s) => $s->source === 'manual')
+                ->reject(fn (CardPriceSnapshot $s) => $s->source === 'manual' || $s->market_minor === null)
                 ->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey()),
             // Rows older than the window are not "no price yet" — the page
             // must not claim the card was never priced.
