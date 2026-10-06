@@ -11,12 +11,12 @@ All notable changes to this project are documented here. Format follows
 ### Fixed
 
 - The nightly pricing sync no longer reports an error each time tcgdex
-  briefly refuses a request (503 "no available server", 429, or a dropped
-  connection). Those requests were already retried and succeeded — no card
-  went unpriced — but every failed attempt reached Bugsink. They are now
-  retried quietly, with a warning in the log naming the card and the
-  status. A card still failing after three hours of retries is reported
-  once.
+  briefly refuses a request (a 5xx such as 503 "no available server", a
+  429, or a dropped or timed-out connection). Those requests were already
+  retried and succeeded — no card went unpriced in the nights checked —
+  but every failed attempt reached Bugsink. They are now retried quietly,
+  with a warning in the log naming the card and the status. A card that
+  still fails when the sync's three-hour window closes is reported once.
 
 ### Security
 
