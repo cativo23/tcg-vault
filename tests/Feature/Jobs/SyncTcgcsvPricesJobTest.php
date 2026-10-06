@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Queue\Job;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -94,4 +95,86 @@ test('the tcgcsv sync runs after tcgcsv\'s daily build', function () {
         ->first(fn ($e) => str_contains((string) $e->description, 'SyncTcgcsvPricesJob'));
 
     expect($event?->expression)->toBe('30 20 * * *');
+});
+
+test('it runs on its own long-timeout queue and backs off between retries', function () {
+    $job = new SyncTcgcsvPricesJob;
+
+    expect($job->connection)->toBe('redis-long');
+    expect($job->queue)->toBe('tcgcsv');
+    expect($job->timeout)->toBe(600);
+    expect($job->backoff())->toBe([600, 1800, 3600]);
+    // The connection must not hand the job to a second worker mid-run.
+    expect(config('queue.connections.redis-long.retry_after'))->toBeGreaterThan(600);
+    expect(collect(config('horizon.defaults'))->firstWhere('connection', 'redis-long')['queue'] ?? null)->toBe(['tcgcsv']);
+});
+
+test('a fetched build is recorded before linking, so a later failure never re-pulls it', function () {
+    shadowFixture();
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::response('2026-10-05T20:05:57+0000', 200),
+        'tcgcsv.com/tcgplayer/3/24688/prices' => Http::response(tcgcsvPricesResponse([['productId' => 704873, 'marketPrice' => 160.63, 'subTypeName' => 'Holofoil']]), 200),
+        'tcgcsv.com/tcgplayer/3/24722/prices' => Http::response(tcgcsvPricesResponse([]), 200),
+    ]);
+    CardTcgplayerLink::creating(fn () => throw new RuntimeException('database went away'));
+
+    expect(fn () => runShadowSync())->toThrow(RuntimeException::class);
+    expect(Cache::get('tcgcsv:last_build'))->toBe('2026-10-05T20:05:57+00:00');
+});
+
+test('an unpublished build waits an hour, and late in the day the job ends quietly', function () {
+    shadowFixture();
+    Cache::put('tcgcsv:last_build', '2026-10-05T20:05:57+00:00');
+    Http::fake(['tcgcsv.com/last-updated.txt' => Http::response('2026-10-05T20:05:57+0000', 200)]);
+
+    $this->travelTo(today()->setTime(20, 30));
+    $queued = Mockery::mock(Job::class);
+    $queued->shouldReceive('release')->once()->with(3600);
+    $job = new SyncTcgcsvPricesJob;
+    $job->setJob($queued);
+    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class));
+
+    $this->travelTo(today()->setTime(22, 45));
+    $late = Mockery::mock(Job::class);
+    $late->shouldNotReceive('release');
+    $job = new SyncTcgcsvPricesJob;
+    $job->setJob($late);
+    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class));
+});
+
+test('a failed build check is retried later instead of failing the job', function () {
+    shadowFixture();
+    Http::fake(['tcgcsv.com/last-updated.txt' => Http::response('down', 503)]);
+
+    $this->travelTo(today()->setTime(20, 30));
+    $queued = Mockery::mock(Job::class);
+    $queued->shouldReceive('release')->once()->with(3600);
+    $job = new SyncTcgcsvPricesJob;
+    $job->setJob($queued);
+    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class));
+
+    Http::assertSentCount(1);
+});
+
+test('with no groups configured it only checks the build', function () {
+    Http::fake(['tcgcsv.com/last-updated.txt' => Http::response('2026-10-05T20:05:57+0000', 200)]);
+    Log::spy();
+
+    runShadowSync();
+
+    Http::assertSentCount(1);
+    Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context) => $message === 'tcgcsv shadow sync' && $context['groups_ok'] === 0);
+});
+
+test('a partly failed build is not marked as pulled, so its groups are retried', function () {
+    shadowFixture();
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::response('2026-10-05T20:05:57+0000', 200),
+        'tcgcsv.com/tcgplayer/3/24688/prices' => Http::response('down', 503),
+        'tcgcsv.com/tcgplayer/3/24722/prices' => Http::response(tcgcsvPricesResponse([]), 200),
+    ]);
+
+    runShadowSync();
+
+    expect(Cache::get('tcgcsv:last_build'))->toBeNull();
 });

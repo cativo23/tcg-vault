@@ -229,6 +229,22 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+
+        // The daily tcgcsv pull (SyncTcgcsvPricesJob): one job that can
+        // run for minutes, kept off the default pool so it never holds up
+        // pricing syncs. Its own timeout and backoff live on the job.
+        'supervisor-tcgcsv' => [
+            'connection' => 'redis-long',
+            'queue' => ['tcgcsv'],
+            'balance' => 'off',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 0,
+            'timeout' => 600,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [

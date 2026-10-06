@@ -73,6 +73,18 @@ return [
             'after_commit' => false,
         ],
 
+        // Same Redis, but for jobs that legitimately run for minutes (the
+        // daily tcgcsv pull): retry_after must exceed the job's timeout or
+        // a second worker picks it up mid-run.
+        'redis-long' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'tcgcsv',
+            'retry_after' => 900,
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],
