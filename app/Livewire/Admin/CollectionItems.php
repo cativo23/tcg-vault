@@ -539,8 +539,12 @@ final class CollectionItems extends Component
         }
 
         // The manual price shown belongs to the print stored; a new
-        // variant means a different print's price, or none.
-        $this->editingRows[$index]['manual_price'] = $this->currentManualPrice($item);
+        // variant means a different print's price, or none. Any other
+        // field leaves it alone, so a price typed but not yet saved
+        // survives a condition or quantity change.
+        if ($item->wasChanged('variant')) {
+            $this->editingRows[$index]['manual_price'] = $this->currentManualPrice($item);
+        }
 
         $this->dispatch('row-saved', index: $index);
     }

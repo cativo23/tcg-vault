@@ -1,7 +1,7 @@
 {{-- The "other print" picker (PicksCustomPrint) for row $index.
      wire:ignore.self keeps the open state across round trips — Livewire's
      morph would otherwise strip `open` and hide an error inside. --}}
-<details class="text-xs" style="color: var(--muted)" wire:ignore.self @error("customPrint.$index") open @enderror>
+<details class="text-xs" style="color: var(--muted)" wire:ignore.self>
     <summary class="cursor-pointer" style="text-decoration: underline; text-decoration-style: dashed;">Other print — one tcgdex doesn't list</summary>
     <div class="mt-2" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; align-items: end;">
         <div>

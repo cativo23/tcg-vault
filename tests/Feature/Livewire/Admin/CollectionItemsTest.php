@@ -1974,3 +1974,18 @@ test('a picker error shows under the row that caused it only, and the picker res
         ->assertSet('customStamp', null)
         ->assertSeeHtml('aria-label="Use this print for variant 1');
 });
+
+test('saving another field keeps a manual price typed but not yet saved', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card] = prizePackBudew($admin);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '1.25')
+        ->set('editingRows.0.condition', 'LP')
+        ->call('updateRow', 0)
+        ->assertSet('editingRows.0.manual_price', '1.25');
+});
