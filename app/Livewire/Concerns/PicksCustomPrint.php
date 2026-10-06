@@ -12,6 +12,10 @@ use App\Modules\Collection\Services\CollectionService;
  * cosmos holo): a base print plus one foil and/or one stamp from tcgdex's
  * own vocabulary. One picker serves every row of a form; the component's
  * useCustomVariant() says which row the composed key goes to.
+ *
+ * The vocabulary is enforced here, in the picker. A variant submitted
+ * through a row is only shape-checked (CardVariants::rules()), so a stored
+ * key isn't guaranteed to come from it.
  */
 trait PicksCustomPrint
 {
