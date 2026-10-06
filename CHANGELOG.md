@@ -6,6 +6,19 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-06
+
+### Fixed
+
+- The queue container's memory limit rises from 320M to 448M. The tcgcsv
+  worker added in 1.2.0 runs as two processes, so the container idled near
+  its limit and the nightly price sync's extra worker would have pushed it
+  over, stopping every queue.
+
+### Deploy
+
+No migrations.
+
 ## [1.2.0] - 2026-10-06
 
 ### Added
