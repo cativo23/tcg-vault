@@ -68,8 +68,8 @@ final class CardPriceResolver
      * pass over the card's history instead of one pass per day — what a
      * value-over-time series needs. Each step of the priority chain is
      * "the newest row of this subset on or before the day", so the chain
-     * is resolved per subset and the first hit wins, exactly as
-     * variantFrom() and resolveFrom() pick it.
+     * is resolved per subset and the first current hit wins (see
+     * firstCurrent()), exactly as variantFrom() and resolveFrom() pick it.
      *
      * @param  Collection<int, string>  $dayKeys  'Y-m-d' days
      * @return array<string, CardPriceSnapshot|null> keyed by day
@@ -134,9 +134,10 @@ final class CardPriceResolver
      * product; pricing the card as a whole from one would show a plain
      * copy at a price it doesn't fetch.
      *
-     * For a variant: that exact variant on tcgplayer, then on any
-     * source, then the card-wide 'default' row (see resolveCardWide()) —
-     * which only wins when the variant has no current price of its own.
+     * For a variant: that exact variant on tcgplayer, then a manual
+     * price for it (entered on purpose, in USD, for a print tcgdex
+     * doesn't price on TCGplayer), then any source. Never another print's row — a variant with no price of its
+     * own resolves to nothing rather than to a different print's value.
      *
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
      * @return array<int, Collection<int, CardPriceSnapshot>>
@@ -157,38 +158,43 @@ final class CardPriceResolver
 
         return [
             $matching->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer'),
+            $matching->filter(fn (CardPriceSnapshot $s) => $s->source === 'manual'),
             $matching,
-            $snapshots->filter(fn (CardPriceSnapshot $s) => $s->variant === 'default'),
         ];
     }
 
     /**
      * The first step's pick that is current — captured within
-     * STALE_AFTER_DAYS of the newest pick in the chain. Priority alone
-     * would keep a source tcgdex stopped sending (a set whose TCGplayer
-     * prices froze) ahead of one updated today; the tolerance keeps a
-     * single missed sync from flipping the price to another source.
+     * STALE_AFTER_DAYS of the newest priced pick in the chain. Priority
+     * alone would keep a source tcgdex stopped sending (a set whose
+     * TCGplayer prices froze) ahead of one updated today; the tolerance
+     * keeps a single missed sync from flipping the price to another
+     * source. A manual price is written once and stands until replaced
+     * (see CardPriceSnapshot::isRecent()), so it is current at any age
+     * and doesn't set the bar for the others. A pick with no price
+     * neither sets the bar nor wins.
      *
      * @param  array<int, CardPriceSnapshot|null>  $picks  one per chain step, best first
      */
     private function firstCurrent(array $picks): ?CardPriceSnapshot
     {
-        $present = array_values(array_filter($picks));
+        $priced = array_values(array_filter($picks, fn (?CardPriceSnapshot $s) => $s !== null && $s->market_minor !== null));
+        $dated = array_filter($priced, fn (CardPriceSnapshot $s) => $s->source !== 'manual');
+        $cutoff = $dated === []
+            ? null
+            : Carbon::parse(max(array_map(fn (CardPriceSnapshot $s) => $s->capturedOnKey(), $dated)))
+                ->subDays(self::STALE_AFTER_DAYS)->toDateString();
 
-        if ($present === []) {
-            return null;
-        }
-
-        $newest = max(array_map(fn (CardPriceSnapshot $s) => $s->capturedOnKey(), $present));
-        $cutoff = Carbon::parse($newest)->subDays(self::STALE_AFTER_DAYS)->toDateString();
-
-        foreach ($present as $pick) {
-            if ($pick->capturedOnKey() >= $cutoff) {
+        foreach ($priced as $pick) {
+            if ($pick->source === 'manual' || $cutoff === null || $pick->capturedOnKey() >= $cutoff) {
                 return $pick;
             }
         }
 
-        return null;
+        // Nothing priced: keep the old behaviour of returning the best
+        // unpriced row, so callers can still tell "synced, no price" apart
+        // from "never synced".
+        return array_values(array_filter($picks))[0] ?? null;
     }
 
     /**

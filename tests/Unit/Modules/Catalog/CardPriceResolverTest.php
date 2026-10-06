@@ -289,12 +289,41 @@ test('a TCGplayer price a day or two behind still wins, so one missed sync does 
     expect((new CardPriceResolver)->resolve($card)->id)->toBe($tcgplayer->id);
 });
 
-test('a copy whose own variant only has a stale price falls back to the current card-wide price', function () {
+test('a variant is never priced from another print\'s row, even when its own price is stale', function () {
     $card = staleTcgplayerCard();
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
-    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+    $own = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 300]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
 
-    expect((new CardPriceResolver)->resolveForVariant($card, 'normal')->id)->toBe($fresh->id);
+    expect((new CardPriceResolver)->resolveForVariant($card, 'reverse-holofoil')->id)->toBe($own->id);
+    expect((new CardPriceResolver)->resolveForVariant($card, 'holofoil:cosmos+player-rewards-program'))->toBeNull();
+});
+
+test('a manual price stays the pick at any age, ahead of a frozen TCGplayer row', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(20), 'currency' => 'USD', 'market_minor' => 1231]);
+    $manual = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'normal', 'captured_on' => today()->subDays(10), 'currency' => 'USD', 'market_minor' => 571]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'normal')->id)->toBe($manual->id);
+});
+
+test('a newer row with no price does not push out an older priced one', function () {
+    $card = staleTcgplayerCard();
+    $priced = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(5), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => null]);
+
+    expect((new CardPriceResolver)->resolve($card)->id)->toBe($priced->id);
+});
+
+test('exactly three days behind is still current; four is stale', function () {
+    $card = staleTcgplayerCard();
+    $tcgplayer = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(3), 'currency' => 'USD', 'market_minor' => 1231]);
+    $cardmarket = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'normal')->id)->toBe($tcgplayer->id);
+
+    $tcgplayer->update(['captured_on' => today()->subDays(4)]);
+    expect((new CardPriceResolver)->resolveForVariant($card->fresh(), 'normal')->id)->toBe($cardmarket->id);
 });
 
 test('a stale TCGplayer price for a variant yields to that variant\'s current cardmarket price', function () {
@@ -308,8 +337,8 @@ test('a stale TCGplayer price for a variant yields to that variant\'s current ca
 test('the per-day series applies the same staleness rule as the single-day pick', function () {
     $card = staleTcgplayerCard();
     $old = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today()->subDays(12), 'currency' => 'EUR', 'market_minor' => 1200]);
-    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'EUR', 'market_minor' => 1200]);
+    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
 
     $days = collect([today()->subDays(12)->toDateString(), today()->toDateString()]);
     $series = (new CardPriceResolver)->resolveForVariantOnDays($card->fresh(), 'normal', $days);
@@ -317,4 +346,12 @@ test('the per-day series applies the same staleness rule as the single-day pick'
     expect($series[today()->subDays(12)->toDateString()]->id)->toBe($old->id);
     expect($series[today()->toDateString()]->id)->toBe($fresh->id);
     expect((new CardPriceResolver)->resolveForVariant($card->fresh(), 'normal')->id)->toBe($fresh->id);
+});
+
+test('a current TCGplayer price still beats a manual one', function () {
+    $card = staleTcgplayerCard();
+    $tcgplayer = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 600]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'variant' => 'normal', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 571]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'normal')->id)->toBe($tcgplayer->id);
 });
