@@ -13,6 +13,7 @@ use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
 use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
+use App\Modules\Catalog\Support\CardVariants;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -87,7 +88,10 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             rarity: $json['rarity'] ?? null,
             variants: $json['variants'] ?? [],
             officialImageUrl: isset($json['image']) ? "{$json['image']}/high.webp" : null,
-            prices: new DataCollection(PriceEntryData::class, $this->extractPrices($json['pricing'] ?? [], $json['variants'] ?? [])),
+            prices: new DataCollection(PriceEntryData::class, [
+                ...$this->extractPrices($json['pricing'] ?? [], $json['variants'] ?? []),
+                ...$this->extractSpecialPrintPrices($json['variants_detailed'] ?? []),
+            ]),
             raw: $json,
         );
     }
@@ -279,6 +283,76 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         return $entries;
     }
 
+    /**
+     * Prices for the prints only `variants_detailed` can tell apart — a
+     * Poké Ball/Master Ball pattern reverse, a cosmos holo, a stamped
+     * promo. Each is its own product with its own `pricing`, stored
+     * under its CardVariants key so it never borrows the base print's
+     * price (a Master Ball reverse sells for ten times the plain one).
+     * Base entries are skipped: the top-level `pricing` already covers
+     * them.
+     *
+     * @param  array<int, mixed>  $detailed
+     * @return array<int, PriceEntryData>
+     */
+    private function extractSpecialPrintPrices(array $detailed): array
+    {
+        $entries = [];
+
+        foreach ($detailed as $entry) {
+            if (! is_array($entry) || ! is_array($entry['pricing'] ?? null)) {
+                continue;
+            }
+
+            $key = CardVariants::keyFor($entry);
+            if ($key === null) {
+                continue;
+            }
+
+            $pricing = $entry['pricing'];
+
+            if (is_array($pricing['cardmarket'] ?? null)) {
+                $cm = $pricing['cardmarket'];
+                // A pattern/special-foil product is foil-only, so its
+                // -holo figures are its price; the plain ones are a
+                // fallback for entries that only carry those.
+                $entries[] = new PriceEntryData(
+                    source: 'cardmarket',
+                    variant: $key,
+                    currency: $cm['unit'] ?? 'EUR',
+                    marketMinor: $this->toMinorUnits($cm['avg-holo'] ?? $cm['avg'] ?? null),
+                    lowMinor: $this->toMinorUnits($cm['low-holo'] ?? $cm['low'] ?? null),
+                    trendMinor: $this->toMinorUnits($cm['trend-holo'] ?? $cm['trend'] ?? null),
+                    sourceUpdatedAt: isset($cm['updated']) ? CarbonImmutable::parse($cm['updated']) : null,
+                    raw: $cm,
+                );
+            }
+
+            if (is_array($pricing['tcgplayer'] ?? null)) {
+                $tp = $pricing['tcgplayer'];
+                // tcgplayer files the product under whichever printing
+                // label it uses ('holofoil' for a pattern reverse); the
+                // entry is one product, so its first priced label is it.
+                $priced = collect($tp)->first(fn (mixed $v) => is_array($v) && isset($v['marketPrice']));
+
+                if ($priced !== null) {
+                    $entries[] = new PriceEntryData(
+                        source: 'tcgplayer',
+                        variant: $key,
+                        currency: $tp['unit'] ?? 'USD',
+                        marketMinor: $this->toMinorUnits($priced['marketPrice']),
+                        lowMinor: $this->toMinorUnits($priced['lowPrice'] ?? null),
+                        trendMinor: null,
+                        sourceUpdatedAt: isset($tp['updated']) ? CarbonImmutable::parse($tp['updated']) : null,
+                        raw: $priced,
+                    );
+                }
+            }
+        }
+
+        return $entries;
+    }
+
     private function toMinorUnits(int|float|string|null $amount): ?int
     {
         if ($amount === null) {
@@ -329,6 +403,12 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         }
 
         $this->assertValidCurrencies($tcgdexId, $json['pricing'] ?? []);
+
+        foreach ($json['variants_detailed'] ?? [] as $entry) {
+            if (is_array($entry) && is_array($entry['pricing'] ?? null)) {
+                $this->assertValidCurrencies($tcgdexId, $entry['pricing']);
+            }
+        }
     }
 
     private function assertValidSetShape(string $tcgdexId, mixed $json): void
