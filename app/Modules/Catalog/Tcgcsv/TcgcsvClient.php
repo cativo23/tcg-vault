@@ -7,6 +7,8 @@ namespace App\Modules\Catalog\Tcgcsv;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
+use Psr\Http\Message\ResponseInterface;
+use UnexpectedValueException;
 
 /**
  * tcgcsv.com's TCGplayer mirror: the daily build time and one group's
@@ -23,10 +25,23 @@ final class TcgcsvClient
         private readonly TcgcsvPriceParser $parser,
     ) {}
 
-    /** When tcgcsv last rebuilt its data; a build is pulled once. */
+    /** Above this a response is not a price file; refuse it before buffering. */
+    private const MAX_BODY_BYTES = 5_000_000;
+
+    /**
+     * When tcgcsv last rebuilt its data; a build is pulled once. Only the
+     * exact ISO-8601 shape is accepted, so a stray body is never read as
+     * "now" and never reaches a log line through a parse error.
+     */
     public function lastUpdated(): CarbonImmutable
     {
-        return CarbonImmutable::parse(trim($this->http()->get('last-updated.txt')->throw()->body()));
+        $body = trim($this->http()->get('last-updated.txt')->throw()->body());
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/', $body) !== 1) {
+            throw new UnexpectedValueException('tcgcsv last-updated.txt is not an ISO-8601 timestamp.');
+        }
+
+        return CarbonImmutable::parse($body);
     }
 
     /**
@@ -37,7 +52,10 @@ final class TcgcsvClient
     public function groups(): array
     {
         $json = $this->http()->get('tcgplayer/3/groups')->throw()->json();
-        $results = is_array($json) && is_array($json['results'] ?? null) ? $json['results'] : [];
+        if (! is_array($json) || ($json['success'] ?? null) !== true || ! is_array($json['results'] ?? null)) {
+            throw new UnexpectedValueException('tcgcsv groups response is not a successful list.');
+        }
+        $results = $json['results'];
 
         return array_values(array_map(fn (array $g) => [
             'groupId' => (int) $g['groupId'],
@@ -62,6 +80,15 @@ final class TcgcsvClient
         return Http::baseUrl($this->baseUrl)
             ->timeout(self::TIMEOUT)
             ->withUserAgent($this->userAgent)
-            ->withOptions(['force_ip_resolve' => 'v4']);
+            ->withOptions([
+                'force_ip_resolve' => 'v4',
+                // A redirect could point the horizon container anywhere.
+                'allow_redirects' => false,
+                'on_headers' => function (ResponseInterface $response): void {
+                    if ((int) $response->getHeaderLine('Content-Length') > self::MAX_BODY_BYTES) {
+                        throw new UnexpectedValueException('tcgcsv response is larger than any price file.');
+                    }
+                },
+            ]);
     }
 }

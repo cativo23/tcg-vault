@@ -14,6 +14,12 @@ use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
  */
 final class TcgcsvPriceParser
 {
+    /** No single card's market price is anywhere near this; above it the feed is wrong. */
+    private const MAX_PRICE = 1_000_000;
+
+    /** card_tcgplayer_links.sub_type is 32 characters. */
+    private const MAX_SUBTYPE_LENGTH = 32;
+
     /** @var array<string, string> TCGplayer subtype → this app's base variant key */
     private const BASE_VARIANTS = [
         'Normal' => 'normal',
@@ -52,8 +58,9 @@ final class TcgcsvPriceParser
 
     private function row(int $groupId, mixed $row): TcgcsvPriceRow
     {
-        if (! is_array($row) || ! is_int($row['productId'] ?? null) || ! is_string($row['subTypeName'] ?? null)) {
-            throw MalformedCatalogResponseException::forTcgcsvGroup($groupId, 'a row lacks an integer "productId" or a string "subTypeName".');
+        if (! is_array($row) || ! is_int($row['productId'] ?? null) || $row['productId'] <= 0
+            || ! is_string($row['subTypeName'] ?? null) || strlen($row['subTypeName']) > self::MAX_SUBTYPE_LENGTH) {
+            throw MalformedCatalogResponseException::forTcgcsvGroup($groupId, 'a row lacks a positive integer "productId" or a short string "subTypeName".');
         }
 
         return new TcgcsvPriceRow(
@@ -62,7 +69,6 @@ final class TcgcsvPriceParser
             subType: $row['subTypeName'],
             marketMinor: $this->minor($groupId, $row['marketPrice'] ?? null),
             lowMinor: $this->minor($groupId, $row['lowPrice'] ?? null),
-            raw: $row,
         );
     }
 
@@ -72,8 +78,8 @@ final class TcgcsvPriceParser
             return null;
         }
 
-        if (! is_int($amount) && ! is_float($amount)) {
-            throw MalformedCatalogResponseException::forTcgcsvGroup($groupId, 'a price is neither a number nor null.');
+        if ((! is_int($amount) && ! is_float($amount)) || ! is_finite((float) $amount) || $amount < 0 || $amount > self::MAX_PRICE) {
+            throw MalformedCatalogResponseException::forTcgcsvGroup($groupId, 'a price is not a sane non-negative number or null.');
         }
 
         return (int) round($amount * 100);

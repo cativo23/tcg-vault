@@ -33,3 +33,15 @@ test('a server error surfaces instead of reading as an empty group', function ()
 
     expect(fn () => app(TcgcsvClient::class)->prices(24688))->toThrow(RequestException::class);
 });
+
+test('a build time in any other shape is rejected rather than read as now', function (string $body) {
+    Http::fake(['tcgcsv.com/last-updated.txt' => Http::response($body, 200)]);
+
+    expect(fn () => app(TcgcsvClient::class)->lastUpdated())->toThrow(UnexpectedValueException::class);
+})->with(['', "not a date\nfake log line", '2026-10-05']);
+
+test('a groups payload that is not a success is an error, not an empty list', function () {
+    Http::fake(['tcgcsv.com/tcgplayer/3/groups' => Http::response(['success' => false], 200)]);
+
+    expect(fn () => app(TcgcsvClient::class)->groups())->toThrow(UnexpectedValueException::class);
+});
