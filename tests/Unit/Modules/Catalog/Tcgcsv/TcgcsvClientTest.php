@@ -72,7 +72,7 @@ test('group names and abbreviations are plain text, and a malformed abbreviation
     expect($groups[0]['abbreviation'])->toBeNull();
 });
 
-test('a body that stalls or breaks mid-read is a connection failure, not a crash', function () {
+test('a body that breaks mid-read is a connection failure, not a crash', function () {
     $broken = FnStream::decorate(Utils::streamFor('{"success":true'), [
         'isSeekable' => fn () => false,
         'eof' => fn () => false,
@@ -81,4 +81,16 @@ test('a body that stalls or breaks mid-read is a connection failure, not a crash
     Http::fake(['tcgcsv.com/tcgplayer/3/24688/prices' => Http::response($broken, 200)]);
 
     expect(fn () => app(TcgcsvClient::class)->prices(24688))->toThrow(ConnectionException::class);
+});
+
+test('a body that stalls past the read deadline is a connection failure', function () {
+    $stalled = FnStream::decorate(Utils::streamFor(''), [
+        'isSeekable' => fn () => false,
+        'eof' => fn () => false,
+        'read' => fn () => '',
+    ]);
+    Http::fake(['tcgcsv.com/tcgplayer/3/24688/prices' => Http::response($stalled, 200)]);
+    $client = new TcgcsvClient('https://tcgcsv.com', 'tcg-vault/1', new TcgcsvPriceParser, bodyDeadlineSeconds: 0.0);
+
+    expect(fn () => $client->prices(24688))->toThrow(ConnectionException::class);
 });

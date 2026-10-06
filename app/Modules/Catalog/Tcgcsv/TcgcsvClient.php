@@ -31,6 +31,7 @@ final class TcgcsvClient
         private readonly string $baseUrl,
         private readonly string $userAgent,
         private readonly TcgcsvPriceParser $parser,
+        private readonly float $bodyDeadlineSeconds = self::BODY_DEADLINE_SECONDS,
     ) {
         // Redirects are off, so a plain-http URL would only ever 301.
         if (! str_starts_with($baseUrl, 'https://')) {
@@ -101,7 +102,7 @@ final class TcgcsvClient
         // A streamed body isn't covered by the request timeout, so the read
         // keeps its own deadline; a stall or a dropped connection mid-body
         // is a connection failure like any other.
-        $deadline = microtime(true) + self::BODY_DEADLINE_SECONDS;
+        $deadline = microtime(true) + $this->bodyDeadlineSeconds;
         $body = '';
 
         try {
