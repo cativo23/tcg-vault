@@ -233,3 +233,33 @@ test('distinctSnapshotDates returns one entry per day, most recent first, regard
     expect($dates)->toHaveCount(2);
     expect($dates->first()->toDateString())->toBe(today()->toDateString());
 });
+
+test('the card-level fallback never lands on a special print\'s price', function () {
+    // svp-223 Professor's Research: cardmarket normal €1.15 beside a
+    // professor-program stamped print at €4.77, captured the same day.
+    $set = Set::create(['tcgdex_id' => 'svp', 'name' => 'SV Promos']);
+    $card = Card::create(['tcgdex_id' => 'svp-223', 'set_id' => $set->id, 'local_id' => '223', 'name' => 'Professor\'s Research']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal+professor-program', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 477]);
+    $base = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 115]);
+
+    expect((new CardPriceResolver)->resolve($card)->id)->toBe($base->id);
+    expect((new CardPriceResolver)->resolveForVariant($card, null)->id)->toBe($base->id);
+});
+
+test('a card priced only through special prints has no card-level price', function () {
+    $set = Set::create(['tcgdex_id' => 'svp', 'name' => 'SV Promos']);
+    $card = Card::create(['tcgdex_id' => 'svp-224', 'set_id' => $set->id, 'local_id' => '224', 'name' => 'Some Worlds Promo']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal+worlds-2025', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 900]);
+
+    expect((new CardPriceResolver)->resolve($card))->toBeNull();
+    expect((new CardPriceResolver)->resolveForVariantOnDays($card->fresh(), null, collect([today()->toDateString()]))[today()->toDateString()])->toBeNull();
+});
+
+test('a special print is still priced when asked for by its own key', function () {
+    $set = Set::create(['tcgdex_id' => 'svp', 'name' => 'SV Promos']);
+    $card = Card::create(['tcgdex_id' => 'svp-224', 'set_id' => $set->id, 'local_id' => '224', 'name' => 'Some Worlds Promo']);
+    $stamped = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal+worlds-2025', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 900]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'normal+worlds-2025')->id)->toBe($stamped->id);
+});

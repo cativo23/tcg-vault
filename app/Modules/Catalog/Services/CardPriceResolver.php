@@ -6,6 +6,7 @@ namespace App\Modules\Catalog\Services;
 
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
+use App\Modules\Catalog\Support\CardVariants;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -78,7 +79,7 @@ final class CardPriceResolver
             $chain = [
                 $snapshots->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && in_array($s->variant, ['normal', 'holofoil'], true)),
                 $snapshots->filter(fn (CardPriceSnapshot $s) => $s->source === 'cardmarket' && $s->variant === 'default'),
-                $snapshots,
+                $snapshots->reject(fn (CardPriceSnapshot $s) => CardVariants::isSpecial($s->variant)),
             ];
         } else {
             $matching = $snapshots->filter(fn (CardPriceSnapshot $s) => $s->variant === $variant);
@@ -325,7 +326,12 @@ final class CardPriceResolver
      */
     private function resolveFrom(Collection $snapshots): ?CardPriceSnapshot
     {
-        $snapshots = $snapshots->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->values();
+        // A special print (a Master Ball reverse, a stamped promo) is a
+        // separate product; pricing the card as a whole from one would
+        // show a collector's plain copy at a price it doesn't fetch.
+        $snapshots = $snapshots
+            ->reject(fn (CardPriceSnapshot $s) => CardVariants::isSpecial($s->variant))
+            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->values();
 
         if ($snapshots->isEmpty()) {
             return null;
