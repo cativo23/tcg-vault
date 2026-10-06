@@ -55,6 +55,7 @@ test('a malformed payload is rejected whole', function (mixed $payload) {
     'infinite price' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => INF, 'subTypeName' => 'Normal']])],
     'product id beyond the column' => [tcgcsvPrices([['productId' => 2_147_483_648, 'marketPrice' => 1.0, 'subTypeName' => 'Normal']])],
     'subtype with a line break' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => 1.0, 'subTypeName' => "Normal\n[x] CRITICAL: forged"]])],
+    'subtype with a trailing line break' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => 1.0, 'subTypeName' => "Holofoil\n"]])],
     'subtype with a NUL byte' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => 1.0, 'subTypeName' => "Nor\0mal"]])],
     'over-long subtype' => [tcgcsvPrices([['productId' => 1, 'marketPrice' => 1.0, 'subTypeName' => str_repeat('x', 40)]])],
 ]);

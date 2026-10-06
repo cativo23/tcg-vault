@@ -58,8 +58,9 @@ final class TcgcsvPriceParser
         if (! is_array($row) || ! is_int($row['productId'] ?? null) || $row['productId'] <= 0 || $row['productId'] > self::MAX_PRODUCT_ID
             || ! is_string($row['subTypeName'] ?? null) || strlen($row['subTypeName']) > self::MAX_SUBTYPE_LENGTH
             // Letters, digits and simple punctuation only: the subtype is
-            // stored and logged, so no line breaks or control bytes.
-            || preg_match('/^[\p{L}\p{N} ._()\/-]+$/u', $row['subTypeName']) !== 1) {
+            // stored and logged, so no line breaks or control bytes (D: `$`
+            // must not match before a trailing newline).
+            || preg_match('/^[\p{L}\p{N} ._()\/-]+$/Du', $row['subTypeName']) !== 1) {
             throw MalformedCatalogResponseException::forTcgcsvGroup($groupId, 'a row lacks a positive integer "productId" or a short plain-text "subTypeName".');
         }
 

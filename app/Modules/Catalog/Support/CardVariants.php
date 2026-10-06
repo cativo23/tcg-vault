@@ -362,7 +362,8 @@ final class CardVariants
     {
         $base = implode('|', array_map(fn (string $b) => preg_quote($b, '/'), self::ORDER));
 
-        return '/^(?:'.$base.')(?::'.self::SEGMENT.')?(?:\\+'.self::SEGMENT.')*$/';
+        // D: `$` must not match before a trailing newline.
+        return '/^(?:'.$base.')(?::'.self::SEGMENT.')?(?:\\+'.self::SEGMENT.')*$/D';
     }
 
     public static function label(string $key): string
