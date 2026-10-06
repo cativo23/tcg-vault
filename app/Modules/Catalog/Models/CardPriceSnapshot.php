@@ -30,6 +30,7 @@ final class CardPriceSnapshot extends Model
     protected $fillable = [
         'card_id',
         'source',
+        'origin',
         'variant',
         'captured_on',
         'currency',
@@ -50,6 +51,33 @@ final class CardPriceSnapshot extends Model
             'raw' => 'array',
             'source_updated_at' => 'datetime',
         ];
+    }
+
+    /** How this price reached the app: synced from tcgdex or tcgcsv, or typed in. */
+    public function originLabel(): string
+    {
+        return match ($this->origin) {
+            'hand' => 'entered by hand',
+            default => (string) $this->origin,
+        };
+    }
+
+    /**
+     * One line on where this price came from, for a tooltip: the
+     * marketplace and how it reached the app, or that it was typed in —
+     * and from which feed, when a manual price was copied from one.
+     */
+    public function provenanceLabel(): string
+    {
+        if ($this->source === 'manual') {
+            $copiedFrom = is_array($this->raw) ? ($this->raw['origin'] ?? null) : null;
+
+            return is_string($copiedFrom)
+                ? "Manual price copied by hand from TCGplayer ({$copiedFrom})"
+                : 'Manual price '.$this->originLabel();
+        }
+
+        return $this->sourceLabel().' market price via '.$this->originLabel();
     }
 
     /** Where this price came from, as a collector reads it. */

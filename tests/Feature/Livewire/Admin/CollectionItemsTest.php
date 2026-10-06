@@ -2029,3 +2029,19 @@ test('a manual price is allowed when every market price froze before the listing
 
     expect(CardPriceSnapshot::where('source', 'manual')->count())->toBe(1);
 });
+
+test('a manual price is recorded as entered by hand', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card] = prizePackBudew($admin);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '0.70')
+        ->call('saveManualPrice', 0)
+        ->assertHasNoErrors();
+
+    expect(CardPriceSnapshot::where('source', 'manual')->value('origin'))->toBe('hand');
+});

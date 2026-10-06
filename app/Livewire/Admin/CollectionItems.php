@@ -386,6 +386,7 @@ final class CollectionItems extends Component
                 'captured_on' => today()->toDateString(),
             ],
             [
+                'origin' => 'hand',
                 'currency' => 'USD',
                 'market_minor' => (int) round((float) $price * 100),
                 'low_minor' => null,

@@ -115,9 +115,15 @@ final class Index extends Component
 
         $totals = $valuation->totalsByCurrency($allCards);
         $copies = (int) $allCards->sum(fn (Card $card) => $card->collectionItems->sum('quantity'));
-        $updatedAt = $allCards->flatMap(fn (Card $c) => $c->priceSnapshots)
+        // The latest marketplace sync, and where its prices came from. A
+        // manual price is typed in, not synced, so it neither dates this
+        // nor gets credited to a feed.
+        $synced = $allCards->flatMap(fn (Card $c) => $c->priceSnapshots)
+            ->filter(fn (CardPriceSnapshot $s) => $s->source !== 'manual' && $s->market_minor !== null);
+        $updatedAt = $synced
             ->reduce(fn (?CardPriceSnapshot $latest, CardPriceSnapshot $s) => $latest === null || $s->capturedOnKey() > $latest->capturedOnKey() ? $s : $latest)
             ?->captured_on;
+        $priceOrigins = $synced->pluck('origin')->unique()->sort()->values();
         $topEntry = $allCards
             ->map(fn (Card $card) => ['card' => $card, 'valueMinor' => $headlines->get($card->id)?->market_minor])
             ->sortByDesc(fn ($e) => $e['valueMinor'] ?? -1)
@@ -211,6 +217,7 @@ final class Index extends Component
             'totals' => $totals,
             'copies' => $copies,
             'updatedAt' => $updatedAt,
+            'priceOrigins' => $priceOrigins,
             'topEntry' => $topEntry,
             'rarities' => $rarities,
             'isFiltered' => $this->search !== '' || $this->setFilter !== '' || $this->rarityFilter !== '',

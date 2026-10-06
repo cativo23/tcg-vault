@@ -82,7 +82,6 @@ final class CardShow extends Component
 
         // Latest reading per source+variant — the full market picture the
         // grid tile only summarises. Sorted so the resolved one leads.
-        $latestDay = $priced->priceSnapshots->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey());
         $marketReads = $priced->priceSnapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->market_minor !== null)
             ->groupBy(fn (CardPriceSnapshot $s) => $s->source.'|'.$s->variant)
@@ -133,8 +132,15 @@ final class CardShow extends Component
             'images' => $images,
             'related' => $related,
             'facts' => $this->facts($raw),
-            'priceUpdatedAt' => $latestDay,
-            // The day tcgdex last priced this card. A read behind it is
+            // Where the marketplace prices on show came from (tcgdex,
+            // tcgcsv), for the header; a manual tile says so itself.
+            'marketOrigins' => $marketReads
+                ->reject(fn (CardPriceSnapshot $s) => $s->source === 'manual')
+                ->pluck('origin')
+                ->unique()
+                ->sort()
+                ->values(),
+            // The day a marketplace last priced this card. A read behind it is
             // from a source that stopped updating; manual prices don't
             // count, since they are entered once and stand.
             'newestMarketDay' => $priced->priceSnapshots
