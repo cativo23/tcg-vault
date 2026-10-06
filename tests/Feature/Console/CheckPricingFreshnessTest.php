@@ -53,3 +53,16 @@ test('alerts when there are no price snapshots at all, since that also means pri
 
     Http::assertSent(fn ($request) => str_contains($request['content'], 'no price snapshot'));
 });
+
+test('a fresh manual price does not hide a stalled sync', function () {
+    Http::fake();
+    makeSnapshotAt(now()->subHours(30)->toDateTimeString());
+    CardPriceSnapshot::create([
+        'card_id' => Card::first()->id, 'source' => 'manual', 'variant' => 'holofoil:cosmos',
+        'captured_on' => now()->toDateString(), 'currency' => 'USD', 'market_minor' => 70,
+    ]);
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'looks stuck'));
+});
