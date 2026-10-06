@@ -191,3 +191,21 @@ test('a base print tcgdex files with a stamp still counts as present beside anot
         ],
     ]))->toBe(['holofoil', 'holofoil+set-logo+staff']);
 });
+
+test('a lone special print that is a different product from the card\'s own is a print of its own', function () {
+    // me02.5-183 Boss's Orders, as tcgdex serves it: flagged holo only
+    // because of the Prize Pack cosmos, whose product (704399) is not the
+    // card's own (675995 / cardmarket 869794).
+    expect(CardVariants::available(['normal' => true, 'reverse' => true, 'holo' => true], [
+        'pricing' => [
+            'cardmarket' => ['unit' => 'EUR', 'idProduct' => 869794, 'avg' => 0.25],
+            'tcgplayer' => ['unit' => 'USD', 'normal' => ['productId' => 675995, 'marketPrice' => 0.24], 'reverse-holofoil' => ['productId' => 675995, 'marketPrice' => 0.57]],
+        ],
+        'variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 869794, 'tcgplayer' => 675995]],
+            ['type' => 'reverse', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 869794, 'tcgplayer' => 675995]],
+            ['type' => 'normal', 'size' => 'standard', 'stamp' => ['player-rewards-program'], 'thirdParty' => ['cardmarket' => 894199, 'tcgplayer' => 704398]],
+            ['type' => 'holo', 'size' => 'standard', 'foil' => 'cosmos', 'stamp' => ['player-rewards-program'], 'thirdParty' => ['cardmarket' => 894200, 'tcgplayer' => 704399]],
+        ],
+    ]))->toBe(['normal', 'reverse-holofoil', 'normal+player-rewards-program', 'holofoil:cosmos+player-rewards-program']);
+});
