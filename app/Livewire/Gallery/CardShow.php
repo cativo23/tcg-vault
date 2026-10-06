@@ -134,6 +134,12 @@ final class CardShow extends Component
             'related' => $related,
             'facts' => $this->facts($raw),
             'priceUpdatedAt' => $latestDay,
+            // The day tcgdex last priced this card. A read behind it is
+            // from a source that stopped updating; manual prices don't
+            // count, since they are entered once and stand.
+            'newestMarketDay' => $priced->priceSnapshots
+                ->reject(fn (CardPriceSnapshot $s) => $s->source === 'manual')
+                ->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey()),
             // Rows older than the window are not "no price yet" — the page
             // must not claim the card was never priced.
             'pricedBeforeWindow' => $marketReads->isEmpty()

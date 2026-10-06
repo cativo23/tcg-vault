@@ -87,7 +87,7 @@
                             </div>
                             <div class="amt {{ $isResolved && $delta?->isUp() ? 'up' : '' }}">{{ Money::format($read->market_minor, $read->currency) }}</div>
                             <div class="sub">
-                                @if ($priceUpdatedAt && $read->capturedOnKey() < \Carbon\CarbonImmutable::parse($priceUpdatedAt)->toDateString())
+                                @if (! $isResolved && $read->source !== 'manual' && $newestMarketDay && $read->capturedOnKey() < $newestMarketDay)
                                     {{-- A source that stopped updating (tcgdex dropped it) must not read as current. --}}
                                     as of {{ $read->captured_on->format('j M') }}
                                 @elseif ($isResolved && $delta)
