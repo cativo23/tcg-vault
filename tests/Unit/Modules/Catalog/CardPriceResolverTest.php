@@ -418,3 +418,20 @@ test('hasCurrentMarketPrice is true only for a marketplace price that is still c
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'EUR', 'market_minor' => 1500]);
     expect($resolver->hasCurrentMarketPrice($card->fresh(), 'normal'))->toBeTrue();
 });
+
+test('hasCurrentMarketPrice follows the resolver: an unpriced newest row is no current price', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => null]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->hasCurrentMarketPrice($card, 'normal'))->toBeFalse();
+});
+
+test('hasCurrentMarketPrice treats exactly three days behind as current', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(3), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->hasCurrentMarketPrice($card, 'normal'))->toBeTrue();
+});

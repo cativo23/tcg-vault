@@ -363,8 +363,12 @@ final class CollectionItems extends Component
         $refusal = match (true) {
             $item->variant === null => 'Save a variant for this copy first — the price belongs to a specific print.',
             $item->variant !== CollectionService::nullIfEmpty($this->editingRows[$index]['variant']) => 'Save this copy\'s variant first — the price would go to the print still stored.',
-            (new CardPriceResolver)->hasCurrentMarketPrice($item->card, $item->variant) => 'tcgdex already prices this print — a manual price is only for prints it doesn\'t price, or stopped pricing.',
             $price === null => 'Enter a price.',
+            (new CardPriceResolver)->hasCurrentMarketPrice(
+                // The same 30-day window every screen prices from.
+                $item->card->load(['priceSnapshots' => fn ($q) => $q->recent()]),
+                $item->variant,
+            ) => 'tcgdex already prices this print — a manual price is only for prints it doesn\'t price, or stopped pricing.',
             default => null,
         };
 
