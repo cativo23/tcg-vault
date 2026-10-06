@@ -115,9 +115,24 @@ final class CardVariants
             ->values()
             ->all();
 
-        $special = collect(self::specialPrints($raw))->pluck('key')->unique()->values()->all();
+        $prints = self::specialPrints($raw);
+        $special = collect($prints)->pluck('key')->unique()->values()->all();
 
-        return [...collect(self::ORDER)->intersect($mapped)->values()->all(), ...$special];
+        // A flagged base print whose type tcgdex lists ONLY as special
+        // prints doesn't exist on its own — Ascended Heroes has no plain
+        // reverse, just Poké Ball and Energy pattern ones — so it isn't
+        // offered beside them.
+        /** @var array<int, mixed> $detailed */
+        $detailed = is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [];
+        $onlySpecial = collect($prints)
+            ->map(fn (array $p) => self::MAP[$p['entry']['type']])
+            ->unique()
+            ->reject(fn (string $base) => collect($detailed)->contains(
+                fn (mixed $e) => is_array($e) && (self::MAP[$e['type'] ?? ''] ?? null) === $base && empty($e['foil']) && empty($e['stamp']),
+            ))
+            ->all();
+
+        return [...collect(self::ORDER)->intersect($mapped)->diff($onlySpecial)->values()->all(), ...$special];
     }
 
     /**

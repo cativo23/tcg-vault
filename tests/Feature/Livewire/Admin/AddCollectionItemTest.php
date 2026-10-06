@@ -1064,6 +1064,7 @@ function budewDetail(): CardDetailData
         prices: new DataCollection(PriceEntryData::class, []),
         raw: ['variants_detailed' => [
             ['type' => 'normal', 'size' => 'standard'],
+            ['type' => 'reverse', 'size' => 'standard'],
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball'],
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'masterball'],
         ]],

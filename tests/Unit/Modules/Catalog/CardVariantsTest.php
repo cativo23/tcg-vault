@@ -132,7 +132,7 @@ test('several special entries of a type with no plain sibling stay separate prin
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'friendball', 'thirdParty' => ['tcgplayer' => 1]],
             ['type' => 'reverse', 'size' => 'standard', 'foil' => 'energy', 'thirdParty' => ['tcgplayer' => 2]],
         ],
-    ]))->toBe(['normal', 'reverse-holofoil', 'reverse-holofoil:friendball', 'reverse-holofoil:energy']);
+    ]))->toBe(['normal', 'reverse-holofoil:friendball', 'reverse-holofoil:energy']);
 });
 
 test('isSpecial tells a special print key from a base one', function () {
@@ -161,4 +161,21 @@ test('the foil and stamp options are tcgdex\'s, labelled', function () {
     expect(CardVariants::foilOptions())->toHaveKey('cosmos', 'Cosmos');
     expect(CardVariants::foilOptions())->toHaveKey('masterball', 'Master Ball');
     expect(CardVariants::stampOptions())->toHaveKey('player-rewards-program', 'Player Rewards Program');
+});
+
+test('a base print tcgdex lists only as special prints is not offered on its own', function () {
+    // N's Zorua (me02.5-136, Ascended Heroes): the set has no plain
+    // reverse — every reverse is a Poké Ball or an Energy pattern — even
+    // though tcgdex's `reverse` flag is true.
+    expect(CardVariants::available(['normal' => true, 'reverse' => true], [
+        'variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['tcgplayer' => 675948]],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball', 'thirdParty' => ['tcgplayer' => 676960]],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'energy', 'thirdParty' => ['tcgplayer' => 677100]],
+        ],
+    ]))->toBe(['normal', 'reverse-holofoil:pokeball', 'reverse-holofoil:energy']);
+});
+
+test('a card with no variants_detailed keeps every flagged base print', function () {
+    expect(CardVariants::available(['normal' => true, 'reverse' => true], []))->toBe(['normal', 'reverse-holofoil']);
 });
