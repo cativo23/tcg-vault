@@ -263,3 +263,58 @@ test('a special print is still priced when asked for by its own key', function (
 
     expect((new CardPriceResolver)->resolveForVariant($card, 'normal+worlds-2025')->id)->toBe($stamped->id);
 });
+
+function staleTcgplayerCard(): Card
+{
+    // 30th-130 Moltres: tcgdex stopped sending TCGplayer prices for the set,
+    // so its last TCGplayer row is 12 days old while cardmarket is current.
+    $set = Set::create(['tcgdex_id' => '30th', 'name' => '30th Celebration']);
+
+    return Card::create(['tcgdex_id' => '30th-130', 'set_id' => $set->id, 'local_id' => '130', 'name' => 'Moltres']);
+}
+
+test('a stale TCGplayer price no longer outranks a current cardmarket one', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
+    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolve($card)->id)->toBe($fresh->id);
+});
+
+test('a TCGplayer price a day or two behind still wins, so one missed sync does not flip the currency', function () {
+    $card = staleTcgplayerCard();
+    $tcgplayer = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolve($card)->id)->toBe($tcgplayer->id);
+});
+
+test('a copy whose own variant only has a stale price falls back to the current card-wide price', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
+    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'normal')->id)->toBe($fresh->id);
+});
+
+test('a stale TCGplayer price for a variant yields to that variant\'s current cardmarket price', function () {
+    $card = staleTcgplayerCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 300]);
+    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 250]);
+
+    expect((new CardPriceResolver)->resolveForVariant($card, 'reverse-holofoil')->id)->toBe($fresh->id);
+});
+
+test('the per-day series applies the same staleness rule as the single-day pick', function () {
+    $card = staleTcgplayerCard();
+    $old = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today()->subDays(12), 'currency' => 'EUR', 'market_minor' => 1200]);
+    $fresh = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    $days = collect([today()->subDays(12)->toDateString(), today()->toDateString()]);
+    $series = (new CardPriceResolver)->resolveForVariantOnDays($card->fresh(), 'normal', $days);
+
+    expect($series[today()->subDays(12)->toDateString()]->id)->toBe($old->id);
+    expect($series[today()->toDateString()]->id)->toBe($fresh->id);
+    expect((new CardPriceResolver)->resolveForVariant($card->fresh(), 'normal')->id)->toBe($fresh->id);
+});
