@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-10-06
+
+### Fixed
+
+- A manual price can be set for a print whose market price has frozen.
+  The card editor refused one whenever any TCGplayer or Cardmarket price
+  existed for the print, so 30th Celebration copies — whose TCGplayer
+  price stopped updating on 24 September — could not be priced. It now
+  refuses only when a marketplace price for that print is still current,
+  judged within the same 30-day window the listings show.
+
+### Deploy
+
+No migrations.
+
 ## [1.1.1] - 2026-10-06
 
 ### Fixed
