@@ -87,7 +87,10 @@
                             </div>
                             <div class="amt {{ $isResolved && $delta?->isUp() ? 'up' : '' }}">{{ Money::format($read->market_minor, $read->currency) }}</div>
                             <div class="sub">
-                                @if ($isResolved && $delta)
+                                @if ($priceUpdatedAt && $read->capturedOnKey() < \Carbon\CarbonImmutable::parse($priceUpdatedAt)->toDateString())
+                                    {{-- A source that stopped updating (tcgdex dropped it) must not read as current. --}}
+                                    as of {{ $read->captured_on->format('j M') }}
+                                @elseif ($isResolved && $delta)
                                     {{ Money::signed($delta->deltaMinor, $read->currency) }}@if ($delta->percent() !== null) · {{ $delta->percent() > 0 ? '+' : '' }}{{ $delta->percent() }}%@endif since {{ $delta->previous->captured_on->format('j M') }}
                                 @elseif ($read->low_minor !== null)
                                     low {{ Money::format($read->low_minor, $read->currency) }}@if ($read->trend_minor) · trend {{ Money::format($read->trend_minor, $read->currency) }}@endif

@@ -114,3 +114,16 @@ test('a manually entered market price is labelled as manual, never as a marketpl
     $response->assertSee('Holofoil · Cosmos · Player Rewards Program');
     $response->assertDontSee('Cardmarket');
 });
+
+test('a market read older than the rest says how old it is, and is not the headline', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'normal']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 1231]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
+
+    $response = $this->get('/carlos/me05/116');
+
+    $response->assertOk();
+    $response->assertSee('as of '.today()->subDays(12)->format('j M'));
+    $response->assertSeeInOrder(['box-shadow: 0 0 0 1.5px var(--ink)', 'Cardmarket'], false);
+});
