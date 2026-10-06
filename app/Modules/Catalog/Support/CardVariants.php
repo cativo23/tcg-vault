@@ -225,6 +225,12 @@ final class CardVariants
         return collect(self::STAMPS)->mapWithKeys(fn (string $s) => [$s => Str::headline($s)])->sort()->all();
     }
 
+    /** This app's base key for a tcgdex print type (`holo` → `holofoil`), or null for one it doesn't offer. */
+    public static function baseKey(string $tcgdexType): ?string
+    {
+        return self::MAP[$tcgdexType] ?? null;
+    }
+
     /** A key for a print only `variants_detailed` describes (a foil or stamp suffix). */
     public static function isSpecial(string $key): bool
     {
