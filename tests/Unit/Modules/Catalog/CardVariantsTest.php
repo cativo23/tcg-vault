@@ -179,3 +179,15 @@ test('a base print tcgdex lists only as special prints is not offered on its own
 test('a card with no variants_detailed keeps every flagged base print', function () {
     expect(CardVariants::available(['normal' => true, 'reverse' => true], []))->toBe(['normal', 'reverse-holofoil']);
 });
+
+test('a base print tcgdex files with a stamp still counts as present beside another special print', function () {
+    // Quaquaval (svp-005): the regular promo is {holo, set-logo} — the
+    // card's own cardmarket product — and the staff promo is separate.
+    expect(CardVariants::available(['holo' => true], [
+        'pricing' => ['cardmarket' => ['unit' => 'EUR', 'idProduct' => 692227, 'avg' => 0.5]],
+        'variants_detailed' => [
+            ['type' => 'holo', 'size' => 'standard', 'stamp' => ['set-logo'], 'thirdParty' => ['cardmarket' => 692227, 'tcgplayer' => 487751]],
+            ['type' => 'holo', 'size' => 'standard', 'stamp' => ['set-logo', 'staff'], 'thirdParty' => ['cardmarket' => 761119, 'tcgplayer' => 522650]],
+        ],
+    ]))->toBe(['holofoil', 'holofoil+set-logo+staff']);
+});

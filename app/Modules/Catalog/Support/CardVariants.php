@@ -121,15 +121,23 @@ final class CardVariants
         // A flagged base print whose type tcgdex lists ONLY as special
         // prints doesn't exist on its own — Ascended Heroes has no plain
         // reverse, just Poké Ball and Energy pattern ones — so it isn't
-        // offered beside them.
+        // offered beside them. A type still has its base print when an
+        // entry of it is plain, or is the stamped/foiled entry
+        // specialPrints() recognised AS the base print (a promo's
+        // {holo, set-logo}).
         /** @var array<int, mixed> $detailed */
         $detailed = is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [];
+        $printEntries = array_column($prints, 'entry');
+        $basePresent = collect($detailed)
+            ->filter(fn (mixed $e) => is_array($e) && isset(self::MAP[$e['type'] ?? '']))
+            ->filter(fn (array $e) => (empty($e['foil']) && empty($e['stamp']))
+                || (self::keyFor($e) !== null && ! in_array($e, $printEntries, true)))
+            ->map(fn (array $e) => self::MAP[$e['type']])
+            ->unique();
         $onlySpecial = collect($prints)
             ->map(fn (array $p) => self::MAP[$p['entry']['type']])
             ->unique()
-            ->reject(fn (string $base) => collect($detailed)->contains(
-                fn (mixed $e) => is_array($e) && (self::MAP[$e['type'] ?? ''] ?? null) === $base && empty($e['foil']) && empty($e['stamp']),
-            ))
+            ->diff($basePresent)
             ->all();
 
         return [...collect(self::ORDER)->intersect($mapped)->diff($onlySpecial)->values()->all(), ...$special];
