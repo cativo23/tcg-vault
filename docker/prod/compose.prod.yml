@@ -71,11 +71,15 @@ services:
         # baseline down to ~50% and gave both workers real room during
         # the nightly catalog:refresh-prices drain. supervisor-tcgcsv (the
         # daily tcgcsv pull) adds two processes, its supervisor and its
-        # worker, not one: measured after the v1.2.0 deploy, 5 processes
-        # at ~75M each put the container at 255M idle. The nightly drain
-        # starts a second default worker (~75M more), past 320M; 448M
-        # covers that 6th process with ~40% headroom (host has ~3G free).
-        # Check `docker stats` after any deploy that changes the supervisors.
+        # worker. Measured after the v1.2.0 deploy: 5 PHP processes put the
+        # cgroup at ~257M idle (startup peaked at 308M). Each costs ~50M —
+        # ~19M heap plus ~32M of its own CLI opcache segment; `ps` RSS reads
+        # ~75M because it double-counts shared file pages, so size from the
+        # cgroup figure (`docker stats`), never from summed RSS. The nightly
+        # drain's second default worker plus heap growth toward Horizon's
+        # 48MB restart threshold reaches ~365M, past 320M; 448M leaves ~18%
+        # headroom (host had ~3.2G available). Re-check `docker stats` after
+        # any deploy that changes the supervisors.
         limits: { cpus: '0.5', memory: 448M }
         reservations: { cpus: '0.1', memory: 96M }
 
