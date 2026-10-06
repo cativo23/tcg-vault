@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Livewire\Concerns\PicksCustomPrint;
 use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
@@ -29,6 +30,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 #[Layout('layouts.app')]
 final class CollectionItems extends Component
 {
+    use PicksCustomPrint;
     use StripsUploadedPhotos;
     use WithFileUploads;
     use WithPagination;
@@ -155,17 +157,6 @@ final class CollectionItems extends Component
 
     /** @var array<int, string> */
     public array $editingAvailableVariants = [];
-
-    /**
-     * The "other print" picker, for a print tcgdex doesn't list (a Prize
-     * Pack cosmos holo). One picker serves every row; useCustomVariant()
-     * says which row it applies to.
-     */
-    public string $customBase = 'holofoil';
-
-    public ?string $customFoil = null;
-
-    public ?string $customStamp = null;
 
     /**
      * Same IDOR posture as ownedItemOrFail() above, scoped to every item
@@ -322,17 +313,7 @@ final class CollectionItems extends Component
 
     public function useCustomVariant(int $index): void
     {
-        if (! isset($this->editingRows[$index])) {
-            return;
-        }
-
-        $foil = CollectionService::nullIfEmpty($this->customFoil);
-        $stamp = CollectionService::nullIfEmpty($this->customStamp);
-        $key = CardVariants::compose($this->customBase, $foil, $stamp !== null ? [$stamp] : []);
-
-        if ($key === null) {
-            $this->addError('customFoil', 'Pick a foil or a stamp from the list — a print needs at least one to be told apart.');
-
+        if (! isset($this->editingRows[$index]) || ($key = $this->composeCustomVariant()) === null) {
             return;
         }
 
@@ -341,7 +322,6 @@ final class CollectionItems extends Component
         }
 
         $this->editingRows[$index]['variant'] = $key;
-        $this->resetErrorBag('customFoil');
     }
 
     /**

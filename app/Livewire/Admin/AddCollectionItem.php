@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Livewire\Concerns\PicksCustomPrint;
 use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardSummaryData;
@@ -23,6 +24,7 @@ use Throwable;
 #[Layout('layouts.app')]
 final class AddCollectionItem extends Component
 {
+    use PicksCustomPrint;
     use StripsUploadedPhotos;
     use WithFileUploads;
 
@@ -176,6 +178,19 @@ final class AddCollectionItem extends Component
         }
         unset($this->rows[$index]);
         $this->rows = array_values($this->rows);
+    }
+
+    public function useCustomVariant(int $index): void
+    {
+        if (! isset($this->rows[$index]) || ($key = $this->composeCustomVariant()) === null) {
+            return;
+        }
+
+        if (! in_array($key, $this->availableVariants, true)) {
+            $this->availableVariants[] = $key;
+        }
+
+        $this->rows[$index]['variant'] = $key;
     }
 
     public function toggleRowDetails(int $index): void
