@@ -11,6 +11,10 @@ use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CatalogSyncService;
+use GuzzleHttp\Psr7\Response as Psr7Response;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Support\Facades\Log;
 use Spatie\LaravelData\DataCollection;
@@ -144,6 +148,71 @@ test('the job also treats a SetNotFoundException as permanent, not just CardNotF
 
     Log::shouldHaveReceived('warning')->once()->withArgs(
         fn (string $message, array $context) => $message === 'SyncCardPricingJob: card sync failed permanently, not retrying'
+            && $context['tcgdex_card_id'] === 'me05-116',
+    );
+});
+
+// tcgdex's load balancer answers 503 "no available server" for a few
+// seconds on some nights, mid-sync. The retry that follows succeeds, so
+// these are not errors worth reporting — only a card that is still failing
+// when retryUntil() runs out is.
+
+function providerThrowing(Throwable $e): void
+{
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->once()->with('me05-116')->andThrow($e);
+    app()->instance(CardCatalogProvider::class, $provider);
+}
+
+function tcgdexStatus(int $status): RequestException
+{
+    return new RequestException(new Response(new Psr7Response($status, [], 'no available server')));
+}
+
+test('a transient tcgdex status puts the job back on the queue instead of failing it', function (int $status) {
+    providerThrowing(tcgdexStatus($status));
+
+    $job = (new SyncCardPricingJob('me05-116'))->withFakeQueueInteractions();
+    $job->handle(app(CatalogSyncService::class));
+
+    $job->assertReleased(delay: 10);
+})->with([429, 500, 502, 503, 504]);
+
+test('a connection failure to tcgdex is retried the same way', function () {
+    providerThrowing(new ConnectionException('cURL error 28: Operation timed out'));
+
+    $job = (new SyncCardPricingJob('me05-116'))->withFakeQueueInteractions();
+    $job->handle(app(CatalogSyncService::class));
+
+    $job->assertReleased(delay: 10);
+});
+
+test('each later retry waits longer, up to a minute', function (int $attempt, int $delay) {
+    providerThrowing(tcgdexStatus(503));
+
+    $job = (new SyncCardPricingJob('me05-116'))->withFakeQueueInteractions();
+    $job->job->attempts = $attempt;
+    $job->handle(app(CatalogSyncService::class));
+
+    $job->assertReleased(delay: $delay);
+})->with([[2, 30], [3, 60], [9, 60]]);
+
+test('a client error from tcgdex is not mistaken for a transient one', function () {
+    providerThrowing(tcgdexStatus(400));
+
+    $job = (new SyncCardPricingJob('me05-116'))->withFakeQueueInteractions();
+
+    expect(fn () => $job->handle(app(CatalogSyncService::class)))->toThrow(RequestException::class);
+    $job->assertNotReleased();
+});
+
+test('a card still failing when the deadline runs out is logged by its id', function () {
+    Log::spy();
+
+    (new SyncCardPricingJob('me05-116'))->failed(new RuntimeException('has been attempted too many times'));
+
+    Log::shouldHaveReceived('error')->once()->withArgs(
+        fn (string $message, array $context) => $message === 'SyncCardPricingJob: gave up on a card after retrying until the deadline'
             && $context['tcgdex_card_id'] === 'me05-116',
     );
 });

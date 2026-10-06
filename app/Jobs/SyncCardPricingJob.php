@@ -13,10 +13,13 @@ use App\Modules\Catalog\Services\CatalogSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 final class SyncCardPricingJob implements ShouldQueue
 {
@@ -87,14 +90,44 @@ final class SyncCardPricingJob implements ShouldQueue
             // an ID that never had a valid shape, a set mismatch, or a
             // response tcgdex sends the same way every time. Log and let
             // this ONE card's failure end here; the day's other jobs are
-            // unaffected (each SyncCardPricingJob is independent). Any
-            // OTHER exception (e.g. a `RequestException` from a network
-            // blip or a 5xx) propagates uncaught, so the queue's own
-            // retry/backoff actually applies.
+            // unaffected (each SyncCardPricingJob is independent).
             Log::warning('SyncCardPricingJob: card sync failed permanently, not retrying', [
                 'tcgdex_card_id' => $this->tcgdexCardId,
                 'reason' => $e->getMessage(),
             ]);
+        } catch (ConnectionException $e) {
+            $this->retryLater();
+        } catch (RequestException $e) {
+            // tcgdex's load balancer answers 503 "no available server"
+            // for a few seconds on some nights, and the next attempt
+            // succeeds. Released rather than rethrown: a rethrow is
+            // reported as an error on every attempt, and failed() below
+            // already speaks up if the card never comes through. Any
+            // other client error is not transient and still propagates.
+            if (! $e->response->serverError() && $e->response->status() !== 429) {
+                throw $e;
+            }
+
+            $this->retryLater();
         }
+    }
+
+    /**
+     * Called once retryUntil() has passed with the card still failing —
+     * the only point at which a transient failure is worth reporting.
+     */
+    public function failed(?Throwable $e): void
+    {
+        Log::error('SyncCardPricingJob: gave up on a card after retrying until the deadline', [
+            'tcgdex_card_id' => $this->tcgdexCardId,
+            'reason' => $e?->getMessage(),
+        ]);
+    }
+
+    private function retryLater(): void
+    {
+        $delays = $this->backoff();
+
+        $this->release($delays[min($this->attempts(), count($delays)) - 1]);
     }
 }
