@@ -219,17 +219,24 @@ interesting it is to build.
 - Deck lists
 - Trade and sale tracking
 - Usage analytics
-- **TCGplayer prices from tcgcsv.com as a second source.** tcgdex
-  only prices TCGplayer for sets it has a set-level group id for, and its
-  API only changes on a release, so whole sets go without USD prices for
-  weeks (30th Celebration, MEP promos) and prints it doesn't list (Prize
-  Pack cosmos holos and stamped reprints) never get one. tcgcsv publishes
-  TCGplayer's per-group products and prices
-  (`tcgcsv.com/tcgplayer/3/<groupId>/prices`), and tcgdex already
-  carries each print's TCGplayer product id. Fill only what tcgdex leaves
-  empty, keyed by product id, as its own snapshot source; replaces the
-  hand-entered prices used for those prints today. Check tcgcsv's usage
-  terms and update cadence before building.
+- **tcgcsv.com as the primary TCGplayer price source.** tcgdex prices
+  TCGplayer only for sets with a set-level group id and its API changes
+  only on a release, so whole sets went weeks without USD prices (30th
+  Celebration, MEP promos) and Prize Pack prints never got one. tcgdex
+  itself reads TCGplayer prices from tcgcsv, so going direct continues the
+  same series a day fresher; tcgdex stays the catalog and Cardmarket source.
+  Rows keep `source='tcgplayer'` with a new `origin` column
+  (`tcgdex`/`tcgcsv`/`hand`), so history, deltas and charts are untouched.
+  Prints link to TCGplayer products once (from tcgdex ids, card number in
+  the set's group, or an admin entry for Prize Pack), and one daily job
+  fetches about one request per group, following tcgcsv's usage rules
+  (custom User-Agent, check `last-updated.txt`, one pull a day). Phases,
+  each its own PR: schema + provenance labels; shadow sync that only
+  compares (5–7 days); fill gaps where tcgdex has no current price; primary
+  behind `TCGCSV_MODE` for rollback; then retire the hand-entered prices
+  and add a `price_source` CSV column. No backfill: tcgcsv's history
+  archive is withdrawn. Risks: a one-person service, and TCGplayer's own
+  data terms are unverified.
 - **Give the cache its own Redis instance.** It currently shares the
   Horizon queue's Redis, and the two need conflicting
   `maxmemory-policy` values (`noeviction` for queue data, `allkeys-lru`
