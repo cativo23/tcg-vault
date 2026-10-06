@@ -57,3 +57,14 @@ test('only an https base URL is accepted', function () {
     expect(fn () => new TcgcsvClient('http://tcgcsv.com', 'ua', new TcgcsvPriceParser))
         ->toThrow(InvalidArgumentException::class);
 });
+
+test('group names and abbreviations are plain text, and a malformed abbreviation is dropped', function () {
+    Http::fake(['tcgcsv.com/tcgplayer/3/groups' => Http::response(['success' => true, 'results' => [
+        ['groupId' => 1, 'name' => "ME: Set\e]52;c;evil\x07", 'abbreviation' => ['not', 'a', 'string'], 'isSupplemental' => false],
+    ]], 200)]);
+
+    $groups = app(TcgcsvClient::class)->groups();
+
+    expect($groups[0]['name'])->toBe('ME: Set]52;c;evil');
+    expect($groups[0]['abbreviation'])->toBeNull();
+});

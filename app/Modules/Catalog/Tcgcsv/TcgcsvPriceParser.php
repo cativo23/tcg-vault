@@ -45,12 +45,6 @@ final class TcgcsvPriceParser
         return array_map(fn (mixed $row) => $this->row($groupId, $row), $results);
     }
 
-    /** The base variant key a TCGplayer subtype prices, or null for one this app has no key for. */
-    public static function baseVariantFor(string $subType): ?string
-    {
-        return self::BASE_VARIANTS[$subType] ?? null;
-    }
-
     /** The TCGplayer subtype that prices a variant key's base print. */
     public static function subTypeFor(string $variant): ?string
     {
@@ -62,8 +56,11 @@ final class TcgcsvPriceParser
     private function row(int $groupId, mixed $row): TcgcsvPriceRow
     {
         if (! is_array($row) || ! is_int($row['productId'] ?? null) || $row['productId'] <= 0 || $row['productId'] > self::MAX_PRODUCT_ID
-            || ! is_string($row['subTypeName'] ?? null) || strlen($row['subTypeName']) > self::MAX_SUBTYPE_LENGTH) {
-            throw MalformedCatalogResponseException::forTcgcsvGroup($groupId, 'a row lacks a positive integer "productId" or a short string "subTypeName".');
+            || ! is_string($row['subTypeName'] ?? null) || strlen($row['subTypeName']) > self::MAX_SUBTYPE_LENGTH
+            // Letters, digits and simple punctuation only: the subtype is
+            // stored and logged, so no line breaks or control bytes.
+            || preg_match('/^[\p{L}\p{N} ._()\/-]+$/u', $row['subTypeName']) !== 1) {
+            throw MalformedCatalogResponseException::forTcgcsvGroup($groupId, 'a row lacks a positive integer "productId" or a short plain-text "subTypeName".');
         }
 
         return new TcgcsvPriceRow(

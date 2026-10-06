@@ -19,6 +19,9 @@ final class TcgcsvClient
 {
     private const TIMEOUT = 8;
 
+    /** Above this a response is not a price file; refused while reading, after decompression. */
+    private const MAX_BODY_BYTES = 5_000_000;
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $userAgent,
@@ -29,9 +32,6 @@ final class TcgcsvClient
             throw new InvalidArgumentException('The tcgcsv base URL must be https.');
         }
     }
-
-    /** Above this a response is not a price file; refused while reading, after decompression. */
-    private const MAX_BODY_BYTES = 5_000_000;
 
     /**
      * When tcgcsv last rebuilt its data; a build is pulled once. Only the
@@ -62,11 +62,15 @@ final class TcgcsvClient
         }
         $results = $json['results'];
 
+        // Names reach a terminal (the proposal command): control characters
+        // are stripped, not just console style tags.
+        $plain = fn (string $text) => (string) preg_replace('/\p{Cc}/u', '', $text);
+
         return array_values(array_map(fn (array $g) => [
-            'groupId' => (int) $g['groupId'],
-            'name' => (string) $g['name'],
-            'abbreviation' => isset($g['abbreviation']) ? (string) $g['abbreviation'] : null,
-            'isSupplemental' => (bool) ($g['isSupplemental'] ?? false),
+            'groupId' => $g['groupId'],
+            'name' => $plain($g['name']),
+            'abbreviation' => is_string($g['abbreviation'] ?? null) ? $plain($g['abbreviation']) : null,
+            'isSupplemental' => ($g['isSupplemental'] ?? false) === true,
         ], array_filter($results, fn (mixed $g) => is_array($g) && is_int($g['groupId'] ?? null) && is_string($g['name'] ?? null))));
     }
 
