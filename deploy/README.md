@@ -158,9 +158,9 @@ docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(A
 ```
 
 `catalog:check-pricing-freshness` alerts Discord when the last complete tcgcsv
-run (only if that record is lost, the last pulled build or tcgcsv price) is
-over 30h old, or none is on record, in either mode, once a TCGplayer group is
-mapped.
+run is over 30h old, or none is on record. If that record is lost, the last
+pulled build, then the newest tcgcsv price, stands in. This applies in either
+mode, once a TCGplayer group is mapped.
 
 With no set mapped to a TCGplayer group it compares nothing, without error — so
 map the groups after deploying:
