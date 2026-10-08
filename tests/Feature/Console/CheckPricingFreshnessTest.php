@@ -66,3 +66,30 @@ test('a fresh manual price does not hide a stalled sync', function () {
 
     Http::assertSent(fn ($request) => str_contains($request['content'], 'looks stuck'));
 });
+
+test('fresh tcgcsv prices do not hide a stalled tcgdex sync', function () {
+    Http::fake();
+    makeSnapshotAt(now()->subHours(30)->toDateTimeString());
+    CardPriceSnapshot::create([
+        'card_id' => Card::first()->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos',
+        'captured_on' => now()->toDateString(), 'currency' => 'USD', 'market_minor' => 129,
+    ]);
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'looks stuck'));
+});
+
+test('in fill mode a stalled tcgcsv sync is alerted on its own', function () {
+    Http::fake();
+    config(['tcgcsv.mode' => 'fill']);
+    makeSnapshotAt(now()->subHours(2)->toDateTimeString());
+    $card = Card::first();
+    App\Modules\Catalog\Models\CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'holofoil', 'product_id' => 1, 'sub_type' => 'Holofoil', 'group_id' => 1, 'method' => 'admin']);
+    $old = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => now()->subDays(2)->toDateString(), 'currency' => 'USD', 'market_minor' => 129]);
+    $old->forceFill(['created_at' => now()->subHours(40)])->save();
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'tcgcsv'));
+});

@@ -55,6 +55,7 @@ function runShadowSync(): void
 }
 
 test('in shadow mode it links prints and compares prices, writing no price at all', function () {
+    config(['tcgcsv.mode' => 'shadow']);
     ['darkrai' => $darkrai, 'pikachu' => $pikachu] = shadowFixture();
     Http::fake([
         'tcgcsv.com/last-updated.txt' => Http::response('2026-10-05T20:05:57+0000', 200),
@@ -69,7 +70,7 @@ test('in shadow mode it links prints and compares prices, writing no price at al
     expect(CardPriceSnapshot::count())->toBe($before);
     expect(CardTcgplayerLink::where('card_id', $darkrai->id)->value('product_id'))->toBe(704873);
     expect(CardTcgplayerLink::where('card_id', $pikachu->id)->value('product_id'))->toBe(696682);
-    $log->shouldHaveReceived('info')->withArgs(fn (string $message, array $context) => $message === 'tcgcsv shadow sync'
+    $log->shouldHaveReceived('info')->withArgs(fn (string $message, array $context) => $message === 'tcgcsv sync'
         && $context['groups_ok'] === 2 && $context['groups_failed'] === 0 && $context['partial_retry'] === false
         && $context['compared'] === 1 && $context['within_2_percent'] === 1
         && $context['linked_without_tcgdex_price'] === 1 && $context['groups_fetched'] === [24688, 24722]);
@@ -89,7 +90,7 @@ test('a group that fails does not stop the others', function () {
 
     expect(CardTcgplayerLink::where('card_id', $pikachu->id)->exists())->toBeTrue();
     $log->shouldHaveReceived('warning')->withArgs(fn (string $message, array $context) => $message === 'tcgcsv group failed' && $context === ['group' => 24688, 'error' => 'RequestException']);
-    $log->shouldHaveReceived('info')->withArgs(fn (string $message, array $context) => $message === 'tcgcsv shadow sync'
+    $log->shouldHaveReceived('info')->withArgs(fn (string $message, array $context) => $message === 'tcgcsv sync'
         && $context['groups_ok'] === 1 && $context['groups_failed'] === 1);
 });
 
@@ -176,7 +177,7 @@ test('with no groups configured it only checks the build', function () {
     runShadowSync();
 
     Http::assertSentCount(1);
-    $log->shouldHaveReceived('info')->withArgs(fn (string $message, array $context) => $message === 'tcgcsv shadow sync' && $context['groups_ok'] === 0);
+    $log->shouldHaveReceived('info')->withArgs(fn (string $message, array $context) => $message === 'tcgcsv sync' && $context['groups_ok'] === 0);
 });
 
 test('a partly failed build is not marked as pulled, so its groups are retried', function () {
@@ -249,7 +250,7 @@ test('a throttle stops the loop and leaves the remaining groups for the retry', 
     runShadowSync();
 
     Http::assertSentCount(2); // the build check and group 1 only
-    $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv shadow sync' && $c['groups_failed'] === 3);
+    $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['groups_failed'] === 3);
 });
 
 test('a bug in a group\'s handling is not swallowed as a failed group', function () {
@@ -283,4 +284,83 @@ test('a partly failed build is released for its retry', function () {
     $job = new SyncTcgcsvPricesJob;
     $job->setJob($queued);
     $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class));
+});
+
+/** The Tyranitar shape: a linked print tcgdex prices on cardmarket only. */
+function gapFixture(): Card
+{
+    $set = Set::create(['tcgdex_id' => 'sv10', 'name' => 'Destined Rivals']);
+    DB::table('set_tcgplayer_groups')->insert(['set_id' => $set->id, 'group_id' => 24269]);
+    $card = Card::create(['tcgdex_id' => 'sv10-096', 'set_id' => $set->id, 'local_id' => '096', 'name' => "Team Rocket's Tyranitar"]);
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'holofoil:cosmos', 'product_id' => 659941, 'sub_type' => 'Holofoil', 'group_id' => 2374, 'method' => 'admin']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 144]);
+
+    return $card;
+}
+
+function gapFake(array $mcap = [['productId' => 659941, 'lowPrice' => 0.53, 'marketPrice' => 1.29, 'subTypeName' => 'Holofoil']]): void
+{
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::response('2026-10-07T20:05:57+0000', 200),
+        'tcgcsv.com/tcgplayer/3/2374/prices' => Http::response(tcgcsvPricesResponse($mcap), 200),
+        'tcgcsv.com/tcgplayer/3/24269/prices' => Http::response(tcgcsvPricesResponse([]), 200),
+    ]);
+}
+
+test('in fill mode a linked print tcgdex has no TCGplayer price for gets tcgcsv\'s, daily', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    gapFake();
+
+    runShadowSync();
+
+    $row = CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->sole();
+    expect([$row->origin, $row->variant, $row->currency, $row->market_minor, $row->low_minor, $row->capturedOnKey()])
+        ->toBe(['tcgcsv', 'holofoil:cosmos', 'USD', 129, 53, today()->toDateString()]);
+    expect($row->raw['productId'])->toBe(659941);
+    expect((new App\Modules\Catalog\Services\CardPriceResolver)->resolveForVariant($card->fresh(), 'holofoil:cosmos')->id)->toBe($row->id);
+});
+
+test('fill mode never writes over a print tcgdex still prices on TCGplayer', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    $tcgdex = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 150]);
+    gapFake();
+
+    runShadowSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->pluck('id')->all())->toBe([$tcgdex->id]);
+});
+
+test('fill mode leaves manual prices and prints without a market price alone', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    $manual = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 100]);
+    gapFake([['productId' => 659941, 'lowPrice' => null, 'marketPrice' => null, 'subTypeName' => 'Holofoil']]);
+
+    runShadowSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(0);
+    expect($manual->fresh()->market_minor)->toBe(100);
+});
+
+test('shadow mode still writes no price at all', function () {
+    config(['tcgcsv.mode' => 'shadow']);
+    $card = gapFixture();
+    gapFake();
+
+    runShadowSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(0);
+});
+
+test('the run reports how many gaps it filled', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    gapFixture();
+    gapFake();
+    $log = tcgcsvLog();
+
+    runShadowSync();
+
+    $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['mode'] === 'fill' && $c['gaps_filled'] === 1);
 });
