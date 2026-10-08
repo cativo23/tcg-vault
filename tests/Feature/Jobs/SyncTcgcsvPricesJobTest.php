@@ -655,6 +655,7 @@ test('an admin-confirmed link gets a wider cardmarket bound, since cardmarket lu
 test('an admin-confirmed link is still held back by a jump from its own recent tcgcsv price', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete(); // only the tcgcsv bound applies
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1290]);
     gapFake([['productId' => 659941, 'lowPrice' => 62.24, 'marketPrice' => 64.16, 'subTypeName' => 'Holofoil']]);
 
