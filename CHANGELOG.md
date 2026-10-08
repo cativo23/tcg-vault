@@ -13,7 +13,9 @@ All notable changes to this project are documented here. Format follows
   now get tcgcsv's market price every day, instead of only a hand-copied
   one. tcgdex's prices and hand-entered ones are never overwritten, though
   tcgcsv's price takes over from a hand-copied one on display. A price far
-  off the print's last one or its cardmarket price is held back.
+  off the print's recent one or its cardmarket price is held back and sent
+  to Discord, and a weakly-linked print with nothing to check against is
+  not filled.
   `TCGCSV_MODE=shadow` turns writing off again; any other value than `fill`
   does too.
 - The pricing freshness alert watches the tcgcsv sync on its own, by its
