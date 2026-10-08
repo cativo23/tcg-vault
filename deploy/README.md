@@ -139,8 +139,11 @@ linked prints tcgdex has no TCGplayer price for in the last 3 days (rows with
 A gap price more than 3x off the print's tcgcsv price from the last 3 days,
 or 4x off its cardmarket price (moves under $2 excepted), is held back, named
 in the day's log (`gaps_implausible`) and sent to Discord — check that
-print's link. A link only tcgdex's third-party ids vouch for is not filled
-until a price exists to check it against (`gaps_unverified`). Nothing is
+print's link. A hold is not permanent: once the old tcgcsv price is over 3
+days old, the new price is written unless cardmarket disagrees, and Discord
+gets a note naming it (`gaps_accepted_after_hold`). A link only tcgdex's
+third-party ids vouch for is not filled until a price exists to check it
+against (`gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
 filled when the build is over 36h old. Any `TCGCSV_MODE` other than exactly
 `fill` runs as `shadow`.
 
@@ -155,7 +158,7 @@ docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(A
 ```
 
 `catalog:check-pricing-freshness` alerts Discord when the last complete tcgcsv
-run (or, if that record is lost, the last pulled build or tcgcsv price) is
+run (only if that record is lost, the last pulled build or tcgcsv price) is
 over 30h old, or none is on record, in either mode, once a TCGplayer group is
 mapped.
 
