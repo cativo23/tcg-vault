@@ -6,12 +6,19 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-08
+
 ### Fixed
 
 - A TCGplayer link confirmed by an admin gets a wider cardmarket bound
   (15x instead of 4x), since cardmarket often lumps a stamped promo
   (staff, Pokémon Center) in with its plain print. The check against the
   print's own recent tcgcsv price is unchanged.
+
+### Deploy
+
+No migrations. To confirm a held link as admin, see "tcgcsv sync" in
+`deploy/README.md`.
 
 ## [1.3.0] - 2026-10-08
 
