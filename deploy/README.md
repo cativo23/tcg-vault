@@ -136,9 +136,24 @@ products and compares tcgcsv's price with tcgdex's. With `TCGCSV_MODE=fill`
 (the default) it also writes tcgcsv's price as the day's TCGplayer price for
 linked prints tcgdex has no TCGplayer price for in the last 3 days (rows with
 `origin = tcgcsv`); it never touches a tcgdex price or one entered by hand.
-To roll back, set `TCGCSV_MODE=shadow` and restart `horizon`: it compares and
-writes nothing. `catalog:check-pricing-freshness` alerts Discord if the newest
-tcgcsv price is over 30h old (fill mode only, once tcgcsv has written one).
+A gap price more than 3x off the print's last tcgcsv price, or 4x off its
+cardmarket price (moves under $2 excepted), is held back and named in the
+day's log (`gaps_implausible`); so is everything when the build is over 36h
+old. Any `TCGCSV_MODE` other than exactly `fill` runs as `shadow`.
+
+To roll back, set `TCGCSV_MODE=shadow` in `.env` and recreate the containers
+that read it (a plain `restart` keeps the old environment):
+
+```bash
+docker compose -f compose.prod.yml up -d --force-recreate horizon scheduler
+# Optional: drop the prices tcgcsv already wrote (they otherwise stay current
+# for up to 3 days, and in the price history):
+docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(App\Modules\Catalog\Models\CardPriceSnapshot::where('origin', 'tcgcsv')->delete());"
+```
+
+`catalog:check-pricing-freshness` alerts Discord when the last complete tcgcsv
+run is over 30h old, or none is on record, in either mode, once a TCGplayer
+group is mapped.
 
 With no set mapped to a TCGplayer group it compares nothing, without error — so
 map the groups after deploying:

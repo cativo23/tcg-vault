@@ -11,10 +11,19 @@ All notable changes to this project are documented here. Format follows
 - tcgcsv fills TCGplayer price gaps. Prints linked to a TCGplayer product
   that tcgdex doesn't price on TCGplayer (special prints like cosmos holos)
   now get tcgcsv's market price every day, instead of only a hand-copied
-  one. tcgdex's prices and hand-entered ones are never overwritten.
-  `TCGCSV_MODE=shadow` turns writing off again.
-- The pricing freshness alert watches the tcgcsv sync on its own, and a
-  fresh tcgcsv price no longer hides a stalled tcgdex sync.
+  one. tcgdex's prices and hand-entered ones are never overwritten, though
+  tcgcsv's price takes over from a hand-copied one on display. A price far
+  off the print's last one or its cardmarket price is held back.
+  `TCGCSV_MODE=shadow` turns writing off again; any other value than `fill`
+  does too.
+- The pricing freshness alert watches the tcgcsv sync on its own, by its
+  last complete run, and a fresh tcgcsv price no longer hides a stalled
+  tcgdex sync.
+
+### Changed
+
+- The manual-price refusal no longer says tcgdex prices a print that only
+  tcgcsv does.
 
 ## [1.2.1] - 2026-10-06
 
