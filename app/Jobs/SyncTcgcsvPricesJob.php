@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
@@ -29,11 +30,12 @@ use UnexpectedValueException;
  * Pulls each linked set's TCGplayer prices from tcgcsv once per tcgcsv
  * build (about one request per group) and links prints to products.
  *
- * Shadow mode (the only mode so far): compares tcgcsv's price with the
- * tcgdex-synced TCGplayer price for each linked print and logs the
- * result — it writes no prices. That comparison decides whether tcgcsv
- * can be trusted to fill gaps (ROADMAP: tcgcsv as the primary TCGplayer
- * source).
+ * Every run compares tcgcsv's price with the tcgdex-synced TCGplayer
+ * price for each linked print and logs the result. In fill mode (the
+ * default, config tcgcsv.mode) it also writes tcgcsv's price for the
+ * linked prints tcgdex has no recent TCGplayer price for — the gaps —
+ * and never touches a price tcgdex has or one entered by hand. Shadow
+ * mode writes nothing; it is the rollback.
  *
  * Retries are deliberately slow: tcgcsv throttles or bans clients that
  * hammer it, so a failure or an unpublished build waits an hour, and a
@@ -119,7 +121,11 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             }
         });
 
+        $mode = config('tcgcsv.mode') === 'shadow' ? 'shadow' : 'fill';
+        [$comparison, $gaps] = $this->compare($prices);
+
         $summary = [
+            'mode' => $mode,
             'build' => $build,
             // A retry after a partial failure compares only the groups it
             // re-fetched, not the whole build.
@@ -128,11 +134,12 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'groups_fetched' => $fetched,
             'groups_failed' => count($failedGroups),
             'skipped_no_matching_subtype' => $skipped,
-            ...$this->compare($prices),
+            ...$comparison,
+            'gaps_filled' => $mode === 'fill' ? $this->fillGaps($gaps, $build) : 0,
         ];
 
-        Log::channel('tcgcsv')->info('tcgcsv shadow sync', $summary);
-        // Kept for the shadow-phase review even after logs rotate.
+        Log::channel('tcgcsv')->info('tcgcsv sync', $summary);
+        // Kept for reviewing tcgcsv against tcgdex even after logs rotate.
         $day = 'tcgcsv:shadow:'.now()->toDateString();
         Cache::put($day, [...Cache::get($day, []), $summary], now()->addDays(30));
 
@@ -205,10 +212,11 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * How tcgcsv's price for each linked print compares with the latest
      * tcgdex-synced TCGplayer price for it (within the resolver's staleness
      * window), and how many linked prints tcgdex doesn't price at all —
-     * the gaps tcgcsv would fill. Covers only the groups this run fetched.
+     * the gaps tcgcsv fills, returned alongside the stats. Covers only the
+     * groups this run fetched.
      *
      * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices
-     * @return array<string, mixed>
+     * @return array{array<string, mixed>, list<array{CardTcgplayerLink, TcgcsvPriceRow}>}
      */
     private function compare(array $prices): array
     {
@@ -224,7 +232,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $diffs = [];
         $outliers = [];
         $outlierCount = 0;
-        $gaps = 0;
+        $gaps = [];
 
         $links = CardTcgplayerLink::query()->whereNotNull('group_id')->get(['card_id', 'variant', 'product_id', 'sub_type', 'group_id']);
         foreach ($links as $link) {
@@ -235,7 +243,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
             $theirs = $tcgdex["{$link->card_id}|{$link->variant}"] ?? null;
             if ($theirs === null || $theirs === 0) {
-                $gaps++;
+                $gaps[] = [$link, $row];
 
                 continue;
             }
@@ -250,14 +258,53 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             }
         }
 
-        return [
+        return [[
             'compared' => count($diffs),
             'within_2_percent' => count(array_filter($diffs, fn (float $d) => $d <= 0.02)),
             'median_diff_percent' => $this->medianPercent($diffs),
             'over_25_percent_count' => $outlierCount,
             'over_25_percent' => $this->outlierLabels($outliers),
-            'linked_without_tcgdex_price' => $gaps,
-        ];
+            'linked_without_tcgdex_price' => count($gaps),
+        ], $gaps];
+    }
+
+    /**
+     * Writes tcgcsv's price as today's TCGplayer price for each gap. A row
+     * tcgdex or a person wrote for today is never overwritten — tcgdex's
+     * sync may land between the comparison and this write — so only a
+     * missing row or tcgcsv's own earlier one for today is set.
+     *
+     * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $gaps
+     */
+    private function fillGaps(array $gaps, string $build): int
+    {
+        $today = CarbonImmutable::today()->toDateString();
+        $filled = 0;
+
+        foreach ($gaps as [$link, $row]) {
+            $snapshot = CardPriceSnapshot::firstOrNew([
+                'card_id' => $link->card_id,
+                'source' => 'tcgplayer',
+                'variant' => $link->variant,
+                'captured_on' => $today,
+            ]);
+            if ($snapshot->exists && $snapshot->origin !== 'tcgcsv') {
+                continue;
+            }
+
+            $snapshot->fill([
+                'origin' => 'tcgcsv',
+                'currency' => 'USD',
+                'market_minor' => $row->marketMinor,
+                'low_minor' => $row->lowMinor,
+                'trend_minor' => null,
+                'source_updated_at' => $build,
+                'raw' => ['productId' => $row->productId, 'groupId' => $row->groupId, 'subType' => $row->subType, 'build' => $build],
+            ])->save();
+            $filled++;
+        }
+
+        return $filled;
     }
 
     /** @param  list<float>  $values */

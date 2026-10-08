@@ -7,6 +7,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
 use Illuminate\Console\Scheduling\Schedule;
@@ -318,7 +319,7 @@ test('in fill mode a linked print tcgdex has no TCGplayer price for gets tcgcsv\
     expect([$row->origin, $row->variant, $row->currency, $row->market_minor, $row->low_minor, $row->capturedOnKey()])
         ->toBe(['tcgcsv', 'holofoil:cosmos', 'USD', 129, 53, today()->toDateString()]);
     expect($row->raw['productId'])->toBe(659941);
-    expect((new App\Modules\Catalog\Services\CardPriceResolver)->resolveForVariant($card->fresh(), 'holofoil:cosmos')->id)->toBe($row->id);
+    expect((new CardPriceResolver)->resolveForVariant($card->fresh(), 'holofoil:cosmos')->id)->toBe($row->id);
 });
 
 test('fill mode never writes over a print tcgdex still prices on TCGplayer', function () {
@@ -363,4 +364,15 @@ test('the run reports how many gaps it filled', function () {
     runShadowSync();
 
     $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['mode'] === 'fill' && $c['gaps_filled'] === 1);
+});
+
+test('fill mode never overwrites today\'s tcgdex row, even one without a market price', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    $tcgdex = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => null, 'low_minor' => 90]);
+    gapFake();
+
+    runShadowSync();
+
+    expect($tcgdex->fresh()->only(['origin', 'market_minor', 'low_minor']))->toBe(['origin' => 'tcgdex', 'market_minor' => null, 'low_minor' => 90]);
 });
