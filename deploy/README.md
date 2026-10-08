@@ -141,14 +141,16 @@ or 4x off its cardmarket price (moves under $2 excepted), is held back, named
 in the day's log (`gaps_implausible`) and sent to Discord — check that
 print's link. If the link is right (cardmarket often prices a stamped print
 like a staff or Pokémon Center promo as its plain one), confirm it as an admin
-link; those skip the cardmarket check, though not the tcgcsv one:
+link; those get a 15x cardmarket bound instead of 4x, and the same tcgcsv one.
+It prints the rows updated — expect `1`:
 
 ```bash
-docker compose -f compose.prod.yml exec app php artisan tinker --execute="App\Modules\Catalog\Models\CardTcgplayerLink::where('card_id', App\Modules\Catalog\Models\Card::where('tcgdex_id', 'mep-004')->value('id'))->where('variant', 'holofoil+set-logo+staff')->update(['method' => 'admin']);"
+docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(App\Modules\Catalog\Models\CardTcgplayerLink::where('card_id', App\Modules\Catalog\Models\Card::where('tcgdex_id', 'mep-004')->value('id'))->where('variant', 'holofoil+set-logo+staff')->update(['method' => 'admin', 'verified_at' => now()]));"
 ```
 
 A hold is not permanent: once the old tcgcsv price is over 3
-days old, the new price is written unless cardmarket disagrees, and Discord
+days old, the new price is written unless cardmarket disagrees (by 4x, or
+15x for an admin link), and Discord
 gets a note naming it (`gaps_accepted_after_hold`). A link only tcgdex's
 third-party ids vouch for is not filled until a price exists to check it
 against (`gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is

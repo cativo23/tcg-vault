@@ -8,10 +8,10 @@ All notable changes to this project are documented here. Format follows
 
 ### Fixed
 
-- A TCGplayer link confirmed by an admin is no longer held back by its
-  cardmarket price, which often lumps a stamped promo (staff, Pokémon
-  Center) in with its plain print. The check against the print's own
-  recent tcgcsv price still applies.
+- A TCGplayer link confirmed by an admin gets a wider cardmarket bound
+  (15x instead of 4x), since cardmarket often lumps a stamped promo
+  (staff, Pokémon Center) in with its plain print. The check against the
+  print's own recent tcgcsv price is unchanged.
 
 ## [1.3.0] - 2026-10-08
 
