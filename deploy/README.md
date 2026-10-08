@@ -128,12 +128,19 @@ docker compose -f compose.prod.yml exec app php artisan photos:strip-metadata
 docker compose -f compose.prod.yml exec app php artisan catalog:backfill-images
 ```
 
-## tcgcsv shadow sync (once, after the release that adds it)
+## tcgcsv sync (map groups once, after the release that adds it)
 
 `SyncTcgcsvPricesJob` runs daily at 20:30 UTC on Horizon's `supervisor-tcgcsv`
-(connection `redis-long`, queue `tcgcsv`). It writes no prices yet: it links
-prints to TCGplayer products and compares tcgcsv's price with tcgdex's. With
-no set mapped to a TCGplayer group it compares nothing, without error — so
+(connection `redis-long`, queue `tcgcsv`). It links prints to TCGplayer
+products and compares tcgcsv's price with tcgdex's. With `TCGCSV_MODE=fill`
+(the default) it also writes tcgcsv's price as the day's TCGplayer price for
+linked prints tcgdex has no TCGplayer price for in the last 3 days (rows with
+`origin = tcgcsv`); it never touches a tcgdex price or one entered by hand.
+To roll back, set `TCGCSV_MODE=shadow` and restart `horizon`: it compares and
+writes nothing. `catalog:check-pricing-freshness` alerts Discord if the newest
+tcgcsv price is over 30h old (fill mode only, once tcgcsv has written one).
+
+With no set mapped to a TCGplayer group it compares nothing, without error — so
 map the groups after deploying:
 
 ```bash
@@ -148,9 +155,9 @@ docker compose -f compose.prod.yml exec app php artisan catalog:propose-tcgplaye
 docker compose -f compose.prod.yml exec app php artisan catalog:propose-tcgplayer-groups --set=30th --group=24722
 ```
 
-The day's comparison is logged on the `tcgcsv` channel (stderr of the
-`horizon` container) and kept in the cache under `tcgcsv:shadow:<date>` for
-30 days. After 5–7 days, read them to decide on the next phase:
+The day's run (comparison and `gaps_filled`) is logged on the `tcgcsv`
+channel (stderr of the `horizon` container) and kept in the cache under
+`tcgcsv:shadow:<date>` for 30 days:
 
 ```bash
 docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(cache('tcgcsv:shadow:'.now()->toDateString()));"
