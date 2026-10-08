@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Jobs\SyncTcgcsvPricesJob;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Support\DiscordAlerter;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Catches a stalled catalog:refresh-prices run — the daily sync
@@ -22,9 +26,10 @@ use Illuminate\Console\Command;
  * routes/console.php), so a normal day's run has hours of buffer before
  * this ever fires.
  *
- * In tcgcsv fill mode the tcgcsv sync is watched separately, by its own
- * rows: each sync is judged only by what it writes, so one running fine
- * never hides the other one stopping.
+ * The tcgcsv sync is watched separately, by when it last completed a
+ * run rather than by the prices it writes — it writes only for gaps,
+ * and may have none — so neither sync running fine hides the other one
+ * stopping.
  */
 final class CheckPricingFreshness extends Command
 {
@@ -41,13 +46,14 @@ final class CheckPricingFreshness extends Command
     {
         $this->checkTcgcsv($alerter);
 
-        // A hand-entered price is written whenever someone saves one, so
-        // counting it would let a single save mask a sync that stopped.
+        // Only tcgdex's own rows: a hand-entered price or a tcgcsv fill
+        // would otherwise mask a tcgdex sync that stopped. Manual rows are
+        // excluded by source too, since origin is not enforced on them.
         $newest = CardPriceSnapshot::query()->where('source', '!=', 'manual')->where('origin', 'tcgdex')->max('created_at');
 
         if ($newest === null) {
-            $alerter->send('⚠️ tcg-vault: no price snapshot exists at all — the daily pricing sync may have never run.');
-            $this->warn('No price snapshot found.');
+            $alerter->send('⚠️ tcg-vault: no tcgdex price snapshot exists at all — the daily pricing sync may have never run.');
+            $this->warn('No tcgdex price snapshot found.');
 
             return self::SUCCESS;
         }
@@ -56,7 +62,7 @@ final class CheckPricingFreshness extends Command
         // default (negative when $newest is in the past) — absolute:
         // true is required to get "how many hours old", not "how many
         // hours until".
-        $hoursSinceNewest = now()->diffInHours($newest, absolute: true);
+        $hoursSinceNewest = (int) floor(now()->diffInHours($newest, absolute: true));
 
         if ($hoursSinceNewest >= self::STALE_AFTER_HOURS) {
             $alerter->send("⚠️ tcg-vault: the newest price snapshot is {$hoursSinceNewest}h old — the daily pricing sync looks stuck.");
@@ -71,26 +77,28 @@ final class CheckPricingFreshness extends Command
     }
 
     /**
-     * Only once tcgcsv has written a price: a fill-mode sync with no gaps
-     * to fill writes nothing, which is not a stall. If tcgdex later prices
-     * every gap, tcgcsv stops writing and this alerts once a day until
-     * the mode is set to shadow.
+     * In either tcgcsv mode — shadow still runs — once any TCGplayer
+     * group is mapped, since with none the sync has nothing to fetch.
      */
     private function checkTcgcsv(DiscordAlerter $alerter): void
     {
-        if (config('tcgcsv.mode') === 'shadow' || ! CardTcgplayerLink::query()->exists()) {
+        $mapped = DB::table('set_tcgplayer_groups')->exists() || CardTcgplayerLink::query()->whereNotNull('group_id')->exists();
+        if (! $mapped) {
             return;
         }
 
-        $newest = CardPriceSnapshot::query()->where('origin', 'tcgcsv')->max('created_at');
-        if ($newest === null) {
+        $lastRun = Cache::get(SyncTcgcsvPricesJob::LAST_RUN_CACHE_KEY);
+        if (! is_string($lastRun)) {
+            $alerter->send('⚠️ tcg-vault: no complete tcgcsv sync is on record — the tcgcsv sync looks stuck.');
+            $this->warn('No complete tcgcsv sync on record.');
+
             return;
         }
 
-        $hours = now()->diffInHours($newest, absolute: true);
+        $hours = (int) floor(now()->diffInHours(CarbonImmutable::parse($lastRun), absolute: true));
         if ($hours >= self::TCGCSV_STALE_AFTER_HOURS) {
-            $alerter->send("⚠️ tcg-vault: the newest tcgcsv price is {$hours}h old — the tcgcsv sync looks stuck.");
-            $this->warn("Newest tcgcsv price is {$hours}h old.");
+            $alerter->send("⚠️ tcg-vault: the last complete tcgcsv sync was {$hours}h ago — the tcgcsv sync looks stuck.");
+            $this->warn("Last complete tcgcsv sync was {$hours}h ago.");
         }
     }
 }
