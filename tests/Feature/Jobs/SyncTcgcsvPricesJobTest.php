@@ -585,3 +585,40 @@ test('held-back gap prices are sent to Discord, not only logged', function () {
 
     Http::assertSent(fn ($request) => str_contains($request->url(), 'discord.com') && str_contains($request['content'], 'sv10-096 holofoil:cosmos'));
 });
+
+test('a price accepted once its hold expires is reported to Discord', function () {
+    config(['tcgcsv.mode' => 'fill', 'services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
+    $card = gapFixture();
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
+    Cache::put('tcgcsv:held:'.$card->id.'|holofoil:cosmos', true, now()->addDays(7));
+    Http::fake(['discord.com/*' => Http::response('', 204)]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(1);
+    Http::assertSent(fn ($request) => str_contains($request->url(), 'discord.com') && str_contains($request['content'], 'after a hold') && str_contains($request['content'], 'sv10-096 holofoil:cosmos'));
+});
+
+test('a held-back price is remembered so its later acceptance can be reported', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    gapFake([['productId' => 659941, 'lowPrice' => 9.0, 'marketPrice' => 12.90, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(Cache::has('tcgcsv:held:'.$card->id.'|holofoil:cosmos'))->toBeTrue();
+});
+
+test('unverified prints are named in the log, not just counted', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
+    gapFake();
+    $log = tcgcsvLog();
+
+    runTcgcsvSync();
+
+    $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_unverified_prints'] === ['sv10-096 holofoil:cosmos']);
+});

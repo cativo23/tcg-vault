@@ -84,6 +84,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
     private const PLAUSIBLE_MOVE_MINOR = 200;
 
+    /** Marks a print whose gap price was held back, keyed by "card_id|variant". */
+    private const HELD_CACHE_PREFIX = 'tcgcsv:held:';
+
     public function __construct()
     {
         $this->onConnection('redis-long');
@@ -148,9 +151,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $mode = $this->mode();
         [$comparison, $gaps] = $this->compare($prices);
         $buildTooOld = CarbonImmutable::parse($build)->lt(now()->subHours(self::MAX_FILL_BUILD_AGE_HOURS));
-        [$filled, $implausible, $implausibleCount, $unverified] = $mode === 'fill' && ! $buildTooOld
+        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold] = $mode === 'fill' && ! $buildTooOld
             ? $this->fillGaps($gaps, $build)
-            : [0, [], 0, 0];
+            : [0, [], 0, [], []];
 
         $summary = [
             'mode' => $mode,
@@ -167,12 +170,17 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'gaps_filled' => $filled,
             'gaps_implausible_count' => $implausibleCount,
             'gaps_implausible' => $this->outlierLabels($implausible),
-            'gaps_unverified' => $unverified,
+            'gaps_unverified' => count($unverified),
+            'gaps_unverified_prints' => $this->outlierLabels(array_slice($unverified, 0, 10)),
+            'gaps_accepted_after_hold' => $this->outlierLabels(array_slice($acceptedAfterHold, 0, 10)),
         ];
 
         Log::channel('tcgcsv')->info('tcgcsv sync', $summary);
         if ($implausibleCount > 0) {
             app(DiscordAlerter::class)->send("⚠️ tcg-vault: tcgcsv held back {$implausibleCount} implausible TCGplayer price(s) — check their links: ".implode(', ', $summary['gaps_implausible']));
+        }
+        if ($acceptedAfterHold !== []) {
+            app(DiscordAlerter::class)->send('ℹ️ tcg-vault: tcgcsv wrote '.count($acceptedAfterHold).' TCGplayer price(s) after a hold expired — check their links if nobody did: '.implode(', ', $summary['gaps_accepted_after_hold']));
         }
         // Kept for reviewing tcgcsv against tcgdex even after logs rotate.
         $day = 'tcgcsv:shadow:'.now()->toDateString();
@@ -327,13 +335,15 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * except an implausible one (see MAX_RATIO_TO_LAST), or one whose link
      * only tcgdex's third-party ids vouch for (TRUST 1, served
      * inconsistently) while no recent price exists to check it against —
-     * those are counted as unverified. A row tcgdex or a
+     * those are counted as unverified. A held-back print is remembered for
+     * a week (HELD_CACHE_PREFIX), so a price accepted once its hold has
+     * expired is reported rather than going live unnoticed. A row tcgdex or a
      * person wrote for today is never overwritten — tcgdex's sync may land
      * between the comparison and this write — so only a missing row or
      * tcgcsv's own earlier one for today is set.
      *
      * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $gaps
-     * @return array{int, list<array{int, string}>, int, int} filled, the first implausible [card_id, variant], how many were implausible, how many unverified
+     * @return array{int, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string}>} filled, the first implausible [card_id, variant], how many were implausible, the unverified, the accepted after a hold
      */
     private function fillGaps(array $gaps, string $build): array
     {
@@ -348,20 +358,22 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $filled = 0;
         $implausible = [];
         $implausibleCount = 0;
-        $unverified = 0;
+        $unverified = [];
+        $acceptedAfterHold = [];
 
         foreach ($gaps as [$link, $row]) {
             $key = "{$link->card_id}|{$link->variant}";
             $market = (int) $row->marketMinor;
             $references = [$lastTcgcsv[$key] ?? null, $cardmarket[$key] ?? null];
             if ($references === [null, null] && (CardTcgplayerLink::TRUST[$link->method] ?? 0) < CardTcgplayerLink::TRUST['tcgdex-price']) {
-                $unverified++;
+                $unverified[] = [(int) $link->card_id, (string) $link->variant];
 
                 continue;
             }
             if ($this->farFrom($market, $lastTcgcsv[$key] ?? null, self::MAX_RATIO_TO_LAST)
                 || $this->farFrom($market, $cardmarket[$key] ?? null, self::MAX_RATIO_TO_CARDMARKET)) {
                 $implausibleCount++;
+                Cache::put(self::HELD_CACHE_PREFIX.$key, true, now()->addDays(7));
                 if (count($implausible) < 10) {
                     $implausible[] = [(int) $link->card_id, (string) $link->variant];
                 }
@@ -396,9 +408,12 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 continue;
             }
             $filled++;
+            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null) {
+                $acceptedAfterHold[] = [(int) $link->card_id, (string) $link->variant];
+            }
         }
 
-        return [$filled, $implausible, $implausibleCount, $unverified];
+        return [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold];
     }
 
     /**
