@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A TCGplayer link confirmed by an admin is no longer held back by its
+  cardmarket price, which often lumps a stamped promo (staff, Pokémon
+  Center) in with its plain print. The check against the print's own
+  recent tcgcsv price still applies.
+
 ## [1.3.0] - 2026-10-08
 
 ### Added
