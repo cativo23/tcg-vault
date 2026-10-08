@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-08
+
 ### Added
 
 - tcgcsv fills TCGplayer price gaps. Prints linked to a TCGplayer product
@@ -27,6 +29,17 @@ All notable changes to this project are documented here. Format follows
 
 - The manual-price refusal no longer says tcgdex prices a print that only
   tcgcsv does.
+
+### Security
+
+- `shell-quote` (pulled in by the dev-only `concurrently`) is pinned past
+  GHSA-pqg4-j6r4-53mv.
+
+### Deploy
+
+No migrations. Fill mode is on by default; `TCGCSV_MODE=shadow` in `.env`
+plus `up -d --force-recreate horizon scheduler` rolls it back (see "tcgcsv
+sync" in `deploy/README.md`). The first fills land after the 20:30 UTC run.
 
 ## [1.2.1] - 2026-10-06
 
