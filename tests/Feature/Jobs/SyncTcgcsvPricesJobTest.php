@@ -501,3 +501,87 @@ test('a complete run is recorded for the freshness check, a partly failed one is
     runTcgcsvSync(); // the retry fetches only the failed group
     expect(Cache::get('tcgcsv:last_run'))->toBe(now()->toIso8601String());
 });
+
+test('a last tcgcsv price older than the staleness window no longer holds a new one back, so a hold lasts days, not forever', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays(8), 'currency' => 'USD', 'market_minor' => 129]);
+    gapFake([['productId' => 659941, 'lowPrice' => 9.0, 'marketPrice' => 12.90, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->whereDate('captured_on', today())->value('market_minor'))->toBe(1290);
+});
+
+test('a link only tcgdex\'s third-party ids vouch for is not filled without a price to check it against', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
+    gapFake();
+    $log = tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(0);
+    $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_unverified'] === 1);
+});
+
+test('a third-party link with a cardmarket price to check against is filled', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(129);
+});
+
+test('an unknown mode is warned about once a day, not on every retry', function () {
+    config(['tcgcsv.mode' => 'off']);
+    gapFixture();
+    gapFake();
+    $log = tcgcsvLog();
+
+    runTcgcsvSync();
+    Cache::forget('tcgcsv:last_build');
+    runTcgcsvSync();
+
+    $log->shouldHaveReceived('warning')->withArgs(fn (string $m) => str_contains($m, 'TCGCSV_MODE'))->once();
+});
+
+test('a gap price far below the print\'s last tcgcsv price is held back too', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1290]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->whereDate('captured_on', today())->count())->toBe(0);
+});
+
+test('an admin link with no price to check against is filled', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(129);
+});
+
+test('held-back gap prices are sent to Discord, not only logged', function () {
+    config(['tcgcsv.mode' => 'fill', 'services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
+    gapFixture();
+    Http::fake(['discord.com/*' => Http::response('', 204)]);
+    gapFake([['productId' => 659941, 'lowPrice' => 9.0, 'marketPrice' => 12.90, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), 'discord.com') && str_contains($request['content'], 'sv10-096 holofoil:cosmos'));
+});

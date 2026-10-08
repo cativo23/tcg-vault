@@ -12,6 +12,7 @@ use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceRow;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
+use App\Support\DiscordAlerter;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Bus\Queueable;
@@ -60,7 +61,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
     private const RETRY_SECONDS = 3600;
 
-    private const BUILD_CACHE_KEY = 'tcgcsv:last_build';
+    public const BUILD_CACHE_KEY = 'tcgcsv:last_build';
 
     /** When the last run that fetched every group finished; CheckPricingFreshness watches it. */
     public const LAST_RUN_CACHE_KEY = 'tcgcsv:last_run';
@@ -69,11 +70,13 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     private const MAX_FILL_BUILD_AGE_HOURS = 36;
 
     /**
-     * A gap price this many times above or below the print's last tcgcsv
+     * A gap price this many times above or below the print's recent tcgcsv
      * price, or its cardmarket price (a coarser bound: EUR, another
      * market), is held back as a likely wrong link or upstream glitch —
      * unless the move is under PLAUSIBLE_MOVE_MINOR, which a cheap print
-     * can make without either.
+     * can make without either. Only prices within the resolver's
+     * staleness window count, so a real jump is held back for days at
+     * most, never pinned to a price that is no longer shown.
      */
     private const MAX_RATIO_TO_LAST = 3.0;
 
@@ -145,9 +148,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $mode = $this->mode();
         [$comparison, $gaps] = $this->compare($prices);
         $buildTooOld = CarbonImmutable::parse($build)->lt(now()->subHours(self::MAX_FILL_BUILD_AGE_HOURS));
-        [$filled, $implausible, $implausibleCount] = $mode === 'fill' && ! $buildTooOld
+        [$filled, $implausible, $implausibleCount, $unverified] = $mode === 'fill' && ! $buildTooOld
             ? $this->fillGaps($gaps, $build)
-            : [0, [], 0];
+            : [0, [], 0, 0];
 
         $summary = [
             'mode' => $mode,
@@ -164,9 +167,13 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'gaps_filled' => $filled,
             'gaps_implausible_count' => $implausibleCount,
             'gaps_implausible' => $this->outlierLabels($implausible),
+            'gaps_unverified' => $unverified,
         ];
 
         Log::channel('tcgcsv')->info('tcgcsv sync', $summary);
+        if ($implausibleCount > 0) {
+            app(DiscordAlerter::class)->send("⚠️ tcg-vault: tcgcsv held back {$implausibleCount} implausible TCGplayer price(s) — check their links: ".implode(', ', $summary['gaps_implausible']));
+        }
         // Kept for reviewing tcgcsv against tcgdex even after logs rotate.
         $day = 'tcgcsv:shadow:'.now()->toDateString();
         Cache::put($day, [...Cache::get($day, []), $summary], now()->addDays(30));
@@ -188,7 +195,8 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     private function mode(): string
     {
         $mode = config('tcgcsv.mode');
-        if ($mode !== 'fill' && $mode !== 'shadow') {
+        // Once a day: retries would otherwise repeat it every hour.
+        if ($mode !== 'fill' && $mode !== 'shadow' && Cache::add('tcgcsv:mode_warned:'.now()->toDateString(), true, now()->addDay())) {
             Log::channel('tcgcsv')->warning('unknown TCGCSV_MODE; running in shadow mode', ['mode' => is_scalar($mode) ? (string) $mode : gettype($mode)]);
         }
 
@@ -280,7 +288,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $outlierCount = 0;
         $gaps = [];
 
-        $links = CardTcgplayerLink::query()->whereNotNull('group_id')->get(['card_id', 'variant', 'product_id', 'sub_type', 'group_id']);
+        $links = CardTcgplayerLink::query()->whereNotNull('group_id')->get(['card_id', 'variant', 'product_id', 'sub_type', 'group_id', 'method']);
         foreach ($links as $link) {
             $row = $prices[(int) $link->group_id][$link->product_id][$link->sub_type] ?? null;
             if ($row === null || $row->marketMinor === null || $row->marketMinor <= 0) {
@@ -316,30 +324,41 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
     /**
      * Writes tcgcsv's price as today's TCGplayer price for each gap,
-     * except an implausible one (see MAX_RATIO_TO_LAST). A row tcgdex or a
+     * except an implausible one (see MAX_RATIO_TO_LAST), or one whose link
+     * only tcgdex's third-party ids vouch for (TRUST 1, served
+     * inconsistently) while no recent price exists to check it against —
+     * those are counted as unverified. A row tcgdex or a
      * person wrote for today is never overwritten — tcgdex's sync may land
      * between the comparison and this write — so only a missing row or
      * tcgcsv's own earlier one for today is set.
      *
      * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $gaps
-     * @return array{int, list<array{int, string}>, int} filled, the first implausible [card_id, variant], how many were implausible
+     * @return array{int, list<array{int, string}>, int, int} filled, the first implausible [card_id, variant], how many were implausible, how many unverified
      */
     private function fillGaps(array $gaps, string $build): array
     {
         $today = CarbonImmutable::today();
         $cardIds = array_values(array_unique(array_map(fn (array $gap) => $gap[0]->card_id, $gaps)));
-        $lastTcgcsv = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')->where('captured_on', '<', $today->toDateString()));
-        $cardmarket = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'cardmarket')
-            ->where('captured_on', '>=', $today->subDays(CardPriceResolver::STALE_AFTER_DAYS)->toDateString()));
+        $since = $today->subDays(CardPriceResolver::STALE_AFTER_DAYS)->toDateString();
+        $lastTcgcsv = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')
+            ->where('captured_on', '>=', $since)->where('captured_on', '<', $today->toDateString()));
+        $cardmarket = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'cardmarket')->where('captured_on', '>=', $since));
         $updatedAt = CarbonImmutable::parse($build)->utc();
 
         $filled = 0;
         $implausible = [];
         $implausibleCount = 0;
+        $unverified = 0;
 
         foreach ($gaps as [$link, $row]) {
             $key = "{$link->card_id}|{$link->variant}";
             $market = (int) $row->marketMinor;
+            $references = [$lastTcgcsv[$key] ?? null, $cardmarket[$key] ?? null];
+            if ($references === [null, null] && (CardTcgplayerLink::TRUST[$link->method] ?? 0) < CardTcgplayerLink::TRUST['tcgdex-price']) {
+                $unverified++;
+
+                continue;
+            }
             if ($this->farFrom($market, $lastTcgcsv[$key] ?? null, self::MAX_RATIO_TO_LAST)
                 || $this->farFrom($market, $cardmarket[$key] ?? null, self::MAX_RATIO_TO_CARDMARKET)) {
                 $implausibleCount++;
@@ -379,7 +398,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             $filled++;
         }
 
-        return [$filled, $implausible, $implausibleCount];
+        return [$filled, $implausible, $implausibleCount, $unverified];
     }
 
     /**
