@@ -442,9 +442,10 @@ test('a gap price far from the print\'s last tcgcsv price is not written', funct
         && $c['gaps_implausible_count'] === 1 && $c['gaps_implausible'] === ['sv10-096 holofoil:cosmos']);
 });
 
-test('a gap price far from the print\'s cardmarket price is not written', function () {
+test('a gap price far from the print\'s cardmarket price is not written for a link not confirmed by an admin', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture(); // cardmarket 1.44 EUR
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-price']);
     gapFake([['productId' => 659941, 'lowPrice' => 9.0, 'marketPrice' => 12.90, 'subTypeName' => 'Holofoil']]);
 
     runTcgcsvSync();
@@ -577,7 +578,8 @@ test('an admin link with no price to check against is filled', function () {
 
 test('held-back gap prices are sent to Discord, not only logged', function () {
     config(['tcgcsv.mode' => 'fill', 'services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
-    gapFixture();
+    $card = gapFixture();
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-price']);
     Http::fake(['discord.com/*' => Http::response('', 204)]);
     gapFake([['productId' => 659941, 'lowPrice' => 9.0, 'marketPrice' => 12.90, 'subTypeName' => 'Holofoil']]);
 
@@ -603,6 +605,7 @@ test('a price accepted once its hold expires is reported to Discord', function (
 test('a held-back price is remembered so its later acceptance can be reported', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-price']);
     gapFake([['productId' => 659941, 'lowPrice' => 9.0, 'marketPrice' => 12.90, 'subTypeName' => 'Holofoil']]);
 
     runTcgcsvSync();
@@ -636,4 +639,37 @@ test('a normal price after a held glitch passes its check and is not reported as
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->value('market_minor'))->toBe(129);
     expect(Cache::has('tcgcsv:held:'.$card->id.'|holofoil:cosmos'))->toBeFalse();
     Http::assertNotSent(fn ($request) => str_contains($request->url(), 'discord.com'));
+});
+
+test('an admin-confirmed link gets a wider cardmarket bound, since cardmarket lumps stamped prints together', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture(); // admin link
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->update(['market_minor' => 1313]); // ~4.9x below
+    gapFake([['productId' => 659941, 'lowPrice' => 62.24, 'marketPrice' => 64.16, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(6416);
+});
+
+test('an admin-confirmed link is still held back by a jump from its own recent tcgcsv price', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete(); // only the tcgcsv bound applies
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1290]);
+    gapFake([['productId' => 659941, 'lowPrice' => 62.24, 'marketPrice' => 64.16, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->count())->toBe(0);
+});
+
+test('an admin-confirmed link is still held back by an upstream glitch far beyond any stamp premium', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture(); // admin link, cardmarket 1.44 EUR
+    gapFake([['productId' => 659941, 'lowPrice' => 140.0, 'marketPrice' => 144.00, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(0);
 });
