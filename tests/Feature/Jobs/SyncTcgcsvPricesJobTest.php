@@ -622,3 +622,18 @@ test('unverified prints are named in the log, not just counted', function () {
 
     $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_unverified_prints'] === ['sv10-096 holofoil:cosmos']);
 });
+
+test('a normal price after a held glitch passes its check and is not reported as an expired hold', function () {
+    config(['tcgcsv.mode' => 'fill', 'services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 129]);
+    Cache::put('tcgcsv:held:'.$card->id.'|holofoil:cosmos', true, now()->addDays(7));
+    Http::fake(['discord.com/*' => Http::response('', 204)]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->value('market_minor'))->toBe(129);
+    expect(Cache::has('tcgcsv:held:'.$card->id.'|holofoil:cosmos'))->toBeFalse();
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'discord.com'));
+});

@@ -336,8 +336,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * only tcgdex's third-party ids vouch for (TRUST 1, served
      * inconsistently) while no recent price exists to check it against —
      * those are counted as unverified. A held-back print is remembered for
-     * a week (HELD_CACHE_PREFIX), so a price accepted once its hold has
-     * expired is reported rather than going live unnoticed. A row tcgdex or a
+     * a week (HELD_CACHE_PREFIX), so a price written once its hold has
+     * expired, with nothing left to check it against, is reported rather
+     * than going live unnoticed. A row tcgdex or a
      * person wrote for today is never overwritten — tcgdex's sync may land
      * between the comparison and this write — so only a missing row or
      * tcgcsv's own earlier one for today is set.
@@ -408,7 +409,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 continue;
             }
             $filled++;
-            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null) {
+            // Reported only when nothing was left to check it against — a
+            // price that came back in line passed its check.
+            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null && ($lastTcgcsv[$key] ?? null) === null && ($cardmarket[$key] ?? null) === null) {
                 $acceptedAfterHold[] = [(int) $link->card_id, (string) $link->variant];
             }
         }
