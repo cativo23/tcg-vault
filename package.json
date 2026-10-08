@@ -19,5 +19,8 @@
     },
     "optionalDependencies": {
         "@laravel/multiplex": "^0.4.1"
+    },
+    "overrides": {
+        "shell-quote": "^1.11.0"
     }
 }
