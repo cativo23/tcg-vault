@@ -82,6 +82,14 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
     private const MAX_RATIO_TO_CARDMARKET = 4.0;
 
+    /**
+     * An admin-confirmed link gets a wider cardmarket bound: cardmarket
+     * often files a stamped print (staff, Pokémon Center) under its plain
+     * one, so a few times off is real there, but an upstream glitch of
+     * an order of magnitude or more is still held back.
+     */
+    private const MAX_RATIO_TO_CARDMARKET_ADMIN = 15.0;
+
     private const PLAUSIBLE_MOVE_MINOR = 200;
 
     /** Marks a print whose gap price was held back, keyed by "card_id|variant". */
@@ -371,11 +379,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
                 continue;
             }
-            // An admin-confirmed link skips the cardmarket bound: cardmarket
-            // often files a stamped print (staff, Pokémon Center) under its
-            // plain one, so the gap there is real, not a wrong link.
+            $cardmarketRatio = $link->method === 'admin' ? self::MAX_RATIO_TO_CARDMARKET_ADMIN : self::MAX_RATIO_TO_CARDMARKET;
             if ($this->farFrom($market, $lastTcgcsv[$key] ?? null, self::MAX_RATIO_TO_LAST)
-                || ($link->method !== 'admin' && $this->farFrom($market, $cardmarket[$key] ?? null, self::MAX_RATIO_TO_CARDMARKET))) {
+                || $this->farFrom($market, $cardmarket[$key] ?? null, $cardmarketRatio)) {
                 $implausibleCount++;
                 Cache::put(self::HELD_CACHE_PREFIX.$key, true, now()->addDays(7));
                 if (count($implausible) < 10) {
