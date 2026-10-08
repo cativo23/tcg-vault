@@ -153,3 +153,25 @@ test('alert messages give whole hours', function () {
 
     Http::assertSent(fn ($request) => str_contains($request['content'], ' 30h old'));
 });
+
+test('a lost run record is not an alert while tcgcsv wrote a price within 30h', function () {
+    Http::fake();
+    makeSnapshotAt(now()->subHours(2)->toDateTimeString());
+    linkOnePrint();
+    CardPriceSnapshot::create(['card_id' => Card::first()->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => now()->toDateString(), 'currency' => 'USD', 'market_minor' => 129]);
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertNothingSent();
+});
+
+test('a lost run record is not an alert while the last pulled build is recent', function () {
+    Http::fake();
+    makeSnapshotAt(now()->subHours(2)->toDateTimeString());
+    linkOnePrint();
+    Cache::forever('tcgcsv:last_build', now()->subHours(8)->toIso8601String());
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertNothingSent();
+});
