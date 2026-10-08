@@ -1922,6 +1922,23 @@ test('a manual price is refused for a print tcgdex already prices', function () 
     expect(CardPriceSnapshot::where('source', 'manual')->count())->toBe(0);
 });
 
+test('a manual price refused for a print tcgcsv fills does not blame tcgdex', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card, $item] = prizePackBudew($admin);
+    $item->update(['variant' => 'reverse-holofoil:masterball']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'reverse-holofoil:masterball', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 70]);
+
+    Livewire::test(CollectionItems::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '0.70')
+        ->call('saveManualPrice', 0)
+        ->assertHasErrors('editingRows.0.manual_price')
+        ->assertSee('already synced (tcgdex or tcgcsv)');
+});
+
 test('reopening the editor still shows a hand-entered print as the copy\'s variant', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

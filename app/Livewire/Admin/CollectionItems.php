@@ -368,7 +368,7 @@ final class CollectionItems extends Component
                 // The same 30-day window every screen prices from.
                 $item->card->load(['priceSnapshots' => fn ($q) => $q->recent()]),
                 $item->variant,
-            ) => 'tcgdex already prices this print — a manual price is only for prints it doesn\'t price, or stopped pricing.',
+            ) => 'A market price for this print is already synced (tcgdex or tcgcsv) — a manual price is only for prints nothing prices, or that stopped being priced.',
             default => null,
         };
 

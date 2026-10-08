@@ -28,8 +28,8 @@ Schedule::command('catalog:refresh-prices')
 // docblock for the staleness threshold and why it exists.
 Schedule::command('catalog:check-pricing-freshness')->dailyAt('04:00');
 
-// tcgcsv rebuilds around 20:00 UTC; shadow mode only compares its TCGplayer
-// prices with tcgdex's and writes none (ROADMAP: tcgcsv as primary source).
+// tcgcsv rebuilds around 20:00 UTC; its TCGplayer prices are compared with
+// tcgdex's and, in fill mode, written for the prints tcgdex doesn't price.
 Schedule::job(new SyncTcgcsvPricesJob)->dailyAt('20:30');
 
 // The `backup` container writes its nightly dump at 03:00 UTC (see

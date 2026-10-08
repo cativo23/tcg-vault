@@ -128,12 +128,41 @@ docker compose -f compose.prod.yml exec app php artisan photos:strip-metadata
 docker compose -f compose.prod.yml exec app php artisan catalog:backfill-images
 ```
 
-## tcgcsv shadow sync (once, after the release that adds it)
+## tcgcsv sync (map groups once, after the release that adds it)
 
 `SyncTcgcsvPricesJob` runs daily at 20:30 UTC on Horizon's `supervisor-tcgcsv`
-(connection `redis-long`, queue `tcgcsv`). It writes no prices yet: it links
-prints to TCGplayer products and compares tcgcsv's price with tcgdex's. With
-no set mapped to a TCGplayer group it compares nothing, without error — so
+(connection `redis-long`, queue `tcgcsv`). It links prints to TCGplayer
+products and compares tcgcsv's price with tcgdex's. With `TCGCSV_MODE=fill`
+(the default) it also writes tcgcsv's price as the day's TCGplayer price for
+linked prints tcgdex has no TCGplayer price for in the last 3 days (rows with
+`origin = tcgcsv`); it never touches a tcgdex price or one entered by hand.
+A gap price more than 3x off the print's tcgcsv price from the last 3 days,
+or 4x off its cardmarket price (moves under $2 excepted), is held back, named
+in the day's log (`gaps_implausible`) and sent to Discord — check that
+print's link. A hold is not permanent: once the old tcgcsv price is over 3
+days old, the new price is written unless cardmarket disagrees, and Discord
+gets a note naming it (`gaps_accepted_after_hold`). A link only tcgdex's
+third-party ids vouch for is not filled until a price exists to check it
+against (`gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
+filled when the build is over 36h old. Any `TCGCSV_MODE` other than exactly
+`fill` runs as `shadow`.
+
+To roll back, set `TCGCSV_MODE=shadow` in `.env` and recreate the containers
+that read it (a plain `restart` keeps the old environment):
+
+```bash
+docker compose -f compose.prod.yml up -d --force-recreate horizon scheduler
+# Optional: drop the prices tcgcsv already wrote (they otherwise stay current
+# for up to 3 days, and in the price history):
+docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(App\Modules\Catalog\Models\CardPriceSnapshot::where('origin', 'tcgcsv')->delete());"
+```
+
+`catalog:check-pricing-freshness` alerts Discord when the last complete tcgcsv
+run is over 30h old, or none is on record. If that record is lost, the last
+pulled build, then the newest tcgcsv price, stands in. This applies in either
+mode, once a TCGplayer group is mapped.
+
+With no set mapped to a TCGplayer group it compares nothing, without error — so
 map the groups after deploying:
 
 ```bash
@@ -148,9 +177,9 @@ docker compose -f compose.prod.yml exec app php artisan catalog:propose-tcgplaye
 docker compose -f compose.prod.yml exec app php artisan catalog:propose-tcgplayer-groups --set=30th --group=24722
 ```
 
-The day's comparison is logged on the `tcgcsv` channel (stderr of the
-`horizon` container) and kept in the cache under `tcgcsv:shadow:<date>` for
-30 days. After 5–7 days, read them to decide on the next phase:
+The day's run (comparison and `gaps_filled`) is logged on the `tcgcsv`
+channel (stderr of the `horizon` container) and kept in the cache under
+`tcgcsv:shadow:<date>` for 30 days:
 
 ```bash
 docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(cache('tcgcsv:shadow:'.now()->toDateString()));"
