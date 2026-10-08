@@ -175,3 +175,15 @@ test('a lost run record is not an alert while the last pulled build is recent', 
 
     Http::assertNothingSent();
 });
+
+test('a fresh build does not hide a run that keeps failing after the fetch', function () {
+    Http::fake();
+    makeSnapshotAt(now()->subHours(2)->toDateTimeString());
+    linkOnePrint();
+    Cache::forever('tcgcsv:last_run', now()->subHours(50)->toIso8601String());
+    Cache::forever('tcgcsv:last_build', now()->subHours(8)->toIso8601String());
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'tcgcsv'));
+});

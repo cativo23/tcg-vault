@@ -87,21 +87,21 @@ final class CheckPricingFreshness extends Command
             return;
         }
 
-        // The run record is the signal; the last pulled build and the
-        // newest tcgcsv price stand in when it is missing (a cache flush,
-        // or a deploy after the day's build was already pulled).
-        $seen = array_filter([
-            Cache::get(SyncTcgcsvPricesJob::LAST_RUN_CACHE_KEY),
-            Cache::get(SyncTcgcsvPricesJob::BUILD_CACHE_KEY),
-            CardPriceSnapshot::query()->where('origin', 'tcgcsv')->max('created_at'),
-        ], fn ($t) => is_string($t) && $t !== '');
-        if ($seen === []) {
+        // The run record is the signal. Only when it is missing (a cache
+        // flush, or a deploy after the day's build was already pulled) do
+        // the last pulled build and the newest tcgcsv price stand in — the
+        // build is recorded before linking and filling, so preferring it
+        // would hide a run that keeps failing after the fetch.
+        $seen = Cache::get(SyncTcgcsvPricesJob::LAST_RUN_CACHE_KEY)
+            ?? Cache::get(SyncTcgcsvPricesJob::BUILD_CACHE_KEY)
+            ?? CardPriceSnapshot::query()->where('origin', 'tcgcsv')->max('created_at');
+        if (! is_string($seen) || $seen === '') {
             $alerter->send('⚠️ tcg-vault: no complete tcgcsv sync is on record — the tcgcsv sync looks stuck.');
             $this->warn('No complete tcgcsv sync on record.');
 
             return;
         }
-        $lastRun = max(array_map(fn (string $t) => CarbonImmutable::parse($t), $seen));
+        $lastRun = CarbonImmutable::parse($seen);
 
         $hours = (int) floor(now()->diffInHours($lastRun, absolute: true));
         if ($hours >= self::TCGCSV_STALE_AFTER_HOURS) {
