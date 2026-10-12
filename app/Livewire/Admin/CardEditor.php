@@ -27,7 +27,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 /**
  * Edits every copy of one card in the signed-in user's collection: variant,
  * condition, quantity, grading, notes, photo, a manual market price and
- * removal. Hosts (the collection list, the set grid) mount it once and open
+ * removal. The host (the collection list) mounts it once and opens
  * it with the `open-card-editor` event; it reports back with
  * `card-copies-changed` so a host can refresh its own counts. It is its own
  * component so its actions re-render only this markup, not the host's list.
@@ -42,7 +42,7 @@ final class CardEditor extends Component
 
     /**
      * `CollectionItem` has no `user_id` column, so it can never carry
-     * `TenantScope` directly (Task 2's design). That means
+     * `TenantScope` directly. That means
      * `CollectionItem::findOrFail($itemId)` alone is an IDOR: any logged-in
      * user could pass any item ID, including another tenant's, and read or
      * mutate it. This helper closes that — it walks through `Collection`
@@ -146,8 +146,8 @@ final class CardEditor extends Component
         $this->editingCardName = $card->name;
 
         // Variant-sourcing priority: the card's own tcgdex print flags
-        // first, synced pricing
-        // coverage only as a fallback for fixtures/pre-`variants` cards.
+        // first, synced pricing coverage only as a fallback for
+        // fixtures/pre-`variants` cards.
         $variants = CardVariants::available($card->variants ?? [], $card->raw ?? []);
         if ($variants === []) {
             $variants = array_values(array_intersect(
