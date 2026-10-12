@@ -20,7 +20,11 @@
             @endif
         </div>
 
-        <x-card-image :url="$imageUrl" :name="$card->name.' #'.$card->local_id" :eager="$index < 6" />
+        <button type="button" id="card-editor-trigger-{{ $card->id }}" class="nw-tile-image"
+            wire:click="$dispatch('open-card-editor', { cardId: {{ $card->id }}, allowEmpty: true })"
+            aria-label="Edit copies of {{ $card->name }}, number {{ $card->local_id }}">
+            <x-card-image :url="$imageUrl" :name="$card->name.' #'.$card->local_id" :eager="$index < 6" />
+        </button>
 
         <div class="cbody">
             <div class="cname">{{ $card->name }}</div>
@@ -46,7 +50,7 @@
                     data-label="{{ $chip['label'] }}"
                     data-name="{{ $card->name }}"
                     data-count="{{ $chip['count'] }}"
-                    aria-label="Add one {{ $chip['label'] !== '' ? $chip['label'].' copy' : 'copy' }} of {{ $card->name }}"
+                    aria-label="Add one {{ $chip['label'] !== '' ? $chip['label'] : 'copy' }} of {{ $card->name }}, you have {{ $chip['count'] }}"
                     @click="add($el)"
                 ><span data-chip-label>{{ $text }}</span> <span class="mono" data-chip-count @if ($chip['count'] < 1) hidden @endif>×{{ $chip['count'] }}</span></button>
             @endforeach

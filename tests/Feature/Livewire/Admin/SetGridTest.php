@@ -836,3 +836,50 @@ test('quickAdd and undoQuickAdd are renderless, so a tap does not re-render the 
         expect((new ReflectionMethod(SetGrid::class, $method))->getAttributes(Renderless::class))->toHaveCount(1);
     }
 });
+
+test('the grid wires the setGrid Alpine component and an accessible toast region', function () {
+    setGridUser();
+    setGridFixture();
+
+    $html = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->html();
+
+    expect($html)->toContain('x-data="setGrid"')
+        ->and($html)->toContain('class="nw-toasts"')
+        ->and($html)->toContain('aria-live="polite"')
+        ->and($html)->toContain('wire:ignore');
+});
+
+test('a chip names its action and the count the owner already has', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    setGridOwn($user, $first, ['variant' => 'reverse-holofoil', 'quantity' => 2]);
+
+    $html = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->html();
+
+    expect($html)->toContain('aria-label="Add one Reverse Holofoil of Fomantis, you have 2"')
+        ->and($html)->toContain('aria-label="Add one Normal of Fomantis, you have 0"');
+});
+
+test('the grid mounts the card editor as a panel and the image opens it', function () {
+    setGridUser();
+    ['first' => $first] = setGridFixture();
+
+    $html = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->html();
+
+    expect($html)->toContain('admin.card-editor')
+        ->and($html)->toContain('presentation')
+        ->and($html)->toContain(sprintf("\$dispatch('open-card-editor', { cardId: %d, allowEmpty: true })", $first->id))
+        ->and($html)->toContain('id="card-editor-trigger-'.$first->id.'"');
+});
+
+test('the grid refreshes its chips when the editor reports a changed card', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->assertSeeHtml('data-count="0"');
+
+    setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 3]);
+
+    $component->dispatch('card-copies-changed', cardId: $first->id)->assertSeeHtml('data-count="3"');
+});

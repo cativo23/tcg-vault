@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Renderless;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -80,6 +81,13 @@ final class SetGrid extends Component
     {
         $this->hideMissing = ! $this->hideMissing;
     }
+
+    /**
+     * Receiving the editor's event is the whole job: Livewire re-renders
+     * the grid after any action, so chips and tile counts reflect the edit.
+     */
+    #[On('card-copies-changed')]
+    public function refreshAfterCardChange(): void {}
 
     public function sortBy(string $sort): void
     {

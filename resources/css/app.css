@@ -1484,3 +1484,53 @@ body::before {
 .nw-legal ul { margin-top: 6px; padding-left: 1.2rem; list-style: disc; }
 .nw-legal a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .nw-legal code { font-size: .9em; background: var(--bone-2); padding: 1px 5px; border-radius: 4px; }
+
+/* ---- Set grid (owner screen): chips, toasts, panel ------------------------ */
+.nw-tile-image { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; text-align: inherit; }
+
+.nw-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 10px; }
+.nw-chip-add {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; line-height: 1; min-height: 32px; padding: 6px 12px;
+  border: 1px dashed var(--muted); border-radius: var(--radius-pill);
+  background: transparent; color: var(--muted);
+  transition: background-color 180ms var(--ease), color 180ms var(--ease), border-color 180ms var(--ease);
+}
+.nw-chip-add:hover { border-color: var(--ink); color: var(--ink); }
+.nw-chip-add.owned { border-style: solid; border-color: var(--ink); background: var(--ink); color: var(--bone); }
+.nw-chip-add.failed { border-style: solid; border-color: var(--danger); color: var(--danger); background: transparent; }
+.nw-chip-add[aria-busy='true'] { opacity: .6; pointer-events: none; }
+@media (pointer: coarse) { .nw-chip-add { min-height: 44px; min-width: 44px; } }
+
+.nw-toasts {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 60;
+  display: flex; flex-direction: column; gap: 8px;
+  width: min(420px, calc(100vw - 32px)); pointer-events: none;
+}
+.nw-toast {
+  pointer-events: auto; display: flex; align-items: center; gap: 10px;
+  background: var(--ink); color: var(--bone); border-radius: 8px; padding: 10px 12px; font-size: 13px;
+  animation: modal-in 180ms var(--ease);
+}
+.nw-toast .msg { flex: 1 1 auto; min-width: 0; }
+.nw-toast button { color: var(--bone); font-weight: 700; text-decoration: underline; padding: 4px 6px; min-height: 44px; min-width: 44px; }
+.nw-toast button.x { text-decoration: none; }
+@media (prefers-reduced-motion: reduce) { .nw-toast { animation: none; } }
+
+/* Card editor as a docked panel: a right-edge drawer on wide screens, a
+   bottom sheet on a phone. Motion is transform/opacity only. */
+.nw-drawer-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(20, 20, 18, .55); }
+.nw-drawer {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(460px, 100vw);
+  overflow-y: auto; border-radius: 0;
+  animation: nw-drawer-in 180ms var(--ease);
+}
+@keyframes nw-drawer-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 720px) {
+  .nw-drawer {
+    top: auto; left: 0; right: 0; width: auto; max-height: 85vh;
+    border-radius: 12px 12px 0 0; animation-name: nw-sheet-in;
+  }
+}
+@keyframes nw-sheet-in { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .nw-drawer { animation: none; } }

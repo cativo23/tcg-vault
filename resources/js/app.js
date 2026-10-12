@@ -237,3 +237,151 @@ document.addEventListener('row-saved', (event) => {
         tag._fadeTimer = setTimeout(() => { tag.style.opacity = '0'; }, 1600);
     });
 });
+
+// Set grid: one-tap quick add with an undo toast stack. The server owns
+// every count; a chip only changes after a confirmed response, so the page
+// never shows a +1 the database does not hold.
+const TOAST_MS = 6000;
+const FAILURE_MS = 4000;
+const MAX_TOASTS = 4;
+
+const setGridData = () => ({
+    toasts: [],
+    nextToastId: 1,
+    busy: new Set(),
+    timers: new Map(),
+
+    chipFor(cardId, variant) {
+        return this.$root.querySelector(`[data-chip="${cardId}|${variant ?? ''}"]`);
+    },
+
+    paintChip(cardId, variant, count) {
+        const chip = this.chipFor(cardId, variant);
+        if (!chip) return;
+        const label = chip.dataset.label;
+        chip.dataset.count = String(count);
+        chip.classList.toggle('owned', count > 0);
+        chip.setAttribute('aria-label', `Add one ${label || 'copy'} of ${chip.dataset.name}, you have ${count}`);
+        chip.querySelector('[data-chip-label]').textContent = count > 0 ? (label || '+1') : (label ? `+ ${label}` : '+1');
+        const countEl = chip.querySelector('[data-chip-count]');
+        countEl.textContent = `×${count}`;
+        countEl.hidden = count < 1;
+    },
+
+    paintTile(cardId, cardTotal) {
+        const tile = this.$root.querySelector(`[data-tile="${cardId}"]`);
+        if (!tile) return;
+        tile.classList.toggle('ghost', cardTotal < 1);
+        const qty = tile.querySelector('[data-tile-qty]');
+        qty.textContent = `×${cardTotal}`;
+        qty.hidden = cardTotal < 1;
+        tile.querySelector('[data-tile-missing]').hidden = cardTotal > 0;
+    },
+
+    clearFailure(chip) {
+        clearTimeout(chip._failTimer);
+        if (chip._originalLabel !== undefined) {
+            chip.querySelector('[data-chip-label]').textContent = chip._originalLabel;
+            delete chip._originalLabel;
+        }
+        chip.classList.remove('failed');
+    },
+
+    fail(chip, message) {
+        this.clearFailure(chip);
+        const labelEl = chip.querySelector('[data-chip-label]');
+        chip._originalLabel = labelEl.textContent;
+        labelEl.textContent = 'Not saved — retry';
+        chip.classList.add('failed');
+        chip._failTimer = setTimeout(() => this.clearFailure(chip), FAILURE_MS);
+        this.pushToast({ message: message ?? 'Not saved — retry', undoable: false });
+    },
+
+    async add(chip) {
+        const cardId = Number(chip.dataset.card);
+        // The chip's variant goes to the server verbatim; '' means "no variant".
+        const variant = chip.dataset.variant;
+        const key = `${cardId}|${variant}`;
+
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        this.clearFailure(chip);
+        chip.setAttribute('aria-busy', 'true');
+
+        try {
+            const result = await this.$wire.quickAdd(cardId, variant);
+
+            if (!result || result.ok !== true) {
+                this.fail(chip, result?.message);
+                return;
+            }
+
+            this.paintChip(cardId, variant, result.variantCount);
+            this.paintTile(cardId, result.cardTotal);
+            const label = chip.dataset.label ? ` · ${chip.dataset.label}` : '';
+            this.pushToast({
+                message: `Added ${chip.dataset.name}${label}`,
+                itemId: result.itemId,
+                cardId,
+                variant,
+                undoable: true,
+            });
+        } catch (error) {
+            this.fail(chip);
+        } finally {
+            this.busy.delete(key);
+            chip.removeAttribute('aria-busy');
+        }
+    },
+
+    // One click per toast: the undo is disabled before the request, and
+    // stays disabled after any outcome, because a failed round trip may
+    // still have been applied by the server.
+    async undo(toast) {
+        if (!toast.undoable) return;
+        toast.undoable = false;
+
+        try {
+            const result = await this.$wire.undoQuickAdd(toast.itemId);
+
+            if (result?.ok === true) {
+                this.paintChip(toast.cardId, toast.variant, result.variantCount);
+                this.paintTile(toast.cardId, result.cardTotal);
+                this.dismiss(toast.id);
+                return;
+            }
+
+            toast.message = result?.message ?? 'Could not undo that.';
+        } catch (error) {
+            toast.message = 'Could not undo that. Check the chip count.';
+        }
+
+        this.scheduleDismiss(toast.id);
+    },
+
+    pushToast(toast) {
+        const entry = { id: this.nextToastId++, ...toast };
+        this.toasts.push(entry);
+        if (this.toasts.length > MAX_TOASTS) this.dismiss(this.toasts[0].id);
+        this.scheduleDismiss(entry.id);
+    },
+
+    scheduleDismiss(id) {
+        clearTimeout(this.timers.get(id));
+        this.timers.set(id, setTimeout(() => this.dismiss(id), TOAST_MS));
+    },
+
+    dismiss(id) {
+        clearTimeout(this.timers.get(id));
+        this.timers.delete(id);
+        this.toasts = this.toasts.filter((toast) => toast.id !== id);
+    },
+});
+
+const registerSetGrid = () => window.Alpine.data('setGrid', setGridData);
+
+if (window.Alpine) {
+    registerSetGrid();
+} else {
+    document.addEventListener('alpine:init', registerSetGrid);
+}
