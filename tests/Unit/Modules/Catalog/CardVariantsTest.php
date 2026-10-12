@@ -160,14 +160,17 @@ test('compose refuses anything outside tcgdex\'s vocabulary, or a key with nothi
     expect(CardVariants::compose('normal', null, []))->toBeNull();
 });
 
-test('compose builds a confetti holo key for a McDonald\'s reprint tcgdex lists only in its McDonald\'s set', function () {
+test('compose accepts the app-only confetti foil', function () {
     // The Latin American McDonald's 2024 Pikachu, printed with its 151
     // number (MEW 025/165) and McDonald's confetti foil.
     expect(CardVariants::compose('holofoil', 'confetti', []))->toBe('holofoil:confetti');
+});
+
+test('the confetti foil is offered in the picker as Confetti', function () {
     expect(CardVariants::foilOptions())->toHaveKey('confetti', 'Confetti');
 });
 
-test('a confetti print tcgdex lists later gets the same key as one entered by hand', function () {
+test('keyFor keys a holo confetti entry as holofoil:confetti', function () {
     expect(CardVariants::keyFor(['type' => 'holo', 'foil' => 'confetti']))->toBe('holofoil:confetti');
 });
 
