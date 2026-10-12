@@ -10,7 +10,11 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Database\Seeders\PermissionSeeder;
+use Illuminate\Cache\Events\KeyForgotten;
+use Illuminate\Cache\Events\KeyWritten;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Renderless;
 use Livewire\Livewire;
@@ -791,6 +795,30 @@ test('undo changes nothing and says to retry while the card is locked by another
     SetGrid::$lockWaitSeconds = 2;
     expect(CollectionItem::count())->toBe(1)
         ->and(RateLimiter::attempts('quick-undo:'.$user->id))->toBe(0);
+});
+
+test('undo writes its ledger only after the database transaction has finished', function () {
+    setGridUser();
+    ['first' => $first] = setGridFixture();
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal')
+        ->call('quickAdd', $first->id, 'normal');
+    $itemId = CollectionItem::sole()->id;
+
+    $baseline = DB::transactionLevel();
+    $levels = [];
+    $record = function ($event) use (&$levels): void {
+        if (str_contains($event->key, 'quick-add:ledger:')) {
+            $levels[] = DB::transactionLevel();
+        }
+    };
+    Event::listen(KeyWritten::class, $record);
+    Event::listen(KeyForgotten::class, $record);
+
+    $component->call('undoQuickAdd', $itemId);
+
+    expect($levels)->not->toBeEmpty()
+        ->and(array_unique($levels))->toBe([$baseline]);
 });
 
 test('quickAdd and undoQuickAdd are renderless, so a tap does not re-render the grid', function () {
