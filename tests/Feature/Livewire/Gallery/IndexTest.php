@@ -416,3 +416,17 @@ test('"Prices updated" dates the latest marketplace sync and names its origins, 
     $response->assertSee('<small class="word">via tcgdex</small>', false);
     $response->assertDontSee(today()->format('j M').'<small>', false);
 });
+
+test('the set rail chip falls back to the local card count when tcgdex reports zero', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 0]);
+    $owned = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $owned->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $this->get('/carlos')
+        ->assertOk()
+        ->assertSee('1 / 2')
+        ->assertDontSee('1 / 0');
+});

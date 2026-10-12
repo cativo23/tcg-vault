@@ -147,7 +147,7 @@ final class Show extends Component
             ->sortByDesc(fn ($p) => $p['snapshot']->market_minor)
             ->first();
 
-        $totalCount = $this->set->card_count ?? $this->set->cards()->count();
+        $totalCount = $this->set->card_count ?: $this->set->cards()->count();
         // Same tcgdex quirk as Gallery\Index: the literal string "None"
         // (promos/unrated prints) survives whereNotNull() since it isn't
         // actually null — filter it with the same "is this a real

@@ -195,3 +195,17 @@ test('tcgdex\'s literal "None" rarity never becomes a selectable filter option',
     $response->assertDontSee('value="None"', false);
     $response->assertDontSee('value="none"', false);
 });
+
+test('the set page falls back to the local card count when tcgdex reports zero', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 0]);
+    $owned = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $owned->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $this->get('/carlos/me05')
+        ->assertOk()
+        ->assertSee('of 2 · 50%', false)
+        ->assertDontSee('of 0');
+});

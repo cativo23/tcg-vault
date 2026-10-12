@@ -37,6 +37,9 @@ new class extends Component
                     <x-nav-link :href="route('admin.collection.index')" :active="request()->routeIs('admin.collection.*')" wire:navigate>
                         {{ __('Collection') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('admin.sets.index')" :active="request()->routeIs('admin.sets.*')" wire:navigate>
+                        {{ __('My sets') }}
+                    </x-nav-link>
                     @if (auth()->user()->username)
                         <x-nav-link :href="route('gallery.index', ['username' => auth()->user()->username])">
                             {{ __('View gallery') }}
@@ -133,6 +136,9 @@ new class extends Component
         <div class="pt-2 pb-3 space-y-1">
             <x-responsive-nav-link :href="route('admin.collection.index')" :active="request()->routeIs('admin.collection.*')" wire:navigate>
                 {{ __('Collection') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('admin.sets.index')" :active="request()->routeIs('admin.sets.*')" wire:navigate>
+                {{ __('My sets') }}
             </x-responsive-nav-link>
             @if (auth()->user()->username)
                 <x-responsive-nav-link :href="route('gallery.index', ['username' => auth()->user()->username])">
