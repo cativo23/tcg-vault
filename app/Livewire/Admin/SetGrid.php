@@ -14,8 +14,10 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
 use App\Modules\Collection\Services\Valuation;
+use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection as SupportCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -37,6 +39,9 @@ final class SetGrid extends Component
     private const SORTS = ['number', 'value', 'name', 'rarity'];
 
     public const QUICK_ADD_LIMIT_PER_MINUTE = 120;
+
+    // How long a quick add stays undoable; a little longer than the toast.
+    public const UNDO_WINDOW_SECONDS = 30;
 
     #[Locked]
     public Set $set;
@@ -85,8 +90,9 @@ final class SetGrid extends Component
      *
      * Accepts any variant the tile shows a chip for: a print the card
      * offers, a stored key the owner already holds (a hand-entered custom
-     * print), or no variant when the card lists no prints or the owner
-     * already holds unspecified copies.
+     * print, even one whose key is not a well-formed variant), or no
+     * variant when the card lists no prints or the owner already holds
+     * unspecified copies. Anything else is refused.
      *
      * @return array{ok: bool, message?: string, itemId?: int, created?: bool, variantCount?: int, cardTotal?: int}
      */
@@ -106,10 +112,6 @@ final class SetGrid extends Component
         }
 
         $variant = CollectionService::nullIfEmpty($variant);
-
-        if ($variant !== null && ! CardVariants::isValid($variant)) {
-            return ['ok' => false, 'message' => 'That card does not come in that print.'];
-        }
 
         $offered = CardVariants::available($card->variants ?? [], $card->raw ?? []);
         $held = CollectionItem::query()
@@ -140,6 +142,16 @@ final class SetGrid extends Component
             'quantity' => 1,
         ]);
 
+        // The ledger is what undo trusts: one pending unit per tap, and
+        // whether a tap created the row. It lives only for the undo window.
+        $this->ledgerLock($item->id)->block(3, function () use ($item): void {
+            Cache::put($this->pendingKey($item->id), (int) Cache::get($this->pendingKey($item->id), 0) + 1, self::UNDO_WINDOW_SECONDS);
+
+            if ($item->wasRecentlyCreated) {
+                Cache::put($this->createdKey($item->id), true, self::UNDO_WINDOW_SECONDS);
+            }
+        });
+
         return [
             'ok' => true,
             'itemId' => $item->id,
@@ -148,17 +160,43 @@ final class SetGrid extends Component
         ];
     }
 
+    private function pendingKey(int $itemId): string
+    {
+        return 'quick-add:pending:'.auth()->id().':'.$itemId;
+    }
+
+    private function createdKey(int $itemId): string
+    {
+        return 'quick-add:created:'.auth()->id().':'.$itemId;
+    }
+
+    private function ledgerLock(int $itemId): Lock
+    {
+        return Cache::lock('quick-add:lock:'.auth()->id().':'.$itemId, 5);
+    }
+
     /**
-     * Takes back one copy of a quick add. Only a plain copy: one with a
-     * photo or notes was edited since, and the panel is where that is
-     * undone deliberately. A row the tap created disappears at zero; a row
-     * that existed before keeps at least one copy.
+     * Takes back one copy a quick add made. The server's ledger decides
+     * what is undoable: each tap leaves one pending unit for its row, and
+     * an undo consumes one. Only a plain Near Mint, ungraded copy without
+     * photo or notes qualifies; anything edited since belongs to the
+     * panel. A row is deleted only when a tap created it and its last
+     * pending unit is the one being undone; otherwise it keeps at least
+     * the copies it had.
      *
      * @return array{ok: bool, message?: string, variantCount?: int, cardTotal?: int}
      */
     #[Renderless]
-    public function undoQuickAdd(int $itemId, bool $created): array
+    public function undoQuickAdd(int $itemId): array
     {
+        $key = 'quick-undo:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($key, self::QUICK_ADD_LIMIT_PER_MINUTE)) {
+            return ['ok' => false, 'message' => 'Slow down: too many undos in a minute.'];
+        }
+
+        RateLimiter::hit($key, 60);
+
         $item = CollectionItem::query()
             ->whereIn('collection_id', Collection::query()->pluck('id'))
             ->whereIn('card_id', Card::query()->where('set_id', $this->set->id)->select('id'))
@@ -173,15 +211,38 @@ final class SetGrid extends Component
             return ['ok' => false, 'message' => 'That copy has a photo or notes: edit it in the panel.'];
         }
 
-        if ($item->quantity > 1) {
-            $item->decrement('quantity');
-        } elseif ($created) {
-            $item->delete();
-        } else {
-            return ['ok' => false, 'message' => 'Nothing to undo: that copy was already yours.'];
+        if ($item->condition !== 'NM' || filled($item->grade_company) || filled($item->grade_value)) {
+            return ['ok' => false, 'message' => 'That copy was edited since: use the panel.'];
         }
 
-        return ['ok' => true, ...$this->countsFor($item->card, $item->variant)];
+        $refused = ['ok' => false, 'message' => 'Nothing to undo.'];
+
+        $result = $this->ledgerLock($item->id)->block(3, function () use ($item, $refused): ?array {
+            $pending = (int) Cache::get($this->pendingKey($item->id), 0);
+
+            if ($pending < 1) {
+                return $refused;
+            }
+
+            if ($item->quantity > 1) {
+                $item->decrement('quantity');
+            } elseif ($pending === 1 && Cache::get($this->createdKey($item->id)) === true) {
+                $item->delete();
+                Cache::forget($this->createdKey($item->id));
+            } else {
+                return $refused;
+            }
+
+            if ($pending === 1) {
+                Cache::forget($this->pendingKey($item->id));
+            } else {
+                Cache::put($this->pendingKey($item->id), $pending - 1, self::UNDO_WINDOW_SECONDS);
+            }
+
+            return null;
+        });
+
+        return $result ?? ['ok' => true, ...$this->countsFor($item->card, $item->variant)];
     }
 
     /**
