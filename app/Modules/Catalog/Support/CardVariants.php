@@ -48,16 +48,16 @@ final class CardVariants
 
     /**
      * tcgdex's own `foil` and `stamp` vocabulary (VariantStamps and
-     * variant_detailed.foil in tcgdex/cards-database interfaces.d.ts), so
-     * a print entered by hand gets the key tcgdex would give it if it
-     * later lists that print.
+     * variant_detailed.foil in tcgdex/cards-database interfaces.d.ts), plus
+     * one app-only foil below, so a print entered by hand gets the key
+     * tcgdex would give it if it later lists that print.
      *
-     * One foil is this app's own: `confetti`, McDonald's confetti holo.
-     * tcgdex lists those prints only in their McDonald's sets, as plain
-     * holo, so a Latin American copy printed with its original set number
-     * (the McDonald's 2024 Pikachu as MEW 025/165) has no key there. It
-     * keys the way a tcgdex foil would (holo + foil confetti), so a print
-     * tcgdex adds later gets the same key.
+     * The app-only foil is `confetti`, McDonald's confetti holo. tcgdex
+     * lists those prints only in their McDonald's sets, as plain holo, so
+     * a Latin American copy printed with its original set number (the
+     * McDonald's 2024 Pikachu as MEW 025/165) has no key there. It uses
+     * tcgdex's key shape (holo + foil), so it is the key tcgdex would give
+     * that print if it adopts the name `confetti`.
      */
     private const FOILS = [
         'pokeball', 'greatball', 'ultraball', 'masterball', 'gold', 'cosmos', 'galaxy',
@@ -210,9 +210,10 @@ final class CardVariants
 
     /**
      * The key for a print entered by hand — one tcgdex doesn't list, like
-     * a Prize Pack cosmos holo — built only from tcgdex's own foil and
-     * stamp vocabulary. Null for anything outside it, or for a plain base
-     * print, which needs no composing.
+     * a Prize Pack cosmos holo — built only from the foil and stamp
+     * vocabulary above (tcgdex's, plus the app-only confetti foil). Null
+     * for anything outside it, or for a plain base print, which needs no
+     * composing.
      *
      * @param  array<int, string>  $stamps
      */
