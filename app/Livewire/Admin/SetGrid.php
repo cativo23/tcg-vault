@@ -14,10 +14,11 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
 use App\Modules\Collection\Services\Valuation;
-use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -42,6 +43,10 @@ final class SetGrid extends Component
 
     // How long a quick add stays undoable; a little longer than the toast.
     public const UNDO_WINDOW_SECONDS = 30;
+
+    private const LOCK_WAIT_SECONDS = 2;
+
+    private const BUSY = ['ok' => false, 'message' => 'Busy, try again.'];
 
     #[Locked]
     public Set $set;
@@ -136,21 +141,28 @@ final class SetGrid extends Component
             ['name' => 'My Collection', 'is_public' => false],
         );
 
-        $item = app(CollectionService::class)->addItemForCard($collection, $card, [
-            'variant' => $variant,
-            'condition' => 'NM',
-            'quantity' => 1,
-        ]);
+        // The add and its ledger entry happen under one lock, so an undo of
+        // the same card never sees the new copy without its pending unit.
+        $item = $this->withCardLock($card->id, function () use ($collection, $card, $variant): CollectionItem {
+            $item = app(CollectionService::class)->addItemForCard($collection, $card, [
+                'variant' => $variant,
+                'condition' => 'NM',
+                'quantity' => 1,
+            ]);
 
-        // The ledger is what undo trusts: one pending unit per tap, and
-        // whether a tap created the row. It lives only for the undo window.
-        $this->ledgerLock($item->id)->block(3, function () use ($item): void {
-            Cache::put($this->pendingKey($item->id), (int) Cache::get($this->pendingKey($item->id), 0) + 1, self::UNDO_WINDOW_SECONDS);
+            $ledger = Cache::get($this->ledgerKey($item->id));
 
-            if ($item->wasRecentlyCreated) {
-                Cache::put($this->createdKey($item->id), true, self::UNDO_WINDOW_SECONDS);
-            }
+            Cache::put($this->ledgerKey($item->id), [
+                'pending' => (is_array($ledger) ? (int) $ledger['pending'] : 0) + 1,
+                'created' => $item->wasRecentlyCreated || (is_array($ledger) && $ledger['created'] === true),
+            ], self::UNDO_WINDOW_SECONDS);
+
+            return $item;
         });
+
+        if ($item === null) {
+            return self::BUSY;
+        }
 
         return [
             'ok' => true,
@@ -160,19 +172,36 @@ final class SetGrid extends Component
         ];
     }
 
-    private function pendingKey(int $itemId): string
+    /**
+     * The undo ledger of one row: how many quick-add taps are still
+     * undoable and whether a tap created the row. One cache value, rewritten
+     * with a fresh window on every tap and undo, so the two never expire
+     * apart.
+     */
+    private function ledgerKey(int $itemId): string
     {
-        return 'quick-add:pending:'.auth()->id().':'.$itemId;
+        return 'quick-add:ledger:'.auth()->id().':'.$itemId;
     }
 
-    private function createdKey(int $itemId): string
+    /**
+     * Runs $callback under a per-user, per-card lock shared by quickAdd and
+     * undoQuickAdd. The lock is per card because quickAdd only learns the
+     * row's id once the add has merged or created it, and every row an add
+     * can touch belongs to that card. Returns null, with $callback not run,
+     * when the lock cannot be taken in time.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $callback
+     * @return T|null
+     */
+    private function withCardLock(int $cardId, callable $callback): mixed
     {
-        return 'quick-add:created:'.auth()->id().':'.$itemId;
-    }
-
-    private function ledgerLock(int $itemId): Lock
-    {
-        return Cache::lock('quick-add:lock:'.auth()->id().':'.$itemId, 5);
+        try {
+            return Cache::lock('quick-add:lock:'.auth()->id().':'.$cardId, 5)->block(self::LOCK_WAIT_SECONDS, $callback);
+        } catch (LockTimeoutException) {
+            return null;
+        }
     }
 
     /**
@@ -197,52 +226,62 @@ final class SetGrid extends Component
 
         RateLimiter::hit($key, 60);
 
-        $item = CollectionItem::query()
+        $found = CollectionItem::query()
             ->whereIn('collection_id', Collection::query()->pluck('id'))
             ->whereIn('card_id', Card::query()->where('set_id', $this->set->id)->select('id'))
-            ->with('card')
             ->find($itemId);
 
-        if ($item === null) {
+        if ($found === null) {
             return ['ok' => false, 'message' => 'That copy is no longer in your collection.'];
         }
 
-        if ($item->photo_path !== null || filled($item->notes)) {
-            return ['ok' => false, 'message' => 'That copy has a photo or notes: edit it in the panel.'];
-        }
+        // The decision is made on a row re-read under the lock and the
+        // database row lock, so a tap that merged in meanwhile is counted.
+        $result = $this->withCardLock($found->card_id, fn (): array => DB::transaction(function () use ($itemId): array {
+            $item = CollectionItem::query()
+                ->whereIn('collection_id', Collection::query()->pluck('id'))
+                ->with('card')
+                ->lockForUpdate()
+                ->find($itemId);
 
-        if ($item->condition !== 'NM' || filled($item->grade_company) || filled($item->grade_value)) {
-            return ['ok' => false, 'message' => 'That copy was edited since: use the panel.'];
-        }
+            if ($item === null) {
+                return ['ok' => false, 'message' => 'That copy is no longer in your collection.'];
+            }
 
-        $refused = ['ok' => false, 'message' => 'Nothing to undo.'];
+            if ($item->photo_path !== null || filled($item->notes)) {
+                return ['ok' => false, 'message' => 'That copy has a photo or notes: edit it in the panel.'];
+            }
 
-        $result = $this->ledgerLock($item->id)->block(3, function () use ($item, $refused): ?array {
-            $pending = (int) Cache::get($this->pendingKey($item->id), 0);
+            if ($item->condition !== 'NM' || filled($item->grade_company) || filled($item->grade_value)) {
+                return ['ok' => false, 'message' => 'That copy was edited since: use the panel.'];
+            }
+
+            $ledger = Cache::get($this->ledgerKey($item->id));
+            $pending = is_array($ledger) ? (int) $ledger['pending'] : 0;
+            $created = is_array($ledger) && $ledger['created'] === true;
 
             if ($pending < 1) {
-                return $refused;
+                return ['ok' => false, 'message' => 'Nothing to undo.'];
             }
 
             if ($item->quantity > 1) {
                 $item->decrement('quantity');
-            } elseif ($pending === 1 && Cache::get($this->createdKey($item->id)) === true) {
+            } elseif ($pending === 1 && $created) {
                 $item->delete();
-                Cache::forget($this->createdKey($item->id));
             } else {
-                return $refused;
+                return ['ok' => false, 'message' => 'Nothing to undo.'];
             }
 
             if ($pending === 1) {
-                Cache::forget($this->pendingKey($item->id));
+                Cache::forget($this->ledgerKey($item->id));
             } else {
-                Cache::put($this->pendingKey($item->id), $pending - 1, self::UNDO_WINDOW_SECONDS);
+                Cache::put($this->ledgerKey($item->id), ['pending' => $pending - 1, 'created' => $created], self::UNDO_WINDOW_SECONDS);
             }
 
-            return null;
-        });
+            return ['ok' => true, ...$this->countsFor($item->card, $item->variant)];
+        }));
 
-        return $result ?? ['ok' => true, ...$this->countsFor($item->card, $item->variant)];
+        return $result ?? self::BUSY;
     }
 
     /**

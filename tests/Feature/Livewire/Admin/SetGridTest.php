@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Database\Seeders\PermissionSeeder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Renderless;
 use Livewire\Livewire;
@@ -528,7 +529,7 @@ test('undo takes back the copy a tap added to a row that already had more', func
     ['first' => $first] = setGridFixture();
     $item = setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 2]);
 
-    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
         ->call('quickAdd', $first->id, 'normal')
         ->call('undoQuickAdd', $item->id)
         ->assertReturned(['ok' => true, 'variantCount' => 2, 'cardTotal' => 2]);
@@ -553,7 +554,7 @@ test('a second undo of one tap is refused and keeps the copy that was already th
     ['first' => $first] = setGridFixture();
     $item = setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 2]);
 
-    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
         ->call('quickAdd', $first->id, 'normal')
         ->call('undoQuickAdd', $item->id)
         ->call('undoQuickAdd', $item->id)
@@ -719,6 +720,70 @@ test('quickAdd accepts a held key even when it is not a well-formed variant', fu
     Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
         ->call('quickAdd', $first->id, 'legacy print')
         ->assertReturned(fn (array $result) => $result['ok'] === true && $result['variantCount'] === 2);
+});
+
+test('undo refuses a copy that was graded in the panel after the tap', function () {
+    setGridUser();
+    ['first' => $first] = setGridFixture();
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal');
+    $item = CollectionItem::sole();
+    $item->update(['grade_company' => 'PSA', 'grade_value' => '9']);
+
+    $component
+        ->call('undoQuickAdd', $item->id)
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    expect(CollectionItem::count())->toBe(1);
+});
+
+test('a created row stays undoable for as long as its latest tap, however old the first was', function () {
+    setGridUser();
+    ['first' => $first] = setGridFixture();
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal');
+    $this->travel(SetGrid::UNDO_WINDOW_SECONDS - 5)->seconds();
+    $component->call('quickAdd', $first->id, 'normal');
+    $itemId = CollectionItem::sole()->id;
+    $this->travel(6)->seconds();
+
+    $component->call('undoQuickAdd', $itemId)->assertReturned(['ok' => true, 'variantCount' => 1, 'cardTotal' => 1]);
+    $component->call('undoQuickAdd', $itemId)->assertReturned(['ok' => true, 'variantCount' => 0, 'cardTotal' => 0]);
+
+    expect(CollectionItem::count())->toBe(0);
+});
+
+test('quickAdd saves nothing and says to retry while the card is locked by another tap', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    $lock = Cache::lock('quick-add:lock:'.$user->id.':'.$first->id, 10);
+    expect($lock->get())->toBeTrue();
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal')
+        ->assertReturned(fn (array $result) => $result['ok'] === false && str_contains($result['message'], 'try again'));
+
+    $lock->release();
+    expect(CollectionItem::count())->toBe(0);
+});
+
+test('undo changes nothing and says to retry while the card is locked by another tap', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal');
+    $itemId = CollectionItem::sole()->id;
+    $lock = Cache::lock('quick-add:lock:'.$user->id.':'.$first->id, 10);
+    expect($lock->get())->toBeTrue();
+
+    $component
+        ->call('undoQuickAdd', $itemId)
+        ->assertReturned(fn (array $result) => $result['ok'] === false && str_contains($result['message'], 'try again'));
+
+    $lock->release();
+    expect(CollectionItem::count())->toBe(1);
 });
 
 test('quickAdd and undoQuickAdd are renderless, so a tap does not re-render the grid', function () {
