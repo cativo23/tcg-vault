@@ -15,7 +15,7 @@
                 <x-set-card
                     :set="$set"
                     :owned="$set->owned_card_count"
-                    :total="$set->card_count ?? $set->real_card_count"
+                    :total="$set->card_count ?: $set->real_card_count"
                     :href="route('gallery.show', ['username' => $targetUser->username, 'setTcgdexId' => $set->tcgdex_id])"
                     :index="$loop->index"
                 >

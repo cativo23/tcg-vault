@@ -108,3 +108,15 @@ test('shows the newest set first and puts sets with no release date last', funct
     $this->actingAs($user)->get('/admin/sets')
         ->assertSeeInOrder(['Pitch Black', 'Base Set', 'Miscellaneous Promos']);
 });
+
+test('falls back to the local card count when tcgdex reports zero', function () {
+    $user = User::factory()->create();
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 0]);
+    mySetsOwn($user, $set, '116', 'Mega Darkrai ex');
+    Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis']);
+
+    $this->actingAs($user)->get('/admin/sets')
+        ->assertOk()
+        ->assertSee('1 / 2')
+        ->assertDontSee('1 / 0');
+});
