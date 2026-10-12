@@ -13,6 +13,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Collection as SupportCollection;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
@@ -29,6 +30,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 #[Layout('layouts.app')]
 final class SetGrid extends Component
 {
+    private const SORTS = ['number', 'value', 'name', 'rarity'];
+
     #[Locked]
     public Set $set;
 
@@ -41,6 +44,9 @@ final class SetGrid extends Component
     // Missing cards are shown by default: this screen exists to fill gaps.
     #[Url(as: 'hide-missing', except: false)]
     public bool $hideMissing = false;
+
+    #[Url(except: 'number')]
+    public string $sort = 'number';
 
     public function mount(string $setTcgdexId): void
     {
@@ -56,6 +62,13 @@ final class SetGrid extends Component
     public function toggleMissing(): void
     {
         $this->hideMissing = ! $this->hideMissing;
+    }
+
+    public function sortBy(string $sort): void
+    {
+        if (in_array($sort, self::SORTS, true)) {
+            $this->sort = $sort;
+        }
     }
 
     public function render(): View
@@ -83,7 +96,7 @@ final class SetGrid extends Component
             $entries = $entries->filter(fn (array $entry): bool => $entry['owned']);
         }
 
-        $entries = $entries->sort(fn (array $a, array $b): int => strcmp(self::numberKey($a), self::numberKey($b)))->values();
+        $entries = $this->sortEntries($entries);
 
         // The stat band describes the whole set, not what the toolbar narrowed to.
         $ownedCount = CollectionItem::query()
@@ -117,6 +130,29 @@ final class SetGrid extends Component
             'owned' => $card->collectionItems->isNotEmpty(),
             'quantity' => (int) $card->collectionItems->sum('quantity'),
         ];
+    }
+
+    /**
+     * Every sort orders the whole set: owned and missing cards interleave
+     * by the chosen key and never split into an owned block and a missing
+     * block. Ties fall back to card number so the order is stable. Value
+     * compares raw minor units, the way Gallery\Show orders them.
+     *
+     * @param  SupportCollection<int, Entry>  $entries
+     * @return SupportCollection<int, Entry>
+     */
+    private function sortEntries(SupportCollection $entries): SupportCollection
+    {
+        $primary = match ($this->sort) {
+            'name' => fn (array $a, array $b): int => strcasecmp($a['card']->name, $b['card']->name),
+            'rarity' => fn (array $a, array $b): int => strcmp($a['card']->rarity ?? '', $b['card']->rarity ?? ''),
+            'value' => fn (array $a, array $b): int => ($b['snapshot']->market_minor ?? -1) <=> ($a['snapshot']->market_minor ?? -1),
+            default => fn (array $a, array $b): int => 0,
+        };
+
+        return $entries
+            ->sort(fn (array $a, array $b): int => $primary($a, $b) ?: strcmp(self::numberKey($a), self::numberKey($b)))
+            ->values();
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Livewire\Admin\SetGrid;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
@@ -167,4 +168,63 @@ test('the stat band counts distinct owned cards against the set size', function 
 
     expect($component->viewData('ownedCount'))->toBe(2)
         ->and($component->viewData('totalCount'))->toBe(3);
+});
+
+/** @return list<string> card names in render order */
+function setGridNames(object $component): array
+{
+    return $component->viewData('entries')->map(fn (array $entry) => $entry['card']->name)->values()->all();
+}
+
+test('the number sort lists the whole set in card order with owned and missing interleaved', function () {
+    $user = setGridUser();
+    ['third' => $third] = setGridFixture();
+    setGridOwn($user, $third);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05']);
+
+    expect(setGridNames($component))->toBe(['Fomantis', 'Mega Darkrai ex', 'Gastly']);
+});
+
+test('the name sort interleaves owned and missing cards', function () {
+    $user = setGridUser();
+    ['third' => $third] = setGridFixture();
+    setGridOwn($user, $third);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->call('sortBy', 'name');
+
+    expect(setGridNames($component))->toBe(['Fomantis', 'Gastly', 'Mega Darkrai ex']);
+});
+
+test('the rarity sort interleaves owned and missing cards', function () {
+    $user = setGridUser();
+    ['second' => $second] = setGridFixture();
+    setGridOwn($user, $second);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->call('sortBy', 'rarity');
+
+    // Unrated sorts first, then Common, then Double Rare: the one owned card is last, not first.
+    expect(setGridNames($component))->toBe(['Gastly', 'Fomantis', 'Mega Darkrai ex']);
+});
+
+test('the value sort interleaves owned and missing cards, priciest first', function () {
+    $user = setGridUser();
+    ['first' => $first, 'second' => $second] = setGridFixture();
+    setGridOwn($user, $first);
+    CardPriceSnapshot::create(['card_id' => $second->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5000]);
+    CardPriceSnapshot::create(['card_id' => $first->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1000]);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->call('sortBy', 'value');
+
+    // The priciest card is one the owner is missing; the unpriced card comes last.
+    expect(setGridNames($component))->toBe(['Mega Darkrai ex', 'Fomantis', 'Gastly']);
+});
+
+test('an unknown sort is ignored', function () {
+    setGridUser();
+    setGridFixture();
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('sortBy', 'bogus')
+        ->assertSet('sort', 'number');
 });

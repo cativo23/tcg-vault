@@ -47,6 +47,14 @@
                 </select>
             @endif
 
+            <div class="nw-seg" role="group" aria-label="Sort">
+                <span class="lbl">Sort</span>
+                <button type="button" wire:click="sortBy('number')" aria-pressed="{{ $sort === 'number' ? 'true' : 'false' }}">Number</button>
+                <button type="button" wire:click="sortBy('value')" aria-pressed="{{ $sort === 'value' ? 'true' : 'false' }}">Value</button>
+                <button type="button" wire:click="sortBy('name')" aria-pressed="{{ $sort === 'name' ? 'true' : 'false' }}">Name</button>
+                <button type="button" wire:click="sortBy('rarity')" aria-pressed="{{ $sort === 'rarity' ? 'true' : 'false' }}">Rarity</button>
+            </div>
+
             <div class="nw-seg" role="group" aria-label="Missing cards">
                 <button type="button" wire:click="toggleMissing" aria-pressed="{{ $hideMissing ? 'false' : 'true' }}">Show missing</button>
             </div>
@@ -59,7 +67,7 @@
             <p>Nothing in {{ $set->name }} matches that.</p>
         </div>
     @else
-        <div class="nw-grid" wire:key="grid-{{ md5($search.$rarityFilter.($hideMissing ? '1' : '0')) }}">
+        <div class="nw-grid" wire:key="grid-{{ $sort }}-{{ md5($search.$rarityFilter.($hideMissing ? '1' : '0')) }}">
             @foreach ($entries as $entry)
                 @include('livewire.admin.partials.set-grid-tile', ['entry' => $entry, 'index' => $loop->index])
             @endforeach
