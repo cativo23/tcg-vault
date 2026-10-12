@@ -8,6 +8,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
@@ -25,7 +26,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * and the gaps. Copies are read through Collection's TenantScope, so a
  * private collection works and another user's copies never show.
  *
- * @phpstan-type Entry array{card: Card, snapshot: ?CardPriceSnapshot, owned: bool, quantity: int}
+ * @phpstan-type Entry array{card: Card, snapshot: ?CardPriceSnapshot, owned: bool, quantity: int, chips: list<array{variant: ?string, label: string, count: int}>}
  */
 #[Layout('layouts.app')]
 final class SetGrid extends Component
@@ -90,9 +91,10 @@ final class SetGrid extends Component
             $cardsQuery->where('rarity', $this->rarityFilter);
         }
 
-        $entries = $cardsQuery->get()->map(fn (Card $card): array => $this->entryFor($card, $valuation));
+        $entries = $cardsQuery->get()->toBase()->map(fn (Card $card): array => $this->entryFor($card, $valuation));
 
         if ($this->hideMissing) {
+            /** @var SupportCollection<int, Entry> $entries */
             $entries = $entries->filter(fn (array $entry): bool => $entry['owned']);
         }
 
@@ -124,11 +126,26 @@ final class SetGrid extends Component
     /** @return Entry */
     private function entryFor(Card $card, Valuation $valuation): array
     {
+        $offered = CardVariants::available($card->variants ?? [], $card->raw ?? []);
+
+        // Every condition and grade of one variant counts toward its chip.
+        $perVariant = $card->collectionItems
+            ->groupBy(fn (CollectionItem $item): string => (string) $item->variant)
+            ->map(fn ($items): int => (int) $items->sum('quantity'));
+
+        $chips = $offered === []
+            ? [['variant' => null, 'label' => '', 'count' => (int) ($perVariant[''] ?? 0)]]
+            : array_values(array_map(
+                fn (string $variant): array => ['variant' => $variant, 'label' => CardVariants::label($variant), 'count' => (int) ($perVariant[$variant] ?? 0)],
+                $offered,
+            ));
+
         return [
             'card' => $card,
             'snapshot' => $valuation->headlineSnapshot($card),
             'owned' => $card->collectionItems->isNotEmpty(),
             'quantity' => (int) $card->collectionItems->sum('quantity'),
+            'chips' => $chips,
         ];
     }
 

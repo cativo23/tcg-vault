@@ -31,6 +31,27 @@
             </div>
         </div>
 
+        <div class="nw-chips" role="group" aria-label="Add a copy of {{ $card->name }}">
+            @foreach ($entry['chips'] as $chip)
+                @php
+                    $text = $chip['count'] > 0
+                        ? ($chip['label'] !== '' ? $chip['label'] : '+1')
+                        : ($chip['label'] !== '' ? '+ '.$chip['label'] : '+1');
+                @endphp
+                <button type="button"
+                    class="nw-chip-add {{ $chip['count'] > 0 ? 'owned' : '' }}"
+                    data-chip="{{ $card->id }}|{{ $chip['variant'] }}"
+                    data-card="{{ $card->id }}"
+                    data-variant="{{ $chip['variant'] }}"
+                    data-label="{{ $chip['label'] }}"
+                    data-name="{{ $card->name }}"
+                    data-count="{{ $chip['count'] }}"
+                    aria-label="Add one {{ $chip['label'] !== '' ? $chip['label'].' copy' : 'copy' }} of {{ $card->name }}"
+                    @click="add($el)"
+                ><span data-chip-label>{{ $text }}</span> <span class="mono" data-chip-count @if ($chip['count'] < 1) hidden @endif>×{{ $chip['count'] }}</span></button>
+            @endforeach
+        </div>
+
         <div class="ticker">
             @if ($snapshot && $snapshot->market_minor !== null)
                 <span>{{ Money::format($snapshot->market_minor, $snapshot->currency) }}<span class="cur">{{ $snapshot->currency }}</span></span>

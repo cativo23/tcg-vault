@@ -228,3 +228,59 @@ test('an unknown sort is ignored', function () {
         ->call('sortBy', 'bogus')
         ->assertSet('sort', 'number');
 });
+
+test('a tile offers one chip per variant the card prints, summing every condition and grade', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    setGridOwn($user, $first, ['variant' => 'normal', 'condition' => 'NM', 'quantity' => 2]);
+    setGridOwn($user, $first, ['variant' => 'normal', 'condition' => 'LP', 'quantity' => 1]);
+    setGridOwn($user, $first, ['variant' => 'normal', 'condition' => 'NM', 'grade_company' => 'PSA', 'grade_value' => '9', 'quantity' => 4]);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05']);
+    $entry = $component->viewData('entries')->first(fn (array $e) => $e['card']->id === $first->id);
+
+    expect($entry['chips'])->toBe([
+        ['variant' => 'normal', 'label' => 'Normal', 'count' => 7],
+        ['variant' => 'reverse-holofoil', 'label' => 'Reverse Holofoil', 'count' => 0],
+    ]);
+    $component
+        ->assertSeeHtml('data-chip="'.$first->id.'|normal"')
+        ->assertSeeHtml('data-chip="'.$first->id.'|reverse-holofoil"')
+        ->assertSee('×7', false);
+});
+
+test('an owned variant is a filled chip and a variant with no copies is a dashed one', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 2]);
+
+    $html = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->html();
+
+    expect($html)->toContain('nw-chip-add owned')
+        ->and($html)->toContain('data-chip="'.$first->id.'|normal"')
+        ->and($html)->toContain('+ Reverse Holofoil');
+});
+
+test('a card with no known variants gets a single plain +1 chip that counts unspecified copies', function () {
+    $user = setGridUser();
+    ['third' => $third] = setGridFixture();
+    setGridOwn($user, $third, ['variant' => null, 'quantity' => 2]);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05']);
+    $entry = $component->viewData('entries')->first(fn (array $e) => $e['card']->id === $third->id);
+
+    expect($entry['chips'])->toBe([['variant' => null, 'label' => '', 'count' => 2]]);
+    $component->assertSeeHtml('data-chip="'.$third->id.'|"');
+});
+
+test('another users copies do not count toward a chip', function () {
+    setGridUser();
+    ['first' => $first] = setGridFixture();
+    $other = User::factory()->create();
+    setGridOwn($other, $first, ['variant' => 'normal', 'quantity' => 5]);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05']);
+    $entry = $component->viewData('entries')->first(fn (array $e) => $e['card']->id === $first->id);
+
+    expect($entry['chips'][0]['count'])->toBe(0);
+});
