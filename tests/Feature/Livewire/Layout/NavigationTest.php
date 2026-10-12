@@ -39,3 +39,13 @@ test('the mobile menu toggle has an accessible name', function () {
     $response->assertSee('aria-label="Toggle navigation menu"', false);
     $response->assertSee('aria-controls="admin-mobile-nav"', false);
 });
+
+test('the admin nav links to My sets on desktop and in the mobile menu', function () {
+    $this->seed(PermissionSeeder::class);
+    $user = User::factory()->create();
+
+    $html = $this->actingAs($user)->get('/admin')->getContent();
+
+    expect(substr_count($html, 'href="'.route('admin.sets.index').'"'))->toBe(2)
+        ->and($html)->toContain('My sets');
+});
