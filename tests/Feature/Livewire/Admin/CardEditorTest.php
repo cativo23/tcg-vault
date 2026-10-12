@@ -1015,7 +1015,7 @@ test('a replacement photo that cannot be stripped is refused and the old photo i
 
 test('a user over the photo limit keeps the old photo and the new one is not processed', function () {
     [$component, $item] = cardEditorWithStoredPhoto($this);
-    RateLimiter::increment('photo-strip:'.auth()->id(), amount: CollectionItems::PHOTO_LIMIT_PER_MINUTE);
+    RateLimiter::increment('photo-strip:'.auth()->id(), amount: CardEditor::PHOTO_LIMIT_PER_MINUTE);
 
     $component->set('editingRows.0.photo', UploadedFile::fake()->image('new.jpg'))
         ->assertHasErrors(['editingRows.0.photo'])

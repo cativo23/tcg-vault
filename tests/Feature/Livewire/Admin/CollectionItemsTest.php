@@ -687,3 +687,40 @@ if (! function_exists('budewCard')) {
         ]);
     }
 }
+
+test('the list mounts the card editor as its own component', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    expect(Livewire::test(CollectionItems::class)->html())->toContain('admin.card-editor');
+});
+
+test('a row opens the editor with an event instead of a host action', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = Livewire::test(CollectionItems::class)->html();
+
+    expect($html)->toContain(sprintf("\$dispatch('open-card-editor', { cardId: %d })", $card->id))
+        ->and($html)->toContain('id="card-editor-trigger-'.$card->id.'"')
+        ->and($html)->not->toContain('wire:click="openCardEditor');
+});
+
+test('the list refreshes its counts when the editor reports a changed card', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $component = Livewire::test(CollectionItems::class)->assertSee('×1', false);
+
+    $item->update(['quantity' => 4]);
+
+    $component->dispatch('card-copies-changed', cardId: $card->id)->assertSee('×4', false);
+});
