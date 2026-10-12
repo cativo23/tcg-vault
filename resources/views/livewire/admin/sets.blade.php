@@ -25,7 +25,7 @@
                     :set="$set"
                     :owned="$set->owned_card_count"
                     :total="$set->card_count ?: $set->real_card_count"
-                    :href="url('/admin/sets/'.$set->tcgdex_id)"
+                    :href="route('admin.sets.show', ['setTcgdexId' => $set->tcgdex_id])"
                     :index="$loop->index"
                 />
             @endforeach

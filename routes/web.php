@@ -4,6 +4,7 @@ use App\Http\Controllers\CollectionExportController;
 use App\Livewire\Admin\AddCollectionItem;
 use App\Livewire\Admin\CollectionItems;
 use App\Livewire\Admin\Import;
+use App\Livewire\Admin\SetGrid;
 use App\Livewire\Admin\Sets as AdminSets;
 use App\Livewire\Gallery\Activity;
 use App\Livewire\Gallery\CardShow;
@@ -47,6 +48,10 @@ Route::middleware(['auth', 'can:use-collection'])->group(function () {
 
     Route::get('/admin/sets', AdminSets::class)
         ->name('admin.sets.index');
+
+    Route::get('/admin/sets/{setTcgdexId}', SetGrid::class)
+        ->where('setTcgdexId', '[A-Za-z0-9.\-]+')
+        ->name('admin.sets.show');
 
     Route::get('/admin/export', CollectionExportController::class)
         ->name('admin.collection.export');
