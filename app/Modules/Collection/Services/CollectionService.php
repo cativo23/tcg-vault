@@ -169,7 +169,7 @@ final class CollectionService
     /**
      * Livewire skips ConvertEmptyStringsToNull, so a cleared <select> or
      * text input arrives as '' rather than null — shared here since both
-     * this service and CollectionItems::updateRow() write these same
+     * this service and CardEditor::updateRow() write these same
      * nullable identity columns and must agree on what "unset" means.
      */
     public static function nullIfEmpty(?string $value): ?string

@@ -145,8 +145,8 @@ final class CardEditor extends Component
         $card = $primary->card;
         $this->editingCardName = $card->name;
 
-        // Same variant-sourcing priority as the old startEditingItem():
-        // the card's own tcgdex print flags first, synced pricing
+        // Variant-sourcing priority: the card's own tcgdex print flags
+        // first, synced pricing
         // coverage only as a fallback for fixtures/pre-`variants` cards.
         $variants = CardVariants::available($card->variants ?? [], $card->raw ?? []);
         if ($variants === []) {
@@ -159,8 +159,7 @@ final class CardEditor extends Component
         if ($variants === []) {
             // No tcgdex print flags AND no synced pricing at all for this
             // card — fall back to just the primary item's own already-set
-            // variant (same single-item fallback the old startEditingItem()
-            // had), not the union of every row's variant in this card
+            // variant, not the union of every row's variant in this card
             // group, so one row's choice never leaks into another row's
             // dropdown as a selectable option.
             $variants = array_filter([$primary->variant]);

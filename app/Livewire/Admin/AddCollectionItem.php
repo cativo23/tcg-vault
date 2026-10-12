@@ -113,7 +113,7 @@ final class AddCollectionItem extends Component
     /**
      * One row per variant/condition/grading combo being added for the
      * selected card in this single submission — @see save(). Same shape
-     * as CollectionItems::$editingRows, minus `id` (nothing here is
+     * as CardEditor::$editingRows, minus `id` (nothing here is
      * persisted yet).
      *
      * @var array<int, array{variant: ?string, condition: string, quantity: int, grade_company: ?string, grade_value: ?string, notes: ?string, photo: mixed, showDetails: bool}>
