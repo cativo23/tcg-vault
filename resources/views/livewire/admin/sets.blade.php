@@ -15,7 +15,7 @@
             <div class="t">No sets yet</div>
             <p>
                 Sets appear here once you own a card from them.
-                <a href="{{ route('admin.collection.add') }}" wire:navigate style="color: var(--ink); text-decoration: underline">Add a card</a> to start one.
+                <a href="{{ route('admin.collection.add') }}" wire:navigate class="nw-inline-link">Add a card</a> to start one.
             </p>
         </div>
     @else
