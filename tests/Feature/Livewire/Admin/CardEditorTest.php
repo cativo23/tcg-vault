@@ -1438,6 +1438,20 @@ test('saving a row tells hosts which card changed', function () {
         ->assertDispatched('card-copies-changed', cardId: $card->id);
 });
 
+test('saving a manual price tells hosts which card changed', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card] = prizePackBudew($admin);
+
+    Livewire::test(CardEditor::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '0.70')
+        ->call('saveManualPrice', 0)
+        ->assertDispatched('card-copies-changed', cardId: $card->id);
+});
+
 test('adding a variant row tells hosts which card changed', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

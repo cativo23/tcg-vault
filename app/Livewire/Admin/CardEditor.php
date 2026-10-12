@@ -328,6 +328,8 @@ final class CardEditor extends Component
                 'raw' => ['set_by_user_id' => auth()->id()],
             ],
         );
+
+        $this->dispatch('card-copies-changed', cardId: $this->editingCardId);
     }
 
     private function currentManualPrice(CollectionItem $item): ?string
