@@ -76,9 +76,9 @@
 
     <livewire:admin.card-editor presentation="panel" />
 
-    <div class="nw-toasts" aria-live="polite" wire:ignore>
+    <div class="nw-toasts" aria-live="polite" tabindex="-1" wire:ignore>
         <template x-for="toast in toasts" :key="toast.id">
-            <div class="nw-toast" tabindex="-1"
+            <div class="nw-toast" tabindex="-1" :data-toast="toast.id"
                 x-on:mouseenter="hold(toast, true)" x-on:mouseleave="hold(toast, false)"
                 x-on:focusin="hold(toast, true)" x-on:focusout="hold(toast, false)">
                 <span class="msg" x-text="toast.message"></span>

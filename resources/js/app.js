@@ -243,13 +243,14 @@ document.addEventListener('row-saved', (event) => {
 // never shows a +1 the database does not hold.
 const TOAST_MS = 6000;
 const FAILURE_MS = 4000;
-// A slow save shows a softer state first; the chip is only released at the ceiling.
+// A slow save escalates its wording; the chip stays blocked until the
+// request really settles, so a copy can never be added twice by a retap.
 const SLOW_MS = 10000;
-const CEILING_MS = 30000;
+const STALLED_MS = 30000;
 const MAX_TOASTS = 4;
 const FAILED_LABEL = 'Not saved — retry';
-const UNCONFIRMED_LABEL = 'Not saved — check before retrying';
 const SAVING_LABEL = 'Still saving…';
+const STALLED_LABEL = 'Still saving — check your connection';
 const QUICK_METHODS = ['quickAdd', 'undoQuickAdd'];
 
 const setGridData = () => ({
@@ -257,8 +258,7 @@ const setGridData = () => ({
     nextToastId: 1,
     busy: new Set(),
     timers: new Map(),
-    pending: new Set(),
-    inflight: new Map(),
+    pending: [],
     unhook: null,
 
     init() {
@@ -274,6 +274,7 @@ const setGridData = () => ({
     destroy() {
         this.unhook?.();
         this.timers.forEach((timer) => clearTimeout(timer));
+        this.pending.splice(0).forEach((entry) => entry.dispose());
     },
 
     settleFailedRequest(payload, status, preventDefault) {
@@ -305,75 +306,52 @@ const setGridData = () => ({
             failed.push(...calls);
         }
 
-        // A call that already hit its ceiling stays pending, so a late
-        // failure is still recognised as ours and gets no error modal.
+        // One failed call settles exactly one pending call: the oldest with
+        // the same method and params, which is the order Livewire sends them.
         let matched = false;
-        this.pending.forEach((entry) => {
-            if (failed.some((call) => call.method === entry.method && JSON.stringify(call.params) === JSON.stringify(entry.params))) {
-                matched = true;
-                entry.fail(new Error(`request failed: ${status}`));
-            }
-        });
+        for (const call of failed) {
+            const entry = this.pending.find((candidate) => candidate.method === call.method && JSON.stringify(candidate.params) === JSON.stringify(call.params));
+            if (!entry) continue;
+            matched = true;
+            entry.fail(new Error(`request failed: ${status}`));
+        }
 
         // An expired page keeps Livewire's own refresh prompt.
         if (matched && ours && status !== 419) preventDefault();
     },
 
-    // Resolves with the server's answer, rejects when the request fails, and
-    // rejects with `ceiling` set when the server has not answered after
-    // CEILING_MS. A call is only abandoned at the ceiling: until then it may
-    // still have been saved, so onSlow lets the caller say "still saving" and
-    // onLate receives an answer that arrives after the ceiling. Calls with
-    // the same method and params run one at a time, which lets a failed
-    // request be matched to exactly one call.
-    async call(method, params, { onSlow, onLate } = {}) {
-        const signature = `${method}|${JSON.stringify(params)}`;
-        while (this.inflight.has(signature)) await this.inflight.get(signature);
-
+    // Resolves with the server's answer and rejects when the request fails.
+    // It never gives up on its own: until Livewire answers or the failure
+    // hook settles it, the save may still happen, so onSlow only lets the
+    // caller escalate its wording ('slow', then 'stalled').
+    call(method, params, { onSlow } = {}) {
         return new Promise((resolve, reject) => {
-            let state = 'waiting'; // waiting | released | settled
-            let release;
-            const done = new Promise((r) => { release = r; });
-            const entry = { method, params, fail: null };
             const timers = [];
-            const free = () => {
-                if (this.inflight.get(signature) === done) this.inflight.delete(signature);
-                release();
-            };
-            const finish = () => {
-                timers.forEach(clearTimeout);
-                this.pending.delete(entry);
-                free();
-            };
-
-            entry.fail = (error) => {
-                if (state === 'settled') return;
-                const abandoned = state === 'released';
-                state = 'settled';
-                finish();
-                if (!abandoned) reject(error);
+            let settled = false;
+            const entry = {
+                method,
+                params,
+                dispose: () => {
+                    settled = true;
+                    timers.forEach(clearTimeout);
+                    this.pending = this.pending.filter((candidate) => candidate !== entry);
+                },
+                fail: (error) => {
+                    if (settled) return;
+                    entry.dispose();
+                    reject(error);
+                },
             };
 
-            this.inflight.set(signature, done);
-            this.pending.add(entry);
-            // The backstops start when the call is made, which is when
-            // Livewire queues the request for sending.
-            timers.push(setTimeout(() => { if (state === 'waiting') onSlow?.(); }, SLOW_MS));
-            timers.push(setTimeout(() => {
-                if (state !== 'waiting') return;
-                state = 'released';
-                free();
-                reject(Object.assign(new Error('no answer'), { ceiling: true }));
-            }, CEILING_MS));
+            this.pending.push(entry);
+            timers.push(setTimeout(() => onSlow?.('slow'), SLOW_MS));
+            timers.push(setTimeout(() => onSlow?.('stalled'), STALLED_MS));
 
             this.$wire[method](...params).then((value) => {
-                if (state === 'settled') return;
-                const abandoned = state === 'released';
-                state = 'settled';
-                finish();
-                if (abandoned) onLate?.(value);
-                else resolve(value);
-            }, (error) => entry.fail(error));
+                if (settled) return;
+                entry.dispose();
+                resolve(value);
+            }, entry.fail);
         });
     },
 
@@ -426,14 +404,14 @@ const setGridData = () => ({
         chip.classList.remove('failed');
     },
 
-    fail(chip, message, label = FAILED_LABEL) {
-        this.setNote(chip, label);
+    fail(chip, message) {
+        this.setNote(chip, FAILED_LABEL);
         chip.classList.add('failed');
         chip._failTimer = setTimeout(() => this.clearFailure(chip), FAILURE_MS);
-        this.pushToast({ message: message ?? label, undoable: false });
+        this.pushToast({ message: message ?? FAILED_LABEL, undoable: false });
     },
 
-    // Paints a confirmed answer, whether it arrived in time or late.
+    // Paints a confirmed answer.
     applyAdd(chip, cardId, result) {
         if (!result || result.ok !== true) {
             this.fail(chip, result?.message);
@@ -460,8 +438,8 @@ const setGridData = () => ({
         const variant = chip.dataset.variant;
         const key = `${cardId}|${variant}`;
 
-        // The chip stays blocked until the server answers, the request
-        // fails or the ceiling passes, so a slow save cannot be tapped twice.
+        // The chip stays blocked until the server answers or the request
+        // fails, so a slow save cannot be tapped twice.
         if (this.busy.has(key)) return;
         this.busy.add(key);
         this.clearFailure(chip);
@@ -470,11 +448,10 @@ const setGridData = () => ({
         let result;
         try {
             result = await this.call('quickAdd', [cardId, variant], {
-                onSlow: () => this.setNote(chip, SAVING_LABEL),
-                onLate: (late) => this.applyAdd(chip, cardId, late),
+                onSlow: (stage) => this.setNote(chip, stage === 'stalled' ? STALLED_LABEL : SAVING_LABEL),
             });
         } catch (error) {
-            this.fail(chip, undefined, error.ceiling ? UNCONFIRMED_LABEL : FAILED_LABEL);
+            this.fail(chip);
             return;
         } finally {
             this.busy.delete(key);
@@ -484,7 +461,6 @@ const setGridData = () => ({
         this.applyAdd(chip, cardId, result);
     },
 
-    // Paints an answer to an undo, whether it arrived in time or late.
     applyUndo(toast, result) {
         toast.held = 0;
 
@@ -511,14 +487,11 @@ const setGridData = () => ({
         let result;
         try {
             result = await this.call('undoQuickAdd', [toast.itemId], {
-                onSlow: () => { toast.message = 'Still undoing…'; },
-                onLate: (late) => this.applyUndo(toast, late),
+                onSlow: (stage) => { toast.message = stage === 'stalled' ? 'Still undoing — check your connection' : 'Still undoing…'; },
             });
         } catch (error) {
             toast.held = 0;
-            toast.message = error.ceiling
-                ? 'Could not confirm the undo. Check the chip count.'
-                : 'Could not undo that. Check the chip count.';
+            toast.message = 'Could not undo that. Check the chip count.';
             this.scheduleDismiss(toast.id);
             return;
         }
@@ -547,6 +520,16 @@ const setGridData = () => ({
         this.timers.set(id, setTimeout(() => this.dismiss(id), TOAST_MS));
     },
 
+    // A dismissed toast that holds focus would drop it to the page: hand it
+    // to the toast's own chip if it is on screen, else to the toast region.
+    keepFocus(id) {
+        const el = this.$root.querySelector(`.nw-toasts [data-toast="${Number(id)}"]`);
+        if (!el || !el.contains(document.activeElement)) return;
+        const toast = this.toasts.find((candidate) => candidate.id === id);
+        const chip = toast?.cardId !== undefined ? this.chipFor(toast.cardId, toast.variant) : null;
+        (chip ?? this.$root.querySelector('.nw-toasts'))?.focus();
+    },
+
     cancelDismiss(id) {
         clearTimeout(this.timers.get(id));
         this.timers.delete(id);
@@ -554,6 +537,7 @@ const setGridData = () => ({
 
     dismiss(id) {
         this.cancelDismiss(id);
+        this.keepFocus(id);
         this.toasts = this.toasts.filter((toast) => toast.id !== id);
     },
 });
