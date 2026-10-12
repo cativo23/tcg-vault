@@ -51,12 +51,19 @@ final class CardVariants
      * variant_detailed.foil in tcgdex/cards-database interfaces.d.ts), so
      * a print entered by hand gets the key tcgdex would give it if it
      * later lists that print.
+     *
+     * One foil is this app's own: `confetti`, McDonald's confetti holo.
+     * tcgdex lists those prints only in their McDonald's sets, as plain
+     * holo, so a Latin American copy printed with its original set number
+     * (the McDonald's 2024 Pikachu as MEW 025/165) has no key there. It
+     * keys the way a tcgdex foil would (holo + foil confetti), so a print
+     * tcgdex adds later gets the same key.
      */
     private const FOILS = [
         'pokeball', 'greatball', 'ultraball', 'masterball', 'gold', 'cosmos', 'galaxy',
         'starlight', 'energy', 'cracked-ice', 'mirror', 'league', 'player-reward',
         'professor-program', 'tinsel', 'loveball', 'friendball', 'quickball', 'team-rocket',
-        'duskball', 'rainbow', 'glitter',
+        'duskball', 'rainbow', 'glitter', 'confetti',
     ];
 
     private const STAMPS = [

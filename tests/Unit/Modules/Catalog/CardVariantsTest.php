@@ -104,6 +104,7 @@ test('label reads like a collector would say it', function (string $key, string 
     ['reverse-holofoil:pokeball', 'Reverse Holofoil · Poké Ball'],
     ['reverse-holofoil:masterball', 'Reverse Holofoil · Master Ball'],
     ['holofoil:cosmos+player-rewards-program', 'Holofoil · Cosmos · Player Rewards Program'],
+    ['holofoil:confetti', 'Holofoil · Confetti'],
     ['default', 'Default'],
 ]);
 
@@ -157,6 +158,17 @@ test('compose refuses anything outside tcgdex\'s vocabulary, or a key with nothi
     expect(CardVariants::compose('holofoil', null, ['my-own-stamp']))->toBeNull();
     expect(CardVariants::compose('default', 'cosmos', []))->toBeNull();
     expect(CardVariants::compose('normal', null, []))->toBeNull();
+});
+
+test('compose builds a confetti holo key for a McDonald\'s reprint tcgdex lists only in its McDonald\'s set', function () {
+    // The Latin American McDonald's 2024 Pikachu, printed with its 151
+    // number (MEW 025/165) and McDonald's confetti foil.
+    expect(CardVariants::compose('holofoil', 'confetti', []))->toBe('holofoil:confetti');
+    expect(CardVariants::foilOptions())->toHaveKey('confetti', 'Confetti');
+});
+
+test('a confetti print tcgdex lists later gets the same key as one entered by hand', function () {
+    expect(CardVariants::keyFor(['type' => 'holo', 'foil' => 'confetti']))->toBe('holofoil:confetti');
 });
 
 test('the foil and stamp options are tcgdex\'s, labelled', function () {
