@@ -351,3 +351,16 @@ test('the chip counts always add up to the tile quantity', function () {
     }
     expect(setGridEntry($component, $first)['quantity'])->toBe(7);
 });
+
+test('the number sort is natural and case-insensitive across mixed ids', function () {
+    setGridUser();
+    $set = Set::create(['tcgdex_id' => 'swsh9', 'name' => 'Mixed', 'card_count' => 6]);
+    foreach (['TG10', '010', 'TG2', '002', 'TG01', '001'] as $id) {
+        Card::create(['tcgdex_id' => 'swsh9-'.$id, 'set_id' => $set->id, 'local_id' => $id, 'name' => 'Card '.$id]);
+    }
+
+    $ids = Livewire::test(SetGrid::class, ['setTcgdexId' => 'swsh9'])
+        ->viewData('entries')->map(fn (array $e) => $e['card']->local_id)->values()->all();
+
+    expect($ids)->toBe(['001', '002', '010', 'TG01', 'TG2', 'TG10']);
+});

@@ -206,6 +206,6 @@ final class SetGrid extends Component
      */
     private static function compareNumbers(array $a, array $b): int
     {
-        return strcmp(str_pad($a['card']->local_id, 5, '0', STR_PAD_LEFT), str_pad($b['card']->local_id, 5, '0', STR_PAD_LEFT));
+        return strnatcasecmp($a['card']->local_id, $b['card']->local_id);
     }
 }
