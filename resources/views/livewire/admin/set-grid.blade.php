@@ -78,9 +78,13 @@
 
     <div class="nw-toasts" aria-live="polite" wire:ignore>
         <template x-for="toast in toasts" :key="toast.id">
-            <div class="nw-toast" role="status">
+            <div class="nw-toast"
+                x-on:mouseenter="hold(toast, true)" x-on:mouseleave="hold(toast, false)"
+                x-on:focusin="hold(toast, true)" x-on:focusout="hold(toast, false)">
                 <span class="msg" x-text="toast.message"></span>
-                <button type="button" x-show="toast.undoable" x-on:click="undo(toast)">Undo</button>
+                <button type="button" x-show="toast.subject" x-on:click="undo(toast)"
+                    :disabled="!toast.undoable" :aria-disabled="!toast.undoable"
+                    :aria-label="'Undo adding ' + toast.subject">Undo</button>
                 <button type="button" class="x" aria-label="Dismiss" x-on:click="dismiss(toast.id)">✕</button>
             </div>
         </template>

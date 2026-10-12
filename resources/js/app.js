@@ -243,20 +243,98 @@ document.addEventListener('row-saved', (event) => {
 // never shows a +1 the database does not hold.
 const TOAST_MS = 6000;
 const FAILURE_MS = 4000;
+const REQUEST_TIMEOUT_MS = 10000;
 const MAX_TOASTS = 4;
+const FAILED_LABEL = 'Not saved — retry';
+const QUICK_METHODS = ['quickAdd', 'undoQuickAdd'];
 
 const setGridData = () => ({
     toasts: [],
     nextToastId: 1,
     busy: new Set(),
     timers: new Map(),
+    pending: new Set(),
+    unhook: null,
 
-    chipFor(cardId, variant) {
-        return this.$root.querySelector(`[data-chip="${cardId}|${variant ?? ''}"]`);
+    init() {
+        // Livewire's promise for a call never settles when its request fails,
+        // so failures are caught on the request itself and settle the
+        // matching pending calls. Only requests made up entirely of this
+        // component's quick add / undo calls lose Livewire's error modal.
+        this.unhook = window.Livewire.hook('request', ({ payload, fail }) => {
+            fail(({ status, preventDefault }) => this.settleFailedRequest(payload, status, preventDefault));
+        });
     },
 
-    paintChip(cardId, variant, count) {
-        const chip = this.chipFor(cardId, variant);
+    destroy() {
+        this.unhook?.();
+        this.timers.forEach((timer) => clearTimeout(timer));
+    },
+
+    settleFailedRequest(payload, status, preventDefault) {
+        let components;
+        try {
+            components = JSON.parse(payload).components ?? [];
+        } catch (error) {
+            return;
+        }
+
+        let ours = true;
+        const failed = [];
+
+        for (const component of components) {
+            let id = null;
+            try {
+                id = JSON.parse(component.snapshot).memo.id;
+            } catch (error) {
+                // An unreadable snapshot is not ours.
+            }
+            const calls = component.calls ?? [];
+            const quickOnly = calls.length > 0 && calls.every((call) => QUICK_METHODS.includes(call.method));
+
+            if (id !== this.$wire.id || !quickOnly || (component.updates && Object.keys(component.updates).length > 0)) {
+                ours = false;
+                continue;
+            }
+
+            failed.push(...calls);
+        }
+
+        let matched = false;
+        this.pending.forEach((entry) => {
+            if (failed.some((call) => call.method === entry.method && JSON.stringify(call.params) === JSON.stringify(entry.params))) {
+                matched = true;
+                entry.reject(new Error(`request failed: ${status}`));
+            }
+        });
+
+        // An expired page keeps Livewire's own refresh prompt.
+        if (matched && ours && status !== 419) preventDefault();
+    },
+
+    // Resolves with the server's answer, or rejects when the request fails
+    // or does not answer in time.
+    call(method, ...params) {
+        return new Promise((resolve, reject) => {
+            const entry = { method, params, reject: null };
+            const timer = setTimeout(() => entry.reject(new Error('timeout')), REQUEST_TIMEOUT_MS);
+            const settle = (fn) => (value) => {
+                clearTimeout(timer);
+                this.pending.delete(entry);
+                fn(value);
+            };
+            entry.reject = settle(reject);
+            this.pending.add(entry);
+            this.$wire[method](...params).then(settle(resolve), settle(reject));
+        });
+    },
+
+    chipFor(cardId, variant) {
+        return [...this.$root.querySelectorAll(`[data-card="${Number(cardId)}"][data-chip]`)]
+            .find((chip) => chip.dataset.variant === (variant ?? ''));
+    },
+
+    paintChip(chip, count) {
         if (!chip) return;
         const label = chip.dataset.label;
         chip.dataset.count = String(count);
@@ -269,7 +347,7 @@ const setGridData = () => ({
     },
 
     paintTile(cardId, cardTotal) {
-        const tile = this.$root.querySelector(`[data-tile="${cardId}"]`);
+        const tile = this.$root.querySelector(`[data-tile="${Number(cardId)}"]`);
         if (!tile) return;
         tile.classList.toggle('ghost', cardTotal < 1);
         const qty = tile.querySelector('[data-tile-qty]');
@@ -280,10 +358,12 @@ const setGridData = () => ({
 
     clearFailure(chip) {
         clearTimeout(chip._failTimer);
-        if (chip._originalLabel !== undefined) {
-            chip.querySelector('[data-chip-label]').textContent = chip._originalLabel;
-            delete chip._originalLabel;
+        const labelEl = chip.querySelector('[data-chip-label]');
+        // A re-render may have replaced the label already; only undo our own.
+        if (chip._originalLabel !== undefined && labelEl.textContent === FAILED_LABEL) {
+            labelEl.textContent = chip._originalLabel;
         }
+        delete chip._originalLabel;
         chip.classList.remove('failed');
     },
 
@@ -291,10 +371,10 @@ const setGridData = () => ({
         this.clearFailure(chip);
         const labelEl = chip.querySelector('[data-chip-label]');
         chip._originalLabel = labelEl.textContent;
-        labelEl.textContent = 'Not saved — retry';
+        labelEl.textContent = FAILED_LABEL;
         chip.classList.add('failed');
         chip._failTimer = setTimeout(() => this.clearFailure(chip), FAILURE_MS);
-        this.pushToast({ message: message ?? 'Not saved — retry', undoable: false });
+        this.pushToast({ message: message ?? FAILED_LABEL, undoable: false });
     },
 
     async add(chip) {
@@ -308,30 +388,33 @@ const setGridData = () => ({
         this.clearFailure(chip);
         chip.setAttribute('aria-busy', 'true');
 
+        let result;
         try {
-            const result = await this.$wire.quickAdd(cardId, variant);
-
-            if (!result || result.ok !== true) {
-                this.fail(chip, result?.message);
-                return;
-            }
-
-            this.paintChip(cardId, variant, result.variantCount);
-            this.paintTile(cardId, result.cardTotal);
-            const label = chip.dataset.label ? ` · ${chip.dataset.label}` : '';
-            this.pushToast({
-                message: `Added ${chip.dataset.name}${label}`,
-                itemId: result.itemId,
-                cardId,
-                variant,
-                undoable: true,
-            });
+            result = await this.call('quickAdd', cardId, variant);
         } catch (error) {
             this.fail(chip);
+            return;
         } finally {
             this.busy.delete(key);
             chip.removeAttribute('aria-busy');
         }
+
+        if (!result || result.ok !== true) {
+            this.fail(chip, result?.message);
+            return;
+        }
+
+        this.paintChip(chip, result.variantCount);
+        this.paintTile(cardId, result.cardTotal);
+        const label = chip.dataset.label ? ` · ${chip.dataset.label}` : '';
+        this.pushToast({
+            message: `Added ${chip.dataset.name}${label}`,
+            subject: `${chip.dataset.name}${label}`,
+            itemId: result.itemId,
+            cardId,
+            variant,
+            undoable: true,
+        });
     },
 
     // One click per toast: the undo is disabled before the request, and
@@ -340,40 +423,57 @@ const setGridData = () => ({
     async undo(toast) {
         if (!toast.undoable) return;
         toast.undoable = false;
+        // The toast must not vanish mid-request; its result gets its own full duration.
+        this.cancelDismiss(toast.id);
 
+        let result;
         try {
-            const result = await this.$wire.undoQuickAdd(toast.itemId);
-
-            if (result?.ok === true) {
-                this.paintChip(toast.cardId, toast.variant, result.variantCount);
-                this.paintTile(toast.cardId, result.cardTotal);
-                this.dismiss(toast.id);
-                return;
-            }
-
-            toast.message = result?.message ?? 'Could not undo that.';
+            result = await this.call('undoQuickAdd', toast.itemId);
         } catch (error) {
             toast.message = 'Could not undo that. Check the chip count.';
+            this.scheduleDismiss(toast.id);
+            return;
         }
 
+        if (result?.ok === true) {
+            this.paintChip(this.chipFor(toast.cardId, toast.variant), result.variantCount);
+            this.paintTile(toast.cardId, result.cardTotal);
+            this.dismiss(toast.id);
+            return;
+        }
+
+        toast.message = result?.message ?? 'Could not undo that.';
         this.scheduleDismiss(toast.id);
     },
 
     pushToast(toast) {
-        const entry = { id: this.nextToastId++, ...toast };
+        const entry = { id: this.nextToastId++, held: 0, ...toast };
         this.toasts.push(entry);
         if (this.toasts.length > MAX_TOASTS) this.dismiss(this.toasts[0].id);
         this.scheduleDismiss(entry.id);
     },
 
+    // Hovering or focusing a toast keeps it open (a pointer or keyboard
+    // user needs time to reach Undo); leaving restarts the full duration.
+    hold(toast, on) {
+        toast.held = Math.max(0, toast.held + (on ? 1 : -1));
+        if (toast.held > 0) this.cancelDismiss(toast.id);
+        else this.scheduleDismiss(toast.id);
+    },
+
     scheduleDismiss(id) {
-        clearTimeout(this.timers.get(id));
+        this.cancelDismiss(id);
+        if (this.toasts.find((toast) => toast.id === id)?.held > 0) return;
         this.timers.set(id, setTimeout(() => this.dismiss(id), TOAST_MS));
     },
 
-    dismiss(id) {
+    cancelDismiss(id) {
         clearTimeout(this.timers.get(id));
         this.timers.delete(id);
+    },
+
+    dismiss(id) {
+        this.cancelDismiss(id);
         this.toasts = this.toasts.filter((toast) => toast.id !== id);
     },
 });

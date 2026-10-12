@@ -866,8 +866,13 @@ test('the grid mounts the card editor as a panel and the image opens it', functi
 
     $html = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->html();
 
-    expect($html)->toContain('admin.card-editor')
-        ->and($html)->toContain('presentation')
+    preg_match_all('/wire:snapshot="([^"]+)"/', $html, $matches);
+    $editor = collect($matches[1])
+        ->map(fn (string $snapshot) => json_decode(html_entity_decode($snapshot), true))
+        ->first(fn (array $snapshot) => ($snapshot['memo']['name'] ?? null) === 'admin.card-editor');
+
+    expect($editor)->not->toBeNull()
+        ->and($editor['data']['presentation'])->toBe('panel')
         ->and($html)->toContain(sprintf("\$dispatch('open-card-editor', { cardId: %d, allowEmpty: true })", $first->id))
         ->and($html)->toContain('id="card-editor-trigger-'.$first->id.'"');
 });

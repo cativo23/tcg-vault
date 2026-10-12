@@ -1516,6 +1516,9 @@ body::before {
 .nw-toast button { color: var(--bone); font-weight: 700; text-decoration: underline; padding: 4px 6px; min-height: 44px; min-width: 44px; }
 .nw-toast button.x { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .nw-toast { animation: none; } }
+.nw-toast button:disabled { opacity: .5; cursor: default; text-decoration: none; }
+/* On a phone the bottom sheet owns the bottom edge, so toasts sit at the top. */
+@media (max-width: 720px) { .nw-toasts { bottom: auto; top: 12px; } }
 
 /* Card editor as a docked panel: a right-edge drawer on wide screens, a
    bottom sheet on a phone. Motion is transform/opacity only. */
