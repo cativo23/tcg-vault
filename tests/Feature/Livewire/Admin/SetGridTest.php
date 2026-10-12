@@ -19,6 +19,10 @@ use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Renderless;
 use Livewire\Livewire;
 
+afterEach(function () {
+    SetGrid::$lockWaitSeconds = 2;
+});
+
 /** A signed-in collector who may use /admin. */
 function setGridUser(): User
 {
@@ -771,7 +775,6 @@ test('quickAdd saves nothing and says to retry while the card is locked by anoth
         ->assertReturned(fn (array $result) => $result['ok'] === false && str_contains($result['message'], 'try again'));
 
     $lock->release();
-    SetGrid::$lockWaitSeconds = 2;
     expect(CollectionItem::count())->toBe(0)
         ->and(RateLimiter::attempts('quick-add:'.$user->id))->toBe(0)
         ->and(Collection::withoutGlobalScopes()->where('user_id', $user->id)->count())->toBe(0);
@@ -792,7 +795,6 @@ test('undo changes nothing and says to retry while the card is locked by another
         ->assertReturned(fn (array $result) => $result['ok'] === false && str_contains($result['message'], 'try again'));
 
     $lock->release();
-    SetGrid::$lockWaitSeconds = 2;
     expect(CollectionItem::count())->toBe(1)
         ->and(RateLimiter::attempts('quick-undo:'.$user->id))->toBe(0);
 });
