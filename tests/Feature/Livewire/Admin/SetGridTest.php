@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Database\Seeders\PermissionSeeder;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Livewire;
 
 /** A signed-in collector who may use /admin. */
@@ -363,4 +364,160 @@ test('the number sort is natural and case-insensitive across mixed ids', functio
         ->viewData('entries')->map(fn (array $e) => $e['card']->local_id)->values()->all();
 
     expect($ids)->toBe(['001', '002', '010', 'TG01', 'TG2', 'TG10']);
+});
+
+test('quickAdd creates a Near Mint copy of a card the owner is missing', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal');
+
+    $item = CollectionItem::sole();
+    expect($item->card_id)->toBe($first->id)
+        ->and($item->variant)->toBe('normal')
+        ->and($item->condition)->toBe('NM')
+        ->and($item->quantity)->toBe(1)
+        ->and($item->collection->user_id)->toBe($user->id);
+
+    $component->assertReturned(['ok' => true, 'itemId' => $item->id, 'created' => true, 'variantCount' => 1, 'cardTotal' => 1]);
+});
+
+test('quickAdd merges into the matching copy instead of adding a second row', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    $existing = setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 2]);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal');
+
+    expect(CollectionItem::count())->toBe(1)
+        ->and($existing->fresh()->quantity)->toBe(3);
+    $component->assertReturned(['ok' => true, 'itemId' => $existing->id, 'created' => false, 'variantCount' => 3, 'cardTotal' => 3]);
+});
+
+test('quickAdd keeps variants apart and reports the total across variants', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 2]);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'reverse-holofoil');
+
+    expect(CollectionItem::count())->toBe(2);
+    $component->assertReturned(fn (array $result) => $result['ok'] === true && $result['variantCount'] === 1 && $result['cardTotal'] === 3);
+});
+
+test('quickAdd on a card with no known variants adds with an empty variant', function () {
+    setGridUser();
+    ['third' => $third] = setGridFixture();
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->call('quickAdd', $third->id, null);
+
+    expect(CollectionItem::sole()->variant)->toBeNull();
+});
+
+test('quickAdd refuses a variant the card does not print', function () {
+    setGridUser();
+    ['first' => $first, 'third' => $third] = setGridFixture();
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'holofoil')
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $third->id, 'normal')
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    expect(CollectionItem::count())->toBe(0);
+});
+
+test('quickAdd refuses a card from another set', function () {
+    setGridUser();
+    setGridFixture();
+    $other = Set::create(['tcgdex_id' => 'sv08', 'name' => 'Surging Sparks', 'card_count' => 1]);
+    $stranger = Card::create(['tcgdex_id' => 'sv08-001', 'set_id' => $other->id, 'local_id' => '001', 'name' => 'Exeggcute', 'variants' => ['normal' => true]]);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $stranger->id, 'normal')
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    expect(CollectionItem::count())->toBe(0);
+});
+
+test('quickAdd never touches another users collection', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    $other = User::factory()->create();
+    $theirs = setGridOwn($other, $first, ['variant' => 'normal', 'quantity' => 5]);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->call('quickAdd', $first->id, 'normal');
+
+    expect($theirs->fresh()->quantity)->toBe(5)
+        ->and(CollectionItem::count())->toBe(2)
+        ->and(CollectionItem::where('id', '!=', $theirs->id)->sole()->collection->user_id)->toBe($user->id);
+});
+
+test('quickAdd saves nothing past the per-minute limit and says to slow down', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    for ($i = 0; $i < SetGrid::QUICK_ADD_LIMIT_PER_MINUTE; $i++) {
+        RateLimiter::hit('quick-add:'.$user->id, 60);
+    }
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal')
+        ->assertReturned(fn (array $result) => $result['ok'] === false && str_contains($result['message'], 'Slow down'));
+
+    expect(CollectionItem::count())->toBe(0);
+});
+
+test('quickAdd accepts a stored custom print the tile shows as a chip', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    setGridOwn($user, $first, ['variant' => 'holofoil:cosmos', 'quantity' => 1]);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'holofoil:cosmos')
+        ->assertReturned(fn (array $result) => $result['ok'] === true && $result['variantCount'] === 2 && $result['cardTotal'] === 2);
+
+    expect(CollectionItem::count())->toBe(1);
+});
+
+test('quickAdd refuses a print the card does not offer and the owner does not hold', function () {
+    setGridUser();
+    ['first' => $first] = setGridFixture();
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'holofoil:cosmos')
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'not a variant!')
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    expect(CollectionItem::count())->toBe(0);
+});
+
+test('quickAdd on the Unspecified chip merges into the unspecified copies', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    $existing = setGridOwn($user, $first, ['variant' => null, 'quantity' => 2]);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, '')
+        ->assertReturned(['ok' => true, 'itemId' => $existing->id, 'created' => false, 'variantCount' => 3, 'cardTotal' => 3]);
+
+    expect(CollectionItem::count())->toBe(1);
+});
+
+test('quickAdd refuses no variant on a card with prints when the owner holds no unspecified copy', function () {
+    setGridUser();
+    ['first' => $first] = setGridFixture();
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, null)
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    expect(CollectionItem::count())->toBe(0);
 });

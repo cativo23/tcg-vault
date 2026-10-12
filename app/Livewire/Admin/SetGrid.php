@@ -12,11 +12,14 @@ use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use App\Modules\Collection\Services\CollectionService;
 use App\Modules\Collection\Services\Valuation;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection as SupportCollection;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -32,6 +35,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 final class SetGrid extends Component
 {
     private const SORTS = ['number', 'value', 'name', 'rarity'];
+
+    public const QUICK_ADD_LIMIT_PER_MINUTE = 120;
 
     #[Locked]
     public Set $set;
@@ -70,6 +75,99 @@ final class SetGrid extends Component
         if (in_array($sort, self::SORTS, true)) {
             $this->sort = $sort;
         }
+    }
+
+    /**
+     * Adds one Near Mint, ungraded copy of $variant and reports what the
+     * database now holds, so the page only ever shows a +1 the server
+     * confirmed. The card, the variant and the collection are all
+     * re-resolved here; nothing the browser sends is trusted.
+     *
+     * Accepts any variant the tile shows a chip for: a print the card
+     * offers, a stored key the owner already holds (a hand-entered custom
+     * print), or no variant when the card lists no prints or the owner
+     * already holds unspecified copies.
+     *
+     * @return array{ok: bool, message?: string, itemId?: int, created?: bool, variantCount?: int, cardTotal?: int}
+     */
+    #[Renderless]
+    public function quickAdd(int $cardId, ?string $variant = null): array
+    {
+        $key = 'quick-add:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($key, self::QUICK_ADD_LIMIT_PER_MINUTE)) {
+            return ['ok' => false, 'message' => 'Slow down: too many adds in a minute.'];
+        }
+
+        $card = $this->set->cards()->whereKey($cardId)->first();
+
+        if ($card === null) {
+            return ['ok' => false, 'message' => 'That card is not in this set.'];
+        }
+
+        $variant = CollectionService::nullIfEmpty($variant);
+
+        if ($variant !== null && ! CardVariants::isValid($variant)) {
+            return ['ok' => false, 'message' => 'That card does not come in that print.'];
+        }
+
+        $offered = CardVariants::available($card->variants ?? [], $card->raw ?? []);
+        $held = CollectionItem::query()
+            ->whereIn('collection_id', Collection::query()->pluck('id'))
+            ->where('card_id', $card->id)
+            ->pluck('variant')
+            ->map(fn (?string $held): ?string => CollectionService::nullIfEmpty($held))
+            ->all();
+
+        $allowed = $variant === null
+            ? $offered === [] || in_array(null, $held, true)
+            : in_array($variant, $offered, true) || in_array($variant, $held, true);
+
+        if (! $allowed) {
+            return ['ok' => false, 'message' => 'That card does not come in that print.'];
+        }
+
+        RateLimiter::hit($key, 60);
+
+        $collection = Collection::firstOrCreate(
+            ['user_id' => auth()->id(), 'slug' => 'my-collection'],
+            ['name' => 'My Collection', 'is_public' => false],
+        );
+
+        $item = app(CollectionService::class)->addItemForCard($collection, $card, [
+            'variant' => $variant,
+            'condition' => 'NM',
+            'quantity' => 1,
+        ]);
+
+        return [
+            'ok' => true,
+            'itemId' => $item->id,
+            'created' => $item->wasRecentlyCreated,
+            ...$this->countsFor($card, $variant),
+        ];
+    }
+
+    /**
+     * What the owner holds of one card across their collections: the total
+     * of one variant (null and '' both mean no variant) and the total of
+     * the whole card.
+     *
+     * @return array{variantCount: int, cardTotal: int}
+     */
+    private function countsFor(Card $card, ?string $variant): array
+    {
+        $variant = CollectionService::nullIfEmpty($variant);
+
+        $items = CollectionItem::query()
+            ->whereIn('collection_id', Collection::query()->pluck('id'))
+            ->where('card_id', $card->id)
+            ->get(['variant', 'quantity']);
+
+        return [
+            'variantCount' => (int) $items->filter(fn (CollectionItem $item): bool => CollectionService::nullIfEmpty($item->variant) === $variant)->sum('quantity'),
+            'cardTotal' => (int) $items->sum('quantity'),
+        ];
     }
 
     public function render(): View
