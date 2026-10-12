@@ -243,9 +243,13 @@ document.addEventListener('row-saved', (event) => {
 // never shows a +1 the database does not hold.
 const TOAST_MS = 6000;
 const FAILURE_MS = 4000;
-const REQUEST_TIMEOUT_MS = 10000;
+// A slow save shows a softer state first; the chip is only released at the ceiling.
+const SLOW_MS = 10000;
+const CEILING_MS = 30000;
 const MAX_TOASTS = 4;
 const FAILED_LABEL = 'Not saved — retry';
+const UNCONFIRMED_LABEL = 'Not saved — check before retrying';
+const SAVING_LABEL = 'Still saving…';
 const QUICK_METHODS = ['quickAdd', 'undoQuickAdd'];
 
 const setGridData = () => ({
@@ -254,6 +258,7 @@ const setGridData = () => ({
     busy: new Set(),
     timers: new Map(),
     pending: new Set(),
+    inflight: new Map(),
     unhook: null,
 
     init() {
@@ -300,11 +305,13 @@ const setGridData = () => ({
             failed.push(...calls);
         }
 
+        // A call that already hit its ceiling stays pending, so a late
+        // failure is still recognised as ours and gets no error modal.
         let matched = false;
         this.pending.forEach((entry) => {
             if (failed.some((call) => call.method === entry.method && JSON.stringify(call.params) === JSON.stringify(entry.params))) {
                 matched = true;
-                entry.reject(new Error(`request failed: ${status}`));
+                entry.fail(new Error(`request failed: ${status}`));
             }
         });
 
@@ -312,20 +319,61 @@ const setGridData = () => ({
         if (matched && ours && status !== 419) preventDefault();
     },
 
-    // Resolves with the server's answer, or rejects when the request fails
-    // or does not answer in time.
-    call(method, ...params) {
+    // Resolves with the server's answer, rejects when the request fails, and
+    // rejects with `ceiling` set when the server has not answered after
+    // CEILING_MS. A call is only abandoned at the ceiling: until then it may
+    // still have been saved, so onSlow lets the caller say "still saving" and
+    // onLate receives an answer that arrives after the ceiling. Calls with
+    // the same method and params run one at a time, which lets a failed
+    // request be matched to exactly one call.
+    async call(method, params, { onSlow, onLate } = {}) {
+        const signature = `${method}|${JSON.stringify(params)}`;
+        while (this.inflight.has(signature)) await this.inflight.get(signature);
+
         return new Promise((resolve, reject) => {
-            const entry = { method, params, reject: null };
-            const timer = setTimeout(() => entry.reject(new Error('timeout')), REQUEST_TIMEOUT_MS);
-            const settle = (fn) => (value) => {
-                clearTimeout(timer);
-                this.pending.delete(entry);
-                fn(value);
+            let state = 'waiting'; // waiting | released | settled
+            let release;
+            const done = new Promise((r) => { release = r; });
+            const entry = { method, params, fail: null };
+            const timers = [];
+            const free = () => {
+                if (this.inflight.get(signature) === done) this.inflight.delete(signature);
+                release();
             };
-            entry.reject = settle(reject);
+            const finish = () => {
+                timers.forEach(clearTimeout);
+                this.pending.delete(entry);
+                free();
+            };
+
+            entry.fail = (error) => {
+                if (state === 'settled') return;
+                const abandoned = state === 'released';
+                state = 'settled';
+                finish();
+                if (!abandoned) reject(error);
+            };
+
+            this.inflight.set(signature, done);
             this.pending.add(entry);
-            this.$wire[method](...params).then(settle(resolve), settle(reject));
+            // The backstops start when the call is made, which is when
+            // Livewire queues the request for sending.
+            timers.push(setTimeout(() => { if (state === 'waiting') onSlow?.(); }, SLOW_MS));
+            timers.push(setTimeout(() => {
+                if (state !== 'waiting') return;
+                state = 'released';
+                free();
+                reject(Object.assign(new Error('no answer'), { ceiling: true }));
+            }, CEILING_MS));
+
+            this.$wire[method](...params).then((value) => {
+                if (state === 'settled') return;
+                const abandoned = state === 'released';
+                state = 'settled';
+                finish();
+                if (abandoned) onLate?.(value);
+                else resolve(value);
+            }, (error) => entry.fail(error));
         });
     },
 
@@ -356,54 +404,43 @@ const setGridData = () => ({
         tile.querySelector('[data-tile-missing]').hidden = cardTotal > 0;
     },
 
-    clearFailure(chip) {
-        clearTimeout(chip._failTimer);
-        const labelEl = chip.querySelector('[data-chip-label]');
-        // A re-render may have replaced the label already; only undo our own.
-        if (chip._originalLabel !== undefined && labelEl.textContent === FAILED_LABEL) {
-            labelEl.textContent = chip._originalLabel;
-        }
-        delete chip._originalLabel;
-        chip.classList.remove('failed');
-    },
-
-    fail(chip, message) {
+    // A chip shows at most one note in place of its label ("Still saving…",
+    // "Not saved — retry"); clearing it restores the label unless a
+    // re-render has already replaced it.
+    setNote(chip, text) {
         this.clearFailure(chip);
         const labelEl = chip.querySelector('[data-chip-label]');
         chip._originalLabel = labelEl.textContent;
-        labelEl.textContent = FAILED_LABEL;
-        chip.classList.add('failed');
-        chip._failTimer = setTimeout(() => this.clearFailure(chip), FAILURE_MS);
-        this.pushToast({ message: message ?? FAILED_LABEL, undoable: false });
+        chip._note = text;
+        labelEl.textContent = text;
     },
 
-    async add(chip) {
-        const cardId = Number(chip.dataset.card);
-        // The chip's variant goes to the server verbatim; '' means "no variant".
-        const variant = chip.dataset.variant;
-        const key = `${cardId}|${variant}`;
-
-        if (this.busy.has(key)) return;
-        this.busy.add(key);
-        this.clearFailure(chip);
-        chip.setAttribute('aria-busy', 'true');
-
-        let result;
-        try {
-            result = await this.call('quickAdd', cardId, variant);
-        } catch (error) {
-            this.fail(chip);
-            return;
-        } finally {
-            this.busy.delete(key);
-            chip.removeAttribute('aria-busy');
+    clearFailure(chip) {
+        clearTimeout(chip._failTimer);
+        const labelEl = chip.querySelector('[data-chip-label]');
+        if (chip._originalLabel !== undefined && labelEl.textContent === chip._note) {
+            labelEl.textContent = chip._originalLabel;
         }
+        delete chip._originalLabel;
+        delete chip._note;
+        chip.classList.remove('failed');
+    },
 
+    fail(chip, message, label = FAILED_LABEL) {
+        this.setNote(chip, label);
+        chip.classList.add('failed');
+        chip._failTimer = setTimeout(() => this.clearFailure(chip), FAILURE_MS);
+        this.pushToast({ message: message ?? label, undoable: false });
+    },
+
+    // Paints a confirmed answer, whether it arrived in time or late.
+    applyAdd(chip, cardId, result) {
         if (!result || result.ok !== true) {
             this.fail(chip, result?.message);
             return;
         }
 
+        this.clearFailure(chip);
         this.paintChip(chip, result.variantCount);
         this.paintTile(cardId, result.cardTotal);
         const label = chip.dataset.label ? ` · ${chip.dataset.label}` : '';
@@ -412,9 +449,54 @@ const setGridData = () => ({
             subject: `${chip.dataset.name}${label}`,
             itemId: result.itemId,
             cardId,
-            variant,
+            variant: chip.dataset.variant,
             undoable: true,
         });
+    },
+
+    async add(chip) {
+        const cardId = Number(chip.dataset.card);
+        // The chip's variant goes to the server verbatim; '' means "no variant".
+        const variant = chip.dataset.variant;
+        const key = `${cardId}|${variant}`;
+
+        // The chip stays blocked until the server answers, the request
+        // fails or the ceiling passes, so a slow save cannot be tapped twice.
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        this.clearFailure(chip);
+        chip.setAttribute('aria-busy', 'true');
+
+        let result;
+        try {
+            result = await this.call('quickAdd', [cardId, variant], {
+                onSlow: () => this.setNote(chip, SAVING_LABEL),
+                onLate: (late) => this.applyAdd(chip, cardId, late),
+            });
+        } catch (error) {
+            this.fail(chip, undefined, error.ceiling ? UNCONFIRMED_LABEL : FAILED_LABEL);
+            return;
+        } finally {
+            this.busy.delete(key);
+            chip.removeAttribute('aria-busy');
+        }
+
+        this.applyAdd(chip, cardId, result);
+    },
+
+    // Paints an answer to an undo, whether it arrived in time or late.
+    applyUndo(toast, result) {
+        toast.held = 0;
+
+        if (result?.ok === true) {
+            this.paintChip(this.chipFor(toast.cardId, toast.variant), result.variantCount);
+            this.paintTile(toast.cardId, result.cardTotal);
+            this.dismiss(toast.id);
+            return;
+        }
+
+        toast.message = result?.message ?? 'Could not undo that.';
+        this.scheduleDismiss(toast.id);
     },
 
     // One click per toast: the undo is disabled before the request, and
@@ -428,22 +510,20 @@ const setGridData = () => ({
 
         let result;
         try {
-            result = await this.call('undoQuickAdd', toast.itemId);
+            result = await this.call('undoQuickAdd', [toast.itemId], {
+                onSlow: () => { toast.message = 'Still undoing…'; },
+                onLate: (late) => this.applyUndo(toast, late),
+            });
         } catch (error) {
-            toast.message = 'Could not undo that. Check the chip count.';
+            toast.held = 0;
+            toast.message = error.ceiling
+                ? 'Could not confirm the undo. Check the chip count.'
+                : 'Could not undo that. Check the chip count.';
             this.scheduleDismiss(toast.id);
             return;
         }
 
-        if (result?.ok === true) {
-            this.paintChip(this.chipFor(toast.cardId, toast.variant), result.variantCount);
-            this.paintTile(toast.cardId, result.cardTotal);
-            this.dismiss(toast.id);
-            return;
-        }
-
-        toast.message = result?.message ?? 'Could not undo that.';
-        this.scheduleDismiss(toast.id);
+        this.applyUndo(toast, result);
     },
 
     pushToast(toast) {

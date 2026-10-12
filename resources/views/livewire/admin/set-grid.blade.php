@@ -78,11 +78,11 @@
 
     <div class="nw-toasts" aria-live="polite" wire:ignore>
         <template x-for="toast in toasts" :key="toast.id">
-            <div class="nw-toast"
+            <div class="nw-toast" tabindex="-1"
                 x-on:mouseenter="hold(toast, true)" x-on:mouseleave="hold(toast, false)"
                 x-on:focusin="hold(toast, true)" x-on:focusout="hold(toast, false)">
                 <span class="msg" x-text="toast.message"></span>
-                <button type="button" x-show="toast.subject" x-on:click="undo(toast)"
+                <button type="button" x-show="toast.subject" x-on:click="$el.closest('.nw-toast').focus(); undo(toast)"
                     :disabled="!toast.undoable" :aria-disabled="!toast.undoable"
                     :aria-label="'Undo adding ' + toast.subject">Undo</button>
                 <button type="button" class="x" aria-label="Dismiss" x-on:click="dismiss(toast.id)">✕</button>
