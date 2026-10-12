@@ -760,13 +760,17 @@ test('quickAdd saves nothing and says to retry while the card is locked by anoth
     ['first' => $first] = setGridFixture();
     $lock = Cache::lock('quick-add:lock:'.$user->id.':'.$first->id, 10);
     expect($lock->get())->toBeTrue();
+    SetGrid::$lockWaitSeconds = 0;
 
     Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
         ->call('quickAdd', $first->id, 'normal')
         ->assertReturned(fn (array $result) => $result['ok'] === false && str_contains($result['message'], 'try again'));
 
     $lock->release();
-    expect(CollectionItem::count())->toBe(0);
+    SetGrid::$lockWaitSeconds = 2;
+    expect(CollectionItem::count())->toBe(0)
+        ->and(RateLimiter::attempts('quick-add:'.$user->id))->toBe(0)
+        ->and(Collection::withoutGlobalScopes()->where('user_id', $user->id)->count())->toBe(0);
 });
 
 test('undo changes nothing and says to retry while the card is locked by another tap', function () {
@@ -777,13 +781,16 @@ test('undo changes nothing and says to retry while the card is locked by another
     $itemId = CollectionItem::sole()->id;
     $lock = Cache::lock('quick-add:lock:'.$user->id.':'.$first->id, 10);
     expect($lock->get())->toBeTrue();
+    SetGrid::$lockWaitSeconds = 0;
 
     $component
         ->call('undoQuickAdd', $itemId)
         ->assertReturned(fn (array $result) => $result['ok'] === false && str_contains($result['message'], 'try again'));
 
     $lock->release();
-    expect(CollectionItem::count())->toBe(1);
+    SetGrid::$lockWaitSeconds = 2;
+    expect(CollectionItem::count())->toBe(1)
+        ->and(RateLimiter::attempts('quick-undo:'.$user->id))->toBe(0);
 });
 
 test('quickAdd and undoQuickAdd are renderless, so a tap does not re-render the grid', function () {
