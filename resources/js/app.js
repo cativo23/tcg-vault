@@ -275,6 +275,7 @@ const setGridData = () => ({
         this.unhook?.();
         this.timers.forEach((timer) => clearTimeout(timer));
         this.pending.splice(0).forEach((entry) => entry.dispose());
+        this.$root.querySelectorAll('[data-chip]').forEach((chip) => clearTimeout(chip._failTimer));
     },
 
     settleFailedRequest(payload, status, preventDefault) {
@@ -296,14 +297,19 @@ const setGridData = () => ({
                 // An unreadable snapshot is not ours.
             }
             const calls = component.calls ?? [];
-            const quickOnly = calls.length > 0 && calls.every((call) => QUICK_METHODS.includes(call.method));
 
-            if (id !== this.$wire.id || !quickOnly || (component.updates && Object.keys(component.updates).length > 0)) {
+            if (id !== this.$wire.id) {
                 ours = false;
                 continue;
             }
 
-            failed.push(...calls);
+            // Whatever else shares the request, this grid's quick calls in it
+            // failed with it; the extra work only decides whether Livewire's
+            // error modal may be suppressed.
+            failed.push(...calls.filter((call) => QUICK_METHODS.includes(call.method)));
+
+            const quickOnly = calls.length > 0 && calls.every((call) => QUICK_METHODS.includes(call.method));
+            if (!quickOnly || (component.updates && Object.keys(component.updates).length > 0)) ours = false;
         }
 
         // One failed call settles exactly one pending call: the oldest with
@@ -502,7 +508,12 @@ const setGridData = () => ({
     pushToast(toast) {
         const entry = { id: this.nextToastId++, held: 0, ...toast };
         this.toasts.push(entry);
-        if (this.toasts.length > MAX_TOASTS) this.dismiss(this.toasts[0].id);
+        if (this.toasts.length > MAX_TOASTS) {
+            // Never evict a toast being read or about to be clicked; if every
+            // older one is held, the stack briefly grows instead.
+            const evictable = this.toasts.find((candidate) => candidate.id !== entry.id && candidate.held === 0);
+            if (evictable) this.dismiss(evictable.id);
+        }
         this.scheduleDismiss(entry.id);
     },
 
@@ -516,7 +527,8 @@ const setGridData = () => ({
 
     scheduleDismiss(id) {
         this.cancelDismiss(id);
-        if (this.toasts.find((toast) => toast.id === id)?.held > 0) return;
+        const toast = this.toasts.find((candidate) => candidate.id === id);
+        if (!toast || toast.held > 0 || toast.dismissing) return;
         this.timers.set(id, setTimeout(() => this.dismiss(id), TOAST_MS));
     },
 
@@ -537,6 +549,9 @@ const setGridData = () => ({
 
     dismiss(id) {
         this.cancelDismiss(id);
+        // Moving focus away fires focusout; a dismissing toast must not be rescheduled by it.
+        const leaving = this.toasts.find((toast) => toast.id === id);
+        if (leaving) leaving.dismissing = true;
         this.keepFocus(id);
         this.toasts = this.toasts.filter((toast) => toast.id !== id);
     },
