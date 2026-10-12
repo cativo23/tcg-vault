@@ -11,6 +11,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Support\Facades\RateLimiter;
+use Livewire\Attributes\Renderless;
 use Livewire\Livewire;
 
 /** A signed-in collector who may use /admin. */
@@ -520,4 +521,100 @@ test('quickAdd refuses no variant on a card with prints when the owner holds no 
         ->assertReturned(fn (array $result) => $result['ok'] === false);
 
     expect(CollectionItem::count())->toBe(0);
+});
+
+test('undo removes one copy from a row that still has more', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    $item = setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 2]);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('undoQuickAdd', $item->id, false)
+        ->assertReturned(['ok' => true, 'variantCount' => 1, 'cardTotal' => 1]);
+
+    expect($item->fresh()->quantity)->toBe(1);
+});
+
+test('undo deletes a row the quick add created once it reaches zero', function () {
+    setGridUser();
+    ['first' => $first] = setGridFixture();
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal');
+    $itemId = CollectionItem::sole()->id;
+
+    $component
+        ->call('undoQuickAdd', $itemId, true)
+        ->assertReturned(['ok' => true, 'variantCount' => 0, 'cardTotal' => 0]);
+
+    expect(CollectionItem::count())->toBe(0);
+});
+
+test('undo keeps a row that existed before the tap at one copy', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    $item = setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 1]);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('undoQuickAdd', $item->id, false)
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    expect($item->fresh()->quantity)->toBe(1);
+});
+
+test('undo refuses a copy that has a photo and says to use the panel', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    $item = setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 2, 'photo_path' => 'mine.jpg']);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('undoQuickAdd', $item->id, true)
+        ->assertReturned(fn (array $result) => $result['ok'] === false && str_contains($result['message'], 'panel'));
+
+    expect($item->fresh()->quantity)->toBe(2);
+});
+
+test('undo refuses a copy that has notes', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    $item = setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 2, 'notes' => 'Bought at a con']);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('undoQuickAdd', $item->id, true)
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    expect($item->fresh()->quantity)->toBe(2);
+});
+
+test('undo cannot touch another users copy', function () {
+    setGridUser();
+    ['first' => $first] = setGridFixture();
+    $other = User::factory()->create();
+    $theirs = setGridOwn($other, $first, ['variant' => 'normal', 'quantity' => 2]);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('undoQuickAdd', $theirs->id, true)
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    expect($theirs->fresh()->quantity)->toBe(2);
+});
+
+test('undo cannot touch a copy of a card from another set', function () {
+    $user = setGridUser();
+    setGridFixture();
+    $other = Set::create(['tcgdex_id' => 'sv08', 'name' => 'Surging Sparks', 'card_count' => 1]);
+    $stranger = Card::create(['tcgdex_id' => 'sv08-001', 'set_id' => $other->id, 'local_id' => '001', 'name' => 'Exeggcute']);
+    $item = setGridOwn($user, $stranger, ['quantity' => 2]);
+
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('undoQuickAdd', $item->id, true)
+        ->assertReturned(fn (array $result) => $result['ok'] === false);
+
+    expect($item->fresh()->quantity)->toBe(2);
+});
+
+test('quickAdd and undoQuickAdd are renderless, so a tap does not re-render the grid', function () {
+    foreach (['quickAdd', 'undoQuickAdd'] as $method) {
+        expect((new ReflectionMethod(SetGrid::class, $method))->getAttributes(Renderless::class))->toHaveCount(1);
+    }
 });

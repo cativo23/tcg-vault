@@ -149,6 +149,42 @@ final class SetGrid extends Component
     }
 
     /**
+     * Takes back one copy of a quick add. Only a plain copy: one with a
+     * photo or notes was edited since, and the panel is where that is
+     * undone deliberately. A row the tap created disappears at zero; a row
+     * that existed before keeps at least one copy.
+     *
+     * @return array{ok: bool, message?: string, variantCount?: int, cardTotal?: int}
+     */
+    #[Renderless]
+    public function undoQuickAdd(int $itemId, bool $created): array
+    {
+        $item = CollectionItem::query()
+            ->whereIn('collection_id', Collection::query()->pluck('id'))
+            ->whereIn('card_id', Card::query()->where('set_id', $this->set->id)->select('id'))
+            ->with('card')
+            ->find($itemId);
+
+        if ($item === null) {
+            return ['ok' => false, 'message' => 'That copy is no longer in your collection.'];
+        }
+
+        if ($item->photo_path !== null || filled($item->notes)) {
+            return ['ok' => false, 'message' => 'That copy has a photo or notes: edit it in the panel.'];
+        }
+
+        if ($item->quantity > 1) {
+            $item->decrement('quantity');
+        } elseif ($created) {
+            $item->delete();
+        } else {
+            return ['ok' => false, 'message' => 'Nothing to undo: that copy was already yours.'];
+        }
+
+        return ['ok' => true, ...$this->countsFor($item->card, $item->variant)];
+    }
+
+    /**
      * What the owner holds of one card across their collections: the total
      * of one variant (null and '' both mean no variant) and the total of
      * the whole card.
