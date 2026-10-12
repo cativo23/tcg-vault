@@ -1045,18 +1045,6 @@ test('the card editor offers special-foil prints from variants_detailed and save
     expect($item->fresh()->variant)->toBe('reverse-holofoil:masterball');
 });
 
-function prizePackBudew(User $user): array
-{
-    $card = budewCard();
-    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
-    $item = CollectionItem::create([
-        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'sv08.5-004',
-        'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil:cosmos+player-rewards-program',
-    ]);
-
-    return [$card, $item];
-}
-
 test('the card editor can record a print tcgdex does not list, from its vocabulary', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
@@ -1390,24 +1378,6 @@ test('a manual price is recorded as entered by hand', function () {
 
     expect(CardPriceSnapshot::where('source', 'manual')->value('origin'))->toBe('hand');
 });
-
-if (! function_exists('budewCard')) {
-    function budewCard(): Card
-    {
-        $set = Set::create(['tcgdex_id' => 'sv08.5', 'name' => 'Prismatic Evolutions']);
-
-        return Card::create([
-            'tcgdex_id' => 'sv08.5-004', 'set_id' => $set->id, 'local_id' => '004', 'name' => 'Budew',
-            'variants' => ['holo' => false, 'normal' => true, 'reverse' => true],
-            'raw' => ['variants_detailed' => [
-                ['type' => 'normal', 'size' => 'standard'],
-                ['type' => 'reverse', 'size' => 'standard'],
-                ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball'],
-                ['type' => 'reverse', 'size' => 'standard', 'foil' => 'masterball'],
-            ]],
-        ]);
-    }
-}
 
 test('the editor opens when a host dispatches open-card-editor', function () {
     $user = User::factory()->create();

@@ -670,24 +670,6 @@ test('a manual price entered long ago still values the copy', function () {
     Livewire::test(CollectionItems::class)->assertSee('$0.70');
 });
 
-if (! function_exists('budewCard')) {
-    function budewCard(): Card
-    {
-        $set = Set::create(['tcgdex_id' => 'sv08.5', 'name' => 'Prismatic Evolutions']);
-
-        return Card::create([
-            'tcgdex_id' => 'sv08.5-004', 'set_id' => $set->id, 'local_id' => '004', 'name' => 'Budew',
-            'variants' => ['holo' => false, 'normal' => true, 'reverse' => true],
-            'raw' => ['variants_detailed' => [
-                ['type' => 'normal', 'size' => 'standard'],
-                ['type' => 'reverse', 'size' => 'standard'],
-                ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball'],
-                ['type' => 'reverse', 'size' => 'standard', 'foil' => 'masterball'],
-            ]],
-        ]);
-    }
-}
-
 test('the list mounts the card editor as its own component', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
