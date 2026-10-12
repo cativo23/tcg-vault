@@ -6,6 +6,12 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- A confetti foil in the "other print" picker, for McDonald's confetti
+  holo reprints that tcgdex lists only in their McDonald's sets, such as
+  the Latin American McDonald's 2024 Pikachu printed as MEW 025/165.
+
 ## [1.3.1] - 2026-10-08
 
 ### Fixed

@@ -20,6 +20,10 @@ use Illuminate\Support\Facades\Log;
 use Mockery\MockInterface;
 use Psr\Log\LoggerInterface;
 
+// The faked tcgcsv builds are dated; a gap price is only written for a
+// build under 36 hours old, so every test runs the evening after them.
+beforeEach(fn () => $this->travelTo(CarbonImmutable::parse('2026-10-08 20:30', 'UTC')));
+
 /** Pitch Black (group 24688) and 30th Celebration (24722), one owned print each. */
 function shadowFixture(): array
 {
