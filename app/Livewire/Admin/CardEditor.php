@@ -154,6 +154,10 @@ final class CardEditor extends Component
         // reattach to row 0 of this one.
         $this->resetValidation();
 
+        // The catalog card is resolved first, so an unknown id is a 404
+        // before anything else happens and opening never writes.
+        $card = Card::find($cardId) ?? throw new NotFoundHttpException;
+
         // Strict by default: a card the caller owns nothing of is a 404,
         // never a hint that the card exists. A host that offers every card
         // of a set opts in with $allowEmpty and gets an editor with no rows.
@@ -161,7 +165,7 @@ final class CardEditor extends Component
         $primary = $items->first();
 
         $this->editingCardId = $cardId;
-        $this->editingCollectionId = $primary->collection_id ?? $this->ownCollection()->id;
+        $this->editingCollectionId = $primary?->collection_id;
         $this->editingRows = $items->map(fn (CollectionItem $i) => [
             'id' => $i->id,
             'variant' => $i->variant,
@@ -176,7 +180,6 @@ final class CardEditor extends Component
             'manual_price' => $this->currentManualPrice($i),
         ])->values()->all();
 
-        $card = $primary !== null ? $primary->card : Card::findOrFail($cardId);
         $this->editingCardName = $card->name;
 
         // Variant-sourcing priority: the card's own tcgdex print flags
@@ -247,18 +250,23 @@ final class CardEditor extends Component
 
     public function addVariantRow(CollectionService $service): void
     {
-        if ($this->editingCardId === null || $this->editingCollectionId === null) {
+        if ($this->editingCardId === null) {
             return;
         }
 
         // The Catalog is global and not tenant-scoped (CollectionService.php:23-24)
         // — this is a straight lookup of catalog data, not a user's own
         // record, so it doesn't go through ownedItemOrFail()/ownedCardItemsOrFail().
-        // Uses addItemForCard(), not addItem() — this card is already in the
-        // Catalog (it has existing items in this editor), so re-syncing it
-        // from tcgdex here would just be a redundant HTTP round-trip.
+        // Uses addItemForCard(), not addItem() — the editor only opens for a
+        // card that is already in the Catalog, so re-syncing it from tcgdex
+        // here would just be a redundant HTTP round-trip. An editor opened
+        // for a card the owner has no copy of has no collection yet; the
+        // owner's own one is created here, the first time a row is added.
         $card = Card::findOrFail($this->editingCardId);
-        $collection = Collection::findOrFail($this->editingCollectionId);
+        $collection = $this->editingCollectionId !== null
+            ? Collection::findOrFail($this->editingCollectionId)
+            : $this->ownCollection();
+        $this->editingCollectionId = $collection->id;
 
         $item = $service->addItemForCard($collection, $card, ['condition' => 'NM', 'quantity' => 1]);
 
