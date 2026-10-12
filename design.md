@@ -97,6 +97,14 @@ every public screen instead of re-styled per page:
   `.nw-section-head`, `.nw-feed`.
 - **Detail** `.nw-detail` (5/7 grid, sticky `.nw-hero`, `.nw-thumbs` for
   photo ↔ official art), `.nw-prices > .nw-price`, `.nw-kv`, `.nw-copy`, `.nw-badge`.
+- **Link** `.nw-link` — navigation-style link or button: ink text, no underline,
+  a 2px transparent bottom border that turns `--signal` with `.is-active`
+  (the current nav item). Fades on hover; recolored to the chrome foreground
+  inside `.nw-topbar`.
+- **Inline link** `.nw-inline-link` — a link inside running text or an empty
+  state: ink text, always underlined (3px offset, same as the legal pages).
+  Use it instead of `.nw-link` whenever the link must read as a link
+  without nav chrome.
 - **Footer** `.nw-footer` — tcgdex attribution + the non-affiliation notice.
 - `<x-value-totals>` renders a currency → amount map: first entry big, the
   rest as `<small>`. **Never sum EUR and USD into one number.**
