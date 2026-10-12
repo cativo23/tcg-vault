@@ -37,10 +37,10 @@
             Only you can see your collection.
         @elseif ($username = auth()->user()->username)
             Anyone can see it at
-            <a href="{{ route('gallery.index', ['username' => $username]) }}" style="color: var(--ink); text-decoration: underline">/{{ $username }}</a>.
+            <a href="{{ route('gallery.index', ['username' => $username]) }}" class="nw-inline-link">/{{ $username }}</a>.
         @else
             Public, but there’s no page to show it on yet.
-            <a href="{{ route('profile') }}" wire:navigate style="color: var(--ink); text-decoration: underline">Set a username</a> to get one.
+            <a href="{{ route('profile') }}" wire:navigate class="nw-inline-link">Set a username</a> to get one.
         @endif
     </p>
 
@@ -141,7 +141,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="p-6 text-center" style="color: var(--muted)">No cards yet — <a href="{{ route('admin.collection.add') }}" wire:navigate style="color: var(--ink); text-decoration: underline">add your first one</a>.</td></tr>
+                    <tr><td colspan="5" class="p-6 text-center" style="color: var(--muted)">No cards yet — <a href="{{ route('admin.collection.add') }}" wire:navigate class="nw-inline-link">add your first one</a>.</td></tr>
                 @endforelse
             </tbody>
         </table>
