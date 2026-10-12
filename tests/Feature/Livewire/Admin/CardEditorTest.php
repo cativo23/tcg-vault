@@ -1422,6 +1422,25 @@ test('saving a manual price tells hosts which card changed', function () {
         ->assertDispatched('card-copies-changed', cardId: $card->id);
 });
 
+test('a refused manual price leaves the list alone', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card, $item] = prizePackBudew($admin);
+    $item->update(['variant' => 'normal']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1231]);
+
+    Livewire::test(CardEditor::class)
+        ->call('openCardEditor', $card->id)
+        ->set('editingRows.0.manual_price', '5.71')
+        ->call('saveManualPrice', 0)
+        ->assertHasErrors(['editingRows.0.manual_price'])
+        ->assertNotDispatched('card-copies-changed');
+
+    expect(CardPriceSnapshot::where('source', 'manual')->count())->toBe(0);
+});
+
 test('adding a variant row tells hosts which card changed', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
