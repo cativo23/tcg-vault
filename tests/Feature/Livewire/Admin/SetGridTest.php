@@ -799,8 +799,8 @@ test('undo changes nothing and says to retry while the card is locked by another
         ->and(RateLimiter::attempts('quick-undo:'.$user->id))->toBe(0);
 });
 
-test('undo writes its ledger only after the database transaction has finished', function () {
-    setGridUser();
+test('undo writes its ledger after the database transaction has finished and before the card lock is released', function () {
+    $user = setGridUser();
     ['first' => $first] = setGridFixture();
     $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
         ->call('quickAdd', $first->id, 'normal')
@@ -809,9 +809,16 @@ test('undo writes its ledger only after the database transaction has finished', 
 
     $baseline = DB::transactionLevel();
     $levels = [];
-    $record = function ($event) use (&$levels): void {
+    $lockFree = [];
+    $record = function ($event) use (&$levels, &$lockFree, $user, $first): void {
         if (str_contains($event->key, 'quick-add:ledger:')) {
             $levels[] = DB::transactionLevel();
+            $probe = Cache::lock('quick-add:lock:'.$user->id.':'.$first->id, 10);
+            $acquired = $probe->get();
+            $lockFree[] = $acquired;
+            if ($acquired) {
+                $probe->release();
+            }
         }
     };
     Event::listen(KeyWritten::class, $record);
@@ -820,7 +827,8 @@ test('undo writes its ledger only after the database transaction has finished', 
     $component->call('undoQuickAdd', $itemId);
 
     expect($levels)->not->toBeEmpty()
-        ->and(array_unique($levels))->toBe([$baseline]);
+        ->and(array_unique($levels))->toBe([$baseline])
+        ->and(array_unique($lockFree))->toBe([false]);
 });
 
 test('quickAdd and undoQuickAdd are renderless, so a tap does not re-render the grid', function () {

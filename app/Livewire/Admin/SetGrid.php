@@ -138,7 +138,9 @@ final class SetGrid extends Component
         // The add and its ledger entry happen under one lock, so an undo of
         // the same card never sees the new copy without its pending unit.
         // The collection and the rate-limit hit are part of the locked work:
-        // a busy answer creates nothing and costs no attempt.
+        // a busy answer creates nothing and costs no attempt. The limit is
+        // checked before the lock, so requests already waiting on it can
+        // each land one add past the limit.
         $item = $this->withCardLock($card->id, function () use ($card, $variant, $key): CollectionItem {
             $collection = Collection::firstOrCreate(
                 ['user_id' => auth()->id(), 'slug' => 'my-collection'],
@@ -240,27 +242,26 @@ final class SetGrid extends Component
 
         // The decision is made on a row re-read under the lock and the
         // database row lock, so a tap that merged in meanwhile is counted.
-        // The ledger is written only after the transaction commits, still
-        // under the lock; a busy answer costs no attempt.
-        $outcome = $this->withCardLock($found->card_id, function () use ($itemId, $key): array {
+        // The ledger is written after the transaction commits, so a failed
+        // commit consumes no unit, and before the lock is released, so the
+        // next tap or undo of this card reads the updated ledger. A busy
+        // answer costs no attempt.
+        $result = $this->withCardLock($found->card_id, function () use ($itemId, $key): array {
             RateLimiter::hit($key, 60);
 
-            return $this->decideUndo($itemId);
+            $outcome = $this->decideUndo($itemId);
+            $ledgerKey = $this->ledgerKey($itemId);
+
+            if ($outcome['ledger'] === 'forget') {
+                Cache::forget($ledgerKey);
+            } elseif (is_array($outcome['ledger'])) {
+                Cache::put($ledgerKey, $outcome['ledger'], self::UNDO_WINDOW_SECONDS);
+            }
+
+            return $outcome['result'];
         });
 
-        if ($outcome === null) {
-            return self::BUSY;
-        }
-
-        $ledgerKey = $this->ledgerKey($itemId);
-
-        if ($outcome['ledger'] === 'forget') {
-            Cache::forget($ledgerKey);
-        } elseif (is_array($outcome['ledger'])) {
-            Cache::put($ledgerKey, $outcome['ledger'], self::UNDO_WINDOW_SECONDS);
-        }
-
-        return $outcome['result'];
+        return $result ?? self::BUSY;
     }
 
     /**
