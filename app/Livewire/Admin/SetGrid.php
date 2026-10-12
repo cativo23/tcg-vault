@@ -123,28 +123,53 @@ final class SetGrid extends Component
         ]);
     }
 
-    /** @return Entry */
+    /**
+     * Chips and the tile total come from the same pass over the owned copies,
+     * so they cannot disagree: every owned variant gets a chip, whether or not
+     * the card's catalog data lists it. Every condition and grade of one
+     * variant counts toward its chip.
+     *
+     * @return Entry
+     */
     private function entryFor(Card $card, Valuation $valuation): array
     {
         $offered = CardVariants::available($card->variants ?? [], $card->raw ?? []);
 
-        // Every condition and grade of one variant counts toward its chip.
         $perVariant = $card->collectionItems
             ->groupBy(fn (CollectionItem $item): string => (string) $item->variant)
             ->map(fn ($items): int => (int) $items->sum('quantity'));
 
-        $chips = $offered === []
-            ? [['variant' => null, 'label' => '', 'count' => (int) ($perVariant[''] ?? 0)]]
-            : array_values(array_map(
-                fn (string $variant): array => ['variant' => $variant, 'label' => CardVariants::label($variant), 'count' => (int) ($perVariant[$variant] ?? 0)],
-                $offered,
-            ));
+        $unspecified = (int) ($perVariant[''] ?? 0);
+
+        $chips = [];
+
+        // A card with no known prints keeps one plain "+1" chip for copies
+        // without a variant; on a card with prints, those copies only get a
+        // chip once they exist.
+        if ($offered === []) {
+            $chips[] = ['variant' => null, 'label' => '', 'count' => $unspecified];
+        }
+
+        foreach ($offered as $variant) {
+            $chips[] = ['variant' => $variant, 'label' => CardVariants::label($variant), 'count' => (int) ($perVariant[$variant] ?? 0)];
+        }
+
+        // Owned prints the card's data does not list (hand-entered custom prints).
+        $extras = $perVariant->except(array_merge($offered, ['']))->sortKeys();
+
+        foreach ($extras as $variant => $count) {
+            $chips[] = ['variant' => (string) $variant, 'label' => CardVariants::label((string) $variant), 'count' => $count];
+        }
+
+        if ($offered !== [] && $unspecified > 0) {
+            $chips[] = ['variant' => null, 'label' => 'Unspecified', 'count' => $unspecified];
+        }
 
         return [
             'card' => $card,
             'snapshot' => $valuation->headlineSnapshot($card),
             'owned' => $card->collectionItems->isNotEmpty(),
-            'quantity' => (int) $card->collectionItems->sum('quantity'),
+            'quantity' => array_sum(array_column($chips, 'count')),
             'chips' => $chips,
         ];
     }
@@ -168,18 +193,19 @@ final class SetGrid extends Component
         };
 
         return $entries
-            ->sort(fn (array $a, array $b): int => $primary($a, $b) ?: strcmp(self::numberKey($a), self::numberKey($b)))
+            ->sort(fn (array $a, array $b): int => $primary($a, $b) ?: self::compareNumbers($a, $b))
             ->values();
     }
 
     /**
-     * Zero-padded so "010" sorts after "002"; a longer id such as "SWSH001"
-     * is left as is.
+     * Natural, case-insensitive order of the printed card number, so "2"
+     * precedes "10" and "TG2" precedes "TG10".
      *
-     * @param  Entry  $entry
+     * @param  Entry  $a
+     * @param  Entry  $b
      */
-    private static function numberKey(array $entry): string
+    private static function compareNumbers(array $a, array $b): int
     {
-        return str_pad($entry['card']->local_id, 5, '0', STR_PAD_LEFT);
+        return strcmp(str_pad($a['card']->local_id, 5, '0', STR_PAD_LEFT), str_pad($b['card']->local_id, 5, '0', STR_PAD_LEFT));
     }
 }

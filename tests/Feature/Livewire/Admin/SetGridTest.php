@@ -284,3 +284,70 @@ test('another users copies do not count toward a chip', function () {
 
     expect($entry['chips'][0]['count'])->toBe(0);
 });
+
+/** @return array<string, mixed> */
+function setGridEntry(object $component, Card $card): array
+{
+    return $component->viewData('entries')->first(fn (array $e) => $e['card']->id === $card->id);
+}
+
+test('an owned custom print the card does not list still gets its own filled chip', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    setGridOwn($user, $first, ['variant' => 'holofoil:cosmos+pre-release', 'quantity' => 2]);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05']);
+
+    expect(setGridEntry($component, $first)['chips'])->toBe([
+        ['variant' => 'normal', 'label' => 'Normal', 'count' => 0],
+        ['variant' => 'reverse-holofoil', 'label' => 'Reverse Holofoil', 'count' => 0],
+        ['variant' => 'holofoil:cosmos+pre-release', 'label' => 'Holofoil · Cosmos · Pre Release', 'count' => 2],
+    ]);
+    $component->assertSeeHtml('data-chip="'.$first->id.'|holofoil:cosmos+pre-release"');
+});
+
+test('copies with no variant on a card that has variants show as an unspecified chip', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    setGridOwn($user, $first, ['variant' => null, 'quantity' => 3]);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05']);
+
+    expect(setGridEntry($component, $first)['chips'])->toBe([
+        ['variant' => 'normal', 'label' => 'Normal', 'count' => 0],
+        ['variant' => 'reverse-holofoil', 'label' => 'Reverse Holofoil', 'count' => 0],
+        ['variant' => null, 'label' => 'Unspecified', 'count' => 3],
+    ]);
+    $component->assertSeeHtml('data-chip="'.$first->id.'|"');
+});
+
+test('a card with no known variants keeps the plain chip for unspecified copies and adds one per stored variant', function () {
+    $user = setGridUser();
+    ['third' => $third] = setGridFixture();
+    setGridOwn($user, $third, ['variant' => 'normal', 'quantity' => 2]);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05']);
+
+    expect(setGridEntry($component, $third)['chips'])->toBe([
+        ['variant' => null, 'label' => '', 'count' => 0],
+        ['variant' => 'normal', 'label' => 'Normal', 'count' => 2],
+    ]);
+});
+
+test('the chip counts always add up to the tile quantity', function () {
+    $user = setGridUser();
+    ['first' => $first, 'third' => $third] = setGridFixture();
+    setGridOwn($user, $first, ['variant' => 'normal', 'quantity' => 1]);
+    setGridOwn($user, $first, ['variant' => 'holofoil:cosmos+pre-release', 'quantity' => 2]);
+    setGridOwn($user, $first, ['variant' => null, 'quantity' => 4]);
+    setGridOwn($user, $third, ['variant' => 'holofoil', 'quantity' => 5]);
+    setGridOwn($user, $third, ['variant' => null, 'condition' => 'LP', 'quantity' => 1]);
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05']);
+
+    foreach ([$first, $third] as $card) {
+        $entry = setGridEntry($component, $card);
+        expect(array_sum(array_column($entry['chips'], 'count')))->toBe($entry['quantity']);
+    }
+    expect(setGridEntry($component, $first)['quantity'])->toBe(7);
+});
