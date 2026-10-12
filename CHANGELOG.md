@@ -6,11 +6,22 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-12
+
 ### Added
 
 - A confetti foil in the "other print" picker, for McDonald's confetti
   holo reprints that tcgdex lists only in their McDonald's sets, such as
   the Latin American McDonald's 2024 Pikachu printed as MEW 025/165.
+
+### Fixed
+
+- The tcgcsv job tests no longer fail once their dated build fixtures
+  age past the 36-hour fill window; they run on a pinned clock.
+
+### Deploy
+
+No migrations.
 
 ## [1.3.1] - 2026-10-08
 
