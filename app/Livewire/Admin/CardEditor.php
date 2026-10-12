@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -38,7 +39,17 @@ final class CardEditor extends Component
     use StripsUploadedPhotos;
     use WithFileUploads;
 
+    // 'modal' centres the editor over the page; 'panel' docks it to the
+    // right edge, or to the bottom of the screen on a phone.
+    #[Locked]
+    public string $presentation = 'modal';
+
     public const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
+
+    public function mount(string $presentation = 'modal'): void
+    {
+        $this->presentation = $presentation === 'panel' ? 'panel' : 'modal';
+    }
 
     /**
      * `CollectionItem` has no `user_id` column, so it can never carry
@@ -100,12 +111,7 @@ final class CardEditor extends Component
      */
     private function ownedCardItemsOrFail(int $cardId): EloquentCollection
     {
-        $collectionIds = Collection::query()->pluck('id');
-        $items = CollectionItem::where('card_id', $cardId)
-            ->whereIn('collection_id', $collectionIds)
-            ->with('card')
-            ->orderBy('id')
-            ->get();
+        $items = $this->ownedCardItems($cardId);
 
         if ($items->isEmpty()) {
             throw new NotFoundHttpException;
@@ -114,8 +120,33 @@ final class CardEditor extends Component
         return $items;
     }
 
+    /**
+     * Every copy of one card across the caller's own collections, possibly none.
+     *
+     * @return EloquentCollection<int, CollectionItem>
+     */
+    private function ownedCardItems(int $cardId): EloquentCollection
+    {
+        $collectionIds = Collection::query()->pluck('id');
+
+        return CollectionItem::where('card_id', $cardId)
+            ->whereIn('collection_id', $collectionIds)
+            ->with('card')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /** The collection new copies go into, created on first use. */
+    private function ownCollection(): Collection
+    {
+        return Collection::firstOrCreate(
+            ['user_id' => auth()->id(), 'slug' => 'my-collection'],
+            ['name' => 'My Collection', 'is_public' => false],
+        );
+    }
+
     #[On('open-card-editor')]
-    public function openCardEditor(int $cardId): void
+    public function openCardEditor(int $cardId, bool $allowEmpty = false): void
     {
         // A previous card's stale error bag would otherwise bleed into this
         // one — editingRows indexes reset per card, so an error on
@@ -123,11 +154,14 @@ final class CardEditor extends Component
         // reattach to row 0 of this one.
         $this->resetValidation();
 
-        $items = $this->ownedCardItemsOrFail($cardId);
-        $primary = $items->firstOrFail();
+        // Strict by default: a card the caller owns nothing of is a 404,
+        // never a hint that the card exists. A host that offers every card
+        // of a set opts in with $allowEmpty and gets an editor with no rows.
+        $items = $allowEmpty ? $this->ownedCardItems($cardId) : $this->ownedCardItemsOrFail($cardId);
+        $primary = $items->first();
 
         $this->editingCardId = $cardId;
-        $this->editingCollectionId = $primary->collection_id;
+        $this->editingCollectionId = $primary->collection_id ?? $this->ownCollection()->id;
         $this->editingRows = $items->map(fn (CollectionItem $i) => [
             'id' => $i->id,
             'variant' => $i->variant,
@@ -142,7 +176,7 @@ final class CardEditor extends Component
             'manual_price' => $this->currentManualPrice($i),
         ])->values()->all();
 
-        $card = $primary->card;
+        $card = $primary !== null ? $primary->card : Card::findOrFail($cardId);
         $this->editingCardName = $card->name;
 
         // Variant-sourcing priority: the card's own tcgdex print flags
@@ -162,7 +196,7 @@ final class CardEditor extends Component
             // variant, not the union of every row's variant in this card
             // group, so one row's choice never leaks into another row's
             // dropdown as a selectable option.
-            $variants = array_filter([$primary->variant]);
+            $variants = array_filter([$primary?->variant]);
         }
         // A copy's own saved print stays selectable even when the card's
         // list doesn't offer it — a hand-entered print tcgdex doesn't
