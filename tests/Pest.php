@@ -1,5 +1,10 @@
 <?php
 
+use App\Models\User;
+use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\Set;
+use App\Modules\Collection\Models\Collection;
+use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -77,3 +82,31 @@ expect()->extend('toBeWithinRange', function (int $min, int $max) {
 | global functions to help you to reduce duplication, improve readability, and keep focus.
 |
 */
+
+function budewCard(): Card
+{
+    $set = Set::create(['tcgdex_id' => 'sv08.5', 'name' => 'Prismatic Evolutions']);
+
+    return Card::create([
+        'tcgdex_id' => 'sv08.5-004', 'set_id' => $set->id, 'local_id' => '004', 'name' => 'Budew',
+        'variants' => ['holo' => false, 'normal' => true, 'reverse' => true],
+        'raw' => ['variants_detailed' => [
+            ['type' => 'normal', 'size' => 'standard'],
+            ['type' => 'reverse', 'size' => 'standard'],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'pokeball'],
+            ['type' => 'reverse', 'size' => 'standard', 'foil' => 'masterball'],
+        ]],
+    ]);
+}
+
+function prizePackBudew(User $user): array
+{
+    $card = budewCard();
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    $item = CollectionItem::create([
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'sv08.5-004',
+        'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil:cosmos+player-rewards-program',
+    ]);
+
+    return [$card, $item];
+}
