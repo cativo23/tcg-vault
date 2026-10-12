@@ -4,6 +4,7 @@ use App\Http\Controllers\CollectionExportController;
 use App\Livewire\Admin\AddCollectionItem;
 use App\Livewire\Admin\CollectionItems;
 use App\Livewire\Admin\Import;
+use App\Livewire\Admin\Sets as AdminSets;
 use App\Livewire\Gallery\Activity;
 use App\Livewire\Gallery\CardShow;
 use App\Livewire\Gallery\Index;
@@ -43,6 +44,9 @@ Route::middleware(['auth', 'can:use-collection'])->group(function () {
 
     Route::get('/admin', CollectionItems::class)
         ->name('admin.collection.index');
+
+    Route::get('/admin/sets', AdminSets::class)
+        ->name('admin.sets.index');
 
     Route::get('/admin/export', CollectionExportController::class)
         ->name('admin.collection.export');
