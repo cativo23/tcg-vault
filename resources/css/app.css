@@ -1176,7 +1176,6 @@ body::before {
 }
 .nw-empty .t { font-variation-settings: 'wdth' 66, 'wght' 800; text-transform: uppercase; font-size: 20px; color: var(--ink); }
 .nw-empty p { font-size: 13px; margin-top: 8px; }
-.nw-inline-link { color: var(--ink); text-decoration: underline; }
 
 /* ─── legacy primitives still used by the admin/auth screens ─── */
 .nw-btn-primary { background: var(--ink); color: var(--bone); border-radius: 8px; padding: 0.6rem 1.1rem; font-weight: 600; transition: opacity 160ms var(--ease), background-color 220ms var(--ease), color 220ms var(--ease); }
@@ -1191,6 +1190,7 @@ body::before {
 .nw-link { color: var(--ink); text-decoration: none; border-bottom: 2px solid transparent; transition: opacity 160ms var(--ease), border-color 160ms var(--ease); }
 .nw-link:hover { opacity: 0.7; }
 .nw-link.is-active { border-bottom-color: var(--signal); }
+.nw-inline-link { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .nw-topbar .nw-link, .nw-topbar .nw-hover-tint { color: var(--chrome-fg); }
 .nw-topbar .nw-row-hover:hover { background: var(--ink-2); }
 .nw-topbar .nw-row-hover.is-active { background: var(--ink-2) !important; }
