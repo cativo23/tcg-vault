@@ -6,6 +6,19 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-13
+
+### Fixed
+
+- Public gallery pages were taking 12-21 seconds to load after v1.6.0. The
+  same-day tie-breaking that release added to the price resolver re-read
+  each row's fields on every comparison; each row's sort key is now read
+  once. The ordering is unchanged.
+
+### Deploy
+
+No migrations. Nothing to run after the deploy.
+
 ## [1.6.0] - 2026-10-13
 
 ### Added
