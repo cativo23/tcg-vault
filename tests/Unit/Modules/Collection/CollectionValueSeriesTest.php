@@ -226,3 +226,14 @@ test('no query binds a value per card or per row, so a large collection stays un
     expect($series)->toHaveCount(31)
         ->and($max)->toBeLessThanOrEqual(8);
 });
+
+test('two days of history chart on the longest range, from the earliest day', function () {
+    $a = ($this->own)('001');
+    ($this->price)($a, 2, 100);
+    ($this->price)($a, 0, 150);
+
+    $series = ($this->series)(ChartRange::OneYear);
+
+    expect($series->pluck('date')->map->toDateString()->all())->toBe([today()->subDays(2)->toDateString(), today()->toDateString()])
+        ->and($series->pluck('minor')->all())->toBe([100, 150]);
+});

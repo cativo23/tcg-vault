@@ -76,6 +76,9 @@ enum ChartRange: string
      * the stride, stopping at the range start or the earliest day with
      * data — a point before any price exists would chart a zero nobody
      * owned. Counting back from today keeps the last point on today.
+     * When the earliest day falls inside the range but off the stride, it
+     * is added as the first point, so a short history charts on every
+     * range instead of vanishing between grid days.
      *
      * @return list<CarbonImmutable>
      */
@@ -91,6 +94,15 @@ enum ChartRange: string
             $day = $day->subDays($this->stride());
         }
 
-        return array_reverse($days);
+        $days = array_reverse($days);
+        $earliestKey = $earliest->toDateString();
+
+        if ($earliestKey >= $this->start($today)->toDateString()
+            && $earliestKey <= $today->toDateString()
+            && ($days === [] || $days[0]->toDateString() > $earliestKey)) {
+            array_unshift($days, CarbonImmutable::parse($earliestKey));
+        }
+
+        return $days;
     }
 }
