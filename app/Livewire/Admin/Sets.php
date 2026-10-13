@@ -178,9 +178,11 @@ final class Sets extends Component
             return;
         }
 
-        // An unknown or zero announced total is not "complete": it matches
-        // CollectionService::syncCardAndQueueImport(), and the unique job
-        // makes a repeat dispatch a no-op.
+        // An unknown or zero announced total is not "complete", so the
+        // import is queued; the unique job makes a repeat dispatch a no-op.
+        // This is stricter than CollectionService::syncCardAndQueueImport(),
+        // which treats an unknown total as incomplete but a zero total as
+        // complete.
         if (! $this->isFullyImported($set)) {
             try {
                 ImportSetJob::dispatch($set->tcgdex_id);
