@@ -135,10 +135,8 @@ final class CardShow extends Component
         $delta = $resolver->deltaFor($priced, $snapshot);
         $chartRange = ChartRange::fromInput($this->range);
         $history = $resolver->historyIn($snapshot, $chartRange->start(today()));
-        $historyStartsAfterRange = $snapshot !== null && CardPriceSnapshot::query()
-            ->where('card_id', $snapshot->card_id)->where('source', $snapshot->source)->where('variant', $snapshot->variant)
-            ->whereNotNull('market_minor')
-            ->min('captured_on') > $chartRange->start(today())->toDateString();
+        $span = $resolver->historySpan($snapshot);
+        $historyStartsAfterRange = $span['since'] !== null && $span['since'] > $chartRange->start(today())->toDateString();
         $ownedTotal = $items->isNotEmpty() ? $valuation->cardTotal($priced) : null;
         $quantity = (int) $items->sum('quantity');
 
@@ -199,6 +197,7 @@ final class CardShow extends Component
             'delta' => $delta,
             'history' => $history,
             'chartRange' => $chartRange,
+            'canChart' => $span['priced'] >= 2,
             'historySince' => $historyStartsAfterRange ? $history->first()?->captured_on : null,
             'ownedTotal' => $ownedTotal,
             'marketReads' => $marketReads,

@@ -539,10 +539,35 @@ test('history since shows only when the price data starts after the range start'
     $this->get('/carlos/me05/116?range=3m')->assertSee('History since')->assertSee(today()->subDays(45)->format('j M'));
 });
 
-test('a range with fewer than two points keeps its buttons and says so', function () {
-    rangedCardPage([0]);
+test('a range with no two points keeps its buttons and says so', function () {
+    rangedCardPage([0, 45]);
 
     $this->get('/carlos/me05/116')
         ->assertSee('No price history in this range.')
         ->assertSee("selectRange('3m')", false);
+});
+
+test('a card with a single priced row has no price history panel and no range buttons', function () {
+    rangedCardPage([0]);
+
+    $this->get('/carlos/me05/116')
+        ->assertOk()
+        ->assertDontSee('Price history')
+        ->assertDontSee("selectRange('3m')", false);
+});
+
+test('the range includes its first day and not the day before', function () {
+    $page = rangedCardPage([0, 30, 31]);
+
+    expect($page->viewData('history')->pluck('market_minor')->all())->toBe([1030, 1000]);
+});
+
+test('the range buttons are named by their visible text, with the group named once', function () {
+    rangedCardPage([0, 20]);
+
+    $this->get('/carlos/me05/116?range=3m')
+        ->assertSee('aria-label="Price history range"', false)
+        ->assertDontSee('aria-label="3 months"', false)
+        ->assertDontSee('aria-label="1 month"', false)
+        ->assertSee('over 3 months, from');
 });

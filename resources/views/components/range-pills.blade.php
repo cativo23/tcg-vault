@@ -10,7 +10,6 @@
         @php $isOn = $option === $active; @endphp
         <button type="button" wire:key="range-{{ $option->value }}"
             class="nw-variant-pill {{ $isOn ? 'on' : '' }}" aria-pressed="{{ $isOn ? 'true' : 'false' }}"
-            aria-label="{{ $option->label() }}"
             wire:click="selectRange('{{ $option->value }}')">{{ $option->button() }}</button>
     @endforeach
 </div>

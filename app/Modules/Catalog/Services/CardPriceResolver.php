@@ -9,6 +9,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Support\CardVariants;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 final class CardPriceResolver
@@ -430,16 +431,52 @@ final class CardPriceResolver
             return collect();
         }
 
-        return CardPriceSnapshot::query()
+        return $this->seriesOf($resolved)
             ->select(CardPriceSnapshot::CHART_COLUMNS)
-            ->where('card_id', $resolved->card_id)
-            ->where('source', $resolved->source)
-            ->where('variant', $resolved->variant)
-            ->whereNotNull('market_minor')
             ->where('captured_on', '>=', $from->toDateString())
             ->orderBy('captured_on')
             ->get()
             ->toBase();
+    }
+
+    /**
+     * How much priced history a snapshot's own series has, over all time:
+     * the number of priced days and the first of them. A series with fewer
+     * than two can never be charted, whatever the range.
+     *
+     * @return array{priced: int, since: ?string}
+     */
+    public function historySpan(?CardPriceSnapshot $resolved): array
+    {
+        if ($resolved === null) {
+            return ['priced' => 0, 'since' => null];
+        }
+
+        $row = $this->seriesOf($resolved)
+            ->toBase()
+            ->selectRaw('count(*) as priced, min(captured_on) as since')
+            ->first();
+
+        // An aggregate always returns one row; the null-safe reads only
+        // satisfy the type.
+        return [
+            'priced' => (int) ($row->priced ?? 0),
+            'since' => isset($row->since) ? Carbon::parse($row->since)->toDateString() : null,
+        ];
+    }
+
+    /**
+     * The priced rows of one snapshot's source and variant, unordered.
+     *
+     * @return Builder<CardPriceSnapshot>
+     */
+    private function seriesOf(CardPriceSnapshot $resolved): Builder
+    {
+        return CardPriceSnapshot::query()
+            ->where('card_id', $resolved->card_id)
+            ->where('source', $resolved->source)
+            ->where('variant', $resolved->variant)
+            ->whereNotNull('market_minor');
     }
 
     /**

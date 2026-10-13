@@ -135,7 +135,7 @@
                     @endforeach
                 </div>
 
-                @if ($snapshot !== null)
+                @if ($canChart)
                     <div class="nw-panel mt-3">
                         <div class="head">
                             <div>
