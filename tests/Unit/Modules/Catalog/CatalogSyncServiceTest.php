@@ -7,6 +7,7 @@ use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Data\PriceEntryData;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CatalogIdentityMismatchException;
+use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
@@ -293,4 +294,49 @@ test('a tcgdex sync marks the prices it writes as from tcgdex, even over a row a
     $service->syncCard('me05-116');
 
     expect(CardPriceSnapshot::sole()->origin)->toBe('tcgdex');
+});
+
+test('ensureSet creates a missing set from one findSet call', function () {
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findSet')->once()->with('me05')->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: 'Mega Evolution',
+        releasedOn: null, cardCount: 84, logoUrl: 'https://assets.tcgdex.net/en/me/me05/logo.png',
+    ));
+
+    $set = (new CatalogSyncService($provider))->ensureSet('me05');
+
+    expect($set->tcgdex_id)->toBe('me05')
+        ->and($set->name)->toBe('Pitch Black')
+        ->and($set->card_count)->toBe(84)
+        ->and(Set::where('tcgdex_id', 'me05')->count())->toBe(1);
+});
+
+test('ensureSet returns an existing set without asking tcgdex', function () {
+    $existing = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 84]);
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldNotReceive('findSet');
+
+    $set = (new CatalogSyncService($provider))->ensureSet('me05');
+
+    expect($set->is($existing))->toBeTrue();
+});
+
+test('ensureSet leaves nothing behind when tcgdex does not know the set', function () {
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findSet')->once()->andThrow(SetNotFoundException::forTcgdexId('nope'));
+
+    expect(fn () => (new CatalogSyncService($provider))->ensureSet('nope'))
+        ->toThrow(SetNotFoundException::class);
+    expect(Set::count())->toBe(0);
+});
+
+test('ensureSet refuses a set tcgdex answers for under a different id', function () {
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findSet')->once()->andReturn(new SetSummaryData(
+        tcgdexId: 'sv08', name: 'Surging Sparks', series: null, releasedOn: null, cardCount: 191, logoUrl: null,
+    ));
+
+    expect(fn () => (new CatalogSyncService($provider))->ensureSet('me05'))
+        ->toThrow(CatalogIdentityMismatchException::class);
+    expect(Set::count())->toBe(0);
 });
