@@ -47,9 +47,19 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      */
     private const SEARCH_PAGE_SIZE = 24;
 
-    public const SET_LIST_FRESH_KEY = 'tcgdex:set-list:fresh';
+    // The "v1" segment is the cached row shape; bump it when the shape changes
+    // so an old copy is never read as the new one.
+    public const SET_LIST_FRESH_KEY = 'tcgdex:set-list:v1:fresh';
 
-    public const SET_LIST_STALE_KEY = 'tcgdex:set-list:stale';
+    public const SET_LIST_STALE_KEY = 'tcgdex:set-list:v1:stale';
+
+    private const SET_LIST_FAILED_KEY = 'tcgdex:set-list:v1:failed';
+
+    /** While tcgdex is failing, the stale copy is served as the fresh one for this long. */
+    private const SET_LIST_BACKOFF_SECONDS = 300;
+
+    /** With no copy to fall back on, a failure is remembered for this long. */
+    private const SET_LIST_FAILURE_MEMORY_SECONDS = 60;
 
     private const SET_LIST_FRESH_SECONDS = 86400;
 
@@ -148,22 +158,38 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     public function listSets(): array
     {
-        $fresh = Cache::get(self::SET_LIST_FRESH_KEY);
+        $fresh = $this->cachedSetRows(self::SET_LIST_FRESH_KEY);
 
-        if (is_array($fresh)) {
+        if ($fresh !== null) {
             return $this->hydrateSetList($fresh);
+        }
+
+        if (Cache::has(self::SET_LIST_FAILED_KEY)) {
+            $stale = $this->cachedSetRows(self::SET_LIST_STALE_KEY);
+
+            if ($stale !== null) {
+                return $this->hydrateSetList($stale);
+            }
+
+            throw CatalogUnavailableException::forSetListingBackoff();
         }
 
         try {
             $rows = $this->fetchSetList();
         } catch (HttpClientException|MalformedCatalogResponseException $e) {
-            $stale = Cache::get(self::SET_LIST_STALE_KEY);
+            $stale = $this->cachedSetRows(self::SET_LIST_STALE_KEY);
 
-            if (is_array($stale)) {
+            if ($stale !== null) {
                 Log::warning('tcgdex set list unavailable, serving the cached copy.', ['exception' => $e::class]);
+
+                // Serve it as the fresh copy for a short while so every
+                // page load does not wait out the request timeout again.
+                Cache::put(self::SET_LIST_FRESH_KEY, $stale, self::SET_LIST_BACKOFF_SECONDS);
 
                 return $this->hydrateSetList($stale);
             }
+
+            Cache::put(self::SET_LIST_FAILED_KEY, true, self::SET_LIST_FAILURE_MEMORY_SECONDS);
 
             throw $e instanceof MalformedCatalogResponseException ? $e : CatalogUnavailableException::forSetListing($e);
         }
@@ -172,6 +198,36 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         Cache::put(self::SET_LIST_STALE_KEY, $rows, self::SET_LIST_STALE_SECONDS);
 
         return $this->hydrateSetList($rows);
+    }
+
+    /**
+     * The cached rows under a key, or null when there is no copy or the
+     * stored value does not have the expected shape (treated as a miss).
+     *
+     * @return list<array{id: string, name: string, cardCount: ?int, logoUrl: ?string}>|null
+     */
+    private function cachedSetRows(string $key): ?array
+    {
+        $rows = Cache::get($key);
+
+        if (! is_array($rows) || $rows === [] || ! array_is_list($rows)) {
+            return null;
+        }
+
+        foreach ($rows as $row) {
+            if (
+                ! is_array($row)
+                || ! is_string($row['id'] ?? null)
+                || ! is_string($row['name'] ?? null)
+                || ! array_key_exists('cardCount', $row) || ! (is_int($row['cardCount']) || $row['cardCount'] === null)
+                || ! array_key_exists('logoUrl', $row) || ! (is_string($row['logoUrl']) || $row['logoUrl'] === null)
+            ) {
+                return null;
+            }
+        }
+
+        /** @var list<array{id: string, name: string, cardCount: ?int, logoUrl: ?string}> $rows */
+        return $rows;
     }
 
     /**
@@ -217,7 +273,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     }
 
     /**
-     * @param  array<mixed>  $rows
+     * @param  list<array{id: string, name: string, cardCount: ?int, logoUrl: ?string}>  $rows
      * @return array<int, SetSummaryData>
      */
     private function hydrateSetList(array $rows): array
