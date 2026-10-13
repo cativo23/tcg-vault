@@ -149,9 +149,11 @@ test('headlineItem keeps the first copy when two variants price the same', funct
     CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 45]);
 
     $first = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
-    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'reverse-holofoil', 'condition' => 'NM', 'quantity' => 1]);
+    $second = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'reverse-holofoil', 'condition' => 'NM', 'quantity' => 1]);
+    $first->forceFill(['created_at' => now()->subHour()])->save();
+    $second->forceFill(['created_at' => now()])->save();
 
-    $inkay->load('priceSnapshots', 'collectionItems');
+    $inkay->load(['priceSnapshots', 'collectionItems' => fn ($q) => $q->orderBy('created_at')]);
 
     expect((new Valuation)->headlineItem($inkay)?->id)->toBe($first->id);
 });
