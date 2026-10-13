@@ -477,15 +477,46 @@ test('CHART_COLUMNS is every column of the table but raw', function () {
 test('two rows tying on the day in one chain step resolve to the same row however the relation was loaded', function () {
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    $first = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 100]);
-    $second = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'ebay', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 200]);
+    // The source that sorts first ('cardmarket') has the HIGHER id, so an id-first order would pick the other row.
+    $ebay = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'ebay', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 200]);
+    $cardmarket = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 100]);
     $resolver = new CardPriceResolver;
     $day = collect([today()->toDateString()]);
 
-    foreach ([[$first, $second], [$second, $first]] as $order) {
+    foreach ([[$ebay, $cardmarket], [$cardmarket, $ebay]] as $order) {
         $card->setRelation('priceSnapshots', collect($order));
 
-        expect($resolver->resolveForVariant($card, 'normal')->id)->toBe($first->id)
-            ->and($resolver->resolveForVariantOnDays($card, 'normal', $day)[today()->toDateString()]->id)->toBe($first->id);
+        expect($resolver->resolveForVariant($card, 'normal')->id)->toBe($cardmarket->id)
+            ->and($resolver->resolveForVariantOnDays($card, 'normal', $day)[today()->toDateString()]->id)->toBe($cardmarket->id);
     }
+});
+
+test('a card-level price prefers tcgplayer normal over holofoil when both are current, in any load order', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $holo = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 900]);
+    $normal = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 100]);
+
+    foreach ([[$holo, $normal], [$normal, $holo]] as $order) {
+        $card->setRelation('priceSnapshots', collect($order));
+
+        expect((new CardPriceResolver)->resolve($card)->id)->toBe($normal->id);
+    }
+});
+
+test('a card-level price falls through a stale tcgplayer normal to a current holofoil', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(CardPriceResolver::STALE_AFTER_DAYS + 2), 'currency' => 'USD', 'market_minor' => 100]);
+    $holo = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 900]);
+
+    expect((new CardPriceResolver)->resolve($card)->id)->toBe($holo->id);
+});
+
+test('a card-level price uses tcgplayer holofoil when it is the only tcgplayer print', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $holo = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 900]);
+
+    expect((new CardPriceResolver)->resolve($card)->id)->toBe($holo->id);
 });

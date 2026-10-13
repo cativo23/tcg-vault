@@ -131,7 +131,8 @@ final class CardPriceResolver
     private function newestFirst(Collection $snapshots): Collection
     {
         return $snapshots
-            ->sort(fn (CardPriceSnapshot $a, CardPriceSnapshot $b) => [$b->capturedOnKey(), $a->source, $a->variant, $a->id] <=> [$a->capturedOnKey(), $b->source, $b->variant, $b->id])
+            ->sort(fn (CardPriceSnapshot $a, CardPriceSnapshot $b) => [$b->capturedOnKey(), $a->source, $a->variant, $a->id]
+                <=> [$a->capturedOnKey(), $b->source, $b->variant, $b->id])
             ->values();
     }
 
@@ -152,7 +153,9 @@ final class CardPriceResolver
     /**
      * The priority chain a price is picked from, best first.
      *
-     * Card-level (no variant): tcgplayer normal/holofoil, then
+     * Card-level (no variant): tcgplayer normal, then tcgplayer holofoil
+     * (a stale or unpriced normal falls through to a current holofoil, but
+     * two current prints resolve to the normal one), then
      * cardmarket's 'default' row, then any base-print row. A special
      * print (a Master Ball reverse, a stamped promo) is a separate
      * product; pricing the card as a whole from one would show a plain
@@ -175,7 +178,8 @@ final class CardPriceResolver
             $base = $snapshots->reject(fn (CardPriceSnapshot $s) => CardVariants::isSpecial($s->variant));
 
             return [
-                $base->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && in_array($s->variant, ['normal', 'holofoil'], true)),
+                $base->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && $s->variant === 'normal'),
+                $base->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && $s->variant === 'holofoil'),
                 $base->filter(fn (CardPriceSnapshot $s) => $s->source === 'cardmarket' && $s->variant === 'default'),
                 $base,
             ];
