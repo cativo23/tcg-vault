@@ -12,10 +12,13 @@ use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\ImportBudget;
+use App\Modules\Catalog\Services\ImportBudgetResult;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
@@ -473,12 +476,58 @@ test("another user's choices do not count against this user's limit", function (
     expect(RateLimiter::attempts('add-set:'.$user->id))->toBe(1);
 });
 
-test('the twenty-first new set in a day is refused without asking tcgdex', function () {
+/**
+ * Lists sets "s1".."s{n}" (plus me05) and stores each as an incomplete set
+ * another collector already started: a row with fewer cards than announced.
+ */
+function budgetIncompleteSets(int $n): void
+{
+    $listed = [pickerSet('me05', 'Pitch Black', 84)];
+
+    for ($i = 1; $i <= $n; $i++) {
+        Set::create(['tcgdex_id' => "s{$i}", 'name' => "Set {$i}", 'card_count' => 10]);
+        $listed[] = pickerSet("s{$i}", "Set {$i}", 10);
+    }
+
+    test()->mock(CardCatalogProvider::class, function ($mock) use ($listed) {
+        $mock->shouldReceive('listSets')->andReturn($listed);
+        $mock->shouldNotReceive('findSet');
+    });
+}
+
+/** Chooses each set in turn, clearing the per-minute limiter in between. */
+function chooseEach(User $user, array $ids): void
+{
+    foreach ($ids as $id) {
+        RateLimiter::clear('add-set:'.$user->id);
+        Livewire::test(Sets::class)->call('chooseSet', $id)->assertRedirect();
+    }
+}
+
+test('choosing incomplete sets someone else stored draws from the daily budget', function () {
     $user = pickerUser();
     Queue::fake();
-    $key = 'add-set-new:'.$user->id.':'.now()->toDateString();
-    for ($i = 0; $i < Sets::NEW_SETS_LIMIT_PER_DAY; $i++) {
-        RateLimiter::hit($key, 86400);
+    budgetIncompleteSets(ImportBudget::DAILY_LIMIT + 1);
+    $ids = array_map(fn (int $i): string => "s{$i}", range(1, ImportBudget::DAILY_LIMIT));
+
+    chooseEach($user, $ids);
+    Queue::assertPushed(ImportSetJob::class, ImportBudget::DAILY_LIMIT);
+
+    RateLimiter::clear('add-set:'.$user->id);
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->call('chooseSet', 's21')
+        ->assertNoRedirect()
+        ->assertSee("You've started 20 sets today — try again tomorrow.");
+
+    Queue::assertPushed(ImportSetJob::class, ImportBudget::DAILY_LIMIT);
+});
+
+test('a set the daily budget refuses is never looked up on tcgdex', function () {
+    $user = pickerUser();
+    Queue::fake();
+    for ($i = 1; $i <= ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
     }
     chooseCatalog();
 
@@ -486,52 +535,59 @@ test('the twenty-first new set in a day is refused without asking tcgdex', funct
         ->call('openPicker')
         ->call('chooseSet', 'me05')
         ->assertNoRedirect()
-        ->assertSee("You've started 20 new sets today");
+        ->assertSee("You've started 20 sets today");
 
     expect(Set::count())->toBe(0);
     Queue::assertNothingPushed();
 });
 
-test('creating a set counts toward the daily cap and an existing set does not', function () {
+test('choosing a set already started today is free once the budget is spent', function () {
     $user = pickerUser();
     Queue::fake();
-    $key = 'add-set-new:'.$user->id.':'.now()->toDateString();
-    Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 0]);
-    chooseCatalog();
+    budgetIncompleteSets(ImportBudget::DAILY_LIMIT);
+    $ids = array_map(fn (int $i): string => "s{$i}", range(1, ImportBudget::DAILY_LIMIT));
 
-    Livewire::test(Sets::class)->call('chooseSet', 'me05')->assertRedirect();
+    chooseEach($user, $ids);
+    // chooseEach() asserts each repeat choice redirects to the grid.
+    chooseEach($user, ['s1', 's20']);
 
-    expect(RateLimiter::attempts($key))->toBe(0);
-
-    Set::query()->delete();
-    chooseCatalog(fn ($mock) => $mock->shouldReceive('findSet')->once()->andReturn(
-        new SetSummaryData(tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: 84, logoUrl: null),
-    ));
-
-    Livewire::test(Sets::class)->call('chooseSet', 'me05')->assertRedirect();
-
-    expect(RateLimiter::attempts($key))->toBe(1);
+    expect(app(ImportBudget::class)->tryStart($user->id, 's21'))->toBe(ImportBudgetResult::Exhausted);
 });
 
-test('an existing set can still be chosen once the daily cap is reached', function () {
+test('a fully imported set never draws from the daily budget', function () {
     $user = pickerUser();
     Queue::fake();
-    $key = 'add-set-new:'.$user->id.':'.now()->toDateString();
-    for ($i = 0; $i < Sets::NEW_SETS_LIMIT_PER_DAY; $i++) {
-        RateLimiter::hit($key, 86400);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 1]);
+    Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'Card']);
+    for ($i = 1; $i <= ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
     }
-    Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 0]);
     chooseCatalog();
 
     Livewire::test(Sets::class)->call('chooseSet', 'me05')->assertRedirect();
+
+    Queue::assertNothingPushed();
 });
 
-test('the daily cap resets the next day', function () {
+test('choosing a fully imported set leaves the budget untouched', function () {
     $user = pickerUser();
     Queue::fake();
-    $key = 'add-set-new:'.$user->id.':'.now()->toDateString();
-    for ($i = 0; $i < Sets::NEW_SETS_LIMIT_PER_DAY; $i++) {
-        RateLimiter::hit($key, 86400);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 1]);
+    Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'Card']);
+    chooseCatalog();
+
+    Livewire::test(Sets::class)->call('chooseSet', 'me05')->assertRedirect();
+
+    for ($i = 1; $i <= ImportBudget::DAILY_LIMIT; $i++) {
+        expect(app(ImportBudget::class)->tryStart($user->id, "x{$i}"))->toBe(ImportBudgetResult::Started);
+    }
+});
+
+test('the daily budget resets the next UTC day', function () {
+    $user = pickerUser();
+    Queue::fake();
+    for ($i = 1; $i <= ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
     }
     chooseCatalog(fn ($mock) => $mock->shouldReceive('findSet')->once()->andReturn(
         new SetSummaryData(tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: 84, logoUrl: null),
@@ -540,6 +596,38 @@ test('the daily cap resets the next day', function () {
     $this->travel(1)->days();
 
     Livewire::test(Sets::class)->call('chooseSet', 'me05')->assertRedirect();
+    Queue::assertPushed(ImportSetJob::class, 1);
+});
+
+test("another user's spent budget does not refuse this user", function () {
+    pickerUser();
+    $other = User::factory()->create();
+    Queue::fake();
+    for ($i = 1; $i <= ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($other->id, "x{$i}");
+    }
+    budgetIncompleteSets(1);
+
+    Livewire::test(Sets::class)->call('chooseSet', 's1')->assertRedirect();
+    Queue::assertPushed(ImportSetJob::class, 1);
+});
+
+test('a busy budget asks to try again without asking tcgdex', function () {
+    $user = pickerUser();
+    Queue::fake();
+    $lock = Cache::lock('import-budget:lock:'.$user->id, 10);
+    $lock->get();
+    chooseCatalog();
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->call('chooseSet', 'me05')
+        ->assertNoRedirect()
+        ->assertSee('Another set is being started — try again.');
+
+    $lock->release();
+    expect(Set::count())->toBe(0);
+    Queue::assertNothingPushed();
 });
 
 test('a failed choice still counts against the limit', function () {
