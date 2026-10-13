@@ -8,8 +8,8 @@
 
 <a href="{{ $href }}" class="nw-setcard nw-slot" style="--i: {{ $index }}" wire:navigate>
     <div class="band">
-        @if ($set->logo_url)
-            <img src="{{ $set->logo_url }}" alt="{{ $set->name }} logo" loading="lazy" decoding="async" data-optional>
+        @if ($set->safe_logo_url)
+            <img src="{{ $set->safe_logo_url }}" alt="{{ $set->name }} logo" loading="lazy" decoding="async" data-optional>
         @endif
         {{-- shown when there is no logo, or when the logo failed to load and was removed --}}
         <span class="placeholder">{{ $set->tcgdex_id }}</span>

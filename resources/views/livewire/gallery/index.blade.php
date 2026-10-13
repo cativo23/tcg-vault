@@ -40,8 +40,8 @@
             @foreach ($sets as $set)
                 @php $total = $set->card_count ?: $set->real_card_count; @endphp
                 <a href="{{ route('gallery.show', ['username' => $targetUser->username, 'setTcgdexId' => $set->tcgdex_id]) }}" class="nw-chip" wire:navigate>
-                    @if ($set->logo_url)
-                        <img src="{{ $set->logo_url }}" alt="" loading="lazy" decoding="async" data-optional>
+                    @if ($set->safe_logo_url)
+                        <img src="{{ $set->safe_logo_url }}" alt="" loading="lazy" decoding="async" data-optional>
                     @endif
                     <span>
                         <span class="t block">{{ $set->name }}</span>
