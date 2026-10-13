@@ -143,7 +143,7 @@ final class SetImportBanner extends Component
         if ($budget !== ImportBudgetResult::Started) {
             $this->notice = $budget === ImportBudgetResult::Busy
                 ? 'Another import is being started — try again.'
-                : 'Daily import limit reached — try again tomorrow.';
+                : 'Not imported '.ImportBudget::limitNote().'.';
 
             return;
         }

@@ -24,6 +24,12 @@ final class ImportBudget
 {
     public const DAILY_LIMIT = 20;
 
+    /** The shared wording for a refusal, including when the budget resets. */
+    public static function limitNote(): string
+    {
+        return '(daily limit of '.self::DAILY_LIMIT.' sets, resets at midnight UTC)';
+    }
+
     private const LOCK_SECONDS = 10;
 
     private const LOCK_WAIT_SECONDS = 3;

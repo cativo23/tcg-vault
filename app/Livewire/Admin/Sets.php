@@ -155,7 +155,7 @@ final class Sets extends Component
                 if ($budget !== ImportBudgetResult::Started) {
                     $this->pickerError = $budget === ImportBudgetResult::Busy
                         ? 'Another set is being started — try again.'
-                        : "You've started ".ImportBudget::DAILY_LIMIT.' sets today — try again tomorrow.';
+                        : "Can't start this set ".ImportBudget::limitNote().'.';
 
                     return;
                 }

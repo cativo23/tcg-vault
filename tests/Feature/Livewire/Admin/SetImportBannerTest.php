@@ -360,7 +360,7 @@ test('a retry is refused once the daily import budget is spent', function () {
     $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
     $this->travel(11)->minutes();
 
-    $component->call('retryImport')->assertSee('Daily import limit reached — try again tomorrow.');
+    $component->call('retryImport')->assertSee('Not imported (daily limit of 20 sets, resets at midnight UTC).');
 
     Queue::assertNothingPushed();
 });
@@ -518,7 +518,7 @@ test('a set this user cannot start today says the daily limit is reached instead
 
     Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
         ->assertDontSee('Loading cards')
-        ->assertSee('3 cards missing — daily import limit reached, try again tomorrow.')
+        ->assertSee('3 cards missing — not imported (daily limit of 20 sets, resets at midnight UTC).')
         ->assertDontSee('Retry');
 });
 
@@ -533,7 +533,7 @@ test('a set this user already started today keeps loading even with the budget s
 
     Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
         ->assertSee('Loading cards…')
-        ->assertDontSee('daily import limit');
+        ->assertDontSee('daily limit');
 });
 
 test('cards arriving for a set this user cannot start show as loading', function () {
@@ -549,5 +549,5 @@ test('cards arriving for a set this user cannot start show as loading', function
 
     $component->call('check')
         ->assertSee('Loading cards…')
-        ->assertDontSee('daily import limit');
+        ->assertDontSee('daily limit');
 });

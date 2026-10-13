@@ -519,7 +519,7 @@ test('choosing incomplete sets someone else stored draws from the daily budget',
         ->call('openPicker')
         ->call('chooseSet', 's21')
         ->assertNoRedirect()
-        ->assertSee("You've started 20 sets today — try again tomorrow.");
+        ->assertSee("Can't start this set (daily limit of 20 sets, resets at midnight UTC).");
 
     Queue::assertPushed(ImportSetJob::class, ImportBudget::DAILY_LIMIT);
 });
@@ -536,7 +536,7 @@ test('a set the daily budget refuses is never looked up on tcgdex', function () 
         ->call('openPicker')
         ->call('chooseSet', 'me05')
         ->assertNoRedirect()
-        ->assertSee("You've started 20 sets today");
+        ->assertSee("Can't start this set (daily limit of 20 sets, resets at midnight UTC).");
 
     expect(Set::count())->toBe(0);
     Queue::assertNothingPushed();

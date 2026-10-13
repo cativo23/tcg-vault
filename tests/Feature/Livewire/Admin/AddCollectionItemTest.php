@@ -1208,7 +1208,7 @@ test('adding a card from a new set past the daily import budget saves the card w
 
     expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeTrue();
     Queue::assertNotPushed(ImportSetJob::class);
-    expect(session('collection-notice'))->toBe("Card added. Pitch Black wasn't imported today (daily limit of 20) — try again tomorrow.");
+    expect(session('collection-notice'))->toBe("Card added. Pitch Black wasn't imported (daily limit of 20 sets, resets at midnight UTC).");
 });
 
 test('the collection page shows the note left by an add', function () {
@@ -1216,10 +1216,10 @@ test('the collection page shows the note left by an add', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
-    $this->withSession(['collection-notice' => "Card added. Pitch Black wasn't imported today (daily limit of 20) — try again tomorrow."])
+    $this->withSession(['collection-notice' => "Card added. Pitch Black wasn't imported (daily limit of 20 sets, resets at midnight UTC)."])
         ->get(route('admin.collection.index'))
         ->assertOk()
-        ->assertSee('Pitch Black wasn&#039;t imported today', false);
+        ->assertSee('Pitch Black wasn&#039;t imported (daily limit', false);
 });
 
 test('a save refused by the rate limit never runs the photo stripper', function () {

@@ -143,7 +143,7 @@ final class Import extends Component
         $exhausted = $counts[ImportBudgetResult::Exhausted->name] ?? 0;
         if ($exhausted > 0) {
             $note .= ' '.$exhausted.' '.($exhausted === 1 ? "set wasn't" : "sets weren't")
-                .' imported today (daily limit of '.ImportBudget::DAILY_LIMIT.') — try again tomorrow.';
+                .' imported '.ImportBudget::limitNote().'.';
         }
 
         $busy = $counts[ImportBudgetResult::Busy->name] ?? 0;

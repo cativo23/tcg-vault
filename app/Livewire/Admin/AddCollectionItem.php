@@ -467,7 +467,7 @@ final class AddCollectionItem extends Component
         $skipped = $service->skippedSetImports()[$card->set->tcgdex_id] ?? null;
 
         if ($skipped === ImportBudgetResult::Exhausted) {
-            $redirect->with('collection-notice', "Card added. {$card->set->name} wasn't imported today (daily limit of ".ImportBudget::DAILY_LIMIT.') — try again tomorrow.');
+            $redirect->with('collection-notice', "Card added. {$card->set->name} wasn't imported ".ImportBudget::limitNote().'.');
         } elseif ($skipped === ImportBudgetResult::Busy) {
             $redirect->with('collection-notice', "Card added. {$card->set->name} couldn't start importing — add a card from it again later.");
         }

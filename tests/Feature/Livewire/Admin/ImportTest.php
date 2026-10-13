@@ -226,7 +226,7 @@ test('an import spanning more new sets than the daily budget adds every card but
 
     expect(CollectionItem::count())->toBe($setCount);
     Queue::assertPushed(ImportSetJob::class, ImportBudget::DAILY_LIMIT);
-    expect($component->get('summary'))->toContain("2 sets weren't imported today (daily limit of 20) — try again tomorrow.");
+    expect($component->get('summary'))->toContain("2 sets weren't imported (daily limit of 20 sets, resets at midnight UTC).");
 });
 
 test('confirming an import too often in a minute is refused before any catalog lookup', function () {
