@@ -55,6 +55,24 @@ test('listSets maps the listing into SetSummaryData with png logos and no series
         ->and($sets[2]->cardCount)->toBe(0); // falls back to "official" when "total" is absent
 });
 
+test('listSets drops logo urls that are not on the tcgdex assets host', function () {
+    Http::fake([SET_LIST_URL => Http::response([
+        ['id' => 'a', 'name' => 'A', 'logo' => 'https://assets.tcgdex.net/en/a/logo', 'cardCount' => ['total' => 1]],
+        ['id' => 'b', 'name' => 'B', 'logo' => 'https://evil.example/logo', 'cardCount' => ['total' => 1]],
+        ['id' => 'c', 'name' => 'C', 'logo' => 'http://assets.tcgdex.net/en/c/logo', 'cardCount' => ['total' => 1]],
+        ['id' => 'd', 'name' => 'D', 'logo' => 'https://assets.tcgdex.net.evil.example/logo', 'cardCount' => ['total' => 1]],
+        ['id' => 'e', 'name' => 'E', 'logo' => 'javascript:alert(1)', 'cardCount' => ['total' => 1]],
+    ], 200)]);
+
+    $sets = setListingProvider()->listSets();
+
+    expect($sets[0]->logoUrl)->toBe('https://assets.tcgdex.net/en/a/logo.png')
+        ->and($sets[1]->logoUrl)->toBeNull()
+        ->and($sets[2]->logoUrl)->toBeNull()
+        ->and($sets[3]->logoUrl)->toBeNull()
+        ->and($sets[4]->logoUrl)->toBeNull();
+});
+
 test('listSets serves the cached list for 24 hours without another request', function () {
     Http::fake([SET_LIST_URL => Http::response(fakeSetListing(), 200)]);
 

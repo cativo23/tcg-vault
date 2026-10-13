@@ -38,6 +38,8 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      */
     private const SET_LISTING_TIMEOUT = 20;
 
+    private const LOGO_URL_PREFIX = 'https://assets.tcgdex.net/';
+
     /**
      * tcgdex returns every match for a name search in one response unless
      * pagination:page/pagination:itemsPerPage are sent (both required —
@@ -147,7 +149,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             // undercounts what's actually collectible and would let a
             // collector hit "100%" while missing every secret rare.
             cardCount: $json['cardCount']['total'] ?? $json['cardCount']['official'] ?? null,
-            logoUrl: isset($json['logo']) ? "{$json['logo']}.png" : null,
+            logoUrl: $this->logoUrl($json['logo'] ?? null),
             // The collector shorthand printed on the card itself and used
             // across the hobby (e.g. "ASC" for Ascended Heroes) — not every
             // set has one (older/promo sets), so this stays null rather
@@ -260,7 +262,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
                 'id' => $entry['id'],
                 'name' => $entry['name'],
                 'cardCount' => is_int($total) ? $total : null,
-                'logoUrl' => is_string($entry['logo'] ?? null) ? "{$entry['logo']}.png" : null,
+                'logoUrl' => $this->logoUrl($entry['logo'] ?? null),
             ];
         }
 
@@ -269,6 +271,21 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
         }
 
         return $rows;
+    }
+
+    /**
+     * The png logo url for tcgdex's extension-less logo path, or null when
+     * it is missing or not on tcgdex's own assets host: the value ends up
+     * in an image src and a stored column, so a foreign host or scheme is
+     * never passed along.
+     */
+    private function logoUrl(mixed $logo): ?string
+    {
+        if (! is_string($logo) || ! str_starts_with($logo, self::LOGO_URL_PREFIX)) {
+            return null;
+        }
+
+        return "{$logo}.png";
     }
 
     /**
