@@ -44,7 +44,7 @@
                     <button type="button" class="nw-btn-secondary mt-4" wire:click="$refresh">Retry</button>
                 </div>
             @elseif ($picker['sets'] === [])
-                <p class="px-5 pb-6 text-sm" style="color: var(--muted)" role="status">No sets match “{{ $pickerSearch }}”.</p>
+                <p class="px-5 pb-6 text-sm" style="color: var(--muted)">No sets match “{{ $pickerSearch }}”.</p>
             @else
                 <ul class="nw-pick-list">
                     @foreach ($picker['sets'] as $candidate)

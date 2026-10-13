@@ -630,3 +630,34 @@ test('an over-long filter is capped so it cannot be used to bloat requests', fun
         ->set('pickerSearch', str_repeat('a', 500))
         ->assertSet('pickerSearch', str_repeat('a', 100));
 });
+
+test('the no-match line is not a second live region next to the count', function () {
+    pickerUser();
+    pickerCatalog([pickerSet('me05', 'Pitch Black')]);
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->set('pickerSearch', 'zzz')
+        ->assertSeeHtml('0 of 1 sets')
+        ->assertDontSeeHtml('role="status">No sets match');
+});
+
+test('focus returns to whichever control opened the picker', function () {
+    pickerUser();
+
+    $html = Livewire::test(Sets::class)->html();
+
+    expect(substr_count($html, 'data-set-picker-trigger'))->toBe(2)
+        ->and($html)->toContain('x-data="{ opener: null }"')
+        ->and($html)->toContain("opener?.isConnected ? opener : document.getElementById('add-set-trigger')");
+});
+
+test('a row that is busy refuses a second choose from the keyboard as well', function () {
+    pickerUser();
+    pickerCatalog([pickerSet('me05', 'Pitch Black')]);
+
+    $html = Livewire::test(Sets::class)->call('openPicker')->html();
+
+    expect($html)->toContain('wire:loading.attr="aria-disabled"')
+        ->and($html)->toContain("x-on:click.capture=\"if (\$el.querySelector('[aria-disabled]')) { \$event.preventDefault(); \$event.stopPropagation() }\"");
+});
