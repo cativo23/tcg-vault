@@ -15,19 +15,23 @@
                     <x-value-totals :totals="$totals" empty="No prices yet" />
                     @if ($series->count() >= 2)
                         @php $first = $series->first()['minor']; $last = $series->last()['minor']; @endphp
-                        <small class="{{ $last > $first ? 'up' : '' }}">{{ Money::signed($last - $first, $primaryCurrency) }} · {{ $series->count() }} days</small>
+                        <small class="{{ $last > $first ? 'up' : '' }}">{{ Money::signed($last - $first, $primaryCurrency) }} · {{ $chartRange->label() }}</small>
                     @endif
                 </div>
+                @if ($series->count() >= 2)
+                    <div class="k mt-1">{{ $series->first()['date']->format('j M') }} – {{ $series->last()['date']->format('j M') }}</div>
+                @endif
             </div>
-            @if ($series->count() >= 2)
-                <div class="k pb-1">{{ $series->first()['date']->format('j M') }} – {{ $series->last()['date']->format('j M') }}</div>
-            @endif
+            <x-range-pills :active="$chartRange" label="Collection value range" />
         </div>
         <div class="nw-chart">
             @if ($series->count() >= 2)
                 <x-sparkline :points="$series->pluck('minor')->all()" :up="$last > $first" :height="150"
                     :dates="$series->pluck('date')->all()" :currency="$primaryCurrency"
-                    :label="'Collection value over '.$series->count().' days, from '.Money::format($first, $primaryCurrency).' to '.Money::format($last, $primaryCurrency)" />
+                    :label="'Collection value over '.$chartRange->label().', from '.Money::format($first, $primaryCurrency).' to '.Money::format($last, $primaryCurrency)" />
+                @if ($historySince)
+                    <p class="text-xs px-2" style="color: var(--muted)">History since <span class="mono">{{ $historySince->format('j M') }}</span></p>
+                @endif
             @else
                 <div class="h-16 flex items-center px-2 text-xs" style="color: var(--muted)">A value chart appears once two daily price snapshots exist.</div>
             @endif

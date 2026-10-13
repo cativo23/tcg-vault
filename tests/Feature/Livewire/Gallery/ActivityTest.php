@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
+use App\Livewire\Gallery\Activity;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Livewire\Livewire;
 
 test('shows a price delta for a card with two snapshot days', function () {
     $user = User::factory()->create(['username' => 'carlos']);
@@ -288,4 +291,83 @@ test('a price move is reported for the variant the collector actually owns', fun
     $response->assertOk();
     $response->assertSee('+$0.02');
     $response->assertDontSee('+$1.00');
+});
+
+/**
+ * One public collection owning one normal copy of one card, with a
+ * tcgplayer price row for each [days ago => minor units] pair.
+ *
+ * @param  array<int, int>  $rows
+ */
+function ownedCardPricedDaysAgo(array $rows, string $tcgdexId = 'me05-116', string $variant = 'normal'): void
+{
+    $user = User::query()->where('username', 'carlos')->first() ?? User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::withoutGlobalScopes()->firstOrCreate(['user_id' => $user->id, 'slug' => 'main'], ['name' => 'My Collection', 'is_public' => true]);
+    $set = Set::query()->firstOrCreate(['tcgdex_id' => 'me05'], ['name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => $tcgdexId, 'set_id' => $set->id, 'local_id' => substr($tcgdexId, -3), 'name' => 'Card '.$tcgdexId]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => $tcgdexId, 'condition' => 'NM', 'quantity' => 1, 'variant' => $variant]);
+
+    foreach ($rows as $daysAgo => $minor) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => $variant, 'captured_on' => today()->subDays($daysAgo), 'currency' => 'USD', 'market_minor' => $minor]);
+    }
+}
+
+test('the value chart opens on one month and switches range', function () {
+    ownedCardPricedDaysAgo([0 => 300, 40 => 200, 100 => 100]);
+
+    $page = Livewire::test(Activity::class, ['username' => 'carlos']);
+    expect($page->viewData('chartRange'))->toBe(ChartRange::OneMonth)
+        ->and($page->viewData('series')->count())->toBe(31);
+
+    $page->call('selectRange', '3m');
+    expect($page->viewData('chartRange'))->toBe(ChartRange::ThreeMonths)
+        ->and($page->get('range'))->toBe('3m');
+});
+
+test('selectRange ignores anything that is not a string', function () {
+    ownedCardPricedDaysAgo([0 => 300, 40 => 200]);
+
+    $page = Livewire::test(Activity::class, ['username' => 'carlos'])->call('selectRange', '6m')->call('selectRange', ['1y']);
+
+    expect($page->viewData('chartRange'))->toBe(ChartRange::SixMonths);
+});
+
+test('the value chart\'s last point equals the headline total on a long range', function () {
+    ownedCardPricedDaysAgo([0 => 300, 60 => 250, 120 => 100], 'me05-116', 'normal');
+    ownedCardPricedDaysAgo([0 => 40, 90 => 30, 119 => 10], 'me05-117', 'reverse-holofoil');
+
+    $page = Livewire::withQueryParams(['range' => '6m'])->test(Activity::class, ['username' => 'carlos']);
+
+    expect($page->viewData('series')->last()['minor'])->toBe($page->viewData('totals')['USD']);
+});
+
+test('an unknown or array range opens one month with a 200', function () {
+    ownedCardPricedDaysAgo([0 => 300, 40 => 200]);
+
+    $this->get('/carlos/activity?range=7d')->assertOk();
+    $this->get('/carlos/activity?range[]=1y')->assertOk();
+    expect(Livewire::withQueryParams(['range' => ['1y']])->test(Activity::class, ['username' => 'carlos'])->viewData('chartRange'))->toBe(ChartRange::OneMonth);
+});
+
+test('the value panel names the range instead of a day count', function () {
+    // Six days of history: a 3-month chart samples every third day, so it holds three
+    // points (0, 3 and 6 days ago) and the old head would have read "· 3 days".
+    ownedCardPricedDaysAgo([0 => 300, 6 => 200]);
+
+    $this->get('/carlos/activity?range=3m')->assertSee('· 3 months')->assertDontSee('· 3 days');
+});
+
+test('history since shows when the collection\'s prices start after the range start', function () {
+    ownedCardPricedDaysAgo([0 => 300, 45 => 200]);
+
+    $this->get('/carlos/activity')->assertDontSee('History since');
+    $this->get('/carlos/activity?range=3m')->assertSee('History since')->assertSee(today()->subDays(45)->format('j M'));
+});
+
+test('the range buttons stay when there is not enough history to chart', function () {
+    ownedCardPricedDaysAgo([0 => 300]);
+
+    $this->get('/carlos/activity')
+        ->assertSee('A value chart appears once two daily price snapshots exist.')
+        ->assertSee("selectRange('3m')", false);
 });
