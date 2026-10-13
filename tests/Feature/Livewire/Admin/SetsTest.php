@@ -647,7 +647,7 @@ test('focus returns to whichever control opened the picker', function () {
 
     $html = Livewire::test(Sets::class)->html();
 
-    expect(substr_count($html, 'data-set-picker-trigger'))->toBe(2)
+    expect(substr_count($html, ' data-set-picker-trigger '))->toBe(2)
         ->and($html)->toContain('x-data="{ opener: null }"')
         ->and($html)->toContain("opener?.isConnected ? opener : document.getElementById('add-set-trigger')");
 });
