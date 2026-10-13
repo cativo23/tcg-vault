@@ -205,7 +205,9 @@ Rules that came out of building it:
   price in `.mono` (`—` when unpriced) and, when the collector holds it, a
   muted `×N` in `.mono` — never `--signal`, which means "price up" only. The
   selection lives in `?variant=` (`unspecified` for copies with no variant);
-  the page opens on the collector's priciest copy's variant. Wraps on narrow
+  the page opens on the collector's priciest copy's variant (when they own
+  copies but none is priced, on the variant the set tile prices; an unowned
+  card opens on its priciest variant). Wraps on narrow
   screens; 44px on coarse pointers. Hidden when the card has one variant or none.
 
 ## Theming — dark mode (2026-09-16)
