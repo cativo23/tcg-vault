@@ -76,6 +76,22 @@ const sweepBrokenImages = () => {
 document.addEventListener('DOMContentLoaded', sweepBrokenImages);
 document.addEventListener('livewire:navigated', sweepBrokenImages);
 
+// Livewire's morph resets an <img>'s class to the server HTML (no
+// is-loaded) while its src is unchanged, so onload/onerror never fire again
+// and app.css keeps the image at opacity 0. After every morph, put the class
+// back on images that already settled (`complete` covers loaded and errored).
+// It lands in the same tick as the reset, before a style recalc, so the
+// opacity transition does not replay.
+const restoreLoadedImages = (root) => {
+    root.querySelectorAll('.imgwrap img:not(.is-loaded)').forEach((img) => {
+        if (img.complete) img.classList.add('is-loaded');
+    });
+};
+
+document.addEventListener('livewire:init', () => {
+    window.Livewire.hook('morphed', ({ el }) => restoreLoadedImages(el));
+});
+
 // Hero cursor-spotlight (design.md's HP3 pattern, scoped to the hero
 // only). A no-op on touch devices — there's no pointermove to track, so
 // the glow simply stays at its CSS default position, which is fine.
