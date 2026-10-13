@@ -169,9 +169,9 @@ test('reopening the modal after sending resets it client-side, without a server 
 });
 
 test('the modal focus trap skips elements that are not rendered', function () {
-    $html = file_get_contents(resource_path('views/components/modal.blade.php'));
+    $js = file_get_contents(resource_path('js/app.js'));
 
-    expect($html)->toContain('el.getClientRects().length');
+    expect($js)->toContain('el.getClientRects().length');
 });
 
 test('the confirmation only offers Close, since reopening already gives a fresh form', function () {
