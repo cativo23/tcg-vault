@@ -77,13 +77,22 @@ test('after ten minutes with no new card the banner falls back to a slow poll an
         ->assertDontSee('Loading cards');
 });
 
-test('a set whose newest card is already older than the stall window is stalled on arrival', function () {
+test('a banner mounted on a set that stopped growing long ago keeps fast polling through a grace period, then stalls', function () {
     bannerUser();
     bannerSet(2);
 
     $this->travel(11)->minutes();
 
-    Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
+        ->assertSee('Loading cards')
+        ->assertSeeHtml('wire:poll.5s')
+        ->assertDontSee('Retry');
+
+    $this->travel(SetImportBanner::MOUNT_GRACE_SECONDS - 1)->seconds();
+    $component->call('check')->assertSeeHtml('wire:poll.5s')->assertDontSee('Retry');
+
+    $this->travel(1)->seconds();
+    $component->call('check')
         ->assertSee('3 cards missing')
         ->assertSee('Retry')
         ->assertDontSeeHtml('wire:poll.5s');

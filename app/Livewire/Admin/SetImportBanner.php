@@ -30,6 +30,13 @@ final class SetImportBanner extends Component
     public const IMPORT_STALL_SECONDS = 600;
 
     /**
+     * Seconds after the banner appears during which it keeps the fast poll
+     * even if the newest stored card is already older than the stall window,
+     * so an import that has just been started shows its progress.
+     */
+    public const MOUNT_GRACE_SECONDS = 60;
+
+    /**
      * Poll interval of a stalled banner. A slow queue can recover on its own,
      * so the banner keeps polling for as long as the page is open; one cheap
      * count query a minute per open tab is an acceptable price for noticing.
@@ -48,6 +55,9 @@ final class SetImportBanner extends Component
 
     #[Locked]
     public int $lastProgressAt = 0;
+
+    #[Locked]
+    public int $mountedAt = 0;
 
     // The card count the grid was last told about, and when.
     #[Locked]
@@ -78,6 +88,7 @@ final class SetImportBanner extends Component
         $newest = Set::where('tcgdex_id', $setTcgdexId)->first()?->cards()->max('created_at');
         $this->lastProgressAt = $newest !== null ? Carbon::parse($newest)->getTimestamp() : now()->getTimestamp();
         $this->announcedAt = now()->getTimestamp();
+        $this->mountedAt = now()->getTimestamp();
         $this->sawImport = $progress['missing'] > 0;
     }
 
@@ -134,7 +145,7 @@ final class SetImportBanner extends Component
     private function isStalled(): bool
     {
         return $this->progress()['missing'] > 0
-            && now()->getTimestamp() - $this->lastProgressAt >= self::IMPORT_STALL_SECONDS;
+            && now()->getTimestamp() >= max($this->lastProgressAt + self::IMPORT_STALL_SECONDS, $this->mountedAt + self::MOUNT_GRACE_SECONDS);
     }
 
     /**
