@@ -339,3 +339,21 @@ test('the grid refreshes itself only through the client-side idle gate', functio
     Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
         ->assertSeeHtml('x-on:set-cards-changed.window="refreshWhenIdle()"');
 });
+
+test('an import that overshoots the announced total still finishes cleanly', function () {
+    bannerUser();
+    $set = bannerSet(4);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+
+    foreach ([5, 6] as $n) {
+        Card::create(['tcgdex_id' => sprintf('me05-%03d', $n), 'set_id' => $set->id, 'local_id' => sprintf('%03d', $n), 'name' => "Card {$n}"]);
+    }
+
+    $this->travel(2)->seconds();
+
+    $component->call('check')
+        ->assertDispatched('set-cards-changed')
+        ->assertSee('All cards loaded')
+        ->assertDontSeeHtml('wire:poll');
+});
