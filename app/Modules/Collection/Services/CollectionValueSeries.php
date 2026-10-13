@@ -73,14 +73,23 @@ final class CollectionValueSeries
         })->values();
     }
 
-    /** @param  Collection<int, Card>  $cards */
+    /**
+     * The first day any of the cards has a priced row, so the chart never
+     * opens on zeros from rows that carry no price. Rows in any currency
+     * count, as the headline's history does.
+     *
+     * @param  Collection<int, Card>  $cards
+     */
     public function earliestDay(Collection $cards): ?CarbonImmutable
     {
         if ($cards->isEmpty()) {
             return null;
         }
 
-        $min = CardPriceSnapshot::query()->whereRaw('card_id = ANY(?::bigint[])', [$this->idArray($cards)])->min('captured_on');
+        $min = CardPriceSnapshot::query()
+            ->whereRaw('card_id = ANY(?::bigint[])', [$this->idArray($cards)])
+            ->whereNotNull('market_minor')
+            ->min('captured_on');
 
         return $min === null ? null : CarbonImmutable::parse($min);
     }

@@ -237,3 +237,13 @@ test('two days of history chart on the longest range, from the earliest day', fu
     expect($series->pluck('date')->map->toDateString()->all())->toBe([today()->subDays(2)->toDateString(), today()->toDateString()])
         ->and($series->pluck('minor')->all())->toBe([100, 150]);
 });
+
+test('unpriced rows do not move the earliest day', function () {
+    $a = ($this->own)('001');
+    ($this->price)($a, 20, null);
+    ($this->price)($a, 12, 100);
+
+    $cards = PublicCollection::for($this->user)->cardsQuery()->get();
+
+    expect((new CollectionValueSeries(new Valuation(new CardPriceResolver)))->earliestDay($cards)?->toDateString())->toBe(today()->subDays(12)->toDateString());
+});
