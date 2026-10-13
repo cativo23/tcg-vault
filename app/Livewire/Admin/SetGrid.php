@@ -14,6 +14,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
 use App\Modules\Collection\Services\Valuation;
+use App\Modules\Collection\Support\VariantChips;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection as SupportCollection;
@@ -406,46 +407,13 @@ final class SetGrid extends Component
     }
 
     /**
-     * Chips and the tile total come from the same pass over the owned copies,
-     * so they cannot disagree: every owned variant gets a chip, whether or not
-     * the card's catalog data lists it. Every condition and grade of one
-     * variant counts toward its chip.
+     * The tile total is the sum of the chip counts, so the two cannot disagree.
      *
      * @return Entry
      */
     private function entryFor(Card $card, Valuation $valuation): array
     {
-        $offered = CardVariants::available($card->variants ?? [], $card->raw ?? []);
-
-        $perVariant = $card->collectionItems
-            ->groupBy(fn (CollectionItem $item): string => (string) $item->variant)
-            ->map(fn ($items): int => (int) $items->sum('quantity'));
-
-        $unspecified = (int) ($perVariant[''] ?? 0);
-
-        $chips = [];
-
-        // A card with no known prints keeps one plain "+1" chip for copies
-        // without a variant; on a card with prints, those copies only get a
-        // chip once they exist.
-        if ($offered === []) {
-            $chips[] = ['variant' => null, 'label' => '', 'count' => $unspecified];
-        }
-
-        foreach ($offered as $variant) {
-            $chips[] = ['variant' => $variant, 'label' => CardVariants::label($variant), 'count' => (int) ($perVariant[$variant] ?? 0)];
-        }
-
-        // Owned prints the card's data does not list (hand-entered custom prints).
-        $extras = $perVariant->except(array_merge($offered, ['']))->sortKeys();
-
-        foreach ($extras as $variant => $count) {
-            $chips[] = ['variant' => (string) $variant, 'label' => CardVariants::label((string) $variant), 'count' => $count];
-        }
-
-        if ($offered !== [] && $unspecified > 0) {
-            $chips[] = ['variant' => null, 'label' => 'Unspecified', 'count' => $unspecified];
-        }
+        $chips = VariantChips::for($card, $card->collectionItems);
 
         return [
             'card' => $card,
