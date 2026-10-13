@@ -28,3 +28,31 @@ test('an empty Catalog dispatches nothing and still succeeds', function () {
 
     Queue::assertNothingPushed();
 });
+
+test('the summary separates jobs it queued from cards whose sync is already pending', function () {
+    Queue::fake();
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis']);
+
+    // A sync for one card is already waiting (its unique lock is held).
+    SyncCardPricingJob::dispatch('me05-116');
+
+    $this->artisan('catalog:refresh-prices')
+        ->expectsOutput('Dispatched 1, skipped 1 (already queued).')
+        ->assertSuccessful();
+
+    Queue::assertPushed(SyncCardPricingJob::class, 2);
+});
+
+test('the summary reports no skips when nothing was pending', function () {
+    Queue::fake();
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    $this->artisan('catalog:refresh-prices')
+        ->expectsOutput('Dispatched 1, skipped 0 (already queued).')
+        ->assertSuccessful();
+});
