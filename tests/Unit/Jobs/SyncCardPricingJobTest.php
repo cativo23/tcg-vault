@@ -258,10 +258,44 @@ test('different cards never block each other', function () {
     Queue::assertPushed(SyncCardPricingJob::class, 2);
 });
 
-test('the uniqueness lock outlasts the retry deadline so it never frees a card that is still retrying', function () {
+test('the uniqueness ceiling outlasts the retry window, so a card still retrying stays locked', function () {
     $job = new SyncCardPricingJob('me05-001');
+
+    $retryWindow = $job->retryUntil()->getTimestamp() - now()->getTimestamp();
 
     expect($job)->toBeInstanceOf(ShouldBeUnique::class)
         ->and($job->uniqueId())->toBe('me05-001')
-        ->and($job->uniqueFor())->toBeGreaterThan(3 * 3600);
+        ->and($job->uniqueFor())->toBeGreaterThan($retryWindow);
+});
+
+function syncableCard(string $id = 'me05-116'): CardDetailData
+{
+    return new CardDetailData(
+        tcgdexId: $id, setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: null, variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => $id],
+    );
+}
+
+test('a finished sync frees the card, so the next scheduled run syncs it again', function () {
+    // QUEUE_CONNECTION is sync: each dispatch runs through the real queue
+    // handler, which releases the unique lock when the job completes.
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->twice()->with('me05-116')->andReturn(syncableCard());
+    $provider->shouldReceive('findSet')->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    SyncCardPricingJob::dispatch('me05-116');
+    SyncCardPricingJob::dispatch('me05-116');
+});
+
+test('a job released after a tcgdex 503 keeps its lock, so a second dispatch is skipped until it finishes', function () {
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->once()->with('me05-116')->andThrow(tcgdexStatus(503));
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    SyncCardPricingJob::dispatch('me05-116');
+    SyncCardPricingJob::dispatch('me05-116');
 });

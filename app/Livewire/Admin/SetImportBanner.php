@@ -28,7 +28,11 @@ final class SetImportBanner extends Component
     /** Seconds without a new card arriving before an import counts as stalled. */
     public const IMPORT_STALL_SECONDS = 600;
 
-    /** Poll interval of a stalled banner: slow, but enough to notice a queue that recovers. */
+    /**
+     * Poll interval of a stalled banner. A slow queue can recover on its own,
+     * so the banner keeps polling for as long as the page is open; one cheap
+     * count query a minute per open tab is an acceptable price for noticing.
+     */
     public const STALLED_POLL_SECONDS = 60;
 
     /** Minimum seconds between two grid redraws while cards keep arriving. */
@@ -152,6 +156,7 @@ final class SetImportBanner extends Component
     public function render(): View
     {
         $progress = $this->progress();
+        $stalled = $this->isStalled();
 
         if ($progress['missing'] > 0) {
             $this->sawImport = true;
@@ -162,8 +167,8 @@ final class SetImportBanner extends Component
             'totalCount' => $progress['total'],
             'missingCount' => $progress['missing'],
             'importing' => $progress['missing'] > 0,
-            'stalled' => $this->isStalled(),
-            'pollSeconds' => $this->isStalled() ? self::STALLED_POLL_SECONDS : 5,
+            'stalled' => $stalled,
+            'pollSeconds' => $stalled ? self::STALLED_POLL_SECONDS : 5,
             'finished' => $this->sawImport && $progress['missing'] === 0,
         ]);
     }
