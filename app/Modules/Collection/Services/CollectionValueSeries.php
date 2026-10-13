@@ -46,6 +46,9 @@ use Illuminate\Support\Facades\DB;
  */
 final class CollectionValueSeries
 {
+    /** Bump when the series' calculation changes, so a deploy doesn't serve a series the old code computed. */
+    private const CACHE_VERSION = 1;
+
     public function __construct(private readonly Valuation $valuation) {}
 
     /** @var array<string, ?string> earliest day by card-id array, so a render asks the database once */
@@ -62,7 +65,7 @@ final class CollectionValueSeries
         }
 
         $today = CarbonImmutable::today()->toDateString();
-        $key = "collection-value-series:{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards)}";
+        $key = 'collection-value-series:v'.self::CACHE_VERSION.":{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards)}";
         $cached = Cache::get($key);
 
         if (is_array($cached)) {
