@@ -22,10 +22,18 @@ final class CardPriceSnapshot extends Model
      * How far back any screen looks for a card's CURRENT price: listings
      * load only this window, and the card page prices from it too, so a
      * card shows the same price everywhere. Activity's value chart spans
-     * the same window; the card page's sparkline still reads the full
-     * history.
+     * the same window. Charts read further back through their own
+     * range-bounded queries (see ChartRange).
      */
     public const RECENT_DAYS = 30;
+
+    /**
+     * Every column but `raw`, the full marketplace payload: charts load
+     * many rows and never read it.
+     *
+     * @var list<string>
+     */
+    public const CHART_COLUMNS = ['id', 'card_id', 'source', 'origin', 'variant', 'captured_on', 'currency', 'market_minor', 'low_minor', 'trend_minor', 'source_updated_at', 'created_at', 'updated_at'];
 
     protected $fillable = [
         'card_id',

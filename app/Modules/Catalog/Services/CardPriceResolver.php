@@ -451,6 +451,31 @@ final class CardPriceResolver
     }
 
     /**
+     * historyFor() over a date range, read from the database rather than
+     * the loaded relation: screens load only the recent window, and a
+     * chart can reach back further than that.
+     *
+     * @return Collection<int, CardPriceSnapshot>
+     */
+    public function historyIn(?CardPriceSnapshot $resolved, CarbonInterface $from): Collection
+    {
+        if ($resolved === null) {
+            return collect();
+        }
+
+        return CardPriceSnapshot::query()
+            ->select(CardPriceSnapshot::CHART_COLUMNS)
+            ->where('card_id', $resolved->card_id)
+            ->where('source', $resolved->source)
+            ->where('variant', $resolved->variant)
+            ->whereNotNull('market_minor')
+            ->where('captured_on', '>=', $from->toDateString())
+            ->orderBy('captured_on')
+            ->get()
+            ->toBase();
+    }
+
+    /**
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
      */
     private function resolveFrom(Collection $snapshots): ?CardPriceSnapshot
