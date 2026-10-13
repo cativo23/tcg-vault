@@ -15,8 +15,10 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\ImportBudget;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Sleep;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -253,4 +255,28 @@ test('confirming an import too often in a minute is refused before any catalog l
         ->assertSet('matched', fn (array $matched) => count($matched) === 1);
 
     expect(CollectionItem::count())->toBe(0);
+});
+
+test('an import whose set could not start because the budget was busy says so in the summary', function () {
+    // The budget's lock wait sleeps; a fake sleep that moves the clock
+    // keeps it finite and instant.
+    Sleep::fake(syncWithCarbon: true);
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $this->app->instance(CardCatalogProvider::class, fakeCatalogProviderForImport());
+
+    $component = Livewire::test(Import::class)
+        ->set('text', '1 Toucannon - 068/084 [PBL] 068/084')
+        ->call('preview');
+
+    $lock = Cache::lock("import-budget:lock:{$user->id}", 10);
+    expect($lock->get())->toBeTrue();
+
+    $component->call('confirm');
+
+    $lock->release();
+
+    expect($component->get('summary'))->toBe("1 cards added, 1 copies total. 1 set couldn't start importing — add a card from it again later.");
+    expect(CollectionItem::count())->toBe(1);
+    Queue::assertNotPushed(ImportSetJob::class);
 });
