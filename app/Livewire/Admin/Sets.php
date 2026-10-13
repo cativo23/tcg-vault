@@ -32,6 +32,13 @@ final class Sets extends Component
 {
     public const ADD_SET_LIMIT_PER_MINUTE = 10;
 
+    /**
+     * Sets a user may start per day that were not stored yet. Each one
+     * queues a full card import on the shared, rate-limited imports
+     * queue, so an unbounded count lets one account delay everyone's.
+     */
+    public const NEW_SETS_LIMIT_PER_DAY = 20;
+
     public bool $pickerOpen = false;
 
     public string $pickerSearch = '';
@@ -106,8 +113,10 @@ final class Sets extends Component
      * The row is created here, before the redirect, because the grid
      * route answers 404 for a set with no row. Any failure leaves the
      * picker open with the reason and does not redirect. Every attempt
-     * counts toward the limit, failures included, since each can cost a
-     * tcgdex request. The id comes from the client, so it must be of the
+     * counts toward the per-minute limit, failures included, since each can
+     * cost a tcgdex request. Only a set that had to be created counts
+     * toward the daily cap on new sets, so reopening a set the collector
+     * already has is always free. The id comes from the client, so it must be of the
      * shape tcgdex ids have and present in the set list before the
      * server makes any catalog request for it.
      */
@@ -142,7 +151,20 @@ final class Sets extends Component
                 return;
             }
 
+            $isNew = ! Set::where('tcgdex_id', $setTcgdexId)->exists();
+            $newSetsKey = 'add-set-new:'.auth()->id().':'.now()->toDateString();
+
+            if ($isNew && RateLimiter::tooManyAttempts($newSetsKey, self::NEW_SETS_LIMIT_PER_DAY)) {
+                $this->pickerError = "You've started ".self::NEW_SETS_LIMIT_PER_DAY.' new sets today — try again tomorrow.';
+
+                return;
+            }
+
             $set = app(CatalogSyncService::class)->ensureSet($setTcgdexId);
+
+            if ($isNew) {
+                RateLimiter::hit($newSetsKey, 86400);
+            }
         } catch (SetNotFoundException|InvalidTcgdexIdException) {
             $this->pickerError = "That set isn't available from tcgdex.";
 

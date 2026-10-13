@@ -473,6 +473,75 @@ test("another user's choices do not count against this user's limit", function (
     expect(RateLimiter::attempts('add-set:'.$user->id))->toBe(1);
 });
 
+test('the twenty-first new set in a day is refused without asking tcgdex', function () {
+    $user = pickerUser();
+    Queue::fake();
+    $key = 'add-set-new:'.$user->id.':'.now()->toDateString();
+    for ($i = 0; $i < Sets::NEW_SETS_LIMIT_PER_DAY; $i++) {
+        RateLimiter::hit($key, 86400);
+    }
+    chooseCatalog();
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->call('chooseSet', 'me05')
+        ->assertNoRedirect()
+        ->assertSee("You've started 20 new sets today");
+
+    expect(Set::count())->toBe(0);
+    Queue::assertNothingPushed();
+});
+
+test('creating a set counts toward the daily cap and an existing set does not', function () {
+    $user = pickerUser();
+    Queue::fake();
+    $key = 'add-set-new:'.$user->id.':'.now()->toDateString();
+    Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 0]);
+    chooseCatalog();
+
+    Livewire::test(Sets::class)->call('chooseSet', 'me05')->assertRedirect();
+
+    expect(RateLimiter::attempts($key))->toBe(0);
+
+    Set::query()->delete();
+    chooseCatalog(fn ($mock) => $mock->shouldReceive('findSet')->once()->andReturn(
+        new SetSummaryData(tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: 84, logoUrl: null),
+    ));
+
+    Livewire::test(Sets::class)->call('chooseSet', 'me05')->assertRedirect();
+
+    expect(RateLimiter::attempts($key))->toBe(1);
+});
+
+test('an existing set can still be chosen once the daily cap is reached', function () {
+    $user = pickerUser();
+    Queue::fake();
+    $key = 'add-set-new:'.$user->id.':'.now()->toDateString();
+    for ($i = 0; $i < Sets::NEW_SETS_LIMIT_PER_DAY; $i++) {
+        RateLimiter::hit($key, 86400);
+    }
+    Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 0]);
+    chooseCatalog();
+
+    Livewire::test(Sets::class)->call('chooseSet', 'me05')->assertRedirect();
+});
+
+test('the daily cap resets the next day', function () {
+    $user = pickerUser();
+    Queue::fake();
+    $key = 'add-set-new:'.$user->id.':'.now()->toDateString();
+    for ($i = 0; $i < Sets::NEW_SETS_LIMIT_PER_DAY; $i++) {
+        RateLimiter::hit($key, 86400);
+    }
+    chooseCatalog(fn ($mock) => $mock->shouldReceive('findSet')->once()->andReturn(
+        new SetSummaryData(tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: 84, logoUrl: null),
+    ));
+
+    $this->travel(1)->days();
+
+    Livewire::test(Sets::class)->call('chooseSet', 'me05')->assertRedirect();
+});
+
 test('a failed choice still counts against the limit', function () {
     $user = pickerUser();
     chooseCatalog(fn ($mock) => $mock->shouldReceive('findSet')->once()->andThrow(SetNotFoundException::forTcgdexId('me05')));
