@@ -122,8 +122,16 @@ final class Activity extends Component
         $primaryCurrency = array_key_first($totals);
         $chartRange = ChartRange::fromInput($this->range);
         $seriesService = new CollectionValueSeries($valuation);
-        $series = $primaryCurrency ? $seriesService->for($cards, $primaryCurrency, $chartRange) : collect();
-        $earliest = $seriesService->earliestDay($cards);
+        $series = collect();
+        $historySince = null;
+
+        if ($primaryCurrency) {
+            $series = $seriesService->for($cards, $primaryCurrency, $chartRange);
+            // The series asked for it already; this reads the same answer.
+            $earliest = $seriesService->earliestDay($cards);
+            $startsAfterRange = $earliest !== null && $earliest->toDateString() > $chartRange->start(today())->toDateString();
+            $historySince = $series->isNotEmpty() && $startsAfterRange ? $series->first()['date'] : null;
+        }
 
         $name = $this->collectorName();
 
@@ -140,7 +148,7 @@ final class Activity extends Component
             'series' => $series,
             'primaryCurrency' => $primaryCurrency,
             'chartRange' => $chartRange,
-            'historySince' => $series->isNotEmpty() && $earliest !== null && $earliest->toDateString() > $chartRange->start(today())->toDateString() ? $series->first()['date'] : null,
+            'historySince' => $historySince,
         ])->layoutData([
             'title' => "Activity · {$name}'s collection",
             'description' => "Price movements and recent additions in {$name}'s Pokémon TCG collection.",

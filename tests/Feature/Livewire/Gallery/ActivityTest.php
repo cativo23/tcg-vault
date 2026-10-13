@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 test('shows a price delta for a card with two snapshot days', function () {
@@ -344,7 +345,8 @@ test('the value chart\'s last point equals the headline total on a long range', 
 test('an unknown or array range opens one month with a 200', function () {
     ownedCardPricedDaysAgo([0 => 300, 40 => 200]);
 
-    $this->get('/carlos/activity?range=7d')->assertOk();
+    $this->get('/carlos/activity?range=7d')->assertOk()->assertSeeHtml('wire:click="selectRange(\'1m\')"');
+    expect(Livewire::withQueryParams(['range' => '7d'])->test(Activity::class, ['username' => 'carlos'])->viewData('chartRange'))->toBe(ChartRange::OneMonth);
     $this->get('/carlos/activity?range[]=1y')->assertOk();
     expect(Livewire::withQueryParams(['range' => ['1y']])->test(Activity::class, ['username' => 'carlos'])->viewData('chartRange'))->toBe(ChartRange::OneMonth);
 });
@@ -358,10 +360,39 @@ test('the value panel names the range instead of a day count', function () {
 });
 
 test('history since shows when the collection\'s prices start after the range start', function () {
-    ownedCardPricedDaysAgo([0 => 300, 45 => 200]);
+    // 46 days back is off the 3-month chart's every-third-day grid, so only the true earliest day can be named.
+    ownedCardPricedDaysAgo([0 => 300, 46 => 200]);
 
     $this->get('/carlos/activity')->assertDontSee('History since');
-    $this->get('/carlos/activity?range=3m')->assertSee('History since')->assertSee(today()->subDays(45)->format('j M'));
+    $this->get('/carlos/activity?range=3m')->assertSeeHtml('History since <span class="mono">'.today()->subDays(46)->format('j M').'</span>');
+    $this->get('/carlos/activity?range=1y')->assertSeeHtml('History since <span class="mono">'.today()->subDays(46)->format('j M').'</span>');
+});
+
+test('history older than the range does not claim a start', function () {
+    ownedCardPricedDaysAgo([0 => 300, 400 => 200, 100 => 250]);
+
+    $this->get('/carlos/activity?range=1y')->assertDontSee('History since');
+    $this->get('/carlos/activity?range=6m')->assertDontSee('History since');
+});
+
+test('two days of history chart on every range', function (string $range) {
+    ownedCardPricedDaysAgo([0 => 300, 2 => 200]);
+
+    $page = Livewire::withQueryParams(['range' => $range])->test(Activity::class, ['username' => 'carlos']);
+
+    expect($page->viewData('series')->count())->toBeGreaterThanOrEqual(2);
+})->with(['1m', '3m', '6m', '1y']);
+
+test('the series is not built when there is no priced currency', function () {
+    ownedCardPricedDaysAgo([]);
+
+    $queries = [];
+    DB::listen(function ($query) use (&$queries) {
+        $queries[] = $query->sql;
+    });
+    Livewire::test(Activity::class, ['username' => 'carlos']);
+
+    expect(collect($queries)->filter(fn ($sql) => str_contains($sql, 'min("captured_on")')))->toBeEmpty();
 });
 
 test('the range buttons stay when there is not enough history to chart', function () {
