@@ -1528,13 +1528,13 @@ body::before {
 .nw-toast button.x { text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .nw-toast { animation: none; } }
 .nw-toast button:disabled { opacity: .5; cursor: default; text-decoration: none; }
-/* On a phone the bottom sheet owns the bottom edge, so toasts sit at the top. */
 /* The editor panel owns the right edge on wide screens, so toasts move to
    the left, clear of its Done button. */
 @media (min-width: 721px) {
   body:has(.nw-drawer) .nw-toasts { left: 16px; transform: none; width: min(420px, calc(100vw - 460px - 48px)); }
 }
 @media (max-width: 720px) {
+  /* The bottom sheet owns the bottom edge, so toasts sit at the top. */
   .nw-toasts { bottom: auto; top: 12px; }
   /* Few toasts at a time, one while the sheet is open, so the stack stays
      clear of the sheet's header; a toast holding focus is never hidden. */

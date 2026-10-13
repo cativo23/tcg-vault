@@ -158,9 +158,11 @@ final class CardEditor extends Component
         // before anything else happens and opening never writes.
         $card = Card::find($cardId) ?? throw new NotFoundHttpException;
 
-        // Strict by default: a card the caller owns nothing of is a 404,
-        // never a hint that the card exists. A host that offers every card
-        // of a set opts in with $allowEmpty and gets an editor with no rows.
+        // Strict by default: a card the caller owns nothing of is a 404, which
+        // keeps a stale or mistaken open from showing an empty editor. It is
+        // not an access boundary (the catalog is public and any client can
+        // pass $allowEmpty). A host that offers every card of a set opts in
+        // with $allowEmpty and gets an editor with no rows.
         $items = $allowEmpty ? $this->ownedCardItems($cardId) : $this->ownedCardItemsOrFail($cardId);
         $primary = $items->first();
 
