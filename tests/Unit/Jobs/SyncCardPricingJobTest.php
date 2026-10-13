@@ -12,11 +12,13 @@ use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use GuzzleHttp\Psr7\Response as Psr7Response;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Spatie\LaravelData\DataCollection;
 
 test('a rate-limit release cannot exhaust the job\'s retries before it ever actually runs', function () {
@@ -236,4 +238,30 @@ test('a failed job is logged by its card id', function () {
         fn (string $message, array $context) => $message === 'SyncCardPricingJob: card did not sync before the job failed'
             && $context['tcgdex_card_id'] === 'me05-116',
     );
+});
+
+test('a second dispatch for a card that is still queued is a no-op', function () {
+    Queue::fake();
+
+    SyncCardPricingJob::dispatch('me05-001')->onQueue('imports');
+    SyncCardPricingJob::dispatch('me05-001');
+
+    Queue::assertPushed(SyncCardPricingJob::class, 1);
+});
+
+test('different cards never block each other', function () {
+    Queue::fake();
+
+    SyncCardPricingJob::dispatch('me05-001');
+    SyncCardPricingJob::dispatch('me05-002');
+
+    Queue::assertPushed(SyncCardPricingJob::class, 2);
+});
+
+test('the uniqueness lock outlasts the retry deadline so it never frees a card that is still retrying', function () {
+    $job = new SyncCardPricingJob('me05-001');
+
+    expect($job)->toBeInstanceOf(ShouldBeUnique::class)
+        ->and($job->uniqueId())->toBe('me05-001')
+        ->and($job->uniqueFor())->toBeGreaterThan(3 * 3600);
 });

@@ -11,6 +11,7 @@ use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\ConnectionException;
@@ -21,7 +22,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-final class SyncCardPricingJob implements ShouldQueue
+final class SyncCardPricingJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -34,6 +35,29 @@ final class SyncCardPricingJob implements ShouldQueue
     public int $tries = 3;
 
     public function __construct(public readonly string $tcgdexCardId) {}
+
+    /**
+     * One pending sync per card: a dispatch while the same card is still
+     * queued or running is skipped, whichever path dispatched it. The work
+     * is identical (re-read the card and its prices), so a skipped dispatch
+     * loses nothing, and an import retry cannot double up on cards still
+     * waiting from the first wave.
+     */
+    public function uniqueId(): string
+    {
+        return $this->tcgdexCardId;
+    }
+
+    /**
+     * A ceiling on the lock, not its length (it is released when the job
+     * finishes or fails). Longer than retryUntil() so a card still inside
+     * its retry window stays locked, and short enough that the next daily
+     * refresh is never blocked by a lock a lost worker left behind.
+     */
+    public function uniqueFor(): int
+    {
+        return 4 * 3600;
+    }
 
     /** @return list<int> */
     public function backoff(): array
