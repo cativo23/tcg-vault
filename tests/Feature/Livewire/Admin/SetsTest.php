@@ -409,6 +409,22 @@ test('an unreachable set list while choosing shows a retryable error and never r
     Queue::assertNothingPushed();
 });
 
+test('a set list failure window while choosing is not reported again', function () {
+    pickerUser();
+    Exceptions::fake();
+    test()->mock(CardCatalogProvider::class, function ($mock) {
+        $mock->shouldReceive('listSets')->andThrow(CatalogUnavailableException::forSetListingBackoff());
+        $mock->shouldNotReceive('findSet');
+    });
+
+    Livewire::test(Sets::class)
+        ->set('pickerOpen', true)
+        ->call('chooseSet', 'me05')
+        ->assertSee("Couldn't reach the card catalog");
+
+    Exceptions::assertReportedCount(0);
+});
+
 test('a catalog outage while choosing shows a retryable error and never redirects', function () {
     pickerUser();
     Queue::fake();

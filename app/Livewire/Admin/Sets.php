@@ -149,7 +149,12 @@ final class Sets extends Component
 
             return;
         } catch (Throwable $e) {
-            report($e);
+            // Inside a set list failure window the attempt that opened it
+            // was already reported; repeating it per click is noise.
+            if (! ($e instanceof CatalogUnavailableException && $e->isBackoff)) {
+                report($e);
+            }
+
             $this->pickerError = "Couldn't reach the card catalog. Try again.";
 
             return;
