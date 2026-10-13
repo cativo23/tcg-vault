@@ -61,7 +61,8 @@ final class CollectionValueSeries
             return collect();
         }
 
-        $key = "collection-value-series:{$range->value}:{$currency}:".CarbonImmutable::today()->toDateString().':'.$this->fingerprint($cards);
+        $today = CarbonImmutable::today()->toDateString();
+        $key = "collection-value-series:{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards)}";
         $cached = Cache::get($key);
 
         if (is_array($cached)) {
@@ -70,14 +71,19 @@ final class CollectionValueSeries
             /** @var list<array{date: string, minor: int}> $points */
             $points = $cached['points'];
 
-            return new Collection(array_map(fn (array $p): array => ['date' => CarbonImmutable::parse($p['date']), 'minor' => $p['minor']], $points));
+            return new Collection(array_map(
+                fn (array $p): array => ['date' => CarbonImmutable::parse($p['date']), 'minor' => $p['minor']],
+                $points,
+            ));
         }
 
         $series = $this->build($cards, $currency, $range);
 
         Cache::put($key, [
             'earliest' => $this->earliestDay($cards)?->toDateString(),
-            'points' => $series->map(fn (array $p): array => ['date' => $p['date']->toDateString(), 'minor' => $p['minor']])->all(),
+            'points' => $series
+                ->map(fn (array $p): array => ['date' => $p['date']->toDateString(), 'minor' => $p['minor']])
+                ->all(),
         ], CarbonImmutable::now()->endOfDay());
 
         return $series;
@@ -134,7 +140,13 @@ final class CollectionValueSeries
 
         foreach ($cards as $card) {
             foreach ($card->collectionItems as $item) {
-                $holdings[(int) $item->id] = [(int) $item->id, (int) $item->card_id, $item->variant, (int) $item->quantity, (string) $item->updated_at];
+                $holdings[(int) $item->id] = [
+                    (int) $item->id,
+                    (int) $item->card_id,
+                    $item->variant,
+                    (int) $item->quantity,
+                    (string) $item->updated_at,
+                ];
             }
         }
 
@@ -186,7 +198,11 @@ final class CollectionValueSeries
             [$this->idArray($cards)],
         );
 
-        return array_values(array_map(fn ($r): array => ['card_id' => (int) $r->card_id, 'source' => (string) $r->source, 'variant' => (string) $r->variant], $rows));
+        return array_values(array_map(fn ($r): array => [
+            'card_id' => (int) $r->card_id,
+            'source' => (string) $r->source,
+            'variant' => (string) $r->variant,
+        ], $rows));
     }
 
     /**
