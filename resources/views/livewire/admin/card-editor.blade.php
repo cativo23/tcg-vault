@@ -17,7 +17,7 @@
                     <div>
                         <div id="card-editor-title" class="text-lg font-bold">{{ $editingCardName }}</div>
                     </div>
-                    <button wire:click="closeCardEditor" class="nw-row-btn" aria-label="Close">✕</button>
+                    <button wire:click="closeCardEditor" class="nw-row-btn nw-dialog-close" aria-label="Close">✕</button>
                 </div>
 
                 @foreach ($editingRows as $index => $row)

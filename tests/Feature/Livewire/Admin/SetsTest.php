@@ -15,6 +15,8 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Database\Seeders\PermissionSeeder;
+use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Livewire;
@@ -462,4 +464,84 @@ test('a failed choice still counts against the limit', function () {
     Livewire::test(Sets::class)->call('chooseSet', 'me05');
 
     expect(RateLimiter::attempts('add-set:'.$user->id))->toBe(1);
+});
+
+test('rendering the picker during a failure backoff reports the outage once, not on every render', function () {
+    pickerUser();
+    Exceptions::fake();
+    $calls = 0;
+    test()->mock(CardCatalogProvider::class, fn ($mock) => $mock->shouldReceive('listSets')->andReturnUsing(
+        function () use (&$calls) {
+            throw ++$calls === 1
+                ? CatalogUnavailableException::forSetListing(new RuntimeException('down'))
+                : CatalogUnavailableException::forSetListingBackoff();
+        },
+    ));
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->assertSee('tcgdex did not answer')
+        ->refresh()
+        ->refresh()
+        ->assertSee('Try again in a minute');
+
+    Exceptions::assertReportedCount(1);
+});
+
+test('the picker error copy stays plain when the outage is not a backoff', function () {
+    pickerUser();
+    test()->mock(CardCatalogProvider::class, fn ($mock) => $mock->shouldReceive('listSets')->andThrow(
+        CatalogUnavailableException::forSetListing(new RuntimeException('down')),
+    ));
+
+    Livewire::test(Sets::class)->call('openPicker')->assertDontSee('Try again in a minute');
+});
+
+test('a failed import dispatch is reported, keeps the picker open and does not redirect', function () {
+    pickerUser();
+    Exceptions::fake();
+    chooseCatalog(fn ($mock) => $mock->shouldReceive('findSet')->once()->andReturn(
+        new SetSummaryData(tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: 84, logoUrl: null),
+    ));
+    test()->mock(Dispatcher::class, fn ($mock) => $mock->shouldReceive('dispatch')->andThrow(new RuntimeException('queue down')));
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->call('chooseSet', 'me05')
+        ->assertNoRedirect()
+        ->assertSet('pickerOpen', true)
+        ->assertSet('pickerError', "Couldn't start the import — try again");
+
+    Exceptions::assertReportedCount(1);
+});
+
+test('the picker status line says how many sets are shown of how many', function () {
+    pickerUser();
+    pickerCatalog([pickerSet('me05', 'Pitch Black'), pickerSet('base1', 'Base Set'), pickerSet('sv08', 'Surging Sparks')]);
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->assertSee('3 of 3 sets')
+        ->set('pickerSearch', 'base')
+        ->assertSee('1 of 3 sets');
+});
+
+test('the picker keeps its adding live region mounted and never disables a row', function () {
+    pickerUser();
+    pickerCatalog([pickerSet('me05', 'Pitch Black')]);
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->assertSeeHtml('id="set-picker-adding"')
+        ->assertDontSeeHtml('wire:loading.attr="disabled"');
+});
+
+test('an over-long filter is capped so it cannot be used to bloat requests', function () {
+    pickerUser();
+    pickerCatalog([pickerSet('me05', 'Pitch Black')]);
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->set('pickerSearch', str_repeat('a', 500))
+        ->assertSet('pickerSearch', str_repeat('a', 100));
 });

@@ -15,7 +15,7 @@
                     <div id="set-picker-title" class="text-lg font-bold">Add a set</div>
                     <p class="text-sm" style="color: var(--muted)">Pick a set to open its grid. Its cards load in the background.</p>
                 </div>
-                <button type="button" wire:click="closePicker" class="nw-row-btn" aria-label="Close">✕</button>
+                <button type="button" wire:click="closePicker" class="nw-row-btn nw-dialog-close" aria-label="Close">✕</button>
             </div>
 
             <div class="p-4">
@@ -23,19 +23,24 @@
                 <span class="nw-search-wrap w-full">
                     <input id="set-picker-search" x-ref="search" type="search" autocomplete="off"
                            wire:model.live.debounce.250ms="pickerSearch"
-                           class="nw-pill-input w-full" placeholder="Search by name or id">
+                           class="nw-pill-input w-full" placeholder="Search by name or id" maxlength="100">
                     <span wire:loading wire:target="pickerSearch" class="nw-search-loading" aria-hidden="true"></span>
                 </span>
                 @if ($pickerError)
                     <p class="text-sm mt-3" style="color: var(--danger)" role="alert">{{ $pickerError }}</p>
                 @endif
-                <p class="text-sm mt-3" style="color: var(--muted)" role="status" wire:loading wire:target="chooseSet">Adding the set…</p>
+                <p id="set-picker-adding" class="text-sm mt-3" style="color: var(--muted)" role="status">
+                    <span wire:loading wire:target="chooseSet">Adding the set…</span>
+                </p>
+                @unless ($picker['failed'])
+                    <p class="text-sm mt-3" style="color: var(--muted)" role="status">{{ count($picker['sets']) }} of {{ $picker['total'] }} sets</p>
+                @endunless
             </div>
 
             @if ($picker['failed'])
                 <div class="nw-empty" style="margin: 0 16px 16px" role="alert">
                     <div class="t">Couldn't load the set list</div>
-                    <p>tcgdex did not answer. Nothing was changed.</p>
+                    <p>tcgdex did not answer. Nothing was changed.@if ($picker['backoff']) Try again in a minute.@endif</p>
                     <button type="button" class="nw-btn-secondary mt-4" wire:click="$refresh">Retry</button>
                 </div>
             @elseif ($picker['sets'] === [])
@@ -44,7 +49,7 @@
                 <ul class="nw-pick-list">
                     @foreach ($picker['sets'] as $candidate)
                         <li wire:key="pick-{{ $candidate->tcgdexId }}">
-                            <button type="button" class="nw-pick-row" wire:click="chooseSet(@js($candidate->tcgdexId))" wire:loading.attr="disabled" wire:target="chooseSet">
+                            <button type="button" class="nw-pick-row" wire:click="chooseSet(@js($candidate->tcgdexId))" wire:loading.class="is-busy" wire:target="chooseSet">
                                 <span class="logo">
                                     @if ($candidate->logoUrl)
                                         <img src="{{ $candidate->logoUrl }}" alt="" loading="lazy" decoding="async" data-optional>

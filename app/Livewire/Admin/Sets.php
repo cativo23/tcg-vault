@@ -40,6 +40,13 @@ final class Sets extends Component
     #[Locked]
     public ?string $pickerError = null;
 
+    private const PICKER_SEARCH_MAX_LENGTH = 100;
+
+    public function updatedPickerSearch(): void
+    {
+        $this->pickerSearch = mb_substr($this->pickerSearch, 0, self::PICKER_SEARCH_MAX_LENGTH);
+    }
+
     public function openPicker(): void
     {
         $this->pickerOpen = true;
@@ -65,16 +72,22 @@ final class Sets extends Component
      * component state: listSets() is cached, and a 200-row payload should
      * not travel with every request.
      *
-     * @return array{sets: list<SetSummaryData>, failed: bool, total: int}
+     * @return array{sets: list<SetSummaryData>, failed: bool, backoff: bool, total: int}
      */
     private function pickerData(): array
     {
         try {
             $all = array_reverse(app(CardCatalogProvider::class)->listSets());
         } catch (CatalogUnavailableException|MalformedCatalogResponseException $e) {
-            report($e);
+            // The failure window answers every render with the same error;
+            // only the attempt that started it is worth a report.
+            $backoff = $e instanceof CatalogUnavailableException && $e->isBackoff;
 
-            return ['sets' => [], 'failed' => true, 'total' => 0];
+            if (! $backoff) {
+                report($e);
+            }
+
+            return ['sets' => [], 'failed' => true, 'backoff' => $backoff, 'total' => 0];
         }
 
         $needle = mb_strtolower(trim($this->pickerSearch));
@@ -85,7 +98,7 @@ final class Sets extends Component
                 || str_contains(mb_strtolower($set->tcgdexId), $needle),
         ));
 
-        return ['sets' => array_values($sets), 'failed' => false, 'total' => count($all)];
+        return ['sets' => array_values($sets), 'failed' => false, 'backoff' => false, 'total' => count($all)];
     }
 
     /**
@@ -146,7 +159,14 @@ final class Sets extends Component
         // CollectionService::syncCardAndQueueImport(), and the unique job
         // makes a repeat dispatch a no-op.
         if (! $this->isFullyImported($set)) {
-            ImportSetJob::dispatch($set->tcgdex_id);
+            try {
+                ImportSetJob::dispatch($set->tcgdex_id);
+            } catch (Throwable $e) {
+                report($e);
+                $this->pickerError = "Couldn't start the import — try again";
+
+                return;
+            }
         }
 
         $this->redirectRoute('admin.sets.show', ['setTcgdexId' => $set->tcgdex_id], navigate: true);
