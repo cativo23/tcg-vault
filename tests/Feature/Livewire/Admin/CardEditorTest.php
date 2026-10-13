@@ -1469,3 +1469,128 @@ test('removing a variant row tells hosts which card changed', function () {
         ->call('removeVariantRow', 0)
         ->assertDispatched('card-copies-changed', cardId: $card->id);
 });
+
+test('a host can open the editor for a card the owner has no copies of', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex', 'variants' => ['normal' => true, 'holo' => true]]);
+
+    Livewire::test(CardEditor::class)
+        ->dispatch('open-card-editor', cardId: $card->id, allowEmpty: true)
+        ->assertSet('editingCardId', $card->id)
+        ->assertSet('editingRows', [])
+        ->assertSet('editingAvailableVariants', ['normal', 'holofoil'])
+        ->assertSee('Mega Darkrai ex')
+        ->assertSee('+ Add a copy');
+});
+
+test('opening the empty editor writes nothing and the first added copy creates the collection', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    $component = Livewire::test(CardEditor::class)
+        ->call('openCardEditor', $card->id, true)
+        ->assertSet('editingCollectionId', null);
+
+    expect(Collection::withoutGlobalScopes()->where('user_id', $user->id)->exists())->toBeFalse();
+
+    $component->call('addVariantRow')->assertCount('editingRows', 1);
+
+    $collection = Collection::where('slug', 'my-collection')->sole();
+    expect($collection->is_public)->toBeFalse()
+        ->and(CollectionItem::sole()->collection_id)->toBe($collection->id);
+});
+
+test('opening an unknown card is a 404 and creates no collection', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    Livewire::test(CardEditor::class)
+        ->call('openCardEditor', 999999, true)
+        ->assertStatus(404);
+
+    expect(Collection::withoutGlobalScopes()->where('user_id', $user->id)->exists())->toBeFalse();
+});
+
+test('the empty open never shows or touches another users copies of the card', function () {
+    $owner = User::factory()->create();
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $ownerCollection = Collection::withoutGlobalScopes()->create(['user_id' => $owner->id, 'name' => 'Mine', 'slug' => 'my-collection', 'is_public' => false]);
+    $item = CollectionItem::create(['collection_id' => $ownerCollection->id, 'card_id' => $card->id, 'card_tcgdex_id' => $card->tcgdex_id, 'condition' => 'NM', 'quantity' => 2]);
+
+    $intruder = User::factory()->create();
+    $this->actingAs($intruder);
+
+    $component = Livewire::test(CardEditor::class)
+        ->call('openCardEditor', $card->id, true)
+        ->assertSet('editingRows', [])
+        ->assertSet('editingCollectionId', null)
+        ->call('addVariantRow');
+
+    $own = Collection::withoutGlobalScopes()->where('user_id', $intruder->id)->sole();
+    expect($own->id)->not->toBe($ownerCollection->id)
+        ->and($item->fresh()->quantity)->toBe(2)
+        ->and(CollectionItem::where('collection_id', $own->id)->count())->toBe(1);
+});
+
+test('adding a copy from the empty editor creates the first row', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    Livewire::test(CardEditor::class)
+        ->call('openCardEditor', $card->id, true)
+        ->call('addVariantRow')
+        ->assertCount('editingRows', 1);
+
+    $item = CollectionItem::sole();
+    expect($item->card_id)->toBe($card->id)
+        ->and($item->condition)->toBe('NM')
+        ->and($item->quantity)->toBe(1);
+});
+
+test('the strict open still refuses a card the owner has nothing of', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    Livewire::test(CardEditor::class)
+        ->call('openCardEditor', $card->id)
+        ->assertStatus(404);
+});
+
+test('the panel presentation renders a drawer with the same dialog semantics as the modal', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    $html = Livewire::test(CardEditor::class, ['presentation' => 'panel'])
+        ->call('openCardEditor', $card->id, true)
+        ->html();
+
+    expect($html)->toContain('nw-drawer-backdrop')
+        ->and($html)->toContain('nw-drawer')
+        ->and($html)->toContain('role="dialog"')
+        ->and($html)->toContain('aria-modal="true"')
+        ->and($html)->not->toContain('max-width: 640px');
+});
+
+test('an unknown presentation falls back to the modal', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    $html = Livewire::test(CardEditor::class, ['presentation' => 'sideways'])
+        ->call('openCardEditor', $card->id, true)
+        ->html();
+
+    expect($html)->toContain('modal-in')->and($html)->not->toContain('nw-drawer');
+});

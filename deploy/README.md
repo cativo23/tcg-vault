@@ -128,6 +128,17 @@ docker compose -f compose.prod.yml exec app php artisan photos:strip-metadata
 docker compose -f compose.prod.yml exec app php artisan catalog:backfill-images
 ```
 
+## Manual price refresh
+
+The `scheduler` runs `catalog:refresh-prices` daily; to run it by hand:
+```bash
+docker compose -f compose.prod.yml exec app php artisan catalog:refresh-prices
+```
+Each card has at most one pending sync. A re-run skips cards whose sync is
+still queued, running or retrying (until that job finishes or fails, at most
+about 3 h; the lock ceiling is 4 h) and reports them as
+`Dispatched X, skipped Y (already queued).`
+
 ## tcgcsv sync (map groups once, after the release that adds it)
 
 `SyncTcgcsvPricesJob` runs daily at 20:30 UTC on Horizon's `supervisor-tcgcsv`

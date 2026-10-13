@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -38,7 +39,17 @@ final class CardEditor extends Component
     use StripsUploadedPhotos;
     use WithFileUploads;
 
+    // 'modal' centres the editor over the page; 'panel' docks it to the
+    // right edge, or to the bottom of the screen on a phone.
+    #[Locked]
+    public string $presentation = 'modal';
+
     public const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
+
+    public function mount(string $presentation = 'modal'): void
+    {
+        $this->presentation = $presentation === 'panel' ? 'panel' : 'modal';
+    }
 
     /**
      * `CollectionItem` has no `user_id` column, so it can never carry
@@ -100,12 +111,7 @@ final class CardEditor extends Component
      */
     private function ownedCardItemsOrFail(int $cardId): EloquentCollection
     {
-        $collectionIds = Collection::query()->pluck('id');
-        $items = CollectionItem::where('card_id', $cardId)
-            ->whereIn('collection_id', $collectionIds)
-            ->with('card')
-            ->orderBy('id')
-            ->get();
+        $items = $this->ownedCardItems($cardId);
 
         if ($items->isEmpty()) {
             throw new NotFoundHttpException;
@@ -114,8 +120,33 @@ final class CardEditor extends Component
         return $items;
     }
 
+    /**
+     * Every copy of one card across the caller's own collections, possibly none.
+     *
+     * @return EloquentCollection<int, CollectionItem>
+     */
+    private function ownedCardItems(int $cardId): EloquentCollection
+    {
+        $collectionIds = Collection::query()->pluck('id');
+
+        return CollectionItem::where('card_id', $cardId)
+            ->whereIn('collection_id', $collectionIds)
+            ->with('card')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /** The collection new copies go into, created on first use. */
+    private function ownCollection(): Collection
+    {
+        return Collection::firstOrCreate(
+            ['user_id' => auth()->id(), 'slug' => 'my-collection'],
+            ['name' => 'My Collection', 'is_public' => false],
+        );
+    }
+
     #[On('open-card-editor')]
-    public function openCardEditor(int $cardId): void
+    public function openCardEditor(int $cardId, bool $allowEmpty = false): void
     {
         // A previous card's stale error bag would otherwise bleed into this
         // one — editingRows indexes reset per card, so an error on
@@ -123,11 +154,20 @@ final class CardEditor extends Component
         // reattach to row 0 of this one.
         $this->resetValidation();
 
-        $items = $this->ownedCardItemsOrFail($cardId);
-        $primary = $items->firstOrFail();
+        // The catalog card is resolved first, so an unknown id is a 404
+        // before anything else happens and opening never writes.
+        $card = Card::find($cardId) ?? throw new NotFoundHttpException;
+
+        // Strict by default: a card the caller owns nothing of is a 404, which
+        // keeps a stale or mistaken open from showing an empty editor. It is
+        // not an access boundary (the catalog is public and any client can
+        // pass $allowEmpty). A host that offers every card of a set opts in
+        // with $allowEmpty and gets an editor with no rows.
+        $items = $allowEmpty ? $this->ownedCardItems($cardId) : $this->ownedCardItemsOrFail($cardId);
+        $primary = $items->first();
 
         $this->editingCardId = $cardId;
-        $this->editingCollectionId = $primary->collection_id;
+        $this->editingCollectionId = $primary?->collection_id;
         $this->editingRows = $items->map(fn (CollectionItem $i) => [
             'id' => $i->id,
             'variant' => $i->variant,
@@ -142,7 +182,6 @@ final class CardEditor extends Component
             'manual_price' => $this->currentManualPrice($i),
         ])->values()->all();
 
-        $card = $primary->card;
         $this->editingCardName = $card->name;
 
         // Variant-sourcing priority: the card's own tcgdex print flags
@@ -162,7 +201,7 @@ final class CardEditor extends Component
             // variant, not the union of every row's variant in this card
             // group, so one row's choice never leaks into another row's
             // dropdown as a selectable option.
-            $variants = array_filter([$primary->variant]);
+            $variants = array_filter([$primary?->variant]);
         }
         // A copy's own saved print stays selectable even when the card's
         // list doesn't offer it — a hand-entered print tcgdex doesn't
@@ -213,18 +252,23 @@ final class CardEditor extends Component
 
     public function addVariantRow(CollectionService $service): void
     {
-        if ($this->editingCardId === null || $this->editingCollectionId === null) {
+        if ($this->editingCardId === null) {
             return;
         }
 
         // The Catalog is global and not tenant-scoped (CollectionService.php:23-24)
         // — this is a straight lookup of catalog data, not a user's own
         // record, so it doesn't go through ownedItemOrFail()/ownedCardItemsOrFail().
-        // Uses addItemForCard(), not addItem() — this card is already in the
-        // Catalog (it has existing items in this editor), so re-syncing it
-        // from tcgdex here would just be a redundant HTTP round-trip.
+        // Uses addItemForCard(), not addItem() — the editor only opens for a
+        // card that is already in the Catalog, so re-syncing it from tcgdex
+        // here would just be a redundant HTTP round-trip. An editor opened
+        // for a card the owner has no copy of has no collection yet; the
+        // owner's own one is created here, the first time a row is added.
         $card = Card::findOrFail($this->editingCardId);
-        $collection = Collection::findOrFail($this->editingCollectionId);
+        $collection = $this->editingCollectionId !== null
+            ? Collection::findOrFail($this->editingCollectionId)
+            : $this->ownCollection();
+        $this->editingCollectionId = $collection->id;
 
         $item = $service->addItemForCard($collection, $card, ['condition' => 'NM', 'quantity' => 1]);
 

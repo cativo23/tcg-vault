@@ -77,6 +77,9 @@ the daily schedule runs):
 ./vendor/bin/sail artisan catalog:refresh-prices
 ```
 
+A re-run skips cards whose sync is still pending; see
+[Manual price refresh](deploy/README.md#manual-price-refresh).
+
 A single card failing (not found, transient network error, or a malformed
 API response) is reported and skipped — it never aborts the rest of an
 import or refresh.

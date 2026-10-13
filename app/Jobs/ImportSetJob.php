@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
+use App\Modules\Catalog\Models\Card;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -24,12 +25,12 @@ use Illuminate\Queue\SerializesModels;
  * both addItem() and AddCollectionItem::save() (which syncs once per
  * submission rather than once per row) — whenever the just-synced card's
  * set isn't fully imported yet (cards()->count() < card_count).
- * Idempotent: SyncCardPricingJob is updateOrCreate-based, so re-running
- * this for a set that's already complete just re-affirms/refreshes
- * existing rows, never duplicates.
+ * Idempotent: only cards missing locally are queued, and
+ * SyncCardPricingJob is updateOrCreate-based, so re-running this for a
+ * set that's already complete queues nothing and never duplicates rows.
  *
  * This job does ONE cheap listing call and dispatches one
- * SyncCardPricingJob per card rather than making all per-card tcgdex
+ * SyncCardPricingJob per missing card rather than making all per-card tcgdex
  * calls itself — the real per-card work (HTTP call, error handling,
  * shared rate limit) lives in SyncCardPricingJob so a single import
  * never holds a Horizon worker hostage for minutes on an ordinary,
@@ -63,11 +64,11 @@ final class ImportSetJob implements ShouldBeUnique, ShouldQueue
     }
 
     /**
-     * handle() itself finishes almost instantly (one listing call), so
-     * without this the uniqueness lock would end long before the fan-out
-     * it triggers actually finishes — a near-simultaneous duplicate
-     * trigger for the same set could dispatch a second full wave of
-     * per-card jobs. Keeps the lock alive well past a realistic import.
+     * A ceiling on the uniqueness lock, not its length: the lock is
+     * released as soon as handle() finishes (one listing call and the
+     * fan-out dispatches), well before the per-card jobs it queues have
+     * run. This only bounds how long a job that never finishes, for
+     * example a lost worker, can keep the set locked.
      */
     public function uniqueFor(): int
     {
@@ -76,7 +77,12 @@ final class ImportSetJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(CardCatalogProvider $provider): void
     {
-        $cardIds = $provider->listSetCardIds($this->setTcgdexId);
+        // Only cards not stored locally yet are queued, so re-running the
+        // import for a partly loaded set costs one sync per missing card
+        // instead of one per card in the set.
+        $listed = $provider->listSetCardIds($this->setTcgdexId);
+        $stored = Card::query()->whereIn('tcgdex_id', $listed)->pluck('tcgdex_id')->all();
+        $cardIds = array_values(array_diff($listed, $stored));
 
         foreach ($cardIds as $cardId) {
             // Deliberately NOT 'default' — see config/horizon.php's

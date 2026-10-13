@@ -152,6 +152,33 @@ Rules that came out of building it:
 - Headline numbers count up (`data-countup`, `app.js`), digits only — the
   server-rendered value is the resting DOM, and reduced motion skips it.
 
+## Set grid primitives (owner screen)
+`/admin/sets/{set}` reuses `.nw-tile` (`.ghost` = missing), `.nw-setcard` and
+`.nw-bar`, and adds primitives built only from the tokens above:
+- **Variant chip** `.nw-chip-add` (in a `.nw-chips` row under each tile) —
+  dashed outline = zero copies; `.owned` = filled ink with the count in
+  `.mono` (`×2`). A save that did not go through shows `.failed` (`--danger`,
+  failure only) and "Not saved — retry"; a slow save reads "Still saving…",
+  then "Still saving — check your connection". The count never moves until
+  the server confirms. A busy chip is `aria-busy` and ignores taps; on a
+  coarse pointer it is at least 44px.
+- **Toast stack** `.nw-toasts > .nw-toast` — bone text on an ink surface,
+  6 s each, one Undo per toast, at most 4 at once (the oldest unheld one is
+  dropped). Hovering or focusing a toast holds it open; leaving restarts the
+  full time. Reduced motion removes the entrance animation. The stack sits at
+  the bottom centre, moves left of the drawer while it is open, and sits at
+  the top on a phone (2 visible, 1 while the sheet is open, none in a short
+  landscape phone with the sheet open).
+- **Drawer** `.nw-drawer-backdrop > .nw-drawer` — the card editor docked to
+  the right edge (460px), a bottom sheet (max 85vh) at 720px and under.
+  Motion is transform/opacity only; reduced motion removes it.
+- **Import banner** `.nw-import-banner` — bone-2 strip with a hairline
+  border: "Loading cards… 87/165" (count in `.mono`, polled every 5 s), or
+  "N cards missing" with a Retry once no card has arrived for ten minutes.
+  The stalled state (`.stalled`) swaps the border to `--warning` and slows
+  the poll to 60 s, since a slow queue can still recover. "All cards loaded"
+  shows when an import finishes.
+
 ## Theming — dark mode (2026-09-16)
 Three-state precedence, same as every browser-native dark mode: no
 stored preference → the OS's `prefers-color-scheme` decides; a stored

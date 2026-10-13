@@ -120,3 +120,13 @@ test('falls back to the local card count when tcgdex reports zero', function () 
         ->assertSee('1 / 2')
         ->assertDontSee('1 / 0');
 });
+
+test('a signed-in user without use-collection gets a 403 on the set pages', function () {
+    $this->seed(PermissionSeeder::class);
+    $user = User::factory()->create();
+    $user->syncRoles([]);
+    $this->actingAs($user);
+
+    $this->get('/admin/sets')->assertForbidden();
+    $this->get('/admin/sets/me05')->assertForbidden();
+});

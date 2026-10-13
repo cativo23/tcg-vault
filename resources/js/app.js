@@ -76,6 +76,22 @@ const sweepBrokenImages = () => {
 document.addEventListener('DOMContentLoaded', sweepBrokenImages);
 document.addEventListener('livewire:navigated', sweepBrokenImages);
 
+// Livewire's morph resets an <img>'s class to the server HTML (no
+// is-loaded) while its src is unchanged, so onload/onerror never fire again
+// and app.css keeps the image at opacity 0. After every morph, put the class
+// back on images that already settled (`complete` covers loaded and errored).
+// It lands in the same tick as the reset, before a style recalc, so the
+// opacity transition does not replay.
+const restoreLoadedImages = (root) => {
+    root.querySelectorAll('.imgwrap img:not(.is-loaded)').forEach((img) => {
+        if (img.complete) img.classList.add('is-loaded');
+    });
+};
+
+document.addEventListener('livewire:init', () => {
+    window.Livewire.hook('morphed', ({ el }) => restoreLoadedImages(el));
+});
+
 // Hero cursor-spotlight (design.md's HP3 pattern, scoped to the hero
 // only). A no-op on touch devices — there's no pointermove to track, so
 // the glow simply stays at its CSS default position, which is fine.
@@ -237,3 +253,414 @@ document.addEventListener('row-saved', (event) => {
         tag._fadeTimer = setTimeout(() => { tag.style.opacity = '0'; }, 1600);
     });
 });
+
+// Set grid: one-tap quick add with an undo toast stack. The server owns
+// every count; a chip only changes after a confirmed response, so the page
+// never shows a +1 the database does not hold.
+const TOAST_MS = 6000;
+const FAILURE_MS = 4000;
+// A slow save escalates its wording; the chip stays blocked until the
+// request really settles, so a copy can never be added twice by a retap.
+const SLOW_MS = 10000;
+const STALLED_MS = 30000;
+const MAX_TOASTS = 4;
+const FAILED_LABEL = 'Not saved — retry';
+const SAVING_LABEL = 'Still saving…';
+const STALLED_LABEL = 'Still saving — check your connection';
+const QUICK_METHODS = ['quickAdd', 'undoQuickAdd'];
+
+const setGridData = () => ({
+    toasts: [],
+    nextToastId: 1,
+    busy: new Set(),
+    busyNotes: new Map(),
+    timers: new Map(),
+    pending: [],
+    unhook: null,
+    unhookMorph: null,
+    refreshQueued: false,
+
+    init() {
+        // Livewire's promise for a call never settles when its request fails,
+        // so failures are caught on the request itself and settle the
+        // matching pending calls. Only requests made up entirely of this
+        // component's quick add / undo calls lose Livewire's error modal.
+        this.unhook = window.Livewire.hook('request', ({ payload, fail }) => {
+            fail(({ status, preventDefault }) => this.settleFailedRequest(payload, status, preventDefault));
+        });
+
+        // A render that was already in flight when a chip was tapped morphs
+        // the chip from server HTML that has neither the busy flag nor the
+        // "Still saving…" / "Not saved" note; put both back.
+        this.unhookMorph = window.Livewire.hook('morphed', ({ component }) => {
+            if (component.id !== this.$wire.id) return;
+            this.busy.forEach((key) => {
+                const [cardId, ...rest] = key.split('|');
+                const chip = this.chipFor(cardId, rest.join('|'));
+                if (!chip) return;
+                chip.setAttribute('aria-busy', 'true');
+                const note = this.busyNotes.get(key);
+                if (note !== undefined && chip._note !== note) this.setNote(chip, note);
+            });
+            this.$root.querySelectorAll('[data-chip]').forEach((chip) => this.restoreNote(chip));
+        });
+    },
+
+    restoreNote(chip) {
+        if (chip._note === undefined) return;
+        const labelEl = chip.querySelector('[data-chip-label]');
+        if (labelEl.textContent !== chip._note) {
+            chip._originalLabel = labelEl.textContent;
+            labelEl.textContent = chip._note;
+        }
+        if (chip._note === FAILED_LABEL) chip.classList.add('failed');
+    },
+
+    // Quiet enough to redraw: every quick call in flight has been waiting
+    // past the last escalation (STALLED_MS). Such a call keeps its chip
+    // blocked (the save may still happen), but must not hold redraws back
+    // for good, which a request the failure hook could not match would.
+    idle() {
+        return this.pending.every((entry) => entry.stuck);
+    },
+
+    // The import banner reports new cards: redraw the grid now when no quick
+    // add or undo is in flight, otherwise once they have all settled, so a
+    // redraw never lands on a chip that is waiting for the server.
+    refreshWhenIdle() {
+        if (this.idle()) {
+            this.refreshQueued = false;
+            this.$wire.$refresh();
+            return;
+        }
+        this.refreshQueued = true;
+    },
+
+    flushQueuedRefresh() {
+        if (this.refreshQueued && this.idle()) this.refreshWhenIdle();
+    },
+
+    destroy() {
+        this.unhook?.();
+        this.unhookMorph?.();
+        this.timers.forEach((timer) => clearTimeout(timer));
+        this.pending.splice(0).forEach((entry) => entry.dispose());
+        this.$root.querySelectorAll('[data-chip]').forEach((chip) => clearTimeout(chip._failTimer));
+    },
+
+    settleFailedRequest(payload, status, preventDefault) {
+        let components;
+        try {
+            components = JSON.parse(payload).components ?? [];
+        } catch (error) {
+            return;
+        }
+
+        let ours = true;
+        const failed = [];
+
+        for (const component of components) {
+            let id = null;
+            try {
+                id = JSON.parse(component.snapshot).memo.id;
+            } catch (error) {
+                // An unreadable snapshot is not ours.
+            }
+            const calls = component.calls ?? [];
+
+            if (id !== this.$wire.id) {
+                ours = false;
+                continue;
+            }
+
+            // Whatever else shares the request, this grid's quick calls in it
+            // failed with it; the extra work only decides whether Livewire's
+            // error modal may be suppressed.
+            failed.push(...calls.filter((call) => QUICK_METHODS.includes(call.method)));
+
+            const quickOnly = calls.length > 0 && calls.every((call) => QUICK_METHODS.includes(call.method));
+            if (!quickOnly || (component.updates && Object.keys(component.updates).length > 0)) ours = false;
+        }
+
+        // One failed call settles exactly one pending call: the oldest with
+        // the same method and params, which is the order Livewire sends them.
+        let matched = false;
+        for (const call of failed) {
+            const entry = this.pending.find((candidate) => candidate.method === call.method && JSON.stringify(candidate.params) === JSON.stringify(call.params));
+            if (!entry) continue;
+            matched = true;
+            entry.fail(new Error(`request failed: ${status}`));
+        }
+
+        // Only transport failures and server errors are handled here; 401,
+        // 403 and 419 keep Livewire's own login / refresh handling.
+        const hidesModal = !status || status === 429 || status >= 500;
+        if (matched && ours && hidesModal) preventDefault();
+    },
+
+    // Resolves with the server's answer and rejects when the request fails.
+    // It never gives up on its own: until Livewire answers or the failure
+    // hook settles it, the save may still happen, so onSlow only lets the
+    // caller escalate its wording ('slow', then 'stalled').
+    call(method, params, { onSlow } = {}) {
+        return new Promise((resolve, reject) => {
+            const timers = [];
+            let settled = false;
+            const entry = {
+                method,
+                params,
+                stuck: false,
+                dispose: () => {
+                    settled = true;
+                    timers.forEach(clearTimeout);
+                    this.pending = this.pending.filter((candidate) => candidate !== entry);
+                },
+                fail: (error) => {
+                    if (settled) return;
+                    entry.dispose();
+                    reject(error);
+                },
+            };
+
+            this.pending.push(entry);
+            timers.push(setTimeout(() => onSlow?.('slow'), SLOW_MS));
+            timers.push(setTimeout(() => {
+                entry.stuck = true;
+                onSlow?.('stalled');
+                this.flushQueuedRefresh();
+            }, STALLED_MS));
+
+            this.$wire[method](...params).then((value) => {
+                if (settled) return;
+                entry.dispose();
+                resolve(value);
+            }, entry.fail);
+        });
+    },
+
+    chipFor(cardId, variant) {
+        return [...this.$root.querySelectorAll(`[data-card="${Number(cardId)}"][data-chip]`)]
+            .find((chip) => chip.dataset.variant === (variant ?? ''));
+    },
+
+    paintChip(chip, count) {
+        if (!chip) return;
+        const label = chip.dataset.label;
+        chip.dataset.count = String(count);
+        chip.classList.toggle('owned', count > 0);
+        chip.setAttribute('aria-label', `Add one ${label || 'copy'} of ${chip.dataset.name}, you have ${count}`);
+        chip.querySelector('[data-chip-label]').textContent = count > 0 ? (label || '+1') : (label ? `+ ${label}` : '+1');
+        const countEl = chip.querySelector('[data-chip-count]');
+        countEl.textContent = `×${count}`;
+        countEl.hidden = count < 1;
+    },
+
+    paintTile(cardId, cardTotal) {
+        const tile = this.$root.querySelector(`[data-tile="${Number(cardId)}"]`);
+        if (!tile) return;
+        tile.classList.toggle('ghost', cardTotal < 1);
+        const qty = tile.querySelector('[data-tile-qty]');
+        qty.textContent = `×${cardTotal}`;
+        qty.hidden = cardTotal < 1;
+        tile.querySelector('[data-tile-missing]').hidden = cardTotal > 0;
+    },
+
+    // A chip shows at most one note in place of its label ("Still saving…",
+    // "Not saved — retry"); clearing it restores the label unless a
+    // re-render has already replaced it.
+    setNote(chip, text) {
+        this.clearFailure(chip);
+        const labelEl = chip.querySelector('[data-chip-label]');
+        chip._originalLabel = labelEl.textContent;
+        chip._note = text;
+        labelEl.textContent = text;
+    },
+
+    clearFailure(chip) {
+        clearTimeout(chip._failTimer);
+        const labelEl = chip.querySelector('[data-chip-label]');
+        if (chip._originalLabel !== undefined && labelEl.textContent === chip._note) {
+            labelEl.textContent = chip._originalLabel;
+        }
+        delete chip._originalLabel;
+        delete chip._note;
+        chip.classList.remove('failed');
+    },
+
+    fail(chip, message) {
+        this.setNote(chip, FAILED_LABEL);
+        chip.classList.add('failed');
+        chip._failTimer = setTimeout(() => this.clearFailure(chip), FAILURE_MS);
+        this.pushToast({ message: message ?? FAILED_LABEL, undoable: false });
+    },
+
+    // Paints a confirmed answer.
+    applyAdd(chip, cardId, result) {
+        if (!result || result.ok !== true) {
+            this.fail(chip, result?.message);
+            return;
+        }
+
+        this.clearFailure(chip);
+        this.paintChip(chip, result.variantCount);
+        this.paintTile(cardId, result.cardTotal);
+        const label = chip.dataset.label ? ` · ${chip.dataset.label}` : '';
+        this.pushToast({
+            message: `Added ${chip.dataset.name}${label}`,
+            subject: `${chip.dataset.name}${label}`,
+            itemId: result.itemId,
+            cardId,
+            variant: chip.dataset.variant,
+            undoable: true,
+        });
+    },
+
+    async add(chip) {
+        try {
+            await this.addCopy(chip);
+        } finally {
+            this.flushQueuedRefresh();
+        }
+    },
+
+    async addCopy(chip) {
+        const cardId = Number(chip.dataset.card);
+        // The chip's variant goes to the server verbatim; '' means "no variant".
+        const variant = chip.dataset.variant;
+        const key = `${cardId}|${variant}`;
+
+        // The chip stays blocked until the server answers or the request
+        // fails, so a slow save cannot be tapped twice.
+        if (this.busy.has(key)) return;
+        this.busy.add(key);
+        this.clearFailure(chip);
+        chip.setAttribute('aria-busy', 'true');
+
+        let result;
+        try {
+            result = await this.call('quickAdd', [cardId, variant], {
+                onSlow: (stage) => {
+                    const note = stage === 'stalled' ? STALLED_LABEL : SAVING_LABEL;
+                    this.busyNotes.set(key, note);
+                    this.setNote(this.chipFor(cardId, variant) ?? chip, note);
+                },
+            });
+        } catch (error) {
+            this.fail(this.chipFor(cardId, variant) ?? chip);
+            return;
+        } finally {
+            this.busy.delete(key);
+            this.busyNotes.delete(key);
+            chip.removeAttribute('aria-busy');
+            // A redraw while the request was in flight may have replaced the chip.
+            this.chipFor(cardId, variant)?.removeAttribute('aria-busy');
+        }
+
+        this.applyAdd(this.chipFor(cardId, variant) ?? chip, cardId, result);
+    },
+
+    applyUndo(toast, result) {
+        toast.held = 0;
+
+        if (result?.ok === true) {
+            this.paintChip(this.chipFor(toast.cardId, toast.variant), result.variantCount);
+            this.paintTile(toast.cardId, result.cardTotal);
+            this.dismiss(toast.id);
+            return;
+        }
+
+        toast.message = result?.message ?? 'Could not undo that.';
+        this.scheduleDismiss(toast.id);
+    },
+
+    // One click per toast: the undo is disabled before the request, and
+    // stays disabled after any outcome, because a failed round trip may
+    // still have been applied by the server.
+    async undo(toast) {
+        try {
+            await this.undoCopy(toast);
+        } finally {
+            this.flushQueuedRefresh();
+        }
+    },
+
+    async undoCopy(toast) {
+        if (!toast.undoable) return;
+        toast.undoable = false;
+        // The toast must not vanish mid-request; its result gets its own full duration.
+        this.cancelDismiss(toast.id);
+
+        let result;
+        try {
+            result = await this.call('undoQuickAdd', [toast.itemId], {
+                onSlow: (stage) => { toast.message = stage === 'stalled' ? 'Still undoing — check your connection' : 'Still undoing…'; },
+            });
+        } catch (error) {
+            toast.held = 0;
+            toast.message = 'Could not undo that. Check the chip count.';
+            this.scheduleDismiss(toast.id);
+            return;
+        }
+
+        this.applyUndo(toast, result);
+    },
+
+    pushToast(toast) {
+        const entry = { id: this.nextToastId++, held: 0, ...toast };
+        this.toasts.push(entry);
+        if (this.toasts.length > MAX_TOASTS) {
+            // Never evict a toast being read or about to be clicked; if every
+            // older one is held, the stack briefly grows instead.
+            const evictable = this.toasts.find((candidate) => candidate.id !== entry.id && candidate.held === 0);
+            if (evictable) this.dismiss(evictable.id);
+        }
+        this.scheduleDismiss(entry.id);
+    },
+
+    // Hovering or focusing a toast keeps it open (a pointer or keyboard
+    // user needs time to reach Undo); leaving restarts the full duration.
+    hold(toast, on) {
+        toast.held = Math.max(0, toast.held + (on ? 1 : -1));
+        if (toast.held > 0) this.cancelDismiss(toast.id);
+        else this.scheduleDismiss(toast.id);
+    },
+
+    scheduleDismiss(id) {
+        this.cancelDismiss(id);
+        const toast = this.toasts.find((candidate) => candidate.id === id);
+        if (!toast || toast.held > 0 || toast.dismissing) return;
+        this.timers.set(id, setTimeout(() => this.dismiss(id), TOAST_MS));
+    },
+
+    // A dismissed toast that holds focus would drop it to the page: hand it
+    // to the toast's own chip if it is on screen, else to the toast region.
+    keepFocus(id) {
+        const el = this.$root.querySelector(`.nw-toasts [data-toast="${Number(id)}"]`);
+        if (!el || !el.contains(document.activeElement)) return;
+        const toast = this.toasts.find((candidate) => candidate.id === id);
+        const chip = toast?.cardId !== undefined ? this.chipFor(toast.cardId, toast.variant) : null;
+        (chip ?? this.$root.querySelector('.nw-toasts'))?.focus();
+    },
+
+    cancelDismiss(id) {
+        clearTimeout(this.timers.get(id));
+        this.timers.delete(id);
+    },
+
+    dismiss(id) {
+        this.cancelDismiss(id);
+        // Moving focus away fires focusout; a dismissing toast must not be rescheduled by it.
+        const leaving = this.toasts.find((toast) => toast.id === id);
+        if (leaving) leaving.dismissing = true;
+        this.keepFocus(id);
+        this.toasts = this.toasts.filter((toast) => toast.id !== id);
+    },
+});
+
+const registerSetGrid = () => window.Alpine.data('setGrid', setGridData);
+
+if (window.Alpine) {
+    registerSetGrid();
+} else {
+    document.addEventListener('alpine:init', registerSetGrid);
+}

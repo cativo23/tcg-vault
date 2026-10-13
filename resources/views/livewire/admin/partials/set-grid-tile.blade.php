@@ -1,0 +1,67 @@
+@use('App\Modules\Catalog\Support\Rarity')
+@use('App\Support\Money')
+@use('Illuminate\Support\Facades\Storage')
+
+@php
+    $card = $entry['card'];
+    $owned = $entry['owned'];
+    $snapshot = $entry['snapshot'];
+    $photo = $card->collectionItems->first(fn ($item) => $item->photo_path !== null);
+    $imageUrl = $photo ? Storage::disk('collection-photos')->url($photo->photo_path) : $card->official_image_url;
+    $rarityTier = Rarity::tier($card->rarity);
+@endphp
+
+<div class="nw-slot" style="--i: {{ min($index, 11) }}" wire:key="tile-{{ $card->id }}">
+    <div class="nw-tile {{ $owned ? '' : 'ghost' }} {{ $rarityTier !== 'standard' ? 'rarity-'.$rarityTier : '' }}" data-tile="{{ $card->id }}">
+        <div class="chead">
+            <span class="num">#{{ $card->local_id }}</span>
+            @if (Rarity::abbreviate($card->rarity) !== '')
+                <span class="rar {{ $rarityTier !== 'standard' ? 'rarity-'.$rarityTier : '' }}" title="{{ Rarity::label($card->rarity) }}">{{ Rarity::abbreviate($card->rarity) }}</span>
+            @endif
+        </div>
+
+        <button type="button" id="card-editor-trigger-{{ $card->id }}" class="nw-tile-image"
+            wire:click="$dispatch('open-card-editor', { cardId: {{ $card->id }}, allowEmpty: true })"
+            aria-label="Edit copies of {{ $card->name }}, number {{ $card->local_id }}">
+            <x-card-image :url="$imageUrl" :name="$card->name.' #'.$card->local_id" :eager="$index < 6" />
+        </button>
+
+        <div class="cbody">
+            <div class="cname">{{ $card->name }}</div>
+            <div class="cset">
+                <span class="truncate">{{ Rarity::label($card->rarity) }}</span>
+                <span class="mono" data-tile-qty style="color: var(--ink)" @if ($entry['quantity'] < 1) hidden @endif>×{{ $entry['quantity'] }}</span>
+                <span data-tile-missing @if ($entry['quantity'] > 0) hidden @endif>Not owned</span>
+            </div>
+        </div>
+
+        <div class="nw-chips" role="group" aria-label="Add a copy of {{ $card->name }}">
+            @foreach ($entry['chips'] as $chip)
+                @php
+                    $text = $chip['count'] > 0
+                        ? ($chip['label'] !== '' ? $chip['label'] : '+1')
+                        : ($chip['label'] !== '' ? '+ '.$chip['label'] : '+1');
+                @endphp
+                <button type="button"
+                    class="nw-chip-add {{ $chip['count'] > 0 ? 'owned' : '' }}"
+                    data-chip="{{ $card->id }}|{{ $chip['variant'] }}"
+                    data-card="{{ $card->id }}"
+                    data-variant="{{ $chip['variant'] }}"
+                    data-label="{{ $chip['label'] }}"
+                    data-name="{{ $card->name }}"
+                    data-count="{{ $chip['count'] }}"
+                    aria-label="Add one {{ $chip['label'] !== '' ? $chip['label'] : 'copy' }} of {{ $card->name }}, you have {{ $chip['count'] }}"
+                    @click="add($el)"
+                ><span data-chip-label>{{ $text }}</span> <span class="mono" data-chip-count @if ($chip['count'] < 1) hidden @endif>×{{ $chip['count'] }}</span></button>
+            @endforeach
+        </div>
+
+        <div class="ticker">
+            @if ($snapshot && $snapshot->market_minor !== null)
+                <span>{{ Money::format($snapshot->market_minor, $snapshot->currency) }}<span class="cur">{{ $snapshot->currency }}</span></span>
+            @else
+                <span>No price</span>
+            @endif
+        </div>
+    </div>
+</div>

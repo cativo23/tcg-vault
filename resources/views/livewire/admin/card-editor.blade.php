@@ -1,9 +1,10 @@
 <div>
+    @php $panel = $presentation === 'panel'; @endphp
     @if ($editingCardId !== null)
-        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" style="background: rgba(20,20,18,.55)" wire:click.self="closeCardEditor" wire:keydown.escape.window="closeCardEditor">
+        <div class="{{ $panel ? 'nw-drawer-backdrop' : 'fixed inset-0 z-50 flex items-center justify-center p-4' }}" @unless ($panel) style="background: rgba(20,20,18,.55)" @endunless wire:click.self="closeCardEditor" wire:keydown.escape.window="closeCardEditor">
             <div
-                class="nw-card modal-in w-full"
-                style="max-width: 640px; max-height: 90vh; overflow-y: auto;"
+                class="nw-card {{ $panel ? 'nw-drawer' : 'modal-in w-full' }}"
+                @unless ($panel) style="max-width: 640px; max-height: 90vh; overflow-y: auto;" @endunless
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="card-editor-title"
@@ -62,7 +63,7 @@
                 @endforeach
 
                 <div class="p-4 flex justify-center">
-                    <button wire:click="addVariantRow" class="nw-btn-secondary w-full" style="border-style: dashed;">+ Add another variant to this card</button>
+                    <button wire:click="addVariantRow" class="nw-btn-secondary w-full" style="border-style: dashed;">{{ $editingRows === [] ? '+ Add a copy' : '+ Add another variant to this card' }}</button>
                 </div>
 
                 <div class="p-5 flex justify-end" style="border-top: 1px solid var(--hair)">
