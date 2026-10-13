@@ -521,37 +521,32 @@ test('a card-level price uses tcgplayer holofoil when it is the only tcgplayer p
     expect((new CardPriceResolver)->resolve($card)->id)->toBe($holo->id);
 });
 
-test('resolves a card with a long in-memory history in bounded time', function () {
-    // CardPriceSnapshot is final, so attribute reads can't be counted;
-    // the guard is wall-clock (with Xdebug on, old sort ~20 s, new ~2.4 s). Sorting a long history must read each
-    // row's key once, not once per comparison. The bound is far above what
-    // the precomputed-key sort needs and far below a comparator that reads
-    // model attributes.
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-
+test('sorts a long history far faster than a comparator that reads model attributes', function () {
+    // Reading attributes through the model's magic getters inside a sort
+    // comparator costs per comparison, so it grows with n log n. The
+    // resolver reads each row's key once before sorting. Both are timed
+    // on the same rows in the same process, so the ratio does not depend
+    // on how fast the machine is.
     $rows = collect(range(1, 400))->map(fn (int $i) => (new CardPriceSnapshot)->forceFill([
         'id' => $i,
-        'card_id' => $card->id,
         'source' => $i % 2 === 0 ? 'tcgplayer' : 'cardmarket',
         'variant' => $i % 3 === 0 ? 'holofoil' : 'normal',
-        'currency' => 'USD',
-        'market_minor' => 100 + $i,
         'captured_on' => today()->subDays($i % 7)->toDateString(),
-    ]));
-    $card->setRelation('priceSnapshots', $rows);
+    ]))->shuffle();
 
+    $newestFirst = new ReflectionMethod(CardPriceResolver::class, 'newestFirst');
     $resolver = new CardPriceResolver;
+
     $start = hrtime(true);
+    $newestFirst->invoke($resolver, $rows);
+    $precomputed = hrtime(true) - $start;
 
-    for ($i = 0; $i < 50; $i++) {
-        $resolver->resolve($card);
-        $resolver->resolveForVariant($card, 'normal');
-    }
+    $start = hrtime(true);
+    $rows->sort(fn (CardPriceSnapshot $a, CardPriceSnapshot $b) => [$b->capturedOnKey(), $a->source, $a->variant, $a->id]
+        <=> [$a->capturedOnKey(), $b->source, $b->variant, $b->id])->values();
+    $perComparison = hrtime(true) - $start;
 
-    $elapsedMs = (hrtime(true) - $start) / 1e6;
-
-    expect($elapsedMs)->toBeLessThan(8000);
+    expect($precomputed * 10)->toBeLessThan($perComparison);
 });
 
 test('orders a long history newest day first, then source, variant and id', function () {
@@ -571,4 +566,29 @@ test('orders a long history newest day first, then source, variant and id', func
 
     expect($sorted->keys()->all())->toBe(range(0, 59))
         ->and($sorted->pluck('id')->all())->toBe(array_map(fn ($m) => $m->id, $expected));
+});
+
+test('keeps input order for unsaved rows that tie on day, source and variant', function () {
+    // In-memory models have no id; rows identical on every key keep the
+    // order they came in, and an id still breaks a tie where one exists.
+    $make = fn (string $tag, ?int $id) => (new CardPriceSnapshot)->forceFill([
+        'id' => $id,
+        'source' => 'tcgplayer',
+        'variant' => 'normal',
+        'captured_on' => today()->toDateString(),
+        'currency' => $tag,
+    ]);
+
+    $rows = collect([$make('first', null), $make('second', null), $make('third', null)]);
+
+    $sorted = (new ReflectionMethod(CardPriceResolver::class, 'newestFirst'))
+        ->invoke(new CardPriceResolver, $rows);
+
+    expect($sorted->pluck('currency')->all())->toBe(['first', 'second', 'third']);
+
+    $withIds = collect([$make('b', 9), $make('a', 3), $make('c', 5)]);
+    $sorted = (new ReflectionMethod(CardPriceResolver::class, 'newestFirst'))
+        ->invoke(new CardPriceResolver, $withIds);
+
+    expect($sorted->pluck('currency')->all())->toBe(['a', 'c', 'b']);
 });
