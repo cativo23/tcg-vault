@@ -81,7 +81,7 @@ final class PublicCollection
             ->whereHas('collectionItems', fn (Builder $q) => $this->scopeItems($q))
             ->with([
                 'set',
-                'priceSnapshots' => fn ($q) => $q->recent(),
+                'priceSnapshots' => fn ($q) => $q->recent()->orderBy('id'),
                 'collectionItems' => fn ($q) => $this->scopeItems($q)->orderBy('created_at'),
             ]);
     }
