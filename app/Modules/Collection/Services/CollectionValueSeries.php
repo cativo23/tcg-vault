@@ -10,6 +10,7 @@ use App\Modules\Catalog\Support\ChartRange;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -33,16 +34,60 @@ use Illuminate\Support\Facades\DB;
  * day's rows are priced and dropped before the next day is loaded, so
  * memory holds about two rows per group however long the range is, and
  * no query binds a value per card or per row.
+ *
+ * Even so, a year of history costs seconds on a large collection, and the
+ * collection page is public, so every visit would pay it. The finished
+ * series is cached for the day, per range and currency. The key carries a
+ * fingerprint that changes whenever the result could: the count and newest
+ * updated_at of the cards' price rows (a new, edited or deleted price) and
+ * each owned copy's id, card, variant, quantity and updated_at (a copy
+ * added, removed or edited, or made public or private). A hit costs the one
+ * aggregate query that computes the fingerprint.
  */
 final class CollectionValueSeries
 {
     public function __construct(private readonly Valuation $valuation) {}
+
+    /** @var array<string, ?string> earliest day by card-id array, so a render asks the database once */
+    private array $earliest = [];
 
     /**
      * @param  Collection<int, Card>  $cards  owned cards, collectionItems loaded
      * @return Collection<int, array{date: CarbonImmutable, minor: int}>
      */
     public function for(Collection $cards, string $currency, ChartRange $range): Collection
+    {
+        if ($cards->isEmpty()) {
+            return collect();
+        }
+
+        $key = "collection-value-series:{$range->value}:{$currency}:".CarbonImmutable::today()->toDateString().':'.$this->fingerprint($cards);
+        $cached = Cache::get($key);
+
+        if (is_array($cached)) {
+            $this->earliest[$this->idArray($cards)] = $cached['earliest'];
+
+            /** @var list<array{date: string, minor: int}> $points */
+            $points = $cached['points'];
+
+            return new Collection(array_map(fn (array $p): array => ['date' => CarbonImmutable::parse($p['date']), 'minor' => $p['minor']], $points));
+        }
+
+        $series = $this->build($cards, $currency, $range);
+
+        Cache::put($key, [
+            'earliest' => $this->earliestDay($cards)?->toDateString(),
+            'points' => $series->map(fn (array $p): array => ['date' => $p['date']->toDateString(), 'minor' => $p['minor']])->all(),
+        ], CarbonImmutable::now()->endOfDay());
+
+        return $series;
+    }
+
+    /**
+     * @param  Collection<int, Card>  $cards
+     * @return Collection<int, array{date: CarbonImmutable, minor: int}>
+     */
+    private function build(Collection $cards, string $currency, ChartRange $range): Collection
     {
         $earliest = $this->earliestDay($cards);
 
@@ -74,6 +119,31 @@ final class CollectionValueSeries
     }
 
     /**
+     * What the series depends on besides the day, range and currency: the
+     * cards' price rows and the owned copies.
+     *
+     * @param  Collection<int, Card>  $cards
+     */
+    private function fingerprint(Collection $cards): string
+    {
+        $prices = DB::selectOne(
+            'SELECT count(*) AS n, max(updated_at) AS newest FROM card_price_snapshots WHERE card_id = ANY(?::bigint[])',
+            [$this->idArray($cards)],
+        );
+        $holdings = [];
+
+        foreach ($cards as $card) {
+            foreach ($card->collectionItems as $item) {
+                $holdings[(int) $item->id] = [(int) $item->id, (int) $item->card_id, $item->variant, (int) $item->quantity, (string) $item->updated_at];
+            }
+        }
+
+        ksort($holdings);
+
+        return sha1(json_encode([$prices->n ?? 0, $prices->newest ?? null, array_values($holdings)], JSON_THROW_ON_ERROR));
+    }
+
+    /**
      * The first day any of the cards has a priced row, so the chart never
      * opens on zeros from rows that carry no price. Rows in any currency
      * count, as the headline's history does.
@@ -86,12 +156,20 @@ final class CollectionValueSeries
             return null;
         }
 
+        $memo = $this->idArray($cards);
+
+        if (array_key_exists($memo, $this->earliest)) {
+            return $this->earliest[$memo] === null ? null : CarbonImmutable::parse($this->earliest[$memo]);
+        }
+
         $min = CardPriceSnapshot::query()
             ->whereRaw('card_id = ANY(?::bigint[])', [$this->idArray($cards)])
             ->whereNotNull('market_minor')
             ->min('captured_on');
 
-        return $min === null ? null : CarbonImmutable::parse($min);
+        $this->earliest[$memo] = $min === null ? null : CarbonImmutable::parse($min)->toDateString();
+
+        return $this->earliest[$memo] === null ? null : CarbonImmutable::parse($this->earliest[$memo]);
     }
 
     /**

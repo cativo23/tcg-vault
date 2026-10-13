@@ -13,6 +13,7 @@ use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\PublicCollection;
 use App\Modules\Collection\Services\Valuation;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 beforeEach(function () {
@@ -279,4 +280,54 @@ test('unpriced rows do not move the earliest day', function () {
     $cards = PublicCollection::for($this->user)->cardsQuery()->get();
 
     expect((new CollectionValueSeries(new Valuation(new CardPriceResolver)))->earliestDay($cards)?->toDateString())->toBe(today()->subDays(12)->toDateString());
+});
+
+test('a second identical call is served from the cache without rebuilding the series', function () {
+    $a = ($this->own)('001');
+    foreach ([40, 10, 0] as $ago) {
+        ($this->price)($a, $ago, 100 + $ago);
+    }
+
+    $cards = PublicCollection::for($this->user)->cardsQuery()->get();
+    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
+    $first = $service->for($cards, 'USD', ChartRange::ThreeMonths);
+
+    $queries = [];
+    DB::listen(function ($query) use (&$queries) {
+        $queries[] = $query->sql;
+    });
+    $second = $service->for($cards, 'USD', ChartRange::ThreeMonths);
+
+    expect($second->map(fn ($p) => [$p['date']->toDateString(), $p['minor']])->all())->toBe($first->map(fn ($p) => [$p['date']->toDateString(), $p['minor']])->all())
+        ->and($second->first()['date'])->toBeInstanceOf(CarbonImmutable::class)
+        ->and(collect($queries)->filter(fn ($sql) => str_contains(strtolower($sql), 'lateral')))->toBeEmpty()
+        ->and(collect($queries)->filter(fn ($sql) => str_contains($sql, 'card_price_snapshots')))->toHaveCount(1) // the fingerprint
+        ->and($queries)->toHaveCount(1);
+});
+
+test('a new price, an edited copy, a deleted copy and another range each give a fresh series', function () {
+    $a = ($this->own)('001');
+    $b = ($this->own)('002');
+    foreach ([40, 10, 0] as $ago) {
+        ($this->price)($a, $ago, 100);
+        ($this->price)($b, $ago, 10);
+    }
+    $last = fn (ChartRange $r = ChartRange::OneMonth) => ($this->series)($r)->last()['minor'];
+
+    expect($last())->toBe(110);
+
+    ($this->price)($a, 0, 500, 'holofoil'); // an unowned print: count changes, value does not
+    expect($last())->toBe(110);
+
+    $item = CollectionItem::where('card_id', $a->id)->first();
+    $item->update(['quantity' => 3]);
+    expect($last())->toBe(310);
+
+    CollectionItem::where('card_id', $b->id)->delete();
+    expect($last())->toBe(300)
+        ->and(($this->series)(ChartRange::OneMonth))->toHaveCount(31)
+        ->and(($this->series)(ChartRange::ThreeMonths)->count())->toBeLessThan(31);
+
+    CardPriceSnapshot::query()->where('card_id', $a->id)->where('source', 'tcgplayer')->where('variant', 'normal')->where('captured_on', today())->update(['market_minor' => 200, 'updated_at' => now()->addMinute()]);
+    expect($last())->toBe(600);
 });
