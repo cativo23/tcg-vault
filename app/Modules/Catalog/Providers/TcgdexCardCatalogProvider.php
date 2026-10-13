@@ -16,6 +16,7 @@ use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Support\CardVariants;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\HttpClientException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Cache;
@@ -59,6 +60,14 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
     /** While tcgdex is failing, the stale copy is served as the fresh one for this long. */
     private const SET_LIST_BACKOFF_SECONDS = 300;
+
+    private const SET_LIST_REFRESH_LOCK = 'tcgdex:sets:v1:refresh';
+
+    // Longer than the request timeout, so a refresh that is still
+    // fetching never loses its lock to a second one.
+    private const SET_LIST_REFRESH_LOCK_SECONDS = 10;
+
+    private const SET_LIST_REFRESH_WAIT_SECONDS = 5;
 
     /** With no copy to fall back on, a failure is remembered for this long. */
     private const SET_LIST_FAILURE_MEMORY_SECONDS = 60;
@@ -159,6 +168,36 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
     }
 
     public function listSets(): array
+    {
+        $fresh = $this->cachedSetRows(self::SET_LIST_FRESH_KEY);
+
+        if ($fresh !== null) {
+            return $this->hydrateSetList($fresh);
+        }
+
+        // Concurrent misses queue behind one fetch instead of each calling
+        // tcgdex; whoever waits reads the copy the first one stored.
+        try {
+            return Cache::lock(self::SET_LIST_REFRESH_LOCK, self::SET_LIST_REFRESH_LOCK_SECONDS)
+                ->block(self::SET_LIST_REFRESH_WAIT_SECONDS, fn (): array => $this->refreshSetList());
+        } catch (LockTimeoutException $e) {
+            $stale = $this->cachedSetRows(self::SET_LIST_STALE_KEY);
+
+            if ($stale !== null) {
+                return $this->hydrateSetList($stale);
+            }
+
+            throw CatalogUnavailableException::forSetListing($e);
+        }
+    }
+
+    /**
+     * Runs under the refresh lock: re-checks the fresh copy a competing
+     * refresh may have stored, then fetches and caches the list.
+     *
+     * @return array<int, SetSummaryData>
+     */
+    private function refreshSetList(): array
     {
         $fresh = $this->cachedSetRows(self::SET_LIST_FRESH_KEY);
 

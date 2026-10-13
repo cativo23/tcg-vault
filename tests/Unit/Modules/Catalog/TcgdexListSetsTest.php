@@ -9,6 +9,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Sleep;
 
 const SET_LIST_URL = 'api.tcgdex.net/v2/en/sets';
 
@@ -102,6 +103,50 @@ test('listSets serves the stale copy when tcgdex fails after the fresh copy expi
 
     Log::shouldHaveReceived('warning')->once();
     expect($sets)->toHaveCount(3)->and($sets[0]->tcgdexId)->toBe('base1');
+});
+
+test('listSets waits for a refresh already running and reads its result instead of fetching again', function () {
+    Http::fake([SET_LIST_URL => Http::response(fakeSetListing(), 200)]);
+    $lock = Cache::lock('tcgdex:sets:v1:refresh', 10);
+    $lock->get();
+    Sleep::fake();
+    Sleep::whenFakingSleep(function () use ($lock) {
+        Cache::put(TcgdexCardCatalogProvider::SET_LIST_FRESH_KEY, [
+            ['id' => 'base1', 'name' => 'Base Set', 'cardCount' => 102, 'logoUrl' => null],
+        ], 60);
+        $lock->release();
+    });
+
+    $sets = setListingProvider()->listSets();
+
+    Http::assertNothingSent();
+    expect($sets)->toHaveCount(1)->and($sets[0]->tcgdexId)->toBe('base1');
+});
+
+test('listSets serves the stale copy when a refresh by someone else does not finish in time', function () {
+    $upstream = fakeSetListingUpstream(Http::response(fakeSetListing(), 200));
+    $provider = setListingProvider();
+    $provider->listSets();
+    Cache::forget(TcgdexCardCatalogProvider::SET_LIST_FRESH_KEY);
+    Cache::lock('tcgdex:sets:v1:refresh', 30)->get();
+    Sleep::fake(syncWithCarbon: true);
+    $upstream['response'] = Http::response('boom', 500);
+    Http::assertSentCount(1);
+
+    $sets = $provider->listSets();
+
+    Http::assertSentCount(1);
+    expect($sets)->toHaveCount(3);
+});
+
+test('listSets reports the outage when a refresh by someone else does not finish and nothing is cached', function () {
+    Http::fake([SET_LIST_URL => Http::response(fakeSetListing(), 200)]);
+    Cache::lock('tcgdex:sets:v1:refresh', 30)->get();
+    Sleep::fake(syncWithCarbon: true);
+
+    expect(fn () => setListingProvider()->listSets())->toThrow(CatalogUnavailableException::class);
+
+    Http::assertNothingSent();
 });
 
 test('listSets throws CatalogUnavailableException when tcgdex is down and nothing is cached', function (Closure $fake) {
