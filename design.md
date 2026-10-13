@@ -178,6 +178,23 @@ Rules that came out of building it:
   The stalled state (`.stalled`) swaps the border to `--warning` and slows
   the poll to 60 s, since a slow queue can still recover. "All cards loaded"
   shows when an import finishes.
+- **Set picker** `.nw-drawer-backdrop > .nw-drawer.nw-pick` on `/admin/sets` —
+  the drawer primitive reused as an "Add a set" dialog (`role="dialog"`,
+  `aria-modal`, labelled by its title). Opening focuses the filter; Tab
+  stays inside, Escape or the close button closes it, and focus returns to
+  the trigger. The trap is the shared `focusTrap` Alpine component
+  (`resources/js/app.js`), also used by the card editor drawer and the
+  modal component. A status line reads "N of M sets" (`role="status"`) and
+  a live region announces "Adding the set…". Rows `.nw-pick-row` are logo,
+  name, `ID · N cards` (count in `.mono`) and, for a set the owner already
+  has, a muted "In My sets" tag; they stay selectable. While a pick is in
+  flight rows dim (`.is-busy`) and ignore the pointer but are never
+  `disabled`, so focus is not dropped. A set with no logo shows its id as
+  text. A failed list shows an `.nw-empty` block with a Retry (and "Try
+  again in a minute" during the short failure window); a failed pick shows
+  `--danger` text in the dialog and does not navigate. The drawer close
+  button (`.nw-dialog-close`) grows to 44px on coarse pointers, as do the
+  rows (64px).
 
 ## Theming — dark mode (2026-09-16)
 Three-state precedence, same as every browser-native dark mode: no

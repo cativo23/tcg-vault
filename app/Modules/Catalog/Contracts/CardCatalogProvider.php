@@ -35,12 +35,14 @@ interface CardCatalogProvider
      *
      * Cached for 24 hours. When tcgdex cannot be reached (or answers with
      * a body that is not a set list) the last good copy is served instead;
-     * with none, the failure is thrown.
+     * with none, the failure is thrown as a CatalogUnavailableException
+     * (a body that is not a set list is reported through its previous
+     * exception), and for a minute afterwards the same exception is thrown
+     * without another request.
      *
      * @return array<int, SetSummaryData>
      *
      * @throws CatalogUnavailableException
-     * @throws MalformedCatalogResponseException
      */
     public function listSets(): array;
 
