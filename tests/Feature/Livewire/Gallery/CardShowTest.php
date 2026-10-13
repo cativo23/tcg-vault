@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Livewire\Gallery\CardShow;
+use App\Livewire\Gallery\Show;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
@@ -292,7 +293,12 @@ test('an unknown variant in the URL falls back to the default instead of failing
     $seed = seedVariantCard();
     ownCopy($seed, 'normal');
 
-    $this->get('/carlos/me05/116?variant=%3Cb%3Ejunk%3C%2Fb%3E')->assertOk()->assertDontSee('<b>junk</b>', false);
+    $response = $this->get('/carlos/me05/116?variant=%3Cb%3Ejunk%3C%2Fb%3E')->assertOk()
+        ->assertSee('aria-pressed="true"', false);
+
+    // The raw value only ever travels inside the escaped component snapshot;
+    // no part of the rendered page echoes it.
+    expect(preg_replace('/wire:snapshot="[^"]*"/', '', $response->getContent()))->not->toContain('junk');
 
     Livewire::withQueryParams(['variant' => 'holofoil:nope'])
         ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
@@ -304,6 +310,10 @@ test('a non-string variant in the URL does not break the page', function () {
     ownCopy($seed, 'normal');
 
     $this->get('/carlos/me05/116?variant[]=x')->assertOk();
+
+    Livewire::withQueryParams(['variant' => ['x']])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('selected', fn ($s) => $s['key'] === 'normal');
 });
 
 test('copies with no variant are reachable as the unspecified pill', function () {
@@ -382,6 +392,7 @@ test('the pills are buttons, only the selected one is pressed, and owned ones sh
         ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
         ->assertSeeHtml('nw-variant-pills')
         ->assertSeeHtml('aria-pressed="true"')
+        ->assertSeeHtml('<span class="sr-only">2 owned</span>')
         ->assertSee('×2')
         ->html();
 
@@ -408,4 +419,43 @@ test('the variant lands in the URL as a new history entry so the back button ret
 
     Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
         ->assertSeeHtml('&quot;use&quot;:&quot;push&quot;');
+});
+
+test('owned copies that are all unpriced open on the variant the set tile prices', function (?string $variant) {
+    $seed = seedVariantCard();
+    ownCopy($seed, $variant);
+
+    $tile = Livewire::test(Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])
+        ->viewData('entries')->first(fn ($e) => $e['card']->is($seed['card']))['snapshot'];
+
+    Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('snapshot', fn ($s) => $s->is($tile));
+})->with([
+    'a hand-entered print' => ['holofoil:masterball'],
+    'a copy with no variant' => [''],
+]);
+
+test('a variant whose latest row has no market price says so instead of the stale-window message', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+    CardPriceSnapshot::create(['card_id' => $seed['card']->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => null]);
+    $seed['card']->update(['variants' => ['normal' => true, 'reverse' => true, 'holo' => true]]);
+
+    Livewire::withQueryParams(['variant' => 'holofoil'])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertSee('No market price for Holofoil yet.')
+        ->assertDontSee('No market price in the last');
+});
+
+test('a null or non-string variant never breaks the page', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+
+    Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->set('variant', null)
+        ->assertOk()
+        ->assertViewHas('selected', fn ($s) => $s['key'] === 'normal')
+        ->call('selectVariant', ['x'])
+        ->assertOk()
+        ->assertViewHas('selected', fn ($s) => $s['key'] === 'normal');
 });

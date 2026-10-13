@@ -1597,7 +1597,6 @@ body::before {
   transition: background-color 180ms var(--ease), color 180ms var(--ease), border-color 180ms var(--ease);
 }
 .nw-variant-pill:hover { border-color: var(--ink); }
-.nw-variant-pill:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
 .nw-variant-pill .p { font-size: 11px; color: var(--muted); letter-spacing: -.03em; }
 .nw-variant-pill .own { font-size: 10px; color: var(--muted); letter-spacing: -.03em; }
 .nw-variant-pill.on { background: var(--ink); border-color: var(--ink); color: var(--bone); }

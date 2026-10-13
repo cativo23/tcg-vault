@@ -74,7 +74,8 @@
                             <span>{{ $pill['label'] }}</span>
                             <span class="p mono">{{ $pill['snapshot']?->market_minor !== null ? Money::format($pill['snapshot']->market_minor, $pill['snapshot']->currency) : '—' }}</span>
                             @if ($pill['count'] > 0)
-                                <span class="own mono" aria-label="{{ $pill['count'] }} owned">×{{ $pill['count'] }}</span>
+                                <span class="own mono" aria-hidden="true">×{{ $pill['count'] }}</span>
+                                <span class="sr-only">{{ $pill['count'] }} owned</span>
                             @endif
                         </button>
                     @endforeach
@@ -90,7 +91,7 @@
                 @endif
             </div>
 
-            @if ($switcher && $snapshot === null)
+            @if ($switcher && $snapshot?->market_minor === null)
                 <p class="text-sm py-3" style="color: var(--muted)">No market price for {{ $selected['label'] }} yet.</p>
             @elseif ($pricedBeforeWindow)
                 <p class="text-sm py-3" style="color: var(--muted)">No market price in the last {{ $recentDays }} days.</p>

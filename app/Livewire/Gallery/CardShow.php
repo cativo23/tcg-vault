@@ -45,14 +45,16 @@ final class CardShow extends Component
      * `?variant[]=x` arrives as an array, hence the union): selectedPill()
      * only ever compares a string against this card's own pill keys.
      *
-     * @var string|array<array-key, mixed>
+     * @var string|array<array-key, mixed>|null
      */
     #[Url(as: 'variant', except: '', history: true)]
-    public string|array $variant = '';
+    public string|array|null $variant = '';
 
-    public function selectVariant(string $key): void
+    public function selectVariant(mixed $key): void
     {
-        $this->variant = $key;
+        if (is_string($key)) {
+            $this->variant = $key;
+        }
     }
 
     public function mount(string $username, string $setTcgdexId, string $localId): void
@@ -109,7 +111,7 @@ final class CardShow extends Component
             'snapshot' => $resolver->resolveForVariant($priced, $chip['variant']),
         ]);
         $switcher = $pills->count() > 1;
-        $selected = $switcher ? $this->selectedPill($pills, $valuation->headlineItem($priced)) : null;
+        $selected = $switcher ? $this->selectedPill($pills, $valuation->headlineItem($priced), $items->isNotEmpty() ? $valuation->headlineSnapshot($priced) : null, $items->isNotEmpty()) : null;
 
         // The collector's own copy, at the price of the variant it
         // actually is — not resolve()'s card-level priority chain, which
@@ -218,13 +220,14 @@ final class CardShow extends Component
 
     /**
      * The pill to show: the one the URL names if this card has it; else the
-     * collector's best copy's variant (what the set grid prices the tile
-     * at); else the priciest pill; else the first.
+     * collector's best priced copy's variant; else, when they own copies but
+     * none is priced, the pill carrying the price the set grid tile shows;
+     * else (an unowned card) the priciest pill; else the first.
      *
      * @param  Collection<int, array{key: string, variant: ?string, label: string, count: int, snapshot: ?CardPriceSnapshot}>  $pills
      * @return array{key: string, variant: ?string, label: string, count: int, snapshot: ?CardPriceSnapshot}
      */
-    private function selectedPill(Collection $pills, ?CollectionItem $best): array
+    private function selectedPill(Collection $pills, ?CollectionItem $best, ?CardPriceSnapshot $tilePrice, bool $owned): array
     {
         $byKey = $pills->keyBy('key');
 
@@ -239,6 +242,14 @@ final class CardShow extends Component
 
             if ($own !== null) {
                 return $own;
+            }
+        }
+
+        if ($owned && $tilePrice !== null) {
+            $onTile = $pills->first(fn (array $pill): bool => $pill['snapshot'] !== null && $pill['snapshot']->is($tilePrice));
+
+            if ($onTile !== null) {
+                return $onTile;
             }
         }
 
