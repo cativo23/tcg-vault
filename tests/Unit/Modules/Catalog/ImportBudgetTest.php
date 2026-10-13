@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Catalog\Services\ImportBudget;
 use App\Modules\Catalog\Services\ImportBudgetResult;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Sleep;
 
 beforeEach(function () {
     Cache::flush();
@@ -68,6 +69,9 @@ test('the budget resets on the next UTC day', function () {
 });
 
 test('a held lock answers busy without consuming budget', function () {
+    // The lock wait sleeps; a fake sleep that moves the clock keeps it
+    // finite under frozen test time and instant.
+    Sleep::fake(syncWithCarbon: true);
     $lock = Cache::lock('import-budget:lock:1', 10);
     expect($lock->get())->toBeTrue();
 

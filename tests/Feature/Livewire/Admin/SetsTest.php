@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Sleep;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -615,6 +616,9 @@ test("another user's spent budget does not refuse this user", function () {
 test('a busy budget asks to try again without asking tcgdex', function () {
     $user = pickerUser();
     Queue::fake();
+    // The lock wait sleeps; a fake sleep that moves the clock keeps it
+    // finite under frozen test time and instant.
+    Sleep::fake(syncWithCarbon: true);
     $lock = Cache::lock('import-budget:lock:'.$user->id, 10);
     $lock->get();
     chooseCatalog();

@@ -13,8 +13,8 @@ use App\Modules\Catalog\Services\ImportBudgetResult;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
-use Livewire\Livewire;
 use Illuminate\Support\Sleep;
+use Livewire\Livewire;
 
 /** A signed-in collector who may use /admin. */
 function bannerUser(): User
