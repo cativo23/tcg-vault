@@ -2,16 +2,21 @@
 
 declare(strict_types=1);
 
+use App\Jobs\ImportSetJob;
 use App\Livewire\Admin\Sets;
 use App\Models\User;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CatalogUnavailableException;
+use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
+use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Database\Seeders\PermissionSeeder;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -280,4 +285,181 @@ test('the empty state offers the picker as well as adding a single card', functi
     pickerUser();
 
     Livewire::test(Sets::class)->assertSee('No sets yet')->assertSeeHtml('wire:click="openPicker"');
+});
+
+function chooseCatalog(?Closure $findSet = null): void
+{
+    test()->mock(CardCatalogProvider::class, function ($mock) use ($findSet) {
+        $mock->shouldReceive('listSets')->andReturn([pickerSet('me05', 'Pitch Black', 84)]);
+
+        if ($findSet === null) {
+            $mock->shouldNotReceive('findSet');
+        } else {
+            $findSet($mock);
+        }
+    });
+}
+
+test('choosing a set tcgdex has but we never stored creates it, queues the import and opens the grid', function () {
+    pickerUser();
+    Queue::fake();
+    chooseCatalog(fn ($mock) => $mock->shouldReceive('findSet')->once()->with('me05')->andReturn(
+        new SetSummaryData(tcgdexId: 'me05', name: 'Pitch Black', series: 'Mega Evolution', releasedOn: null, cardCount: 84, logoUrl: null),
+    ));
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->call('chooseSet', 'me05')
+        ->assertRedirect(route('admin.sets.show', ['setTcgdexId' => 'me05']));
+
+    expect(Set::where('tcgdex_id', 'me05')->exists())->toBeTrue();
+    Queue::assertPushed(ImportSetJob::class, fn (ImportSetJob $job) => $job->setTcgdexId === 'me05');
+});
+
+test('choosing a fully imported set opens the grid without queueing an import', function () {
+    pickerUser();
+    Queue::fake();
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 2]);
+    Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'One']);
+    Card::create(['tcgdex_id' => 'me05-002', 'set_id' => $set->id, 'local_id' => '002', 'name' => 'Two']);
+    chooseCatalog();
+
+    Livewire::test(Sets::class)
+        ->call('chooseSet', 'me05')
+        ->assertRedirect(route('admin.sets.show', ['setTcgdexId' => 'me05']));
+
+    Queue::assertNothingPushed();
+});
+
+test('choosing a partly imported set queues the import again', function (?int $cardCount) {
+    pickerUser();
+    Queue::fake();
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => $cardCount]);
+    Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'One']);
+    chooseCatalog();
+
+    Livewire::test(Sets::class)
+        ->call('chooseSet', 'me05')
+        ->assertRedirect(route('admin.sets.show', ['setTcgdexId' => 'me05']));
+
+    Queue::assertPushed(ImportSetJob::class, 1);
+})->with([
+    'short of the announced total' => [5],
+    'no announced total' => [null],
+    'a total of zero' => [0],
+]);
+
+test('a set tcgdex rejects shows an error, opens nothing and queues nothing', function (Closure $make) {
+    pickerUser();
+    Queue::fake();
+    $failure = $make();
+    chooseCatalog(fn ($mock) => $mock->shouldReceive('findSet')->once()->andThrow($failure));
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->call('chooseSet', 'me05')
+        ->assertNoRedirect()
+        ->assertSet('pickerOpen', true)
+        ->assertSee("That set isn't available from tcgdex.");
+
+    expect(Set::count())->toBe(0);
+    Queue::assertNothingPushed();
+})->with([
+    'not found' => [fn () => SetNotFoundException::forTcgdexId('me05')],
+    'invalid id' => [fn () => InvalidTcgdexIdException::forId('me05')],
+]);
+
+test('an id that is not in the tcgdex set list never reaches tcgdex', function (string $id) {
+    $user = pickerUser();
+    Queue::fake();
+    chooseCatalog();
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->call('chooseSet', $id)
+        ->assertNoRedirect()
+        ->assertSee("That set isn't available from tcgdex.");
+
+    expect(Set::count())->toBe(0)
+        ->and(RateLimiter::attempts('add-set:'.$user->id))->toBe(1);
+    Queue::assertNothingPushed();
+})->with([
+    'unknown id' => ['nope'],
+    'malformed shape' => ['../../etc/passwd'],
+    'empty' => [''],
+    'too long' => [str_repeat('a', 200)],
+]);
+
+test('an unreachable set list while choosing shows a retryable error and never redirects', function () {
+    pickerUser();
+    Queue::fake();
+    test()->mock(CardCatalogProvider::class, function ($mock) {
+        $mock->shouldReceive('listSets')->andThrow(CatalogUnavailableException::forSetListingBackoff());
+        $mock->shouldNotReceive('findSet');
+    });
+
+    Livewire::test(Sets::class)
+        ->set('pickerOpen', true)
+        ->call('chooseSet', 'me05')
+        ->assertNoRedirect()
+        ->assertSee("Couldn't reach the card catalog");
+
+    Queue::assertNothingPushed();
+});
+
+test('a catalog outage while choosing shows a retryable error and never redirects', function () {
+    pickerUser();
+    Queue::fake();
+    chooseCatalog(fn ($mock) => $mock->shouldReceive('findSet')->once()->andThrow(new RuntimeException('tcgdex down')));
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->call('chooseSet', 'me05')
+        ->assertNoRedirect()
+        ->assertSee("Couldn't reach the card catalog");
+
+    expect(Set::count())->toBe(0);
+    Queue::assertNothingPushed();
+});
+
+test('choosing is limited to ten sets a minute per user', function () {
+    $user = pickerUser();
+    Queue::fake();
+    for ($i = 0; $i < 10; $i++) {
+        RateLimiter::hit('add-set:'.$user->id, 60);
+    }
+    chooseCatalog();
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->call('chooseSet', 'me05')
+        ->assertNoRedirect()
+        ->assertSee('Slow down');
+
+    expect(Set::count())->toBe(0);
+    Queue::assertNothingPushed();
+});
+
+test("another user's choices do not count against this user's limit", function () {
+    $user = pickerUser();
+    $other = User::factory()->create();
+    Queue::fake();
+    for ($i = 0; $i < 10; $i++) {
+        RateLimiter::hit('add-set:'.$other->id, 60);
+    }
+    Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 0]);
+    chooseCatalog();
+
+    Livewire::test(Sets::class)->call('chooseSet', 'me05')->assertRedirect();
+
+    expect(RateLimiter::attempts('add-set:'.$user->id))->toBe(1);
+});
+
+test('a failed choice still counts against the limit', function () {
+    $user = pickerUser();
+    chooseCatalog(fn ($mock) => $mock->shouldReceive('findSet')->once()->andThrow(SetNotFoundException::forTcgdexId('me05')));
+
+    Livewire::test(Sets::class)->call('chooseSet', 'me05');
+
+    expect(RateLimiter::attempts('add-set:'.$user->id))->toBe(1);
 });

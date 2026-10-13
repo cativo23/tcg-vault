@@ -4,17 +4,23 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Jobs\ImportSetJob;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CatalogUnavailableException;
+use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
 use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
+use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\CatalogSyncService;
 use App\Modules\Collection\Models\Collection;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
+use Throwable;
 
 /**
  * The owner's sets: every set they hold at least one card from, with how
@@ -25,6 +31,8 @@ use Livewire\Component;
 #[Layout('layouts.app')]
 final class Sets extends Component
 {
+    public const ADD_SET_LIMIT_PER_MINUTE = 10;
+
     public bool $pickerOpen = false;
 
     public string $pickerSearch = '';
@@ -78,6 +86,77 @@ final class Sets extends Component
         ));
 
         return ['sets' => array_values($sets), 'failed' => false, 'total' => count($all)];
+    }
+
+    /**
+     * Picks a set: makes sure the local row exists, queues the card
+     * import unless every card is already stored, and opens the grid.
+     * The row is created here, before the redirect, because the grid
+     * route answers 404 for a set with no row. Any failure leaves the
+     * picker open with the reason and does not redirect. Every attempt
+     * counts toward the limit, failures included, since each can cost a
+     * tcgdex request. The id comes from the client, so it must be of the
+     * shape tcgdex ids have and present in the set list before the
+     * server makes any catalog request for it.
+     */
+    public function chooseSet(string $setTcgdexId): void
+    {
+        $key = 'add-set:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($key, self::ADD_SET_LIMIT_PER_MINUTE)) {
+            $this->pickerError = 'Slow down: too many sets in a minute. Try again shortly.';
+
+            return;
+        }
+
+        RateLimiter::hit($key, 60);
+        $this->pickerError = null;
+
+        if (preg_match('/\A[A-Za-z0-9.\-]{1,64}\z/', $setTcgdexId) !== 1) {
+            $this->pickerError = "That set isn't available from tcgdex.";
+
+            return;
+        }
+
+        try {
+            $listed = array_any(
+                app(CardCatalogProvider::class)->listSets(),
+                static fn (SetSummaryData $candidate): bool => $candidate->tcgdexId === $setTcgdexId,
+            );
+
+            if (! $listed) {
+                $this->pickerError = "That set isn't available from tcgdex.";
+
+                return;
+            }
+
+            $set = app(CatalogSyncService::class)->ensureSet($setTcgdexId);
+        } catch (SetNotFoundException|InvalidTcgdexIdException) {
+            $this->pickerError = "That set isn't available from tcgdex.";
+
+            return;
+        } catch (Throwable $e) {
+            report($e);
+            $this->pickerError = "Couldn't reach the card catalog. Try again.";
+
+            return;
+        }
+
+        // An unknown or zero announced total is not "complete": it matches
+        // CollectionService::syncCardAndQueueImport(), and the unique job
+        // makes a repeat dispatch a no-op.
+        if (! $this->isFullyImported($set)) {
+            ImportSetJob::dispatch($set->tcgdex_id);
+        }
+
+        $this->redirectRoute('admin.sets.show', ['setTcgdexId' => $set->tcgdex_id], navigate: true);
+    }
+
+    private function isFullyImported(Set $set): bool
+    {
+        $total = $set->card_count ?? 0;
+
+        return $total > 0 && $set->cards()->count() >= $total;
     }
 
     public function render(): View
