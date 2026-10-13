@@ -664,3 +664,37 @@ if (window.Alpine) {
 } else {
     document.addEventListener('alpine:init', registerSetGrid);
 }
+
+// Tab-key focus trap shared by every dialog (modal component, card editor,
+// set picker). Spread into a dialog's x-data and bind the Tab keys on the
+// dialog element. `visibleOnly` skips elements hidden with x-show, for a
+// dialog whose panels toggle without re-rendering.
+const focusTrapData = ({ visibleOnly = false } = {}) => ({
+    focusables() {
+        const selector = 'a, button, input:not([type=\'hidden\']), textarea, select, details, [tabindex]:not([tabindex=\'-1\'])';
+
+        return [...this.$el.querySelectorAll(selector)]
+            .filter((el) => !el.hasAttribute('disabled'))
+            .filter((el) => !visibleOnly || el.getClientRects().length);
+    },
+    firstFocusable() { return this.focusables()[0]; },
+    lastFocusable() { return this.focusables().slice(-1)[0]; },
+    nextFocusable() { return this.focusables()[this.nextFocusableIndex()] || this.firstFocusable(); },
+    prevFocusable() { return this.focusables()[this.prevFocusableIndex()] || this.lastFocusable(); },
+    nextFocusableIndex() { return (this.focusables().indexOf(document.activeElement) + 1) % (this.focusables().length + 1); },
+    prevFocusableIndex() { return Math.max(0, this.focusables().indexOf(document.activeElement)) - 1; },
+});
+
+// The modal component adds its own open state on top of the trap.
+const modalData = (show) => ({ show, ...focusTrapData({ visibleOnly: true }) });
+
+const registerFocusTrap = () => {
+    window.Alpine.data('focusTrap', focusTrapData);
+    window.Alpine.data('modal', modalData);
+};
+
+if (window.Alpine) {
+    registerFocusTrap();
+} else {
+    document.addEventListener('alpine:init', registerFocusTrap);
+}

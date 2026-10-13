@@ -5,22 +5,7 @@
             role="dialog"
             aria-modal="true"
             aria-labelledby="set-picker-title"
-            x-data="{
-                // Same focus-trap shape as the card editor dialog: the
-                // dialog is toggled by a Livewire property re-rendering
-                // its subtree, so the modal component's x-show state
-                // cannot be reused.
-                focusables() {
-                    let selector = 'a, button, input:not([type=\'hidden\']), textarea, select, [tabindex]:not([tabindex=\'-1\'])'
-                    return [...$el.querySelectorAll(selector)].filter(el => ! el.hasAttribute('disabled'))
-                },
-                firstFocusable() { return this.focusables()[0] },
-                lastFocusable() { return this.focusables().slice(-1)[0] },
-                nextFocusable() { return this.focusables()[this.nextFocusableIndex()] || this.firstFocusable() },
-                prevFocusable() { return this.focusables()[this.prevFocusableIndex()] || this.lastFocusable() },
-                nextFocusableIndex() { return (this.focusables().indexOf(document.activeElement) + 1) % (this.focusables().length + 1) },
-                prevFocusableIndex() { return Math.max(0, this.focusables().indexOf(document.activeElement)) - 1 },
-            }"
+            x-data="focusTrap"
             x-init="$nextTick(() => $refs.search?.focus())"
             x-on:keydown.tab.window.prevent="$event.shiftKey || nextFocusable().focus()"
             x-on:keydown.shift.tab.window.prevent="prevFocusable().focus()"

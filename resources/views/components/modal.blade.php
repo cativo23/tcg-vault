@@ -15,25 +15,7 @@ $maxWidth = [
 @endphp
 
 <div
-    x-data="{
-        show: @js($show),
-        focusables() {
-            // All focusable element types...
-            let selector = 'a, button, input:not([type=\'hidden\']), textarea, select, details, [tabindex]:not([tabindex=\'-1\'])'
-            return [...$el.querySelectorAll(selector)]
-                // All non-disabled elements...
-                .filter(el => ! el.hasAttribute('disabled'))
-                // ...that are actually rendered: a panel hidden with x-show
-                // would otherwise trap Tab on elements that can't take focus.
-                .filter(el => el.getClientRects().length)
-        },
-        firstFocusable() { return this.focusables()[0] },
-        lastFocusable() { return this.focusables().slice(-1)[0] },
-        nextFocusable() { return this.focusables()[this.nextFocusableIndex()] || this.firstFocusable() },
-        prevFocusable() { return this.focusables()[this.prevFocusableIndex()] || this.lastFocusable() },
-        nextFocusableIndex() { return (this.focusables().indexOf(document.activeElement) + 1) % (this.focusables().length + 1) },
-        prevFocusableIndex() { return Math.max(0, this.focusables().indexOf(document.activeElement)) -1 },
-    }"
+    x-data="modal(@js($show))"
     x-init="$watch('show', value => {
         if (value) {
             document.body.classList.add('overflow-y-hidden');
