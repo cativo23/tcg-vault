@@ -1594,3 +1594,25 @@ test('an unknown presentation falls back to the modal', function () {
 
     expect($html)->toContain('modal-in')->and($html)->not->toContain('nw-drawer');
 });
+
+test('adding variant rows too fast is refused with a friendly error and creates nothing', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+
+    for ($i = 0; $i < CardEditor::ADD_ROW_LIMIT_PER_MINUTE; $i++) {
+        RateLimiter::hit('card-editor-add-row:'.$user->id, 60);
+    }
+
+    Livewire::test(CardEditor::class)
+        ->call('openCardEditor', $card->id)
+        ->call('addVariantRow')
+        ->assertHasErrors('addVariantRow')
+        ->assertCount('editingRows', 1);
+
+    expect(CollectionItem::where('card_id', $card->id)->count())->toBe(1);
+});
