@@ -9,7 +9,6 @@ use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CatalogUnavailableException;
 use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
-use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CatalogSyncService;
@@ -78,10 +77,10 @@ final class Sets extends Component
     {
         try {
             $all = array_reverse(app(CardCatalogProvider::class)->listSets());
-        } catch (CatalogUnavailableException|MalformedCatalogResponseException $e) {
+        } catch (CatalogUnavailableException $e) {
             // The failure window answers every render with the same error;
             // only the attempt that started it is worth a report.
-            $backoff = $e instanceof CatalogUnavailableException && $e->isBackoff;
+            $backoff = $e->isBackoff;
 
             if (! $backoff) {
                 report($e);
