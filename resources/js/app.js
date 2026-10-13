@@ -273,6 +273,7 @@ const setGridData = () => ({
     toasts: [],
     nextToastId: 1,
     busy: new Set(),
+    busyNotes: new Map(),
     timers: new Map(),
     pending: [],
     unhook: null,
@@ -295,7 +296,11 @@ const setGridData = () => ({
             if (component.id !== this.$wire.id) return;
             this.busy.forEach((key) => {
                 const [cardId, ...rest] = key.split('|');
-                this.chipFor(cardId, rest.join('|'))?.setAttribute('aria-busy', 'true');
+                const chip = this.chipFor(cardId, rest.join('|'));
+                if (!chip) return;
+                chip.setAttribute('aria-busy', 'true');
+                const note = this.busyNotes.get(key);
+                if (note !== undefined && chip._note !== note) this.setNote(chip, note);
             });
             this.$root.querySelectorAll('[data-chip]').forEach((chip) => this.restoreNote(chip));
         });
@@ -534,13 +539,18 @@ const setGridData = () => ({
         let result;
         try {
             result = await this.call('quickAdd', [cardId, variant], {
-                onSlow: (stage) => this.setNote(chip, stage === 'stalled' ? STALLED_LABEL : SAVING_LABEL),
+                onSlow: (stage) => {
+                    const note = stage === 'stalled' ? STALLED_LABEL : SAVING_LABEL;
+                    this.busyNotes.set(key, note);
+                    this.setNote(this.chipFor(cardId, variant) ?? chip, note);
+                },
             });
         } catch (error) {
             this.fail(this.chipFor(cardId, variant) ?? chip);
             return;
         } finally {
             this.busy.delete(key);
+            this.busyNotes.delete(key);
             chip.removeAttribute('aria-busy');
             // A redraw while the request was in flight may have replaced the chip.
             this.chipFor(cardId, variant)?.removeAttribute('aria-busy');
