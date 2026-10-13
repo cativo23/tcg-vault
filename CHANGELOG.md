@@ -6,6 +6,34 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-13
+
+### Added
+
+- Variant pills on the public card page: one per print, with its price and
+  how many copies you hold. A tap switches the price, the chart, the market
+  reads and the copies to that print. The page opens on your priciest copy's
+  print (or the card's priciest print when you don't own it), and the choice
+  is kept in `?variant=`, so a shared link and the back button keep it.
+- Range buttons on the card page chart and the collection value chart on
+  Activity: 1M, 3M, 6M and 1Y, opening on 1M and kept in `?range=`. A chart
+  whose history starts after the range start says "History since …".
+
+### Changed
+
+- The card page loads only the recent price window, like every other screen;
+  its chart reads just the selected range.
+- The collection value chart samples long ranges (every 3rd day on 3M, every
+  7th on 6M and 1Y), prices each day exactly as the headline total does, and
+  is cached for the day until a price or a copy changes.
+- When TCGplayer prices both the normal and the holo print of a card on the
+  same day, the card's overall price now uses the normal print. Same-day
+  ties between sources no longer depend on the order rows were loaded in.
+
+### Deploy
+
+No migrations. Nothing to run after the deploy.
+
 ## [1.5.0] - 2026-10-12
 
 ### Added
