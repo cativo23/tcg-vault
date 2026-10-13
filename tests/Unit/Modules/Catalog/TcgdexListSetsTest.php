@@ -107,7 +107,7 @@ test('listSets serves the stale copy when tcgdex fails after the fresh copy expi
 
 test('listSets waits for a refresh already running and reads its result instead of fetching again', function () {
     Http::fake([SET_LIST_URL => Http::response(fakeSetListing(), 200)]);
-    $lock = Cache::lock('tcgdex:sets:v1:refresh', 10);
+    $lock = Cache::lock('tcgdex:sets:v2:refresh', 10);
     $lock->get();
     Sleep::fake();
     Sleep::whenFakingSleep(function () use ($lock) {
@@ -128,7 +128,7 @@ test('listSets serves the stale copy when a refresh by someone else does not fin
     $provider = setListingProvider();
     $provider->listSets();
     Cache::forget(TcgdexCardCatalogProvider::SET_LIST_FRESH_KEY);
-    Cache::lock('tcgdex:sets:v1:refresh', 30)->get();
+    Cache::lock('tcgdex:sets:v2:refresh', 30)->get();
     Sleep::fake(syncWithCarbon: true);
     $upstream['response'] = Http::response('boom', 500);
     Http::assertSentCount(1);
@@ -141,12 +141,25 @@ test('listSets serves the stale copy when a refresh by someone else does not fin
 
 test('listSets reports the outage when a refresh by someone else does not finish and nothing is cached', function () {
     Http::fake([SET_LIST_URL => Http::response(fakeSetListing(), 200)]);
-    Cache::lock('tcgdex:sets:v1:refresh', 30)->get();
+    Cache::lock('tcgdex:sets:v2:refresh', 30)->get();
     Sleep::fake(syncWithCarbon: true);
 
     expect(fn () => setListingProvider()->listSets())->toThrow(CatalogUnavailableException::class);
 
     Http::assertNothingSent();
+});
+
+test('listSets marks the wait-timeout outage as backoff because another request is fetching', function () {
+    Http::fake([SET_LIST_URL => Http::response(fakeSetListing(), 200)]);
+    Cache::lock('tcgdex:sets:v2:refresh', 30)->get();
+    Sleep::fake(syncWithCarbon: true);
+
+    try {
+        setListingProvider()->listSets();
+        $this->fail('Expected CatalogUnavailableException.');
+    } catch (CatalogUnavailableException $e) {
+        expect($e->isBackoff)->toBeTrue();
+    }
 });
 
 test('listSets throws CatalogUnavailableException when tcgdex is down and nothing is cached', function (Closure $fake) {
@@ -256,4 +269,27 @@ test('listSets treats a stale copy of the wrong shape as a miss instead of servi
     Cache::put(TcgdexCardCatalogProvider::SET_LIST_STALE_KEY, [['id' => 'base1']], 3600);
 
     expect(fn () => setListingProvider()->listSets())->toThrow(CatalogUnavailableException::class);
+});
+
+test('listSets treats a cached row with a logo off the tcgdex assets host as a miss', function () {
+    Http::fake([SET_LIST_URL => Http::response(fakeSetListing(), 200)]);
+    Cache::put(TcgdexCardCatalogProvider::SET_LIST_FRESH_KEY, [
+        ['id' => 'base1', 'name' => 'Base Set', 'cardCount' => 102, 'logoUrl' => 'https://evil.example/logo.png'],
+    ], 3600);
+
+    $sets = setListingProvider()->listSets();
+
+    expect($sets)->toHaveCount(3)
+        ->and($sets[0]->logoUrl)->toBe('https://assets.tcgdex.net/en/base/base1/logo.png');
+    Http::assertSentCount(1);
+});
+
+test('listSets keys its cached copies under v2 so a v1 payload is never read', function () {
+    Http::fake([SET_LIST_URL => Http::response(fakeSetListing(), 200)]);
+    Cache::put('tcgdex:set-list:v1:fresh', [
+        ['id' => 'old', 'name' => 'Old', 'cardCount' => 1, 'logoUrl' => 'https://evil.example/logo.png'],
+    ], 3600);
+
+    expect(setListingProvider()->listSets())->toHaveCount(3);
+    expect(TcgdexCardCatalogProvider::SET_LIST_FRESH_KEY)->toContain(':v2:');
 });

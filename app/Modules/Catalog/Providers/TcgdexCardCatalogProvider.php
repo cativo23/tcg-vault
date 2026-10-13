@@ -39,7 +39,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      */
     private const SET_LISTING_TIMEOUT = 20;
 
-    private const LOGO_URL_PREFIX = 'https://assets.tcgdex.net/';
+    public const LOGO_URL_PREFIX = 'https://assets.tcgdex.net/';
 
     /**
      * tcgdex returns every match for a name search in one response unless
@@ -50,18 +50,18 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      */
     private const SEARCH_PAGE_SIZE = 24;
 
-    // The "v1" segment is the cached row shape; bump it when the shape changes
+    // The "v2" segment is the cached row shape; bump it when the shape changes
     // so an old copy is never read as the new one.
-    public const SET_LIST_FRESH_KEY = 'tcgdex:set-list:v1:fresh';
+    public const SET_LIST_FRESH_KEY = 'tcgdex:set-list:v2:fresh';
 
-    public const SET_LIST_STALE_KEY = 'tcgdex:set-list:v1:stale';
+    public const SET_LIST_STALE_KEY = 'tcgdex:set-list:v2:stale';
 
-    private const SET_LIST_FAILED_KEY = 'tcgdex:set-list:v1:failed';
+    private const SET_LIST_FAILED_KEY = 'tcgdex:set-list:v2:failed';
 
     /** While tcgdex is failing, the stale copy is served as the fresh one for this long. */
     private const SET_LIST_BACKOFF_SECONDS = 300;
 
-    private const SET_LIST_REFRESH_LOCK = 'tcgdex:sets:v1:refresh';
+    private const SET_LIST_REFRESH_LOCK = 'tcgdex:sets:v2:refresh';
 
     // Longer than the request timeout, so a refresh that is still
     // fetching never loses its lock to a second one.
@@ -187,7 +187,9 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
                 return $this->hydrateSetList($stale);
             }
 
-            throw CatalogUnavailableException::forSetListing($e);
+            // Another request holds the refresh and is already fetching, so
+            // this wait is not a new outage for callers to report.
+            throw CatalogUnavailableException::forSetListingBackoff();
         }
     }
 
@@ -261,6 +263,7 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
                 || ! is_string($row['name'] ?? null)
                 || ! array_key_exists('cardCount', $row) || ! (is_int($row['cardCount']) || $row['cardCount'] === null)
                 || ! array_key_exists('logoUrl', $row) || ! (is_string($row['logoUrl']) || $row['logoUrl'] === null)
+                || (is_string($row['logoUrl']) && ! str_starts_with($row['logoUrl'], self::LOGO_URL_PREFIX))
             ) {
                 return null;
             }
