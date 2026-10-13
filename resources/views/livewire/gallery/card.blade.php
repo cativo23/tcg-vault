@@ -135,21 +135,31 @@
                     @endforeach
                 </div>
 
-                @if ($history->count() >= 2)
+                @if ($canChart)
                     <div class="nw-panel mt-3">
                         <div class="head">
                             <div>
-                                <div class="k">Price history · {{ $history->count() }} days</div>
-                                <div class="v">{{ Money::format($history->last()->market_minor, $history->last()->currency) }}
-                                    @php $first = $history->first()->market_minor; $lastM = $history->last()->market_minor; @endphp
-                                    <small class="{{ $lastM > $first ? 'up' : '' }}">{{ Money::signed($lastM - $first, $history->last()->currency) }} since {{ $history->first()->captured_on->format('j M') }}</small>
-                                </div>
+                                <div class="k">Price history · {{ $chartRange->label() }}</div>
+                                @if ($history->count() >= 2)
+                                    <div class="v">{{ Money::format($history->last()->market_minor, $history->last()->currency) }}
+                                        @php $first = $history->first()->market_minor; $lastM = $history->last()->market_minor; @endphp
+                                        <small class="{{ $lastM > $first ? 'up' : '' }}">{{ Money::signed($lastM - $first, $history->last()->currency) }} since {{ $history->first()->captured_on->format('j M') }}</small>
+                                    </div>
+                                @endif
                             </div>
+                            <x-range-pills :active="$chartRange" label="Price history range" />
                         </div>
                         <div class="nw-chart">
-                            <x-sparkline :points="$history->pluck('market_minor')->all()" :up="$lastM > $first"
-                                :dates="$history->pluck('captured_on')->all()" :currency="$history->last()->currency"
-                                :label="'Market price of '.$card->name.' over '.$history->count().' days, from '.Money::format($first, $history->first()->currency).' to '.Money::format($lastM, $history->last()->currency)" />
+                            @if ($history->count() >= 2)
+                                <x-sparkline :points="$history->pluck('market_minor')->all()" :up="$lastM > $first"
+                                    :dates="$history->pluck('captured_on')->all()" :currency="$history->last()->currency"
+                                    :label="'Market price of '.$card->name.' over '.$chartRange->label().', from '.Money::format($first, $history->first()->currency).' to '.Money::format($lastM, $history->last()->currency)" />
+                                @if ($historySince)
+                                    <p class="text-xs px-2" style="color: var(--muted)">History since <span class="mono">{{ $historySince->format('j M') }}</span></p>
+                                @endif
+                            @else
+                                <p class="text-sm px-2 py-3" style="color: var(--muted)">No price history in this range.</p>
+                            @endif
                         </div>
                     </div>
                 @endif

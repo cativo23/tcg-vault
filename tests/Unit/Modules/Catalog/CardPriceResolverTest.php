@@ -6,6 +6,8 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Support\ChartRange;
+use Illuminate\Support\Facades\Schema;
 
 test('prefers tcgplayer normal over everything else', function () {
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
@@ -183,41 +185,6 @@ test('resolveForVariant returns null when the card has no snapshot for that vari
     $resolved = (new CardPriceResolver)->resolveForVariant($card, 'reverse-holofoil');
 
     expect($resolved)->toBeNull();
-});
-
-test('historyFor returns the daily series for a SPECIFIC snapshot, not whatever resolve() would pick', function () {
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-051', 'set_id' => $set->id, 'local_id' => '051', 'name' => 'Inkay']);
-
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 11]);
-    $holoYesterday = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 18]);
-    $holoToday = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 20]);
-
-    $card->load('priceSnapshots');
-    $resolver = new CardPriceResolver;
-
-    $history = $resolver->historyFor($card, $holoToday);
-
-    expect($history->pluck('id')->all())->toBe([$holoYesterday->id, $holoToday->id]);
-});
-
-test('historyFor returns an empty collection for a null snapshot', function () {
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-
-    expect((new CardPriceResolver)->historyFor($card, null))->toBeEmpty();
-});
-
-test('history is historyFor applied to resolve()\'s own pick, unchanged', function () {
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1000]);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1200]);
-    $card->load('priceSnapshots');
-    $resolver = new CardPriceResolver;
-
-    expect($resolver->history($card)->pluck('id')->all())
-        ->toBe($resolver->historyFor($card, $resolver->resolve($card))->pluck('id')->all());
 });
 
 test('distinctSnapshotDates returns one entry per day, most recent first, regardless of how many source rows exist per day', function () {
@@ -434,4 +401,75 @@ test('hasCurrentMarketPrice treats exactly three days behind as current', functi
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1522]);
 
     expect((new CardPriceResolver)->hasCurrentMarketPrice($card, 'normal'))->toBeTrue();
+});
+
+test('historyIn returns the snapshot\'s own source and variant from the given day on, oldest first, without raw', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    foreach ([40, 20, 0] as $ago) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => 1000 - $ago, 'raw' => ['x' => 1]]);
+    }
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today()->subDays(10), 'currency' => 'USD', 'market_minor' => null]);
+    $resolved = CardPriceSnapshot::where('variant', 'holofoil')->whereDate('captured_on', today())->firstOrFail();
+
+    $history = (new CardPriceResolver)->historyIn($resolved, today()->subDays(30));
+
+    expect($history->pluck('market_minor')->all())->toBe([980, 1000])
+        ->and(array_key_exists('raw', $history->first()->getAttributes()))->toBeFalse();
+});
+
+test('historyIn is empty for a null snapshot', function () {
+    expect((new CardPriceResolver)->historyIn(null, today()))->toBeEmpty();
+});
+
+test('historyIn follows the snapshot it is given, not whatever resolve() would pick', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-051', 'set_id' => $set->id, 'local_id' => '051', 'name' => 'Inkay']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 11]);
+    $holoYesterday = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 18]);
+    $holoToday = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 20]);
+
+    $history = (new CardPriceResolver)->historyIn($holoToday, today()->subDays(30));
+
+    expect($history->pluck('id')->all())->toBe([$holoYesterday->id, $holoToday->id]);
+});
+
+test('historySpan counts the priced rows of the snapshot\'s own series and says where they start', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    foreach ([400, 20, 0] as $ago) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => 1000 + $ago]);
+    }
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today()->subDays(500), 'currency' => 'USD', 'market_minor' => null]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(900), 'currency' => 'USD', 'market_minor' => 5]);
+    $resolved = CardPriceSnapshot::where('variant', 'holofoil')->whereDate('captured_on', today())->firstOrFail();
+
+    $span = (new CardPriceResolver)->historySpan($resolved);
+
+    expect($span)->toBe(['priced' => 3, 'since' => today()->subDays(400)->toDateString()]);
+});
+
+test('historySpan is empty for a null snapshot', function () {
+    expect((new CardPriceResolver)->historySpan(null))->toBe(['priced' => 0, 'since' => null]);
+});
+
+test('historyIn includes the range\'s first day and excludes the day before it', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    foreach ([31, 30, 0] as $ago) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => 1000 + $ago]);
+    }
+    $resolved = CardPriceSnapshot::whereDate('captured_on', today())->firstOrFail();
+
+    $history = (new CardPriceResolver)->historyIn($resolved, ChartRange::OneMonth->start(today()));
+
+    expect($history->pluck('market_minor')->all())->toBe([1030, 1000]);
+});
+
+test('CHART_COLUMNS is every column of the table but raw', function () {
+    $expected = array_values(array_diff(Schema::getColumnListing('card_price_snapshots'), ['raw']));
+
+    expect(CardPriceSnapshot::CHART_COLUMNS)->toEqualCanonicalizing($expected);
 });

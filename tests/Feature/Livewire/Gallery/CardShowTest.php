@@ -8,10 +8,12 @@ use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 
 function seedCardPage(bool $public = true): array
@@ -396,10 +398,14 @@ test('the pills are buttons, only the selected one is pressed, and owned ones sh
         ->assertSee('×2')
         ->html();
 
-    expect(substr_count($html, 'class="nw-variant-pill on"'))->toBe(1)
-        ->and(substr_count($html, 'aria-pressed="true"'))->toBe(1)
-        ->and(substr_count($html, 'aria-pressed="false"'))->toBe(1)
-        ->and(substr_count($html, '<button type="button" wire:key="variant-'))->toBe(2);
+    // The price history panel's range pills share these classes, so count within the variant group only.
+    preg_match('/<div class="nw-variant-pills".*?<\/div>/s', $html, $group);
+    $pills = $group[0];
+
+    expect(substr_count($pills, 'class="nw-variant-pill on"'))->toBe(1)
+        ->and(substr_count($pills, 'aria-pressed="true"'))->toBe(1)
+        ->and(substr_count($pills, 'aria-pressed="false"'))->toBe(1)
+        ->and(substr_count($pills, '<button type="button" wire:key="variant-'))->toBe(2);
 });
 
 test('a graded copy of another variant keeps its badge when a pill filters it out of the list', function () {
@@ -458,4 +464,110 @@ test('a null or non-string variant never breaks the page', function () {
         ->call('selectVariant', ['x'])
         ->assertOk()
         ->assertViewHas('selected', fn ($s) => $s['key'] === 'normal');
+});
+
+/** A card page whose owned normal print is priced on each of $daysAgo; returns the Livewire test. */
+function rangedCardPage(array $daysAgo, array $query = []): Testable
+{
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    $card->update(['variants' => ['normal' => true, 'reverse' => true]]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    foreach ($daysAgo as $ago) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => 1000 + $ago]);
+    }
+
+    return Livewire::withQueryParams($query)->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116']);
+}
+
+test('the chart opens on one month', function () {
+    $page = rangedCardPage([0, 20, 60, 120, 400]);
+
+    expect($page->viewData('chartRange'))->toBe(ChartRange::OneMonth)
+        ->and($page->viewData('history')->pluck('market_minor')->all())->toBe([1020, 1000]);
+});
+
+test('each range charts its own days', function (string $range, int $points) {
+    expect(rangedCardPage([0, 20, 60, 120, 400], ['range' => $range])->viewData('history')->count())->toBe($points);
+})->with([['1m', 2], ['3m', 3], ['6m', 4], ['1y', 4]]);
+
+test('selectRange switches the chart and ignores anything that is not a string', function () {
+    $page = rangedCardPage([0, 20, 60]);
+
+    $page->call('selectRange', '6m');
+    expect($page->viewData('chartRange'))->toBe(ChartRange::SixMonths);
+
+    $page->call('selectRange', ['1y']);
+    expect($page->viewData('chartRange'))->toBe(ChartRange::SixMonths);
+});
+
+test('an unknown or array range opens one month with a 200', function () {
+    rangedCardPage([0, 20]);
+
+    $this->get('/carlos/me05/116?range=7d')->assertOk();
+    $this->get('/carlos/me05/116?range[]=1y')->assertOk();
+    expect(Livewire::withQueryParams(['range' => ['1y']])->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])->viewData('chartRange'))
+        ->toBe(ChartRange::OneMonth);
+});
+
+test('the range and the variant survive switching each other, and the chart follows the variant', function () {
+    $page = rangedCardPage([0, 20]);
+    foreach ([0, 10] as $ago) {
+        CardPriceSnapshot::create(['card_id' => $page->instance()->card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => 50 + $ago]);
+    }
+
+    $page->call('selectRange', '3m')->call('selectVariant', 'reverse-holofoil');
+    expect($page->get('range'))->toBe('3m')
+        ->and($page->viewData('history')->pluck('variant')->unique()->all())->toBe(['reverse-holofoil']);
+
+    $page->call('selectRange', '1y');
+    expect($page->get('variant'))->toBe('reverse-holofoil');
+});
+
+test('the range buttons render with aria-pressed on the active one', function () {
+    rangedCardPage([0, 20]);
+
+    $html = $this->get('/carlos/me05/116?range=3m')->assertOk()->getContent();
+
+    expect($html)->toMatch('/aria-pressed="true"[^>]*selectRange\(\'3m\'\)/s')
+        ->toMatch('/aria-pressed="false"[^>]*selectRange\(\'1m\'\)/s');
+});
+
+test('history since shows only when the price data starts after the range start', function () {
+    rangedCardPage([0, 20, 45]);
+
+    $this->get('/carlos/me05/116')->assertDontSee('History since');
+    $this->get('/carlos/me05/116?range=3m')->assertSee('History since')->assertSee(today()->subDays(45)->format('j M'));
+});
+
+test('a range with no two points keeps its buttons and says so', function () {
+    rangedCardPage([0, 45]);
+
+    $this->get('/carlos/me05/116')
+        ->assertSee('No price history in this range.')
+        ->assertSee("selectRange('3m')", false);
+});
+
+test('a card with a single priced row has no price history panel and no range buttons', function () {
+    rangedCardPage([0]);
+
+    $this->get('/carlos/me05/116')
+        ->assertOk()
+        ->assertDontSee('Price history')
+        ->assertDontSee("selectRange('3m')", false);
+});
+
+test('the range includes its first day and not the day before', function () {
+    $page = rangedCardPage([0, 30, 31]);
+
+    expect($page->viewData('history')->pluck('market_minor')->all())->toBe([1030, 1000]);
+});
+
+test('the range buttons are named by their visible text, with the group named once', function () {
+    rangedCardPage([0, 20]);
+
+    $this->get('/carlos/me05/116?range=3m')
+        ->assertSee('aria-label="Price history range"', false)
+        ->assertDontSee('aria-label="3 months"', false)
+        ->assertDontSee('aria-label="1 month"', false)
+        ->assertSee('over 3 months, from');
 });

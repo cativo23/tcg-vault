@@ -9,6 +9,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Support\CardVariants;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 final class CardPriceResolver
@@ -416,38 +417,66 @@ final class CardPriceResolver
     }
 
     /**
-     * The full daily series for the source/variant that resolve() picks
-     * today, oldest first — the input for a price-history sparkline.
-     * Empty when the card has never been priced.
+     * The daily series for a SPECIFIC snapshot's own source+variant over a
+     * date range — e.g. the headline variant a collector's copy resolves
+     * to, which resolve()'s card-level chain might not have picked — read
+     * from the database rather than the loaded relation: screens load only
+     * the recent window, and a chart can reach back further than that.
      *
      * @return Collection<int, CardPriceSnapshot>
      */
-    public function history(Card $card): Collection
-    {
-        return $this->historyFor($card, $this->resolve($card));
-    }
-
-    /**
-     * The daily series for a SPECIFIC snapshot's own source+variant —
-     * e.g. the headline variant a collector's copy resolves to
-     * (`Valuation::headlineSnapshot()`), which resolve()'s card-level
-     * chain might not have picked. A sparkline for one variant next to a
-     * headline price from another would be showing the wrong history.
-     *
-     * @return Collection<int, CardPriceSnapshot>
-     */
-    public function historyFor(Card $card, ?CardPriceSnapshot $resolved): Collection
+    public function historyIn(?CardPriceSnapshot $resolved, CarbonInterface $from): Collection
     {
         if ($resolved === null) {
             return collect();
         }
 
-        return $card->priceSnapshots
-            ->filter(fn (CardPriceSnapshot $s) => $s->source === $resolved->source
-                && $s->variant === $resolved->variant
-                && $s->market_minor !== null)
-            ->sortBy(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
-            ->values();
+        return $this->seriesOf($resolved)
+            ->select(CardPriceSnapshot::CHART_COLUMNS)
+            ->where('captured_on', '>=', $from->toDateString())
+            ->orderBy('captured_on')
+            ->get()
+            ->toBase();
+    }
+
+    /**
+     * How much priced history a snapshot's own series has, over all time:
+     * the number of priced days and the first of them. A series with fewer
+     * than two can never be charted, whatever the range.
+     *
+     * @return array{priced: int, since: ?string}
+     */
+    public function historySpan(?CardPriceSnapshot $resolved): array
+    {
+        if ($resolved === null) {
+            return ['priced' => 0, 'since' => null];
+        }
+
+        $row = $this->seriesOf($resolved)
+            ->toBase()
+            ->selectRaw('count(*) as priced, min(captured_on) as since')
+            ->first();
+
+        // An aggregate always returns one row; the null-safe reads only
+        // satisfy the type.
+        return [
+            'priced' => (int) ($row->priced ?? 0),
+            'since' => isset($row->since) ? Carbon::parse($row->since)->toDateString() : null,
+        ];
+    }
+
+    /**
+     * The priced rows of one snapshot's source and variant, unordered.
+     *
+     * @return Builder<CardPriceSnapshot>
+     */
+    private function seriesOf(CardPriceSnapshot $resolved): Builder
+    {
+        return CardPriceSnapshot::query()
+            ->where('card_id', $resolved->card_id)
+            ->where('source', $resolved->source)
+            ->where('variant', $resolved->variant)
+            ->whereNotNull('market_minor');
     }
 
     /**

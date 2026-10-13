@@ -19,8 +19,8 @@ use Livewire\Livewire;
 
 // Every listing screen walks a card's price history in PHP, and the sync
 // adds rows for every card every day — so they load only the recent
-// window, never the whole history. The card detail page loads it all but
-// prices from the same window; only its sparkline uses the rest.
+// window, never the whole history. The card detail page prices from the
+// same window and reads its chart through a range-bounded query.
 
 beforeEach(function () {
     $this->user = User::factory()->create(['username' => 'carlos']);
@@ -96,7 +96,7 @@ test('the CSV export prices a copy from recent history only', function () {
     expect($row['market_price'])->toBe('')->and($row['price_date'])->toBe('');
 });
 
-test('the card page prices a card from the same window as the listings, but charts its full history', function () {
+test('the card page prices a card from the same window as the listings, and charts the selected range', function () {
     // tcgplayer stopped listing this print before the window; cardmarket
     // still prices it. Without the window the card page would keep the old
     // tcgplayer USD figure while every listing shows the cardmarket EUR one.
@@ -112,8 +112,16 @@ test('the card page prices a card from the same window as the listings, but char
     expect($page->viewData('snapshot')->market_minor)->toBe(400)
         ->and($grid['snapshot']->market_minor)->toBe(400)
         ->and($page->viewData('marketReads')->pluck('source')->all())->toBe(['cardmarket'])
-        ->and($page->viewData('history')->pluck('market_minor')->all())->toBe([300, 400])
+        ->and($page->viewData('history')->pluck('market_minor')->all())->toBe([400])
         ->and($page->viewData('ownedTotal'))->toBe(['EUR' => 400]);
+
+    expect($page->set('range', '3m')->viewData('history')->pluck('market_minor')->all())->toBe([300, 400]);
+});
+
+test('the card page loads only recent price history', function () {
+    $page = Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116']);
+
+    expect(loadedDays($page->instance()->card))->toBe(expectedRecentDays());
 });
 
 test('a card priced only before the window says so instead of claiming it was never priced', function () {
@@ -131,4 +139,14 @@ test('a card never priced at all still says it has no price yet', function () {
     $this->get('/carlos/me05/116')
         ->assertOk()
         ->assertSee('No market price recorded for this card yet.');
+});
+
+test('a recent row without a price does not hide that older rows were priced', function () {
+    CardPriceSnapshot::query()->delete();
+    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => null]);
+    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(CardPriceSnapshot::RECENT_DAYS + 10), 'currency' => 'USD', 'market_minor' => 700]);
+
+    $this->get('/carlos/me05/116')
+        ->assertOk()
+        ->assertSee('No market price in the last '.CardPriceSnapshot::RECENT_DAYS.' days.');
 });

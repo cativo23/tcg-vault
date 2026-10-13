@@ -78,7 +78,7 @@ test('delta refuses to compare across a source, variant, or currency mismatch', 
     expect((new CardPriceResolver)->resolveDelta($card->fresh(['priceSnapshots'])))->toBeNull();
 });
 
-test('history returns the resolved source/variant series oldest first, one point per day', function () {
+test('historyIn returns the resolved source/variant series oldest first, one point per day', function () {
     $card = deltaCard();
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 800]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1000]);
@@ -86,7 +86,8 @@ test('history returns the resolved source/variant series oldest first, one point
     // a different variant must not pollute the series
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5]);
 
-    $history = (new CardPriceResolver)->history($card->fresh(['priceSnapshots']));
+    $resolver = new CardPriceResolver;
+    $history = $resolver->historyIn($resolver->resolve($card->fresh(['priceSnapshots'])), today()->subDays(30));
 
     expect($history->pluck('market_minor')->all())->toBe([800, 1000, 1240]);
 });

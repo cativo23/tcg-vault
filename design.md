@@ -209,6 +209,12 @@ Rules that came out of building it:
   copies but none is priced, on the variant the set tile prices; an unowned
   card opens on its priciest variant). Wraps on narrow
   screens; 44px on coarse pointers. Hidden when the card has one variant or none.
+- **Range pills** `.nw-range-pills > .nw-variant-pill` in the card page's price history
+  panel head — the variant pill's voice, tighter padding: `1M · 3M · 6M · 1Y`,
+  `.on` = filled ink with `aria-pressed="true"`. The selection lives in `?range=`
+  (absent = 1M). The panel head says the range ("Price history · 3 months"); when
+  the data starts after the range start, a muted "History since 15 Sep" sits under
+  the chart (date in `.mono`).
 
 ## Theming — dark mode (2026-09-16)
 Three-state precedence, same as every browser-native dark mode: no
