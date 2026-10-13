@@ -12,6 +12,7 @@ use App\Modules\Collection\Models\CollectionItem;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Cache\Events\KeyForgotten;
 use Illuminate\Cache\Events\KeyWritten;
+use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -829,6 +830,43 @@ test('undo writes its ledger after the database transaction has finished and bef
     expect($levels)->not->toBeEmpty()
         ->and(array_unique($levels))->toBe([$baseline])
         ->and(array_unique($lockFree))->toBe([false]);
+});
+
+test('undo refuses a row that moved to another card between the first lookup and the locked read', function () {
+    $user = setGridUser();
+    ['first' => $first, 'second' => $second] = setGridFixture();
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal')
+        ->call('quickAdd', $first->id, 'normal');
+    $item = CollectionItem::sole();
+
+    Event::listen(TransactionBeginning::class, function () use ($item, $second): void {
+        DB::table('collection_items')->where('id', $item->id)->update(['card_id' => $second->id]);
+    });
+
+    $component->call('undoQuickAdd', $item->id)
+        ->assertReturned(['ok' => false, 'message' => 'That copy is no longer in your collection.']);
+
+    expect($item->fresh()->quantity)->toBe(2);
+});
+
+test('undo refuses a row that left the set between the first lookup and the locked read', function () {
+    $user = setGridUser();
+    ['first' => $first] = setGridFixture();
+    $other = Card::create(['tcgdex_id' => 'zz01-001', 'set_id' => Set::create(['tcgdex_id' => 'zz01', 'name' => 'Elsewhere', 'series' => 'X', 'card_count' => 1])->id, 'local_id' => '001', 'name' => 'Stray']);
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal')
+        ->call('quickAdd', $first->id, 'normal');
+    $item = CollectionItem::sole();
+
+    Event::listen(TransactionBeginning::class, function () use ($item, $other): void {
+        DB::table('collection_items')->where('id', $item->id)->update(['card_id' => $other->id]);
+    });
+
+    $component->call('undoQuickAdd', $item->id)
+        ->assertReturned(['ok' => false, 'message' => 'That copy is no longer in your collection.']);
+
+    expect($item->fresh()->quantity)->toBe(2);
 });
 
 test('quickAdd and undoQuickAdd are renderless, so a tap does not re-render the grid', function () {

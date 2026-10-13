@@ -45,6 +45,10 @@ final class SetGrid extends Component
     // How long a quick add stays undoable; a little longer than the toast.
     public const UNDO_WINDOW_SECONDS = 30;
 
+    // How long the per-card lock is held at most: well past the longest a
+    // locked callback can run, so a slow one never loses it mid-way.
+    private const CARD_LOCK_TTL_SECONDS = 10;
+
     // How long a tap waits for the per-card lock; lowered by tests that hold it.
     public static int $lockWaitSeconds = 2;
 
@@ -211,7 +215,7 @@ final class SetGrid extends Component
     private function withCardLock(int $cardId, callable $callback): mixed
     {
         try {
-            return Cache::lock('quick-add:lock:'.auth()->id().':'.$cardId, 5)->block(self::$lockWaitSeconds, $callback);
+            return Cache::lock('quick-add:lock:'.auth()->id().':'.$cardId, self::CARD_LOCK_TTL_SECONDS)->block(self::$lockWaitSeconds, $callback);
         } catch (LockTimeoutException) {
             return null;
         }
@@ -254,10 +258,10 @@ final class SetGrid extends Component
         // commit consumes no unit, and before the lock is released, so the
         // next tap or undo of this card reads the updated ledger. A busy
         // answer costs no attempt.
-        $result = $this->withCardLock($found->card_id, function () use ($itemId, $key): array {
+        $result = $this->withCardLock($found->card_id, function () use ($itemId, $found, $key): array {
             RateLimiter::hit($key, 60);
 
-            $outcome = $this->decideUndo($itemId);
+            $outcome = $this->decideUndo($itemId, $found->card_id);
             $ledgerKey = $this->ledgerKey($itemId);
 
             if ($outcome['ledger'] === 'forget') {
@@ -278,11 +282,13 @@ final class SetGrid extends Component
      *
      * @return array{result: array{ok: bool, message?: string, variantCount?: int, cardTotal?: int}, ledger: 'forget'|array{pending: int, created: bool}|null}
      */
-    private function decideUndo(int $itemId): array
+    private function decideUndo(int $itemId, int $lockedCardId): array
     {
-        return DB::transaction(function () use ($itemId): array {
+        return DB::transaction(function () use ($itemId, $lockedCardId): array {
             $item = CollectionItem::query()
                 ->whereIn('collection_id', Collection::query()->pluck('id'))
+                ->whereIn('card_id', Card::query()->where('set_id', $this->set->id)->select('id'))
+                ->where('card_id', $lockedCardId)
                 ->with('card')
                 ->lockForUpdate()
                 ->find($itemId);
