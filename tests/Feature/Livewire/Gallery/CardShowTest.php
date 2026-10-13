@@ -401,3 +401,11 @@ test('a graded copy of another variant keeps its badge when a pill filters it ou
         ->assertViewHas('items', fn ($items) => $items->count() === 1)
         ->assertSee('PSA 10');
 });
+
+test('the variant lands in the URL as a new history entry so the back button returns to the previous one', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+
+    Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertSeeHtml('&quot;use&quot;:&quot;push&quot;');
+});

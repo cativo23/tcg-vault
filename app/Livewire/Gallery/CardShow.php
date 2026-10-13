@@ -47,7 +47,7 @@ final class CardShow extends Component
      *
      * @var string|array<array-key, mixed>
      */
-    #[Url(as: 'variant', except: '')]
+    #[Url(as: 'variant', except: '', history: true)]
     public string|array $variant = '';
 
     public function selectVariant(string $key): void
