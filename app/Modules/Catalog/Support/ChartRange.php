@@ -47,7 +47,12 @@ enum ChartRange: string
 
     public function button(): string
     {
-        return strtoupper($this->value);
+        return match ($this) {
+            self::OneMonth => '1M',
+            self::ThreeMonths => '3M',
+            self::SixMonths => '6M',
+            self::OneYear => '1Y',
+        };
     }
 
     public function label(): string
@@ -79,8 +84,11 @@ enum ChartRange: string
         $floor = max($this->start($today)->toDateString(), $earliest->toDateString());
         $days = [];
 
-        for ($day = CarbonImmutable::parse($today->toDateString()); $day->toDateString() >= $floor; $day = $day->subDays($this->stride())) {
+        $day = CarbonImmutable::parse($today->toDateString());
+
+        while ($day->toDateString() >= $floor) {
             $days[] = $day;
+            $day = $day->subDays($this->stride());
         }
 
         return array_reverse($days);

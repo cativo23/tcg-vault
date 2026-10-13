@@ -46,3 +46,13 @@ test('sample days never start before the earliest data day', function () {
 
     expect(array_map(fn ($d) => $d->toDateString(), $days))->toBe(['2026-09-22', '2026-09-29', '2026-10-06', '2026-10-13']);
 });
+
+test('an earliest day exactly on a stride point is the first sampled day', function () {
+    $days = ChartRange::ThreeMonths->sampleDays(CarbonImmutable::parse('2026-10-13'), CarbonImmutable::parse('2026-10-04'));
+
+    expect(array_map(fn (CarbonImmutable $d) => $d->toDateString(), $days))->toBe(['2026-10-04', '2026-10-07', '2026-10-10', '2026-10-13']);
+});
+
+test('an earliest day after today samples nothing', function () {
+    expect(ChartRange::OneMonth->sampleDays(CarbonImmutable::parse('2026-10-13'), CarbonImmutable::parse('2026-10-14')))->toBe([]);
+});
