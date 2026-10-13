@@ -23,6 +23,14 @@ final class CollectionService
     ) {}
 
     /**
+     * Set imports this instance skipped because the budget refused them,
+     * keyed by set tcgdex id.
+     *
+     * @var array<string, ImportBudgetResult>
+     */
+    private array $skippedSetImports = [];
+
+    /**
      * @param  array{variant?: ?string, condition: string, grade_company?: ?string, grade_value?: ?string, quantity?: int, notes?: ?string, photo_path?: ?string, needs_variant_review?: bool}  $itemData
      */
     public function addItem(Collection $collection, string $tcgdexCardId, array $itemData): CollectionItem
@@ -42,8 +50,11 @@ final class CollectionService
      * The set import is charged to $userId's daily ImportBudget. When the
      * budget refuses it (spent, or another request holds it) the card is
      * still synced and returned, so the add itself succeeds; only the set
-     * import is skipped, and the set page's import banner can start it
-     * later.
+     * import is skipped, and recorded in skippedSetImports() so the caller
+     * can tell the user. Nothing retries it on its own: a later add of a
+     * card from the set queues it once the budget allows (for a spent
+     * budget, the next UTC day), and for a set with an announced total the
+     * set page's Retry can too, once the import counts as stalled.
      */
     public function syncCardAndQueueImport(string $tcgdexCardId, int $userId): Card
     {
@@ -59,7 +70,11 @@ final class CollectionService
         $set = $card->set;
 
         if ($set->card_count === null || $set->cards()->count() < $set->card_count) {
-            if ($this->importBudget->tryStart($userId, $set->tcgdex_id) !== ImportBudgetResult::Started) {
+            $budget = $this->importBudget->tryStart($userId, $set->tcgdex_id);
+
+            if ($budget !== ImportBudgetResult::Started) {
+                $this->skippedSetImports[$set->tcgdex_id] = $budget;
+
                 return $card;
             }
 
@@ -73,6 +88,17 @@ final class CollectionService
         }
 
         return $card;
+    }
+
+    /**
+     * Set imports skipped by syncCardAndQueueImport() on this instance,
+     * keyed by set tcgdex id, with the budget's answer.
+     *
+     * @return array<string, ImportBudgetResult>
+     */
+    public function skippedSetImports(): array
+    {
+        return $this->skippedSetImports;
     }
 
     /**

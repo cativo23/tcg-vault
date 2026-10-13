@@ -16,9 +16,11 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use Spatie\LaravelData\DataCollection;
 
 test('addItem syncs the card into the Catalog and creates a CollectionItem', function () {
@@ -342,6 +344,50 @@ test('the set import is charged to the collection owner\'s daily budget', functi
     app(CollectionService::class)->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
 
     expect(app(ImportBudget::class)->tryStart($user->id, 'another'))->toBe(ImportBudgetResult::Exhausted);
+});
+
+test('a card added while another request holds the owner\'s import budget is still saved, without queueing the set import', function () {
+    Queue::fake();
+    // The budget's lock wait sleeps; a fake sleep that moves the clock
+    // keeps it finite and instant.
+    Sleep::fake(syncWithCarbon: true);
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $lock = Cache::lock("import-budget:lock:{$user->id}", 10);
+    expect($lock->get())->toBeTrue();
+
+    $this->app->instance(CardCatalogProvider::class, fakeMe05ProviderForBudget());
+
+    $service = app(CollectionService::class);
+    $item = $service->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
+
+    $lock->release();
+
+    expect($item->exists)->toBeTrue()
+        ->and($service->skippedSetImports())->toBe(['me05' => ImportBudgetResult::Busy]);
+    Queue::assertNotPushed(ImportSetJob::class);
+});
+
+test('a set import refused by the spent budget is reported back to the caller', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    for ($i = 1; $i <= ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
+    }
+
+    $this->app->instance(CardCatalogProvider::class, fakeMe05ProviderForBudget());
+
+    $service = app(CollectionService::class);
+    $service->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
+
+    expect($service->skippedSetImports())->toBe(['me05' => ImportBudgetResult::Exhausted]);
 });
 
 test('addItem stores needs_variant_review when passed true', function () {
