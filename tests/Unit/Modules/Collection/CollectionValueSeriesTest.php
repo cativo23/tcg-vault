@@ -124,8 +124,12 @@ test('long ranges sample every 3rd or 7th day back from today', function () {
     ($this->price)($a, 400, 100);
 
     $dates = fn (ChartRange $r) => ($this->series)($r)->pluck('date')->map->toDateString()->all();
+    $three = $dates(ChartRange::ThreeMonths);
 
-    expect($dates(ChartRange::ThreeMonths))->toBe(array_map(fn ($d) => $d->toDateString(), ChartRange::ThreeMonths->sampleDays(today(), today()->subDays(400))))
+    expect($three[0])->toBe(today()->subDays(90)->toDateString())
+        ->and(end($three))->toBe(today()->toDateString())
+        ->and(count($three))->toBe(31)
+        ->and(collect($three)->skip(1)->values()->map(fn ($d, $i) => (int) abs(CarbonImmutable::parse($d)->diffInDays(CarbonImmutable::parse($three[$i]))))->unique()->all())->toBe([3])
         ->and(count($dates(ChartRange::OneYear)))->toBe(53)
         ->and(count($dates(ChartRange::OneMonth)))->toBe(31);
 });
