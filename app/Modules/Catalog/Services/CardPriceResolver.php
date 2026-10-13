@@ -153,21 +153,20 @@ final class CardPriceResolver
     /**
      * The priority chain a price is picked from, best first.
      *
-     * Card-level (no variant): tcgplayer normal, then tcgplayer holofoil
-     * (a stale or unpriced normal falls through to a current holofoil, but
-     * two current prints resolve to the normal one), then
-     * cardmarket's 'default' row, then any base-print row. A special
-     * print (a Master Ball reverse, a stamped promo) is a separate
-     * product; pricing the card as a whole from one would show a plain
-     * copy at a price it doesn't fetch.
+     * Card-level (no variant): tcgplayer normal, then tcgplayer holofoil (a
+     * stale or unpriced normal falls through to a current holofoil, but two
+     * current prints resolve to the normal one), then cardmarket's
+     * 'default' row, then any base-print row. A special print (a Master
+     * Ball reverse, a stamped promo) is a separate product; pricing the
+     * card as a whole from one would show a plain copy at a price it
+     * doesn't fetch.
      *
      * For a variant: that exact variant on tcgplayer, then on any
      * marketplace, then a manual price for it (entered for a print tcgdex
      * doesn't price — current market data still beats it), then, for a
-     * normal or holo print whose own price froze, the card-wide
-     * 'default' row.
-     * Never another print's row otherwise: a variant with no price of its
-     * own resolves to nothing rather than to a different print's value.
+     * normal or holo print whose own price froze, the card-wide 'default'
+     * row. Never another print's row otherwise: a variant with no price of
+     * its own resolves to nothing rather than to a different print's value.
      *
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
      * @return array<int, Collection<int, CardPriceSnapshot>>
