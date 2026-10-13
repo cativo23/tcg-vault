@@ -73,8 +73,41 @@ test('after ten minutes with no new card the banner stops polling and offers a r
     $component->call('check')
         ->assertSee('3 cards missing')
         ->assertSee('Retry')
-        ->assertDontSeeHtml('wire:poll')
+        ->assertDontSeeHtml('wire:poll.5s')
         ->assertDontSee('Loading cards');
+});
+
+test('a stalled banner keeps a slow fallback poll so a recovering queue is noticed', function () {
+    bannerUser();
+    bannerSet(2);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+
+    $this->travel(11)->minutes();
+
+    $component->call('check')
+        ->assertSeeHtml('wire:poll.'.SetImportBanner::STALLED_POLL_SECONDS.'s="check"')
+        ->assertDontSeeHtml('wire:poll.5s');
+});
+
+test('cards arriving after a stall leave the stalled state, resume fast polling and redraw the grid', function () {
+    bannerUser();
+    $set = bannerSet(2);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+
+    $this->travel(11)->minutes();
+    $component->call('check')->assertSee('3 cards missing');
+
+    Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Card 3']);
+
+    $component->call('check')
+        ->assertDispatched('set-cards-changed')
+        ->assertSee('Loading cards…')
+        ->assertSeeHtml('<span class="mono">3/5</span>')
+        ->assertSeeHtml('wire:poll.5s')
+        ->assertDontSee('cards missing')
+        ->assertDontSee('Retry');
 });
 
 test('a card arriving resets the stall clock', function () {

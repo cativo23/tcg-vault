@@ -273,15 +273,31 @@ const setGridData = () => ({
         });
 
         // A render that was already in flight when a chip was tapped morphs
-        // the chip from server HTML that has no busy flag; put it back.
+        // the chip from server HTML that has neither the busy flag nor the
+        // "Still saving…" / "Not saved" note; put both back.
         this.unhookMorph = window.Livewire.hook('morphed', ({ component }) => {
             if (component.id !== this.$wire.id) return;
             this.busy.forEach((key) => this.$root.querySelector(`[data-chip="${key}"]`)?.setAttribute('aria-busy', 'true'));
+            this.$root.querySelectorAll('[data-chip]').forEach((chip) => this.restoreNote(chip));
         });
     },
 
+    restoreNote(chip) {
+        if (chip._note === undefined) return;
+        const labelEl = chip.querySelector('[data-chip-label]');
+        if (labelEl.textContent !== chip._note) {
+            chip._originalLabel = labelEl.textContent;
+            labelEl.textContent = chip._note;
+        }
+        if (chip._note === FAILED_LABEL) chip.classList.add('failed');
+    },
+
+    // Quiet enough to redraw: every quick call in flight has been waiting
+    // past the last escalation (STALLED_MS). Such a call keeps its chip
+    // blocked (the save may still happen), but must not hold redraws back
+    // for good, which a request the failure hook could not match would.
     idle() {
-        return this.busy.size === 0 && this.pending.length === 0;
+        return this.pending.every((entry) => entry.stuck);
     },
 
     // The import banner reports new cards: redraw the grid now when no quick
@@ -367,6 +383,7 @@ const setGridData = () => ({
             const entry = {
                 method,
                 params,
+                stuck: false,
                 dispose: () => {
                     settled = true;
                     timers.forEach(clearTimeout);
@@ -381,7 +398,11 @@ const setGridData = () => ({
 
             this.pending.push(entry);
             timers.push(setTimeout(() => onSlow?.('slow'), SLOW_MS));
-            timers.push(setTimeout(() => onSlow?.('stalled'), STALLED_MS));
+            timers.push(setTimeout(() => {
+                entry.stuck = true;
+                onSlow?.('stalled');
+                this.flushQueuedRefresh();
+            }, STALLED_MS));
 
             this.$wire[method](...params).then((value) => {
                 if (settled) return;

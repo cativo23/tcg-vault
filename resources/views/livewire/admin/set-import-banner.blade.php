@@ -3,7 +3,7 @@
      finish are read out. --}}
 <div role="status" aria-atomic="true">
     @if ($importing)
-        <div class="nw-import-banner {{ $stalled ? 'stalled' : '' }}" @if (! $stalled) wire:poll.5s="check" @endif>
+        <div class="nw-import-banner {{ $stalled ? 'stalled' : '' }}" wire:key="import-{{ $stalled ? 'stalled' : 'loading' }}" wire:poll.{{ $pollSeconds }}s="check">
             @if ($stalled)
                 <span>{{ $missingCount }} {{ Str::plural('card', $missingCount) }} missing</span>
                 <button type="button" wire:click="retryImport" wire:loading.attr="disabled" wire:target="retryImport" class="nw-btn-secondary">Retry</button>
