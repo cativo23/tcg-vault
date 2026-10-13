@@ -236,7 +236,8 @@ test('the card page opens on the priciest variant the collector owns', function 
     ownCopy($seed, 'normal', 2);
 
     Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
-        ->assertViewHas('selected', fn ($s) => $s['key'] === 'normal');
+        ->assertViewHas('selected', fn ($s) => $s['key'] === 'normal')
+        ->assertSee('Market value · Normal');
 });
 
 test('a card the collector does not own opens on its priciest variant', function () {
@@ -335,7 +336,8 @@ test('a card with a single variant shows no switcher', function () {
     ownCopy($seed, 'holofoil');
 
     Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
-        ->assertViewHas('switcher', false);
+        ->assertViewHas('switcher', false)
+        ->assertDontSeeHtml('nw-variant-pills');
 });
 
 test('a variant with no price says so instead of borrowing another', function () {
@@ -345,7 +347,8 @@ test('a variant with no price says so instead of borrowing another', function ()
 
     Livewire::withQueryParams(['variant' => 'holofoil'])
         ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
-        ->assertViewHas('snapshot', fn ($s) => $s === null);
+        ->assertViewHas('snapshot', fn ($s) => $s === null)
+        ->assertSee('No market price for Holofoil yet.');
 });
 
 test('the read a variant borrows its price from is listed among the market reads', function () {
@@ -369,4 +372,32 @@ test('a card with no catalog variants and one hand-entered print shows no switch
         ->assertViewHas('switcher', false)
         ->assertViewHas('items', fn ($items) => $items->count() === 1)
         ->assertSee('only copy');
+});
+
+test('the pills are buttons, only the selected one is pressed, and owned ones show their count', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal', 2);
+
+    $html = Livewire::withQueryParams(['variant' => 'normal'])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertSeeHtml('nw-variant-pills')
+        ->assertSeeHtml('aria-pressed="true"')
+        ->assertSee('×2')
+        ->html();
+
+    expect(substr_count($html, 'class="nw-variant-pill on"'))->toBe(1)
+        ->and(substr_count($html, 'aria-pressed="true"'))->toBe(1)
+        ->and(substr_count($html, 'aria-pressed="false"'))->toBe(1)
+        ->and(substr_count($html, '<button type="button" wire:key="variant-'))->toBe(2);
+});
+
+test('a graded copy of another variant keeps its badge when a pill filters it out of the list', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+    CollectionItem::create(['collection_id' => $seed['collection']->id, 'card_id' => $seed['card']->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'reverse-holofoil', 'condition' => 'NM', 'grade_company' => 'PSA', 'grade_value' => '10', 'quantity' => 1]);
+
+    Livewire::withQueryParams(['variant' => 'normal'])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('items', fn ($items) => $items->count() === 1)
+        ->assertSee('PSA 10');
 });

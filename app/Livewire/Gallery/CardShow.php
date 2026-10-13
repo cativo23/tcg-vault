@@ -168,6 +168,7 @@ final class CardShow extends Component
 
         return view('livewire.gallery.card', [
             'items' => $shownItems,
+            'gradedItems' => $items,
             'owned' => $items->isNotEmpty(),
             'quantity' => $quantity,
             'pills' => $pills,

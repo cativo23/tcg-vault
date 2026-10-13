@@ -1586,3 +1586,21 @@ body::before {
 .nw-pick-row .sub { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .nw-pick-row .tag { flex: none; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); border: 1px solid var(--hair); border-radius: 999px; padding: 2px 8px; }
 @media (pointer: coarse) { .nw-pick-row { min-height: 64px; } }
+
+/* ---- Card page: variant pills ------------------------------------------- */
+.nw-variant-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.nw-variant-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; font-weight: 600; line-height: 1; min-height: 32px; padding: 6px 12px;
+  border: 1px solid var(--hair); border-radius: var(--radius-pill);
+  background: transparent; color: var(--ink); cursor: pointer;
+  transition: background-color 180ms var(--ease), color 180ms var(--ease), border-color 180ms var(--ease);
+}
+.nw-variant-pill:hover { border-color: var(--ink); }
+.nw-variant-pill:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+.nw-variant-pill .p { font-size: 11px; color: var(--muted); letter-spacing: -.03em; }
+.nw-variant-pill .own { font-size: 10px; color: var(--muted); letter-spacing: -.03em; }
+.nw-variant-pill.on { background: var(--ink); border-color: var(--ink); color: var(--bone); }
+.nw-variant-pill.on .p,
+.nw-variant-pill.on .own { color: var(--bone); opacity: .75; }
+@media (pointer: coarse) { .nw-variant-pill { min-height: 44px; } }
