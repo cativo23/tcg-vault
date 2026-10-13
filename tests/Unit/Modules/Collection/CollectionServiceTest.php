@@ -10,6 +10,8 @@ use App\Modules\Catalog\Data\PriceEntryData;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\ImportBudget;
+use App\Modules\Catalog\Services\ImportBudgetResult;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionService;
@@ -269,6 +271,77 @@ test('adding the first card from a brand-new set dispatches ImportSetJob to back
     app(CollectionService::class)->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
 
     Queue::assertPushed(ImportSetJob::class, fn (ImportSetJob $job) => $job->setTcgdexId === 'me05');
+});
+
+function fakeMe05ProviderForBudget(): CardCatalogProvider
+{
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->once()->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'Special Illustration Rare', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: ['id' => 'me05-116'],
+    ));
+    $provider->shouldReceive('findSet')->with('me05')->once()->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: 84, logoUrl: null,
+    ));
+
+    return $provider;
+}
+
+test('a card from a new set past the owner\'s daily import budget is still added, without queueing the set import', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    for ($i = 1; $i <= ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
+    }
+
+    $this->app->instance(CardCatalogProvider::class, fakeMe05ProviderForBudget());
+
+    $item = app(CollectionService::class)->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
+
+    expect($item->exists)->toBeTrue();
+    Queue::assertNotPushed(ImportSetJob::class);
+});
+
+test('a set the owner already started today still queues its import once the budget is spent', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    app(ImportBudget::class)->tryStart($user->id, 'me05');
+    for ($i = 1; $i < ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
+    }
+
+    $this->app->instance(CardCatalogProvider::class, fakeMe05ProviderForBudget());
+
+    app(CollectionService::class)->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
+
+    Queue::assertPushed(ImportSetJob::class, fn (ImportSetJob $job) => $job->setTcgdexId === 'me05');
+});
+
+test('the set import is charged to the collection owner\'s daily budget', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    for ($i = 1; $i < ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
+    }
+
+    $this->app->instance(CardCatalogProvider::class, fakeMe05ProviderForBudget());
+
+    app(CollectionService::class)->addItem($collection, 'me05-116', ['condition' => 'NM', 'quantity' => 1]);
+
+    expect(app(ImportBudget::class)->tryStart($user->id, 'another'))->toBe(ImportBudgetResult::Exhausted);
 });
 
 test('addItem stores needs_variant_review when passed true', function () {

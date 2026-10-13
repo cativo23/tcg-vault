@@ -7,6 +7,8 @@ namespace App\Modules\Collection\Services;
 use App\Jobs\ImportSetJob;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CatalogSyncService;
+use App\Modules\Catalog\Services\ImportBudget;
+use App\Modules\Catalog\Services\ImportBudgetResult;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\QueryException;
@@ -15,14 +17,17 @@ use Illuminate\Support\Facades\Storage;
 
 final class CollectionService
 {
-    public function __construct(private readonly CatalogSyncService $catalogSyncService) {}
+    public function __construct(
+        private readonly CatalogSyncService $catalogSyncService,
+        private readonly ImportBudget $importBudget,
+    ) {}
 
     /**
      * @param  array{variant?: ?string, condition: string, grade_company?: ?string, grade_value?: ?string, quantity?: int, notes?: ?string, photo_path?: ?string, needs_variant_review?: bool}  $itemData
      */
     public function addItem(Collection $collection, string $tcgdexCardId, array $itemData): CollectionItem
     {
-        $card = $this->syncCardAndQueueImport($tcgdexCardId);
+        $card = $this->syncCardAndQueueImport($tcgdexCardId, $collection->user_id);
 
         return $this->addItemForCard($collection, $card, $itemData);
     }
@@ -33,8 +38,14 @@ final class CollectionService
      * SAME card in one request can sync once and reuse the result via
      * addItemForCard(), instead of re-syncing (and re-dispatching
      * ImportSetJob) once per item.
+     *
+     * The set import is charged to $userId's daily ImportBudget. When the
+     * budget refuses it (spent, or another request holds it) the card is
+     * still synced and returned, so the add itself succeeds; only the set
+     * import is skipped, and the set page's import banner can start it
+     * later.
      */
-    public function syncCardAndQueueImport(string $tcgdexCardId): Card
+    public function syncCardAndQueueImport(string $tcgdexCardId, int $userId): Card
     {
         $card = $this->catalogSyncService->syncCard($tcgdexCardId);
 
@@ -48,6 +59,10 @@ final class CollectionService
         $set = $card->set;
 
         if ($set->card_count === null || $set->cards()->count() < $set->card_count) {
+            if ($this->importBudget->tryStart($userId, $set->tcgdex_id) !== ImportBudgetResult::Started) {
+                return $card;
+            }
+
             // afterCommit(): a caller may dispatch this from inside its own
             // DB::transaction() (e.g. one wrapping several CollectionItem
             // inserts) — this project's queue config has after_commit =>

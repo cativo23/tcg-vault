@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Jobs\ImportSetJob;
 use App\Livewire\Admin\Import;
 use App\Models\User;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
@@ -11,6 +12,7 @@ use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\ImportBudget;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Support\Facades\Queue;
@@ -196,4 +198,31 @@ test('a card the catalog rejects during confirmation does not abort the rest of 
 
     $collection = Collection::where('user_id', $user->id)->firstOrFail();
     expect($collection->items()->count())->toBe(1);
+});
+
+test('an import spanning more new sets than the daily budget adds every card but queues only the budgeted set imports', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $this->app->instance(CardCatalogProvider::class, fakeCatalogProviderForImport());
+
+    $setCount = ImportBudget::DAILY_LIMIT + 2;
+    $map = [];
+    $lines = [];
+    for ($i = 1; $i <= $setCount; $i++) {
+        $map["S{$i}"] = "s{$i}";
+        $lines[] = "1 Card {$i} [S{$i}] 001/100";
+    }
+    config(['tcgvault.tcgplayer_set_map' => $map]);
+
+    $component = Livewire::test(Import::class)
+        ->set('text', implode("\n", $lines))
+        ->call('preview')
+        ->assertSet('matched', fn (array $matched) => count($matched) === $setCount);
+
+    while ($component->get('matched') !== []) {
+        $component->call('confirm');
+    }
+
+    expect(CollectionItem::count())->toBe($setCount);
+    Queue::assertPushed(ImportSetJob::class, ImportBudget::DAILY_LIMIT);
 });

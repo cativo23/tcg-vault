@@ -406,7 +406,7 @@ final class AddCollectionItem extends Component
             // inside the CollectionItem transaction would mean a later row's
             // failure rolls back that GLOBAL, shared catalog data too, not
             // just this submission's own items.
-            $card = $service->syncCardAndQueueImport($this->selectedTcgdexId);
+            $card = $service->syncCardAndQueueImport($this->selectedTcgdexId, $collection->user_id);
 
             DB::transaction(function () use ($service, $collection, $card, &$storedPhotoPaths): void {
                 foreach ($this->rows as $row) {

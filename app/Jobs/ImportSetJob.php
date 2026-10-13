@@ -24,7 +24,8 @@ use Illuminate\Queue\SerializesModels;
  * Dispatched from CollectionService::syncCardAndQueueImport() — called by
  * both addItem() and AddCollectionItem::save() (which syncs once per
  * submission rather than once per row) — whenever the just-synced card's
- * set isn't fully imported yet (cards()->count() < card_count).
+ * set isn't fully imported yet (cards()->count() < card_count) and the
+ * owner's daily ImportBudget allows it.
  * Idempotent: only cards missing locally are queued, and
  * SyncCardPricingJob is updateOrCreate-based, so re-running this for a
  * set that's already complete queues nothing and never duplicates rows.

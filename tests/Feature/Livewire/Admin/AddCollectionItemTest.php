@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Jobs\ImportSetJob;
 use App\Livewire\Admin\AddCollectionItem;
 use App\Models\User;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
@@ -12,6 +13,7 @@ use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\ImportBudget;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Http\UploadedFile;
@@ -1163,4 +1165,46 @@ test('the add form refuses a hand-entered print outside tcgdex\'s vocabulary', f
         ->call('useCustomVariant', 0)
         ->assertHasErrors('customPrint.0')
         ->assertSet('rows.0.variant', null);
+});
+
+function fakeDarkraiProviderForAdd(): CardCatalogProvider
+{
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('searchCardsByName')->andReturn([
+        new CardSummaryData(tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', imageUrl: null),
+    ]);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex',
+        rarity: 'SIR', variants: [], officialImageUrl: null,
+        prices: new DataCollection(PriceEntryData::class, []), raw: [],
+    ));
+    $provider->shouldReceive('findSet')->with('me05')->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: 84, logoUrl: null,
+    ));
+
+    return $provider;
+}
+
+test('adding a card from a new set past the daily import budget saves the card without queueing the set import', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    for ($i = 1; $i <= ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
+    }
+
+    $this->app->instance(CardCatalogProvider::class, fakeDarkraiProviderForAdd());
+
+    Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->set('search', 'Darkrai')
+        ->call('runSearch')
+        ->call('selectCard', 'me05-116')
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 1)
+        ->call('save')
+        ->assertRedirect();
+
+    expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeTrue();
+    Queue::assertNotPushed(ImportSetJob::class);
 });

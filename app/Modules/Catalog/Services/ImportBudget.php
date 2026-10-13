@@ -8,10 +8,12 @@ use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * The one daily budget for set imports a user can start by hand. Every
- * started import fans out per-card jobs on the shared, rate-limited
- * imports queue, so each path that starts one (choosing a set, retrying
- * a stalled one) draws from this budget and one account cannot delay
+ * The one daily budget for set imports a user can start. Every started
+ * import fans out per-card jobs on the shared, rate-limited imports
+ * queue, so every path that queues one draws from this budget: choosing
+ * a set, retrying a stalled one, and adding a card from a set that is
+ * not fully stored yet (single add and TCGplayer import, through
+ * CollectionService::syncCardAndQueueImport()). One account cannot delay
  * everyone's imports.
  *
  * A set counts once per user and UTC day: starting it again the same day
