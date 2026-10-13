@@ -1,4 +1,6 @@
-<div class="nw-wrap py-10">
+<div class="nw-wrap py-10" x-data="{ opener: null }"
+     x-on:click="opener = $event.target.closest('[data-set-picker-trigger]') ?? opener"
+     x-on:set-picker-closed.window="$nextTick(() => (opener?.isConnected ? opener : document.getElementById('add-set-trigger'))?.focus())">
     <section class="nw-masthead">
         <div class="nw-eyebrow">
             <a href="{{ route('admin.collection.index') }}" wire:navigate>Collection</a>
@@ -7,6 +9,10 @@
         </div>
         <div class="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
             <h1 class="nw-display nw-h1 nw-h1--md">My sets</h1>
+            <button type="button" id="add-set-trigger" data-set-picker-trigger class="nw-btn-primary" wire:click="openPicker" wire:loading.attr="aria-busy" wire:target="openPicker" aria-haspopup="dialog">
+                <span wire:loading.remove wire:target="openPicker">Add a set</span>
+                <span wire:loading wire:target="openPicker">Loading…</span>
+            </button>
         </div>
     </section>
 
@@ -15,7 +21,7 @@
             <div class="t">No sets yet</div>
             <p>
                 Sets appear here once you own a card from them.
-                <a href="{{ route('admin.collection.add') }}" wire:navigate class="nw-inline-link">Add a card</a> to start one.
+                <a href="{{ route('admin.collection.add') }}" wire:navigate class="nw-inline-link">Add a card</a> to start one, or <button type="button" data-set-picker-trigger wire:click="openPicker" class="nw-inline-link">start a whole set</button>.
             </p>
         </div>
     @else
@@ -31,4 +37,6 @@
             @endforeach
         </div>
     @endif
+
+    @include('livewire.admin.partials.set-picker')
 </div>

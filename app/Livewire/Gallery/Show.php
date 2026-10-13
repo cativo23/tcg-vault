@@ -178,7 +178,7 @@ final class Show extends Component
                 $this->set->series ? " ({$this->set->series})" : '',
                 $name,
             ),
-            'ogImage' => $mostValuable['card']->official_image_url ?? $this->set->logo_url,
+            'ogImage' => $mostValuable['card']->official_image_url ?? $this->set->safe_logo_url,
             'isOwner' => $this->isOwnerViewing(),
         ]);
     }

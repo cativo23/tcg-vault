@@ -10,13 +10,18 @@ use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Data\PriceEntryData;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Exceptions\CatalogUnavailableException;
 use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
 use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Support\CardVariants;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Http\Client\HttpClientException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Spatie\LaravelData\DataCollection;
 
 final class TcgdexCardCatalogProvider implements CardCatalogProvider
@@ -34,6 +39,8 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      */
     private const SET_LISTING_TIMEOUT = 20;
 
+    public const LOGO_URL_PREFIX = 'https://assets.tcgdex.net/';
+
     /**
      * tcgdex returns every match for a name search in one response unless
      * pagination:page/pagination:itemsPerPage are sent (both required —
@@ -42,6 +49,33 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      * would otherwise render as an unbounded wall of result tiles.
      */
     private const SEARCH_PAGE_SIZE = 24;
+
+    // The "v2" segment is the cached row shape; bump it when the shape changes
+    // so an old copy is never read as the new one.
+    public const SET_LIST_FRESH_KEY = 'tcgdex:set-list:v2:fresh';
+
+    public const SET_LIST_STALE_KEY = 'tcgdex:set-list:v2:stale';
+
+    private const SET_LIST_FAILED_KEY = 'tcgdex:set-list:v2:failed';
+
+    /** While tcgdex is failing, the stale copy is served as the fresh one for this long. */
+    private const SET_LIST_BACKOFF_SECONDS = 300;
+
+    private const SET_LIST_REFRESH_LOCK = 'tcgdex:sets:v2:refresh';
+
+    // Longer than the request timeout, so a refresh that is still
+    // fetching never loses its lock to a second one.
+    private const SET_LIST_REFRESH_LOCK_SECONDS = 10;
+
+    private const SET_LIST_REFRESH_WAIT_SECONDS = 5;
+
+    /** With no copy to fall back on, a failure is remembered for this long. */
+    private const SET_LIST_FAILURE_MEMORY_SECONDS = 60;
+
+    private const SET_LIST_FRESH_SECONDS = 86400;
+
+    /** How long the last good list is kept as a fallback for an outage. */
+    private const SET_LIST_STALE_SECONDS = 2592000;
 
     public function __construct(private readonly string $baseUrl) {}
 
@@ -124,13 +158,198 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             // undercounts what's actually collectible and would let a
             // collector hit "100%" while missing every secret rare.
             cardCount: $json['cardCount']['total'] ?? $json['cardCount']['official'] ?? null,
-            logoUrl: isset($json['logo']) ? "{$json['logo']}.png" : null,
+            logoUrl: $this->logoUrl($json['logo'] ?? null),
             // The collector shorthand printed on the card itself and used
             // across the hobby (e.g. "ASC" for Ascended Heroes) — not every
             // set has one (older/promo sets), so this stays null rather
             // than falling back to a made-up abbreviation.
             abbreviation: $json['abbreviation']['official'] ?? null,
         );
+    }
+
+    public function listSets(): array
+    {
+        $fresh = $this->cachedSetRows(self::SET_LIST_FRESH_KEY);
+
+        if ($fresh !== null) {
+            return $this->hydrateSetList($fresh);
+        }
+
+        // Concurrent misses queue behind one fetch instead of each calling
+        // tcgdex; whoever waits reads the copy the first one stored.
+        try {
+            return Cache::lock(self::SET_LIST_REFRESH_LOCK, self::SET_LIST_REFRESH_LOCK_SECONDS)
+                ->block(self::SET_LIST_REFRESH_WAIT_SECONDS, fn (): array => $this->refreshSetList());
+        } catch (LockTimeoutException $e) {
+            $stale = $this->cachedSetRows(self::SET_LIST_STALE_KEY);
+
+            if ($stale !== null) {
+                return $this->hydrateSetList($stale);
+            }
+
+            // Another request holds the refresh and is already fetching, so
+            // this wait is not a new outage for callers to report.
+            throw CatalogUnavailableException::forSetListingBackoff();
+        }
+    }
+
+    /**
+     * Runs under the refresh lock: re-checks the fresh copy a competing
+     * refresh may have stored, then fetches and caches the list.
+     *
+     * @return array<int, SetSummaryData>
+     */
+    private function refreshSetList(): array
+    {
+        $fresh = $this->cachedSetRows(self::SET_LIST_FRESH_KEY);
+
+        if ($fresh !== null) {
+            return $this->hydrateSetList($fresh);
+        }
+
+        // The failure marker is only written when no stale copy existed, and
+        // a stale copy is only written together with a fresh one, so there
+        // is nothing to serve while the marker is set.
+        if (Cache::has(self::SET_LIST_FAILED_KEY)) {
+            throw CatalogUnavailableException::forSetListingBackoff();
+        }
+
+        try {
+            $rows = $this->fetchSetList();
+        } catch (HttpClientException|MalformedCatalogResponseException $e) {
+            $stale = $this->cachedSetRows(self::SET_LIST_STALE_KEY);
+
+            if ($stale !== null) {
+                Log::warning('tcgdex set list unavailable, serving the cached copy.', ['exception' => $e::class]);
+
+                // Serve it as the fresh copy for a short while so every
+                // page load does not wait out the request timeout again.
+                Cache::put(self::SET_LIST_FRESH_KEY, $stale, self::SET_LIST_BACKOFF_SECONDS);
+
+                return $this->hydrateSetList($stale);
+            }
+
+            Cache::put(self::SET_LIST_FAILED_KEY, true, self::SET_LIST_FAILURE_MEMORY_SECONDS);
+
+            // One type for callers whichever way the attempt failed; the cause
+            // stays on the exception chain.
+            throw CatalogUnavailableException::forSetListing($e);
+        }
+
+        Cache::put(self::SET_LIST_FRESH_KEY, $rows, self::SET_LIST_FRESH_SECONDS);
+        Cache::put(self::SET_LIST_STALE_KEY, $rows, self::SET_LIST_STALE_SECONDS);
+
+        return $this->hydrateSetList($rows);
+    }
+
+    /**
+     * The cached rows under a key, or null when there is no copy or the
+     * stored value does not have the expected shape (treated as a miss).
+     *
+     * @return list<array{id: string, name: string, cardCount: ?int, logoUrl: ?string}>|null
+     */
+    private function cachedSetRows(string $key): ?array
+    {
+        $rows = Cache::get($key);
+
+        if (! is_array($rows) || $rows === [] || ! array_is_list($rows)) {
+            return null;
+        }
+
+        foreach ($rows as $row) {
+            if (
+                ! is_array($row)
+                || ! is_string($row['id'] ?? null)
+                || ! is_string($row['name'] ?? null)
+                || ! array_key_exists('cardCount', $row) || ! (is_int($row['cardCount']) || $row['cardCount'] === null)
+                || ! array_key_exists('logoUrl', $row) || ! (is_string($row['logoUrl']) || $row['logoUrl'] === null)
+                || (is_string($row['logoUrl']) && ! str_starts_with($row['logoUrl'], self::LOGO_URL_PREFIX))
+            ) {
+                return null;
+            }
+        }
+
+        /** @var list<array{id: string, name: string, cardCount: ?int, logoUrl: ?string}> $rows */
+        return $rows;
+    }
+
+    /**
+     * The listing reduced to what the picker uses, in a shape that
+     * serializes into any cache store.
+     *
+     * @return list<array{id: string, name: string, cardCount: ?int, logoUrl: ?string}>
+     */
+    private function fetchSetList(): array
+    {
+        $response = $this->http(self::REQUEST_TIMEOUT)->get('sets');
+        $response->throw();
+
+        $json = $response->json();
+
+        if (! is_array($json) || ! array_is_list($json)) {
+            throw MalformedCatalogResponseException::forSetListing('response body is not a JSON array.');
+        }
+
+        $rows = [];
+
+        foreach ($json as $entry) {
+            if (! is_array($entry) || ! is_string($entry['id'] ?? null) || ! is_string($entry['name'] ?? null)) {
+                continue;
+            }
+
+            $counts = is_array($entry['cardCount'] ?? null) ? $entry['cardCount'] : [];
+            $total = $counts['total'] ?? $counts['official'] ?? null;
+
+            $rows[] = [
+                'id' => $entry['id'],
+                'name' => $entry['name'],
+                'cardCount' => is_int($total) ? $total : null,
+                'logoUrl' => $this->logoUrl($entry['logo'] ?? null),
+            ];
+        }
+
+        if ($rows === []) {
+            throw MalformedCatalogResponseException::forSetListing('no usable set entries.');
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The png logo url for tcgdex's extension-less logo path, or null when
+     * it is missing or not on tcgdex's own assets host: the value ends up
+     * in an image src and a stored column, so a foreign host or scheme is
+     * never passed along.
+     */
+    private function logoUrl(mixed $logo): ?string
+    {
+        if (! is_string($logo) || ! str_starts_with($logo, self::LOGO_URL_PREFIX)) {
+            return null;
+        }
+
+        return "{$logo}.png";
+    }
+
+    /**
+     * @param  list<array{id: string, name: string, cardCount: ?int, logoUrl: ?string}>  $rows
+     * @return array<int, SetSummaryData>
+     */
+    private function hydrateSetList(array $rows): array
+    {
+        $sets = [];
+
+        foreach ($rows as $row) {
+            $sets[] = new SetSummaryData(
+                tcgdexId: $row['id'],
+                name: $row['name'],
+                series: null,
+                releasedOn: null,
+                cardCount: $row['cardCount'],
+                logoUrl: $row['logoUrl'],
+            );
+        }
+
+        return $sets;
     }
 
     public function listSetCardIds(string $setTcgdexId): array

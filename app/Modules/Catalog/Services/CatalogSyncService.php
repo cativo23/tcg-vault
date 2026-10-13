@@ -103,6 +103,18 @@ final class CatalogSyncService
         return ($this->imageFallback ?? app(CardImageFallback::class))->resolve($set->tcgdex_id, $cardDetail->localId);
     }
 
+    /**
+     * The local row for a set, created from tcgdex when it is missing.
+     * A set already stored is returned as is: no request, so choosing a
+     * set the collector already has works while tcgdex is down. A missing
+     * one costs a single findSet() call and leaves nothing behind when
+     * that call fails.
+     */
+    public function ensureSet(string $setTcgdexId): Set
+    {
+        return Set::where('tcgdex_id', $setTcgdexId)->first() ?? $this->syncSet($setTcgdexId);
+    }
+
     private function syncSet(string $setTcgdexId): Set
     {
         return $this->syncedSets[$setTcgdexId] ??= $this->doSyncSet($setTcgdexId);

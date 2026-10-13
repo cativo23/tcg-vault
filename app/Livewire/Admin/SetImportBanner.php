@@ -6,6 +6,8 @@ namespace App\Livewire\Admin;
 
 use App\Jobs\ImportSetJob;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\ImportBudget;
+use App\Modules\Catalog\Services\ImportBudgetResult;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\RateLimiter;
@@ -119,7 +121,8 @@ final class SetImportBanner extends Component
      * Re-dispatches the (unique) import, but only for a stalled one: every
      * accepted retry fans out per-card sync jobs, so a client cannot ask
      * while cards are still arriving. One retry per user and set per stall
-     * window.
+     * window, and each retry draws from the user's daily ImportBudget (free
+     * for a set the user already started today).
      */
     public function retryImport(): void
     {
@@ -131,6 +134,16 @@ final class SetImportBanner extends Component
 
         if (RateLimiter::tooManyAttempts($key, 1)) {
             $this->notice = 'Already retried: give it a few minutes.';
+
+            return;
+        }
+
+        $budget = app(ImportBudget::class)->tryStart((int) auth()->id(), $this->setTcgdexId);
+
+        if ($budget !== ImportBudgetResult::Started) {
+            $this->notice = $budget === ImportBudgetResult::Busy
+                ? 'Another import is being started — try again.'
+                : 'Daily import limit reached — try again tomorrow.';
 
             return;
         }

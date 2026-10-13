@@ -26,6 +26,11 @@ final class MalformedCatalogResponseException extends RuntimeException
         return new self('Malformed tcgdex set response for ['.self::sanitizeForLog($tcgdexId)."]: {$reason}");
     }
 
+    public static function forSetListing(string $reason): self
+    {
+        return new self("Malformed tcgdex set listing: {$reason}");
+    }
+
     public static function forSearch(string $query, string $reason): self
     {
         // $query is raw, attacker-controlled Livewire input (the search

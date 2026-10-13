@@ -15,8 +15,8 @@
                 @if ($canEditSet)
                     <a href="{{ route('admin.sets.show', ['setTcgdexId' => $set->tcgdex_id]) }}" class="nw-btn-secondary" wire:navigate>Edit in my collection</a>
                 @endif
-                @if ($set->logo_url)
-                    <img src="{{ $set->logo_url }}" alt="" class="h-12 sm:h-16 max-w-[220px] object-contain mb-1" decoding="async" data-optional>
+                @if ($set->safe_logo_url)
+                    <img src="{{ $set->safe_logo_url }}" alt="" class="h-12 sm:h-16 max-w-[220px] object-contain mb-1" decoding="async" data-optional>
                 @endif
             </div>
         </div>
