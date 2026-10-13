@@ -77,10 +77,8 @@ the daily schedule runs):
 ./vendor/bin/sail artisan catalog:refresh-prices
 ```
 
-Each card has at most one pending sync. A re-run skips cards whose sync is
-still queued, running or retrying (until that job finishes or fails, at most
-about 3 h; the lock ceiling is 4 h) and reports them as
-`Dispatched X, skipped Y (already queued).`
+A re-run skips cards whose sync is still pending; see
+[Manual price refresh](deploy/README.md#manual-price-refresh).
 
 A single card failing (not found, transient network error, or a malformed
 API response) is reported and skipped — it never aborts the rest of an
