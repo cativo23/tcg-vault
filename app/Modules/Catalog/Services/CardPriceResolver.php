@@ -125,15 +125,35 @@ final class CardPriceResolver
      * happened to load the relation in (the unique index returns rows
      * by source and variant, which is the order this keeps).
      *
+     * Each row's sort key is read once, from its raw attributes, before
+     * sorting, and the comparator only touches plain arrays. Reading
+     * model attributes inside the comparator costs a magic __get per
+     * read, per comparison, which dominates on a card with a long history.
+     *
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
      * @return Collection<int, CardPriceSnapshot>
      */
     private function newestFirst(Collection $snapshots): Collection
     {
-        return $snapshots
-            ->sort(fn (CardPriceSnapshot $a, CardPriceSnapshot $b) => [$b->capturedOnKey(), $a->source, $a->variant, $a->id]
-                <=> [$a->capturedOnKey(), $b->source, $b->variant, $b->id])
-            ->values();
+        $rows = [];
+
+        foreach ($snapshots as $snapshot) {
+            $attributes = $snapshot->getAttributes();
+            $rows[] = [
+                $snapshot->capturedOnKey(),
+                $attributes['source'] ?? null,
+                $attributes['variant'] ?? null,
+                $attributes['id'] ?? null,
+                $snapshot,
+            ];
+        }
+
+        usort($rows, fn (array $a, array $b) => $b[0] <=> $a[0]
+            ?: $a[1] <=> $b[1]
+            ?: $a[2] <=> $b[2]
+            ?: $a[3] <=> $b[3]);
+
+        return new Collection(array_column($rows, 4));
     }
 
     /**
