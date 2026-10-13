@@ -49,6 +49,7 @@
                 <div class="p-4 flex justify-center">
                     <button wire:click="addVariantRow" class="nw-btn-secondary w-full" style="border-style: dashed;">{{ $editingRows === [] ? '+ Add a copy' : '+ Add another variant to this card' }}</button>
                 </div>
+                @error('addVariantRow') <p class="px-4 pb-4 text-sm" style="color: var(--danger)">{{ $message }}</p> @enderror
 
                 <div class="p-5 flex justify-end" style="border-top: 1px solid var(--hair)">
                     <button wire:click="closeCardEditor" class="nw-btn-primary">Done</button>

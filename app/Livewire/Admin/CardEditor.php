@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
@@ -45,6 +46,9 @@ final class CardEditor extends Component
     public string $presentation = 'modal';
 
     public const KNOWN_VARIANTS = ['normal', 'holofoil', 'reverse-holofoil'];
+
+    /** Matches the set grid's quick-add limit, the other one-click add. */
+    public const ADD_ROW_LIMIT_PER_MINUTE = SetGrid::QUICK_ADD_LIMIT_PER_MINUTE;
 
     public function mount(string $presentation = 'modal'): void
     {
@@ -255,6 +259,16 @@ final class CardEditor extends Component
         if ($this->editingCardId === null) {
             return;
         }
+
+        $limiterKey = 'card-editor-add-row:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($limiterKey, self::ADD_ROW_LIMIT_PER_MINUTE)) {
+            $this->addError('addVariantRow', 'Slow down: too many adds in a minute.');
+
+            return;
+        }
+
+        RateLimiter::hit($limiterKey, 60);
 
         // The Catalog is global and not tenant-scoped (CollectionService.php:23-24)
         // — this is a straight lookup of catalog data, not a user's own

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Jobs\ImportSetJob;
 use App\Livewire\Admin\Import;
 use App\Models\User;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
@@ -11,9 +12,13 @@ use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\ImportBudget;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Sleep;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -196,4 +201,82 @@ test('a card the catalog rejects during confirmation does not abort the rest of 
 
     $collection = Collection::where('user_id', $user->id)->firstOrFail();
     expect($collection->items()->count())->toBe(1);
+});
+
+test('an import spanning more new sets than the daily budget adds every card but queues only the budgeted set imports', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $this->app->instance(CardCatalogProvider::class, fakeCatalogProviderForImport());
+
+    $setCount = ImportBudget::DAILY_LIMIT + 2;
+    $map = [];
+    $lines = [];
+    for ($i = 1; $i <= $setCount; $i++) {
+        $map["S{$i}"] = "s{$i}";
+        $lines[] = "1 Card {$i} [S{$i}] 001/100";
+    }
+    config(['tcgvault.tcgplayer_set_map' => $map]);
+
+    $component = Livewire::test(Import::class)
+        ->set('text', implode("\n", $lines))
+        ->call('preview')
+        ->assertSet('matched', fn (array $matched) => count($matched) === $setCount);
+
+    while ($component->get('matched') !== []) {
+        $component->call('confirm');
+    }
+
+    expect(CollectionItem::count())->toBe($setCount);
+    Queue::assertPushed(ImportSetJob::class, ImportBudget::DAILY_LIMIT);
+    expect($component->get('summary'))->toContain("2 sets weren't imported (daily limit of 20 sets, resets at midnight UTC).");
+});
+
+test('confirming an import too often in a minute is refused before any catalog lookup', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $this->app->instance(CardCatalogProvider::class, fakeCatalogProviderForImport());
+
+    $component = Livewire::test(Import::class)
+        ->set('text', '1 Toucannon - 068/084 [PBL] 068/084')
+        ->call('preview')
+        ->assertSet('matched', fn (array $matched) => count($matched) === 1);
+
+    for ($i = 0; $i < Import::CONFIRM_LIMIT_PER_MINUTE; $i++) {
+        RateLimiter::hit('import-confirm:'.$user->id, 60);
+    }
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldNotReceive('findCard');
+    $provider->shouldNotReceive('findSet');
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $component->call('confirm')
+        ->assertHasErrors('confirm')
+        ->assertSet('matched', fn (array $matched) => count($matched) === 1);
+
+    expect(CollectionItem::count())->toBe(0);
+});
+
+test('an import whose set could not start because the budget was busy says so in the summary', function () {
+    // The budget's lock wait sleeps; a fake sleep that moves the clock
+    // keeps it finite and instant.
+    Sleep::fake(syncWithCarbon: true);
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $this->app->instance(CardCatalogProvider::class, fakeCatalogProviderForImport());
+
+    $component = Livewire::test(Import::class)
+        ->set('text', '1 Toucannon - 068/084 [PBL] 068/084')
+        ->call('preview');
+
+    $lock = Cache::lock("import-budget:lock:{$user->id}", 10);
+    expect($lock->get())->toBeTrue();
+
+    $component->call('confirm');
+
+    $lock->release();
+
+    expect($component->get('summary'))->toBe("1 cards added, 1 copies total. 1 set couldn't start importing — add a card from it again later.");
+    expect(CollectionItem::count())->toBe(1);
+    Queue::assertNotPushed(ImportSetJob::class);
 });

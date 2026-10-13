@@ -9,11 +9,14 @@ use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\ImportBudget;
+use App\Modules\Catalog\Services\ImportBudgetResult;
 use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
@@ -53,6 +56,8 @@ final class AddCollectionItem extends Component
      * serialized component state.
      */
     private const MAX_RESULTS = self::RESULTS_PER_PAGE * 10;
+
+    public const SAVE_LIMIT_PER_MINUTE = 30;
 
     /** @var array<int, CardSummaryData> */
     public array $results = [];
@@ -367,6 +372,18 @@ final class AddCollectionItem extends Component
             $seen[$key] = true;
         }
 
+        // Each save strips its photos, makes a tcgdex lookup and may queue a
+        // set import, so it is capped per account before any of that work.
+        $limiterKey = 'add-collection-item:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($limiterKey, self::SAVE_LIMIT_PER_MINUTE)) {
+            $this->addError('selectedTcgdexId', 'Too many cards added in a minute. Wait a moment, then try again.');
+
+            return null;
+        }
+
+        RateLimiter::hit($limiterKey, 60);
+
         // Location and other metadata come off each upload before anything
         // is stored; a photo that can't be stripped is refused, never kept
         // as uploaded.
@@ -406,7 +423,7 @@ final class AddCollectionItem extends Component
             // inside the CollectionItem transaction would mean a later row's
             // failure rolls back that GLOBAL, shared catalog data too, not
             // just this submission's own items.
-            $card = $service->syncCardAndQueueImport($this->selectedTcgdexId);
+            $card = $service->syncCardAndQueueImport($this->selectedTcgdexId, $collection->user_id);
 
             DB::transaction(function () use ($service, $collection, $card, &$storedPhotoPaths): void {
                 foreach ($this->rows as $row) {
@@ -443,7 +460,19 @@ final class AddCollectionItem extends Component
             return null;
         }
 
-        return redirect()->route('admin.collection.index');
+        $redirect = redirect()->route('admin.collection.index');
+
+        // The card is saved either way; the note only says its set will not
+        // load today because the daily import budget refused it.
+        $skipped = $service->skippedSetImports()[$card->set->tcgdex_id] ?? null;
+
+        if ($skipped === ImportBudgetResult::Exhausted) {
+            $redirect->with('collection-notice', "Card added. {$card->set->name} wasn't imported ".ImportBudget::limitNote().'.');
+        } elseif ($skipped === ImportBudgetResult::Busy) {
+            $redirect->with('collection-notice', "Card added. {$card->set->name} couldn't start importing — add a card from it again later.");
+        }
+
+        return $redirect;
     }
 
     public function render(): View

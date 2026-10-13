@@ -98,6 +98,7 @@
                                 class="nw-btn-primary">{{ $this->confirmLabel }}</button>
                         <span wire:loading wire:target="confirm" class="text-sm" style="color: var(--muted)">Importing…</span>
                     </div>
+                    @error('confirm') <p class="text-sm mt-2" style="color: var(--danger)">{{ $message }}</p> @enderror
                 @endif
             </div>
         @elseif ($hasPreviewed)

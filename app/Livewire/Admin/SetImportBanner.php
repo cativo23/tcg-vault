@@ -143,7 +143,7 @@ final class SetImportBanner extends Component
         if ($budget !== ImportBudgetResult::Started) {
             $this->notice = $budget === ImportBudgetResult::Busy
                 ? 'Another import is being started — try again.'
-                : 'Daily import limit reached — try again tomorrow.';
+                : 'Not imported '.ImportBudget::limitNote().'.';
 
             return;
         }
@@ -159,6 +159,16 @@ final class SetImportBanner extends Component
     {
         return $this->progress()['missing'] > 0
             && now()->getTimestamp() >= max($this->lastProgressAt + self::IMPORT_STALL_SECONDS, $this->mountedAt + self::MOUNT_GRACE_SECONDS);
+    }
+
+    /**
+     * The daily-limit message keeps the fast poll for this long, so an
+     * import someone else just started on the same set still shows as
+     * loading within seconds.
+     */
+    private function pastMountGrace(): bool
+    {
+        return now()->getTimestamp() >= $this->mountedAt + self::MOUNT_GRACE_SECONDS;
     }
 
     /**
@@ -190,13 +200,21 @@ final class SetImportBanner extends Component
             $this->sawImport = true;
         }
 
+        // With no card arriving since the page opened and no way for this
+        // user to start the set today, "Loading cards" would promise an
+        // import that may not be running and a retry that would be refused.
+        $budgetSpent = $progress['missing'] > 0
+            && $this->lastProgressAt <= $this->mountedAt
+            && app(ImportBudget::class)->isSpentFor((int) auth()->id(), $this->setTcgdexId);
+
         return view('livewire.admin.set-import-banner', [
             'localCount' => $progress['local'],
             'totalCount' => $progress['total'],
             'missingCount' => $progress['missing'],
             'importing' => $progress['missing'] > 0,
             'stalled' => $stalled,
-            'pollSeconds' => $stalled ? self::STALLED_POLL_SECONDS : 5,
+            'budgetSpent' => $budgetSpent,
+            'pollSeconds' => $stalled || ($budgetSpent && $this->pastMountGrace()) ? self::STALLED_POLL_SECONDS : 5,
             'finished' => $this->sawImport && $progress['missing'] === 0,
         ]);
     }
