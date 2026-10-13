@@ -89,6 +89,10 @@ final class SetGrid extends Component
     #[On('card-copies-changed')]
     public function refreshAfterCardChange(): void {}
 
+    /** The import banner saw new cards arrive; the re-render draws them. */
+    #[On('set-cards-changed')]
+    public function refreshAfterImportProgress(): void {}
+
     public function sortBy(string $sort): void
     {
         if (in_array($sort, self::SORTS, true)) {
@@ -381,7 +385,8 @@ final class SetGrid extends Component
             ->distinct()
             ->count('card_id');
 
-        $totalCount = $this->set->card_count ?: $this->set->cards()->count();
+        $localCount = $this->set->cards()->count();
+        $totalCount = $this->set->card_count ?: $localCount;
 
         // tcgdex files the literal string "None" under rarity for unrated
         // prints; Rarity::label() already encodes what counts as a real one.
@@ -393,6 +398,7 @@ final class SetGrid extends Component
             'entries' => $entries,
             'ownedCount' => $ownedCount,
             'totalCount' => $totalCount,
+            'awaitingCards' => $localCount === 0 && $totalCount > 0,
             'rarities' => $rarities,
         ]);
     }

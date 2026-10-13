@@ -29,6 +29,8 @@
         <div class="nw-bar mt-3" role="progressbar" aria-valuemin="0" aria-valuemax="{{ $totalCount }}" aria-valuenow="{{ $ownedCount }}" aria-label="{{ $pct }}% of the set collected"><i style="width: {{ $pct }}%"></i></div>
     </section>
 
+    <livewire:admin.set-import-banner :set-tcgdex-id="$set->tcgdex_id" />
+
     <div class="nw-toolbar">
         <div class="nw-count" role="status">Showing <b>{{ $entries->count() }}</b> {{ Str::plural('card', $entries->count()) }}</div>
 
@@ -63,8 +65,13 @@
 
     @if ($entries->isEmpty())
         <div class="nw-empty">
-            <div class="t">No cards match</div>
-            <p>Nothing in {{ $set->name }} matches that.</p>
+            @if ($awaitingCards)
+                <div class="t">Cards are on their way</div>
+                <p>They appear here as soon as they load.</p>
+            @else
+                <div class="t">No cards match</div>
+                <p>Nothing in {{ $set->name }} matches that.</p>
+            @endif
         </div>
     @else
         <div class="nw-grid" wire:key="grid-{{ $sort }}-{{ md5($search.$rarityFilter.($hideMissing ? '1' : '0')) }}">
