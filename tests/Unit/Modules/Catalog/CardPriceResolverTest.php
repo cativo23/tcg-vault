@@ -473,3 +473,19 @@ test('CHART_COLUMNS is every column of the table but raw', function () {
 
     expect(CardPriceSnapshot::CHART_COLUMNS)->toEqualCanonicalizing($expected);
 });
+
+test('two rows tying on the day in one chain step resolve to the same row however the relation was loaded', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    $first = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 100]);
+    $second = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'ebay', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 200]);
+    $resolver = new CardPriceResolver;
+    $day = collect([today()->toDateString()]);
+
+    foreach ([[$first, $second], [$second, $first]] as $order) {
+        $card->setRelation('priceSnapshots', collect($order));
+
+        expect($resolver->resolveForVariant($card, 'normal')->id)->toBe($first->id)
+            ->and($resolver->resolveForVariantOnDays($card, 'normal', $day)[today()->toDateString()]->id)->toBe($first->id);
+    }
+});
