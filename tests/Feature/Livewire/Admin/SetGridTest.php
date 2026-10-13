@@ -875,6 +875,16 @@ test('quickAdd and undoQuickAdd are renderless, so a tap does not re-render the 
     }
 });
 
+test('a quickAdd round trip returns no re-rendered HTML', function () {
+    setGridUser();
+    ['first' => $first] = setGridFixture();
+
+    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->call('quickAdd', $first->id, 'normal');
+
+    expect($component->effects)->not->toHaveKey('html');
+});
+
 test('the grid wires the setGrid Alpine component and an accessible toast region', function () {
     setGridUser();
     setGridFixture();
