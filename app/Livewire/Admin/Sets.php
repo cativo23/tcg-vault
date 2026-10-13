@@ -112,9 +112,9 @@ final class Sets extends Component
      * cost a tcgdex request. A choice that will queue an import (the set
      * is not stored yet, or not every card is) draws from the user's daily
      * ImportBudget before any tcgdex lookup, so a refused choice costs
-     * nothing; a fully imported set never does. The id comes from the client, so it must be of the
-     * shape tcgdex ids have and present in the set list before the
-     * server makes any catalog request for it.
+     * nothing; a fully imported set never does. The id comes from the
+     * client, so it must be of the shape tcgdex ids have and present in
+     * the set list before the server makes any catalog request for it.
      */
     public function chooseSet(string $setTcgdexId): void
     {

@@ -46,8 +46,8 @@ final class ImportBudget
                         return ImportBudgetResult::Exhausted;
                     }
 
-                    // Kept an hour past the end of the UTC day so a clock
-                    // skew at midnight cannot drop today's count early.
+                    // The keys carry the date, so the extra hour only keeps
+                    // today's keys alive until the day has fully ended.
                     $expiresAt = now()->utc()->endOfDay()->addHour();
                     Cache::put($countKey, $count + 1, $expiresAt);
                     Cache::put($startedKey, true, $expiresAt);

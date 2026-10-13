@@ -182,7 +182,8 @@ Rules that came out of building it:
   the drawer primitive reused as an "Add a set" dialog (`role="dialog"`,
   `aria-modal`, labelled by its title). Opening focuses the filter; Tab
   stays inside, Escape or the close button closes it, and focus returns to
-  the control that opened it (header trigger or the empty-state button). The trap is the shared `focusTrap` Alpine component
+  the control that opened it (header trigger or the empty-state button).
+  The trap is the shared `focusTrap` Alpine component
   (`resources/js/app.js`), also used by the card editor drawer and the
   modal component. A status line reads "N of M sets" (`role="status"`) and
   a live region announces "Adding the set…". Rows `.nw-pick-row` are logo,
