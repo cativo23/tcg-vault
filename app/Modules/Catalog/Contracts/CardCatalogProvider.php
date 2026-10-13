@@ -8,6 +8,8 @@ use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Exceptions\CatalogUnavailableException;
+use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 
 interface CardCatalogProvider
@@ -25,6 +27,22 @@ interface CardCatalogProvider
      * @throws SetNotFoundException
      */
     public function findSet(string $tcgdexId): SetSummaryData;
+
+    /**
+     * List every set tcgdex knows, as brief metadata (no cards). The
+     * listing carries no series or release date, so those are null; the
+     * logo has no extension upstream and gets ".png" like findSet().
+     *
+     * Cached for 24 hours. When tcgdex cannot be reached (or answers with
+     * a body that is not a set list) the last good copy is served instead;
+     * with none, the failure is thrown.
+     *
+     * @return array<int, SetSummaryData>
+     *
+     * @throws CatalogUnavailableException
+     * @throws MalformedCatalogResponseException
+     */
+    public function listSets(): array;
 
     /**
      * List the tcgdex card IDs belonging to a set, e.g. ['me05-001', 'me05-002', ...].

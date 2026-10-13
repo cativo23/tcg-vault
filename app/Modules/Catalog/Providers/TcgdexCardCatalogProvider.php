@@ -10,13 +10,17 @@ use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Data\PriceEntryData;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
+use App\Modules\Catalog\Exceptions\CatalogUnavailableException;
 use App\Modules\Catalog\Exceptions\InvalidTcgdexIdException;
 use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 use App\Modules\Catalog\Support\CardVariants;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\HttpClientException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Spatie\LaravelData\DataCollection;
 
 final class TcgdexCardCatalogProvider implements CardCatalogProvider
@@ -42,6 +46,15 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
      * would otherwise render as an unbounded wall of result tiles.
      */
     private const SEARCH_PAGE_SIZE = 24;
+
+    public const SET_LIST_FRESH_KEY = 'tcgdex:set-list:fresh';
+
+    public const SET_LIST_STALE_KEY = 'tcgdex:set-list:stale';
+
+    private const SET_LIST_FRESH_SECONDS = 86400;
+
+    /** How long the last good list is kept as a fallback for an outage. */
+    private const SET_LIST_STALE_SECONDS = 2592000;
 
     public function __construct(private readonly string $baseUrl) {}
 
@@ -131,6 +144,98 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             // than falling back to a made-up abbreviation.
             abbreviation: $json['abbreviation']['official'] ?? null,
         );
+    }
+
+    public function listSets(): array
+    {
+        $fresh = Cache::get(self::SET_LIST_FRESH_KEY);
+
+        if (is_array($fresh)) {
+            return $this->hydrateSetList($fresh);
+        }
+
+        try {
+            $rows = $this->fetchSetList();
+        } catch (HttpClientException|MalformedCatalogResponseException $e) {
+            $stale = Cache::get(self::SET_LIST_STALE_KEY);
+
+            if (is_array($stale)) {
+                Log::warning('tcgdex set list unavailable, serving the cached copy.', ['exception' => $e::class]);
+
+                return $this->hydrateSetList($stale);
+            }
+
+            throw $e instanceof MalformedCatalogResponseException ? $e : CatalogUnavailableException::forSetListing($e);
+        }
+
+        Cache::put(self::SET_LIST_FRESH_KEY, $rows, self::SET_LIST_FRESH_SECONDS);
+        Cache::put(self::SET_LIST_STALE_KEY, $rows, self::SET_LIST_STALE_SECONDS);
+
+        return $this->hydrateSetList($rows);
+    }
+
+    /**
+     * The listing reduced to what the picker uses, in a shape that
+     * serializes into any cache store.
+     *
+     * @return list<array{id: string, name: string, cardCount: ?int, logoUrl: ?string}>
+     */
+    private function fetchSetList(): array
+    {
+        $response = $this->http(self::REQUEST_TIMEOUT)->get('sets');
+        $response->throw();
+
+        $json = $response->json();
+
+        if (! is_array($json) || ! array_is_list($json)) {
+            throw MalformedCatalogResponseException::forSetListing('response body is not a JSON array.');
+        }
+
+        $rows = [];
+
+        foreach ($json as $entry) {
+            if (! is_array($entry) || ! is_string($entry['id'] ?? null) || ! is_string($entry['name'] ?? null)) {
+                continue;
+            }
+
+            $counts = is_array($entry['cardCount'] ?? null) ? $entry['cardCount'] : [];
+            $total = $counts['total'] ?? $counts['official'] ?? null;
+
+            $rows[] = [
+                'id' => $entry['id'],
+                'name' => $entry['name'],
+                'cardCount' => is_int($total) ? $total : null,
+                'logoUrl' => is_string($entry['logo'] ?? null) ? "{$entry['logo']}.png" : null,
+            ];
+        }
+
+        if ($rows === []) {
+            throw MalformedCatalogResponseException::forSetListing('no usable set entries.');
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<mixed>  $rows
+     * @return array<int, SetSummaryData>
+     */
+    private function hydrateSetList(array $rows): array
+    {
+        $sets = [];
+
+        foreach ($rows as $row) {
+            $sets[] = new SetSummaryData(
+                tcgdexId: $row['id'],
+                name: $row['name'],
+                series: null,
+                releasedOn: null,
+                cardCount: $row['cardCount'],
+                logoUrl: $row['logoUrl'],
+            );
+        }
+
+        return $sets;
     }
 
     public function listSetCardIds(string $setTcgdexId): array
