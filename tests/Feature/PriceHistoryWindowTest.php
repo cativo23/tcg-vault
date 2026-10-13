@@ -19,7 +19,8 @@ use Livewire\Livewire;
 
 // Every listing screen walks a card's price history in PHP, and the sync
 // adds rows for every card every day — so they load only the recent
-// window, never the whole history. The card detail page prices from the same window and reads its chart through a range-bounded query.
+// window, never the whole history. The card detail page prices from the
+// same window and reads its chart through a range-bounded query.
 
 beforeEach(function () {
     $this->user = User::factory()->create(['username' => 'carlos']);
@@ -138,4 +139,14 @@ test('a card never priced at all still says it has no price yet', function () {
     $this->get('/carlos/me05/116')
         ->assertOk()
         ->assertSee('No market price recorded for this card yet.');
+});
+
+test('a recent row without a price does not hide that older rows were priced', function () {
+    CardPriceSnapshot::query()->delete();
+    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => null]);
+    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(CardPriceSnapshot::RECENT_DAYS + 10), 'currency' => 'USD', 'market_minor' => 700]);
+
+    $this->get('/carlos/me05/116')
+        ->assertOk()
+        ->assertSee('No market price in the last '.CardPriceSnapshot::RECENT_DAYS.' days.');
 });
