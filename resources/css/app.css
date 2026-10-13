@@ -1603,3 +1603,6 @@ body::before {
 .nw-variant-pill.on .p,
 .nw-variant-pill.on .own { color: var(--bone); opacity: .75; }
 @media (pointer: coarse) { .nw-variant-pill { min-height: 44px; } }
+/* Chart range buttons reuse the variant pill; only the row differs: it sits in a panel head. */
+.nw-range-pills { display: flex; gap: 4px; }
+.nw-range-pills .nw-variant-pill { padding: 6px 10px; }

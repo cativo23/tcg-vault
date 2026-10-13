@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Support\CardVariants;
+use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
 use App\Modules\Collection\Support\VariantChips;
@@ -57,6 +58,23 @@ final class CardShow extends Component
         }
     }
 
+    /**
+     * The chart's range, from `?range=`. Untrusted like $variant, hence
+     * the union: ChartRange::fromInput() turns anything unknown into one
+     * month.
+     *
+     * @var string|array<array-key, mixed>|null
+     */
+    #[Url(as: 'range', except: '1m', history: true)]
+    public string|array|null $range = '1m';
+
+    public function selectRange(mixed $key): void
+    {
+        if (is_string($key)) {
+            $this->range = $key;
+        }
+    }
+
     public function mount(string $username, string $setTcgdexId, string $localId): void
     {
         $this->resolveTargetUser($username);
@@ -84,19 +102,15 @@ final class CardShow extends Component
 
         $card = $this->card->load([
             'set',
-            'priceSnapshots',
+            'priceSnapshots' => fn ($q) => $q->recent(),
             'collectionItems' => fn ($q) => $public->scopeItems($q)->orderBy('created_at'),
         ]);
 
         $items = $card->collectionItems;
         // Prices come from the same recent window the listings load, so
         // this page never shows a different price (or currency) for the
-        // card than its grid tile does. Only the sparkline reads the full
-        // history.
-        $priced = (clone $card)->setRelation(
-            'priceSnapshots',
-            $card->priceSnapshots->filter(fn (CardPriceSnapshot $s) => $s->isRecent())->values(),
-        );
+        // card than its grid tile does. The chart reads its own range.
+        $priced = $card;
         // A card with no known prints gets an empty unlabeled chip for loose
         // copies; once an owned print sits beside it, that placeholder is
         // not a choice worth offering.
@@ -119,7 +133,12 @@ final class CardShow extends Component
         // switcher, the selected pill's price instead.
         $snapshot = $selected !== null ? $selected['snapshot'] : $valuation->headlineSnapshot($priced);
         $delta = $resolver->deltaFor($priced, $snapshot);
-        $history = $resolver->historyFor($card, $snapshot);
+        $chartRange = ChartRange::fromInput($this->range);
+        $history = $resolver->historyIn($snapshot, $chartRange->start(today()));
+        $historyStartsAfterRange = $snapshot !== null && CardPriceSnapshot::query()
+            ->where('card_id', $snapshot->card_id)->where('source', $snapshot->source)->where('variant', $snapshot->variant)
+            ->whereNotNull('market_minor')
+            ->min('captured_on') > $chartRange->start(today())->toDateString();
         $ownedTotal = $items->isNotEmpty() ? $valuation->cardTotal($priced) : null;
         $quantity = (int) $items->sum('quantity');
 
@@ -179,6 +198,8 @@ final class CardShow extends Component
             'snapshot' => $snapshot,
             'delta' => $delta,
             'history' => $history,
+            'chartRange' => $chartRange,
+            'historySince' => $historyStartsAfterRange ? $history->first()?->captured_on : null,
             'ownedTotal' => $ownedTotal,
             'marketReads' => $marketReads,
             'images' => $images,
@@ -201,7 +222,7 @@ final class CardShow extends Component
             // Rows older than the window are not "no price yet" — the page
             // must not claim the card was never priced.
             'pricedBeforeWindow' => $marketReads->isEmpty()
-                && $card->priceSnapshots->contains(fn (CardPriceSnapshot $s) => $s->market_minor !== null),
+                && $card->priceSnapshots()->whereNotNull('market_minor')->exists(),
             'recentDays' => CardPriceSnapshot::RECENT_DAYS,
         ])->layoutData([
             'title' => "{$card->name} #{$card->local_id} · {$card->set->name}",
