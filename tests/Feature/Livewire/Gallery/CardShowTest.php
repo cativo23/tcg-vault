@@ -347,3 +347,16 @@ test('a variant with no price says so instead of borrowing another', function ()
         ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
         ->assertViewHas('snapshot', fn ($s) => $s === null);
 });
+
+test('the read a variant borrows its price from is listed among the market reads', function () {
+    $seed = seedCardPage();
+    $seed['card']->update(['variants' => ['normal' => true, 'holo' => true]]);
+    ownCopy($seed, 'holofoil');
+    CardPriceSnapshot::create(['card_id' => $seed['card']->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today()->subDays(12), 'currency' => 'USD', 'market_minor' => 300]);
+    $default = CardPriceSnapshot::create(['card_id' => $seed['card']->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 250]);
+
+    Livewire::withQueryParams(['variant' => 'holofoil'])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('snapshot', fn ($s) => $s->is($default))
+        ->assertViewHas('marketReads', fn ($reads) => $reads->contains(fn ($r) => $r->is($default)));
+});

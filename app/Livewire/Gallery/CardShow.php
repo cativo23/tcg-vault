@@ -125,7 +125,7 @@ final class CardShow extends Component
         // grid tile only summarises. Sorted so the resolved one leads.
         $marketReads = $priced->priceSnapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->market_minor !== null)
-            ->filter(fn (CardPriceSnapshot $s) => $selected === null || $this->readBelongsTo($s, $selected['variant'], $card))
+            ->filter(fn (CardPriceSnapshot $s) => $selected === null || $this->readBelongsTo($s, $selected['variant'], $card) || $this->isSameRead($s, $snapshot))
             ->groupBy(fn (CardPriceSnapshot $s) => $s->source.'|'.$s->variant)
             ->map(fn ($group) => $group->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->first())
             ->sortBy(fn (CardPriceSnapshot $s) => $snapshot && $s->is($snapshot) ? 0 : 1)
@@ -246,6 +246,16 @@ final class CardShow extends Component
         return $priced->isNotEmpty()
             ? $priced->sortByDesc(fn (array $pill) => $pill['snapshot']->market_minor)->firstOrFail()
             : $pills->firstOrFail();
+    }
+
+    /**
+     * Whether a read is the one the headline price came from. A variant can
+     * borrow the card-wide 'default' row, and that read stays listed even
+     * though it is not one of the variant's own.
+     */
+    private function isSameRead(CardPriceSnapshot $read, ?CardPriceSnapshot $headline): bool
+    {
+        return $headline !== null && $read->source === $headline->source && $read->variant === $headline->variant;
     }
 
     /**
