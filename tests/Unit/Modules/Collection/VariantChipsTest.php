@@ -35,14 +35,16 @@ test('one chip per offered print, counting every condition of that print', funct
     ]);
 });
 
-test('owned prints the card does not list come after the offered ones, then unspecified copies', function () {
+test('owned prints the card does not list come after the offered ones in key order, then unspecified copies', function () {
     [$collection, $card] = chipCard(['normal' => true]);
+    chipItem($collection, $card, 'holofoil:cracked-ice', 4);
     chipItem($collection, $card, 'holofoil:cosmos', 1);
     chipItem($collection, $card, null, 2);
 
     expect(VariantChips::for($card, $card->collectionItems()->get()))->toBe([
         ['variant' => 'normal', 'label' => 'Normal', 'count' => 0],
         ['variant' => 'holofoil:cosmos', 'label' => 'Holofoil · Cosmos', 'count' => 1],
+        ['variant' => 'holofoil:cracked-ice', 'label' => 'Holofoil · Cracked Ice', 'count' => 4],
         ['variant' => null, 'label' => 'Unspecified', 'count' => 2],
     ]);
 });
