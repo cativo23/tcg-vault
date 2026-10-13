@@ -110,6 +110,29 @@ final class Valuation
     }
 
     /**
+     * The owned copy whose own variant prices highest — the collector's
+     * best copy. Null for a ghost card (nothing owned) or when no owned
+     * copy resolves to a real price. The card page opens on this copy's
+     * variant, and headlineSnapshot() prices from it, so the two agree.
+     */
+    public function headlineItem(Card $card): ?CollectionItem
+    {
+        $best = null;
+        $bestMinor = null;
+
+        foreach ($card->collectionItems as $item) {
+            $snapshot = $this->resolver->resolveForVariant($card, $item->variant);
+
+            if ($snapshot?->market_minor !== null && ($bestMinor === null || $snapshot->market_minor > $bestMinor)) {
+                $best = $item;
+                $bestMinor = $snapshot->market_minor;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
      * The single "headline" price for a card tile: the priciest owned
      * variant's resolved snapshot (what the collector's best copy is
      * actually worth), falling back to the card-level priority chain
@@ -118,13 +141,11 @@ final class Valuation
      */
     public function headlineSnapshot(Card $card): ?CardPriceSnapshot
     {
-        $best = $card->collectionItems
-            ->map(fn (CollectionItem $item) => $this->resolver->resolveForVariant($card, $item->variant))
-            ->filter(fn (?CardPriceSnapshot $s) => $s !== null && $s->market_minor !== null)
-            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->market_minor)
-            ->first();
+        $item = $this->headlineItem($card);
 
-        return $best ?? $this->resolver->resolve($card);
+        return $item !== null
+            ? $this->resolver->resolveForVariant($card, $item->variant)
+            : $this->resolver->resolve($card);
     }
 
     /**

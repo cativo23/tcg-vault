@@ -104,6 +104,60 @@ test('headlineSnapshot falls back to the default priority chain for a ghost card
     expect((new Valuation)->headlineSnapshot($card)->id)->toBe($tcgplayer->id);
 });
 
+test('headlineItem is the owned copy whose variant prices highest', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $inkay = Card::create(['tcgdex_id' => 'me05-051', 'set_id' => $set->id, 'local_id' => '051', 'name' => 'Inkay']);
+
+    CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 11]);
+    CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 45]);
+
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 2]);
+    $reverse = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'reverse-holofoil', 'condition' => 'NM', 'quantity' => 1]);
+
+    $inkay->load('priceSnapshots', 'collectionItems');
+
+    expect((new Valuation)->headlineItem($inkay)?->id)->toBe($reverse->id);
+});
+
+test('headlineItem passes over an owned copy with no price, and is null when no copy is priced', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $inkay = Card::create(['tcgdex_id' => 'me05-051', 'set_id' => $set->id, 'local_id' => '051', 'name' => 'Inkay']);
+
+    CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 11]);
+    $normal = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'holofoil:masterball', 'condition' => 'NM', 'quantity' => 1]);
+
+    $inkay->load('priceSnapshots', 'collectionItems');
+    expect((new Valuation)->headlineItem($inkay)?->id)->toBe($normal->id);
+
+    $normal->delete();
+    $inkay->load('collectionItems');
+    expect((new Valuation)->headlineItem($inkay))->toBeNull();
+});
+
+test('headlineItem keeps the first copy when two variants price the same', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $inkay = Card::create(['tcgdex_id' => 'me05-051', 'set_id' => $set->id, 'local_id' => '051', 'name' => 'Inkay']);
+
+    CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 45]);
+    CardPriceSnapshot::create(['card_id' => $inkay->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 45]);
+
+    $first = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    $second = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $inkay->id, 'card_tcgdex_id' => 'me05-051', 'variant' => 'reverse-holofoil', 'condition' => 'NM', 'quantity' => 1]);
+    $first->forceFill(['created_at' => now()->subHour()])->save();
+    $second->forceFill(['created_at' => now()])->save();
+
+    $inkay->load(['priceSnapshots', 'collectionItems' => fn ($q) => $q->orderBy('created_at')]);
+
+    expect((new Valuation)->headlineItem($inkay)?->id)->toBe($first->id);
+});
+
 test('a private collection contributes nothing to the public read model', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     $private = Collection::factory()->for($user)->create(['is_public' => false, 'slug' => 'private']);

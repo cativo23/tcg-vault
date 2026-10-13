@@ -46,7 +46,7 @@
             <div class="flex flex-wrap items-center gap-2 mb-3">
                 @if ($owned)
                     <span class="nw-badge"><span class="dot-in" aria-hidden="true"></span>In the collection</span>
-                    @foreach ($items->filter(fn ($i) => $i->grade_company && $i->grade_value)->unique(fn ($i) => $i->grade_company.$i->grade_value) as $graded)
+                    @foreach ($gradedItems->filter(fn ($i) => $i->grade_company && $i->grade_value)->unique(fn ($i) => $i->grade_company.$i->grade_value) as $graded)
                         <span class="nw-badge slab">{{ $graded->grade_company }} {{ $graded->grade_value }}</span>
                     @endforeach
                 @else
@@ -64,16 +64,36 @@
                 @if ($card->set->series) · {{ $card->set->series }}@endif
             </p>
 
+            @if ($switcher)
+                <div class="nw-variant-pills" role="group" aria-label="Variants of {{ $card->name }}">
+                    @foreach ($pills as $pill)
+                        @php $isOn = $pill['key'] === $selected['key']; @endphp
+                        <button type="button" wire:key="variant-{{ $pill['key'] }}"
+                            class="nw-variant-pill {{ $isOn ? 'on' : '' }}" aria-pressed="{{ $isOn ? 'true' : 'false' }}"
+                            wire:click="selectVariant(@js($pill['key']))">
+                            <span>{{ $pill['label'] }}</span>
+                            <span class="p mono">{{ $pill['snapshot']?->market_minor !== null ? Money::format($pill['snapshot']->market_minor, $pill['snapshot']->currency) : '—' }}</span>
+                            @if ($pill['count'] > 0)
+                                <span class="own mono" aria-hidden="true">×{{ $pill['count'] }}</span>
+                                <span class="sr-only">{{ $pill['count'] }} owned</span>
+                            @endif
+                        </button>
+                    @endforeach
+                </div>
+            @endif
+
             {{-- Market --}}
             <div class="nw-section-head mt-6">
-                <span>Market value</span>
+                <span>Market value{{ $switcher ? ' · '.$selected['label'] : '' }}</span>
                 @if ($newestMarketDay)
                     {{-- Martian Mono is for numerals only (design.md): the date, not the words. --}}
                     <span><span class="mono" style="letter-spacing: -.02em">{{ \Carbon\CarbonImmutable::parse($newestMarketDay)->format('j M Y') }}</span> · via {{ $marketOrigins->implode(' · ') }}</span>
                 @endif
             </div>
 
-            @if ($pricedBeforeWindow)
+            @if ($switcher && $snapshot?->market_minor === null)
+                <p class="text-sm py-3" style="color: var(--muted)">No market price for {{ $selected['label'] }} yet.</p>
+            @elseif ($pricedBeforeWindow)
                 <p class="text-sm py-3" style="color: var(--muted)">No market price in the last {{ $recentDays }} days.</p>
             @elseif ($marketReads->isEmpty())
                 <p class="text-sm py-3" style="color: var(--muted)">No market price recorded for this card yet.</p>
@@ -144,6 +164,9 @@
                     @endif
                 </div>
                 <div style="border-top: 1px solid var(--hair)">
+                    @if ($switcher && $items->isEmpty())
+                        <p class="text-sm py-2" style="color: var(--muted)">No {{ $selected['label'] }} copies — {{ $targetUser->username }} holds other variants of this card.</p>
+                    @endif
                     @foreach ($items as $item)
                         <div class="nw-copy">
                             <div class="qty">×{{ $item->quantity }}</div>

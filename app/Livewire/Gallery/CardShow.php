@@ -9,10 +9,15 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Support\CardVariants;
+use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
+use App\Modules\Collection\Support\VariantChips;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -30,7 +35,27 @@ final class CardShow extends Component
 {
     use ResolvesPublicCollection;
 
+    /** URL value for copies stored without a variant. */
+    public const UNSPECIFIED = 'unspecified';
+
     public Card $card;
+
+    /**
+     * The pill the visitor picked. Untrusted (it comes from the URL, where
+     * `?variant[]=x` arrives as an array, hence the union): selectedPill()
+     * only ever compares a string against this card's own pill keys.
+     *
+     * @var string|array<array-key, mixed>|null
+     */
+    #[Url(as: 'variant', except: '', history: true)]
+    public string|array|null $variant = '';
+
+    public function selectVariant(mixed $key): void
+    {
+        if (is_string($key)) {
+            $this->variant = $key;
+        }
+    }
 
     public function mount(string $username, string $setTcgdexId, string $localId): void
     {
@@ -72,22 +97,45 @@ final class CardShow extends Component
             'priceSnapshots',
             $card->priceSnapshots->filter(fn (CardPriceSnapshot $s) => $s->isRecent())->values(),
         );
+        // A card with no known prints gets an empty unlabeled chip for loose
+        // copies; once an owned print sits beside it, that placeholder is
+        // not a choice worth offering.
+        $chips = collect(VariantChips::for($card, $items));
+        $chips = $chips->count() > 1 ? $chips->reject(fn (array $chip): bool => $chip['variant'] === null && $chip['count'] === 0) : $chips;
+
+        $pills = $chips->map(fn (array $chip): array => [
+            'key' => $chip['variant'] ?? self::UNSPECIFIED,
+            'variant' => $chip['variant'],
+            'label' => $chip['label'] === '' ? 'Unspecified' : $chip['label'],
+            'count' => $chip['count'],
+            'snapshot' => $resolver->resolveForVariant($priced, $chip['variant']),
+        ]);
+        $switcher = $pills->count() > 1;
+        $selected = $switcher ? $this->selectedPill($pills, $valuation->headlineItem($priced), $items->isNotEmpty() ? $valuation->headlineSnapshot($priced) : null, $items->isNotEmpty()) : null;
+
         // The collector's own copy, at the price of the variant it
         // actually is — not resolve()'s card-level priority chain, which
-        // would never even consider e.g. a reverse-holofoil copy.
-        $snapshot = $valuation->headlineSnapshot($priced);
+        // would never even consider e.g. a reverse-holofoil copy. With a
+        // switcher, the selected pill's price instead.
+        $snapshot = $selected !== null ? $selected['snapshot'] : $valuation->headlineSnapshot($priced);
         $delta = $resolver->deltaFor($priced, $snapshot);
         $history = $resolver->historyFor($card, $snapshot);
         $ownedTotal = $items->isNotEmpty() ? $valuation->cardTotal($priced) : null;
+        $quantity = (int) $items->sum('quantity');
 
         // Latest reading per source+variant — the full market picture the
         // grid tile only summarises. Sorted so the resolved one leads.
         $marketReads = $priced->priceSnapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->market_minor !== null)
+            ->filter(fn (CardPriceSnapshot $s) => $selected === null || $this->readBelongsTo($s, $selected['variant'], $card) || $this->isSameRead($s, $snapshot))
             ->groupBy(fn (CardPriceSnapshot $s) => $s->source.'|'.$s->variant)
             ->map(fn ($group) => $group->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->first())
             ->sortBy(fn (CardPriceSnapshot $s) => $snapshot && $s->is($snapshot) ? 0 : 1)
             ->values();
+
+        $shownItems = $selected === null
+            ? $items
+            : $items->filter(fn ($item) => (string) $item->variant === (string) $selected['variant'])->values();
 
         $photos = $items
             ->filter(fn ($item) => $item->photo_path !== null)
@@ -121,9 +169,13 @@ final class CardShow extends Component
         $name = $this->collectorName();
 
         return view('livewire.gallery.card', [
-            'items' => $items,
+            'items' => $shownItems,
+            'gradedItems' => $items,
             'owned' => $items->isNotEmpty(),
-            'quantity' => (int) $items->sum('quantity'),
+            'quantity' => $quantity,
+            'pills' => $pills,
+            'switcher' => $switcher,
+            'selected' => $selected,
             'snapshot' => $snapshot,
             'delta' => $delta,
             'history' => $history,
@@ -164,6 +216,81 @@ final class CardShow extends Component
             'ogImage' => $images[0]['url'] ?? null,
             'isOwner' => $this->isOwnerViewing(),
         ]);
+    }
+
+    /**
+     * The pill to show: the one the URL names if this card has it; else the
+     * collector's best priced copy's variant; else, when they own copies but
+     * none is priced, the pill carrying the price the set grid tile shows;
+     * else (an unowned card) the priciest pill; else the first.
+     *
+     * @param  Collection<int, array{key: string, variant: ?string, label: string, count: int, snapshot: ?CardPriceSnapshot}>  $pills
+     * @return array{key: string, variant: ?string, label: string, count: int, snapshot: ?CardPriceSnapshot}
+     */
+    private function selectedPill(Collection $pills, ?CollectionItem $best, ?CardPriceSnapshot $tilePrice, bool $owned): array
+    {
+        $byKey = $pills->keyBy('key');
+
+        $named = is_string($this->variant) ? $byKey->get($this->variant) : null;
+
+        if ($named !== null) {
+            return $named;
+        }
+
+        if ($best !== null) {
+            $own = $byKey->get(($best->variant === null || $best->variant === '') ? self::UNSPECIFIED : $best->variant);
+
+            if ($own !== null) {
+                return $own;
+            }
+        }
+
+        if ($owned && $tilePrice !== null) {
+            $onTile = $pills->first(fn (array $pill): bool => $pill['snapshot'] !== null && $pill['snapshot']->is($tilePrice));
+
+            if ($onTile !== null) {
+                return $onTile;
+            }
+        }
+
+        $priced = $pills->filter(fn (array $pill) => $pill['snapshot']?->market_minor !== null);
+
+        return $priced->isNotEmpty()
+            ? $priced->sortByDesc(fn (array $pill) => $pill['snapshot']->market_minor)->firstOrFail()
+            : $pills->firstOrFail();
+    }
+
+    /**
+     * Whether a read is the one the headline price came from. A variant can
+     * borrow the card-wide 'default' row, and that read stays listed even
+     * though it is not one of the variant's own.
+     */
+    private function isSameRead(CardPriceSnapshot $read, ?CardPriceSnapshot $headline): bool
+    {
+        return $headline !== null && $read->source === $headline->source && $read->variant === $headline->variant;
+    }
+
+    /**
+     * Whether a market read belongs under a pill. The card-wide cardmarket
+     * 'default' row stands for the normal print, or the holo on a card with
+     * no normal print — the same prints the resolver lets it price — and
+     * never for a reverse or a special print. Unspecified copies are priced
+     * by the card-level chain, which reads every base print.
+     */
+    private function readBelongsTo(CardPriceSnapshot $read, ?string $variant, Card $card): bool
+    {
+        if ($variant === null) {
+            return ! CardVariants::isSpecial($read->variant);
+        }
+
+        if ($read->variant === 'default') {
+            $offered = CardVariants::available($card->variants ?? [], $card->raw ?? []);
+            $home = in_array('normal', $offered, true) ? 'normal' : (in_array('holofoil', $offered, true) ? 'holofoil' : null);
+
+            return $variant === $home;
+        }
+
+        return $read->variant === $variant;
     }
 
     /**
