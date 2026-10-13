@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Jobs\ImportSetJob;
 use App\Jobs\SyncCardPricingJob;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
+use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\Set;
 use Illuminate\Support\Facades\Queue;
 
 // ImportSetJob does ONE cheap listSetCardIds() call and dispatches one
@@ -30,16 +32,41 @@ test('the job dispatches one SyncCardPricingJob per card id the provider lists f
     Queue::assertPushed(fn (SyncCardPricingJob $job) => $job->tcgdexCardId === 'me05-003');
 });
 
-test('the unique lock outlives the (now near-instant) handle() call, so a near-simultaneous duplicate trigger is still a no-op', function () {
-    // handle() only makes one cheap listing call now, so the default
-    // Laravel uniqueness window (which ends as soon as handle() returns)
-    // would protect almost nothing — two users adding a card from the
-    // same unimported set moments apart could each dispatch their own
-    // full wave of per-card jobs. uniqueFor() keeps the lock alive well
-    // past that.
+test('the unique lock has a ceiling for a job that never finishes', function () {
+    // The lock is released once handle() returns; uniqueFor() only bounds
+    // how long a lost job can keep the set locked.
     $job = new ImportSetJob('me05');
 
     expect($job->uniqueFor())->toBeGreaterThan(3600);
+});
+
+test('cards already stored locally are not queued again', function () {
+    Queue::fake();
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 3]);
+    Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'Fomantis']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('listSetCardIds')->once()->with('me05')->andReturn(['me05-001', 'me05-002', 'me05-003']);
+
+    (new ImportSetJob('me05'))->handle($provider);
+
+    Queue::assertPushed(SyncCardPricingJob::class, 2);
+    Queue::assertNotPushed(SyncCardPricingJob::class, fn (SyncCardPricingJob $job) => $job->tcgdexCardId === 'me05-001');
+});
+
+test('a complete set queues nothing', function () {
+    Queue::fake();
+
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 1]);
+    Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'Fomantis']);
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('listSetCardIds')->once()->with('me05')->andReturn(['me05-001']);
+
+    (new ImportSetJob('me05'))->handle($provider);
+
+    Queue::assertNothingPushed();
 });
 
 test('the per-card jobs it dispatches go on the lower-priority "imports" queue, never "default"', function () {
