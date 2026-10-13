@@ -520,3 +520,55 @@ test('a card-level price uses tcgplayer holofoil when it is the only tcgplayer p
 
     expect((new CardPriceResolver)->resolve($card)->id)->toBe($holo->id);
 });
+
+test('resolves a card with a long in-memory history in bounded time', function () {
+    // CardPriceSnapshot is final, so attribute reads can't be counted;
+    // the guard is wall-clock (with Xdebug on, old sort ~20 s, new ~2.4 s). Sorting a long history must read each
+    // row's key once, not once per comparison. The bound is far above what
+    // the precomputed-key sort needs and far below a comparator that reads
+    // model attributes.
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+
+    $rows = collect(range(1, 400))->map(fn (int $i) => (new CardPriceSnapshot)->forceFill([
+        'id' => $i,
+        'card_id' => $card->id,
+        'source' => $i % 2 === 0 ? 'tcgplayer' : 'cardmarket',
+        'variant' => $i % 3 === 0 ? 'holofoil' : 'normal',
+        'currency' => 'USD',
+        'market_minor' => 100 + $i,
+        'captured_on' => today()->subDays($i % 7)->toDateString(),
+    ]));
+    $card->setRelation('priceSnapshots', $rows);
+
+    $resolver = new CardPriceResolver;
+    $start = hrtime(true);
+
+    for ($i = 0; $i < 50; $i++) {
+        $resolver->resolve($card);
+        $resolver->resolveForVariant($card, 'normal');
+    }
+
+    $elapsedMs = (hrtime(true) - $start) / 1e6;
+
+    expect($elapsedMs)->toBeLessThan(8000);
+});
+
+test('orders a long history newest day first, then source, variant and id', function () {
+    $rows = collect(range(1, 60))->map(fn (int $i) => (new CardPriceSnapshot)->forceFill([
+        'id' => $i,
+        'source' => $i % 2 === 0 ? 'tcgplayer' : 'cardmarket',
+        'variant' => $i % 3 === 0 ? 'holofoil' : 'normal',
+        'captured_on' => today()->subDays($i % 4)->toDateString(),
+    ]))->shuffle();
+
+    $sorted = (new ReflectionMethod(CardPriceResolver::class, 'newestFirst'))
+        ->invoke(new CardPriceResolver, $rows);
+
+    $expected = $rows->all();
+    usort($expected, fn ($a, $b) => [$b->capturedOnKey(), $a->source, $a->variant, $a->id]
+        <=> [$a->capturedOnKey(), $b->source, $b->variant, $b->id]);
+
+    expect($sorted->keys()->all())->toBe(range(0, 59))
+        ->and($sorted->pluck('id')->all())->toBe(array_map(fn ($m) => $m->id, $expected));
+});
