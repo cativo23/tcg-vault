@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Livewire\Admin;
 
+use App\Modules\Catalog\Services\ImportBudget;
+use App\Modules\Catalog\Services\ImportBudgetResult;
 use App\Modules\Collection\Data\MatchedImportLine;
 use App\Modules\Collection\Data\UnmatchedImportLine;
 use App\Modules\Collection\Models\Collection;
@@ -51,11 +53,20 @@ final class Import extends Component
 
     public int $addedCopies = 0;
 
+    /**
+     * Sets whose import the daily budget refused during this import, with
+     * the budget's answer (an ImportBudgetResult case name).
+     *
+     * @var array<string, string>
+     */
+    public array $skippedSets = [];
+
     public function preview(TcgplayerImportParser $parser): void
     {
         $this->summary = null;
         $this->addedCards = 0;
         $this->addedCopies = 0;
+        $this->skippedSets = [];
 
         $result = $parser->parse($this->text);
         $this->matched = $result->matched->all();
@@ -103,20 +114,45 @@ final class Import extends Component
             }
         }
 
+        foreach ($service->skippedSetImports() as $setTcgdexId => $budget) {
+            $this->skippedSets[$setTcgdexId] = $budget->name;
+        }
+
         if ($this->matched !== []) {
             $pending = count($this->matched);
-            $this->summary = "{$this->addedCards} cards added so far, {$pending} pending.";
+            $this->summary = "{$this->addedCards} cards added so far, {$pending} pending.".$this->skippedSetsNote();
 
             return;
         }
 
-        $this->summary = "{$this->addedCards} cards added, {$this->addedCopies} copies total.";
+        $this->summary = "{$this->addedCards} cards added, {$this->addedCopies} copies total.".$this->skippedSetsNote();
         $this->text = '';
         $this->unmatched = [];
         // The import is over, so the empty result set below isn't a preview
         // outcome any more — don't let it render "0 lines recognized"
         // underneath the success summary.
         $this->hasPreviewed = false;
+    }
+
+    /** Tells the user which of the imported cards' sets will not load today. */
+    private function skippedSetsNote(): string
+    {
+        $counts = array_count_values($this->skippedSets);
+        $note = '';
+
+        $exhausted = $counts[ImportBudgetResult::Exhausted->name] ?? 0;
+        if ($exhausted > 0) {
+            $note .= ' '.$exhausted.' '.($exhausted === 1 ? "set wasn't" : "sets weren't")
+                .' imported today (daily limit of '.ImportBudget::DAILY_LIMIT.') — try again tomorrow.';
+        }
+
+        $busy = $counts[ImportBudgetResult::Busy->name] ?? 0;
+        if ($busy > 0) {
+            $note .= ' '.$busy.' '.($busy === 1 ? 'set' : 'sets')
+                ." couldn't start importing — add a card from ".($busy === 1 ? 'it' : 'them').' again later.';
+        }
+
+        return $note;
     }
 
     /** Label for the confirm button — mid-import it has to say what's left. */

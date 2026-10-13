@@ -16,6 +16,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\ImportBudget;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Database\Seeders\PermissionSeeder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
@@ -1207,6 +1208,18 @@ test('adding a card from a new set past the daily import budget saves the card w
 
     expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeTrue();
     Queue::assertNotPushed(ImportSetJob::class);
+    expect(session('collection-notice'))->toBe("Card added. Pitch Black wasn't imported today (daily limit of 20) — try again tomorrow.");
+});
+
+test('the collection page shows the note left by an add', function () {
+    $this->seed(PermissionSeeder::class);
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $this->withSession(['collection-notice' => "Card added. Pitch Black wasn't imported today (daily limit of 20) — try again tomorrow."])
+        ->get(route('admin.collection.index'))
+        ->assertOk()
+        ->assertSee('Pitch Black wasn&#039;t imported today', false);
 });
 
 test('saving too often in a minute is refused before any catalog lookup', function () {

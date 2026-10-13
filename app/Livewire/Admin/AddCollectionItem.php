@@ -9,6 +9,8 @@ use App\Livewire\Concerns\StripsUploadedPhotos;
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\ImportBudget;
+use App\Modules\Catalog\Services\ImportBudgetResult;
 use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
@@ -458,7 +460,19 @@ final class AddCollectionItem extends Component
             return null;
         }
 
-        return redirect()->route('admin.collection.index');
+        $redirect = redirect()->route('admin.collection.index');
+
+        // The card is saved either way; the note only says its set will not
+        // load today because the daily import budget refused it.
+        $skipped = $service->skippedSetImports()[$card->set->tcgdex_id] ?? null;
+
+        if ($skipped === ImportBudgetResult::Exhausted) {
+            $redirect->with('collection-notice', "Card added. {$card->set->name} wasn't imported today (daily limit of ".ImportBudget::DAILY_LIMIT.') — try again tomorrow.');
+        } elseif ($skipped === ImportBudgetResult::Busy) {
+            $redirect->with('collection-notice', "Card added. {$card->set->name} couldn't start importing — add a card from it again later.");
+        }
+
+        return $redirect;
     }
 
     public function render(): View

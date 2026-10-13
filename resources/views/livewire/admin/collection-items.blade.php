@@ -29,6 +29,10 @@
         </div>
     </div>
 
+    @if (session('collection-notice'))
+        <div class="mb-4 p-3 rounded-sm text-sm" style="background: var(--bone-2)" role="status">{{ session('collection-notice') }}</div>
+    @endif
+
     {{-- Says what the current setting means at the point of deciding. A
          public collection has no page until the user picks a username,
          so that case points to the profile instead of a URL. --}}
