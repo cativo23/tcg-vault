@@ -14,7 +14,7 @@ final class CatalogUnavailableException extends RuntimeException
 
     public static function forSetListing(Throwable $previous): self
     {
-        return new self('The tcgdex set list is unreachable and no cached copy exists.', 0, $previous);
+        return new self('The tcgdex set list is unreachable or unusable and no cached copy exists.', 0, $previous);
     }
 
     public static function forSetListingBackoff(): self

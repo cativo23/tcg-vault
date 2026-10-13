@@ -107,13 +107,28 @@ test('listSets rejects a malformed body and never overwrites a good cached list 
 
     Cache::flush();
 
-    expect(fn () => $provider->listSets())->toThrow(MalformedCatalogResponseException::class);
+    expect(fn () => $provider->listSets())->toThrow(CatalogUnavailableException::class);
 });
 
-test('listSets treats an empty listing as malformed', function () {
+test('listSets treats an empty listing as malformed and reports it as unavailable', function () {
     Http::fake([SET_LIST_URL => Http::response([], 200)]);
 
-    expect(fn () => setListingProvider()->listSets())->toThrow(MalformedCatalogResponseException::class);
+    try {
+        setListingProvider()->listSets();
+        $this->fail('Expected CatalogUnavailableException.');
+    } catch (CatalogUnavailableException $e) {
+        expect($e->getPrevious())->toBeInstanceOf(MalformedCatalogResponseException::class);
+    }
+});
+
+test('listSets throws the same exception type on the repeat call inside the failure window, malformed body or not', function () {
+    fakeSetListingUpstream(Http::response(['not' => 'a list'], 200));
+    $provider = setListingProvider();
+
+    expect(fn () => $provider->listSets())->toThrow(CatalogUnavailableException::class);
+    expect(fn () => $provider->listSets())->toThrow(CatalogUnavailableException::class);
+
+    Http::assertSentCount(1);
 });
 
 test('listSets skips entries without a string id or name', function () {
@@ -171,4 +186,11 @@ test('listSets treats a cached value of the wrong shape as a miss', function () 
 
     expect($sets)->toHaveCount(3);
     Http::assertSentCount(1);
+});
+
+test('listSets treats a stale copy of the wrong shape as a miss instead of serving it', function () {
+    fakeSetListingUpstream(Http::response('boom', 500));
+    Cache::put(TcgdexCardCatalogProvider::SET_LIST_STALE_KEY, [['id' => 'base1']], 3600);
+
+    expect(fn () => setListingProvider()->listSets())->toThrow(CatalogUnavailableException::class);
 });

@@ -164,13 +164,10 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
             return $this->hydrateSetList($fresh);
         }
 
+        // The failure marker is only written when no stale copy existed, and
+        // a stale copy is only written together with a fresh one, so there
+        // is nothing to serve while the marker is set.
         if (Cache::has(self::SET_LIST_FAILED_KEY)) {
-            $stale = $this->cachedSetRows(self::SET_LIST_STALE_KEY);
-
-            if ($stale !== null) {
-                return $this->hydrateSetList($stale);
-            }
-
             throw CatalogUnavailableException::forSetListingBackoff();
         }
 
@@ -191,7 +188,9 @@ final class TcgdexCardCatalogProvider implements CardCatalogProvider
 
             Cache::put(self::SET_LIST_FAILED_KEY, true, self::SET_LIST_FAILURE_MEMORY_SECONDS);
 
-            throw $e instanceof MalformedCatalogResponseException ? $e : CatalogUnavailableException::forSetListing($e);
+            // One type for callers whichever way the attempt failed; the cause
+            // stays on the exception chain.
+            throw CatalogUnavailableException::forSetListing($e);
         }
 
         Cache::put(self::SET_LIST_FRESH_KEY, $rows, self::SET_LIST_FRESH_SECONDS);
