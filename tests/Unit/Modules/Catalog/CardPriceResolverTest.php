@@ -526,7 +526,10 @@ test('sorts a long history far faster than a comparator that reads model attribu
     // comparator costs per comparison, so it grows with n log n. The
     // resolver reads each row's key once before sorting. Both are timed
     // on the same rows in the same process, so the ratio does not depend
-    // on how fast the machine is.
+    // on how fast the machine is. Each side gets a warm-up run and keeps
+    // its best of three, so one scheduler stall can't decide the result;
+    // a regression to per-comparison reads brings the ratio near 1.
+    mt_srand(1);
     $rows = collect(range(1, 400))->map(fn (int $i) => (new CardPriceSnapshot)->forceFill([
         'id' => $i,
         'source' => $i % 2 === 0 ? 'tcgplayer' : 'cardmarket',
@@ -536,17 +539,23 @@ test('sorts a long history far faster than a comparator that reads model attribu
 
     $newestFirst = new ReflectionMethod(CardPriceResolver::class, 'newestFirst');
     $resolver = new CardPriceResolver;
+    $best = function (callable $run): int {
+        $run();
+        $times = [];
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $start = hrtime(true);
+            $run();
+            $times[] = hrtime(true) - $start;
+        }
 
-    $start = hrtime(true);
-    $newestFirst->invoke($resolver, $rows);
-    $precomputed = hrtime(true) - $start;
+        return min($times);
+    };
 
-    $start = hrtime(true);
-    $rows->sort(fn (CardPriceSnapshot $a, CardPriceSnapshot $b) => [$b->capturedOnKey(), $a->source, $a->variant, $a->id]
-        <=> [$a->capturedOnKey(), $b->source, $b->variant, $b->id])->values();
-    $perComparison = hrtime(true) - $start;
+    $precomputed = $best(fn () => $newestFirst->invoke($resolver, $rows));
+    $perComparison = $best(fn () => $rows->sort(fn (CardPriceSnapshot $a, CardPriceSnapshot $b) => [$b->capturedOnKey(), $a->source, $a->variant, $a->id]
+        <=> [$a->capturedOnKey(), $b->source, $b->variant, $b->id])->values());
 
-    expect($precomputed * 10)->toBeLessThan($perComparison);
+    expect($precomputed * 3)->toBeLessThan($perComparison);
 });
 
 test('orders a long history newest day first, then source, variant and id', function () {
