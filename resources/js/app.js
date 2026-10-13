@@ -293,7 +293,10 @@ const setGridData = () => ({
         // "Still saving…" / "Not saved" note; put both back.
         this.unhookMorph = window.Livewire.hook('morphed', ({ component }) => {
             if (component.id !== this.$wire.id) return;
-            this.busy.forEach((key) => this.$root.querySelector(`[data-chip="${key}"]`)?.setAttribute('aria-busy', 'true'));
+            this.busy.forEach((key) => {
+                const [cardId, ...rest] = key.split('|');
+                this.chipFor(cardId, rest.join('|'))?.setAttribute('aria-busy', 'true');
+            });
             this.$root.querySelectorAll('[data-chip]').forEach((chip) => this.restoreNote(chip));
         });
     },
@@ -384,8 +387,10 @@ const setGridData = () => ({
             entry.fail(new Error(`request failed: ${status}`));
         }
 
-        // An expired page keeps Livewire's own refresh prompt.
-        if (matched && ours && status !== 419) preventDefault();
+        // Only transport failures and server errors are handled here; 401,
+        // 403 and 419 keep Livewire's own login / refresh handling.
+        const hidesModal = !status || status === 429 || status >= 500;
+        if (matched && ours && hidesModal) preventDefault();
     },
 
     // Resolves with the server's answer and rejects when the request fails.
@@ -532,14 +537,16 @@ const setGridData = () => ({
                 onSlow: (stage) => this.setNote(chip, stage === 'stalled' ? STALLED_LABEL : SAVING_LABEL),
             });
         } catch (error) {
-            this.fail(chip);
+            this.fail(this.chipFor(cardId, variant) ?? chip);
             return;
         } finally {
             this.busy.delete(key);
             chip.removeAttribute('aria-busy');
+            // A redraw while the request was in flight may have replaced the chip.
+            this.chipFor(cardId, variant)?.removeAttribute('aria-busy');
         }
 
-        this.applyAdd(chip, cardId, result);
+        this.applyAdd(this.chipFor(cardId, variant) ?? chip, cardId, result);
     },
 
     applyUndo(toast, result) {
