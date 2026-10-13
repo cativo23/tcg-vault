@@ -1208,3 +1208,33 @@ test('adding a card from a new set past the daily import budget saves the card w
     expect(CollectionItem::where('card_tcgdex_id', 'me05-116')->exists())->toBeTrue();
     Queue::assertNotPushed(ImportSetJob::class);
 });
+
+test('saving too often in a minute is refused before any catalog lookup', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $collection = Collection::factory()->for($user)->create(['name' => 'Main', 'slug' => 'main']);
+
+    $this->app->instance(CardCatalogProvider::class, fakeDarkraiProviderForAdd());
+
+    $component = Livewire::test(AddCollectionItem::class, ['collectionId' => $collection->id])
+        ->set('search', 'Darkrai')
+        ->call('runSearch')
+        ->call('selectCard', 'me05-116')
+        ->set('rows.0.condition', 'NM')
+        ->set('rows.0.quantity', 1);
+
+    for ($i = 0; $i < AddCollectionItem::SAVE_LIMIT_PER_MINUTE; $i++) {
+        RateLimiter::hit('add-collection-item:'.$user->id, 60);
+    }
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldNotReceive('findCard');
+    $provider->shouldNotReceive('findSet');
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $component->call('save')
+        ->assertHasErrors('selectedTcgdexId')
+        ->assertNoRedirect();
+
+    expect(CollectionItem::count())->toBe(0);
+});

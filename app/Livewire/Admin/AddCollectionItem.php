@@ -14,6 +14,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Validate;
@@ -53,6 +54,8 @@ final class AddCollectionItem extends Component
      * serialized component state.
      */
     private const MAX_RESULTS = self::RESULTS_PER_PAGE * 10;
+
+    public const SAVE_LIMIT_PER_MINUTE = 30;
 
     /** @var array<int, CardSummaryData> */
     public array $results = [];
@@ -381,6 +384,18 @@ final class AddCollectionItem extends Component
                 return null;
             }
         }
+
+        // Each save makes a tcgdex lookup and may queue a set import, so it
+        // is capped per account before any of that work starts.
+        $limiterKey = 'add-collection-item:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($limiterKey, self::SAVE_LIMIT_PER_MINUTE)) {
+            $this->addError('selectedTcgdexId', 'Too many cards added in a minute. Wait a moment, then try again.');
+
+            return null;
+        }
+
+        RateLimiter::hit($limiterKey, 60);
 
         $storedPhotoPaths = [];
 

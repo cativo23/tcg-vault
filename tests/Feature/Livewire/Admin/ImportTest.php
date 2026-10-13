@@ -16,6 +16,7 @@ use App\Modules\Catalog\Services\ImportBudget;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -225,4 +226,30 @@ test('an import spanning more new sets than the daily budget adds every card but
 
     expect(CollectionItem::count())->toBe($setCount);
     Queue::assertPushed(ImportSetJob::class, ImportBudget::DAILY_LIMIT);
+});
+
+test('confirming an import too often in a minute is refused before any catalog lookup', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $this->app->instance(CardCatalogProvider::class, fakeCatalogProviderForImport());
+
+    $component = Livewire::test(Import::class)
+        ->set('text', '1 Toucannon - 068/084 [PBL] 068/084')
+        ->call('preview')
+        ->assertSet('matched', fn (array $matched) => count($matched) === 1);
+
+    for ($i = 0; $i < Import::CONFIRM_LIMIT_PER_MINUTE; $i++) {
+        RateLimiter::hit('import-confirm:'.$user->id, 60);
+    }
+
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldNotReceive('findCard');
+    $provider->shouldNotReceive('findSet');
+    $this->app->instance(CardCatalogProvider::class, $provider);
+
+    $component->call('confirm')
+        ->assertHasErrors('confirm')
+        ->assertSet('matched', fn (array $matched) => count($matched) === 1);
+
+    expect(CollectionItem::count())->toBe(0);
 });

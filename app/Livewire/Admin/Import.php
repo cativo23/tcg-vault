@@ -10,6 +10,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Services\CollectionService;
 use App\Modules\Collection\Services\TcgplayerImportParser;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Throwable;
@@ -26,6 +27,12 @@ final class Import extends Component
      * persisted component state, where progress survives between clicks.
      */
     private const CONFIRM_CHUNK_SIZE = 10;
+
+    /**
+     * Each confirm makes up to CONFIRM_CHUNK_SIZE tcgdex lookups, so this
+     * caps one account at that many times this per minute.
+     */
+    public const CONFIRM_LIMIT_PER_MINUTE = 10;
 
     public string $text = '';
 
@@ -61,6 +68,16 @@ final class Import extends Component
         if ($this->matched === []) {
             return;
         }
+
+        $key = 'import-confirm:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($key, self::CONFIRM_LIMIT_PER_MINUTE)) {
+            $this->addError('confirm', 'Too many imports in a minute. Wait a moment, then continue.');
+
+            return;
+        }
+
+        RateLimiter::hit($key, 60);
 
         $collection = Collection::firstOrCreate(
             ['user_id' => auth()->id(), 'slug' => 'my-collection'],
