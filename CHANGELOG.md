@@ -6,6 +6,46 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-12
+
+### Added
+
+- My sets (`/admin/sets`): every set you hold a card from, with owned/total
+  and a progress bar. Works for private collections.
+- A set grid (`/admin/sets/{set}`) showing every card of the set in number
+  order, owned and missing interleaved in every sort. Each card has one chip
+  per print: a tap adds a Near Mint copy, with an Undo toast. The count only
+  changes once the server confirms, and a slow or failed save says so
+  instead of guessing.
+- The card editor opens from the grid as a side panel (a bottom sheet on a
+  phone), including for cards you don't own yet.
+- An import progress banner on the set grid, with a retry when an import
+  stops making progress.
+- "Add a set" on My sets: pick any tcgdex set to open its grid and queue its
+  cards, so a set can be started from zero.
+- "Edit in my collection" on your public set page.
+
+### Changed
+
+- Starting set imports is capped at 20 sets per user per day (UTC), across
+  choosing a set, retrying, adding a card and the CSV import. A card is
+  always saved; only the set import is skipped, and the page says so.
+- Per-user rate limits on CSV import confirms, single card adds and adding
+  copies in the card editor.
+- Set imports and retries queue only the cards not stored yet, and a card's
+  price sync can't be queued twice. `catalog:refresh-prices` now reports
+  skipped cards: `Dispatched X, skipped Y (already queued).`
+
+### Fixed
+
+- Card images no longer disappear after a page section redraws.
+- Set totals fall back to the local card count when tcgdex reports 0.
+- Set logos render only from tcgdex's own assets host.
+
+### Deploy
+
+No migrations. Nothing to run after the deploy.
+
 ## [1.4.0] - 2026-10-12
 
 ### Added
