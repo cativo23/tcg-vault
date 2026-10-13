@@ -9,6 +9,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Database\Seeders\PermissionSeeder;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -211,6 +212,7 @@ test('the set page falls back to the local card count when tcgdex reports zero',
 });
 
 test('the owner viewing their own public set page gets a link into the set grid', function () {
+    $this->seed(PermissionSeeder::class);
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 2]);
@@ -234,4 +236,17 @@ test('a visitor, signed in or not, does not get the edit link', function () {
 
     $this->actingAs(User::factory()->create(['username' => 'ash']))
         ->get('/carlos/me05')->assertOk()->assertDontSee('Edit in my collection');
+});
+
+test('an owner without the use-collection permission gets no link into the set grid', function () {
+    $this->seed(PermissionSeeder::class);
+    $user = User::factory()->create(['username' => 'carlos']);
+    $user->syncRoles([]);
+    $user->syncPermissions([]);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 2]);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $this->actingAs($user)->get('/carlos/me05')->assertOk()->assertDontSee('Edit in my collection');
 });

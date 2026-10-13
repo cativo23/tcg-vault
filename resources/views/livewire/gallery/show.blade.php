@@ -12,7 +12,7 @@
         <div class="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
             <h1 class="nw-display nw-h1 nw-h1--md">{{ $set->name }}</h1>
             <div class="flex items-center gap-4">
-                @if ($isOwner)
+                @if ($canEditSet)
                     <a href="{{ route('admin.sets.show', ['setTcgdexId' => $set->tcgdex_id]) }}" class="nw-btn-secondary" wire:navigate>Edit in my collection</a>
                 @endif
                 @if ($set->logo_url)

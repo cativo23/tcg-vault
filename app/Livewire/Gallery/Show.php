@@ -167,7 +167,7 @@ final class Show extends Component
             'ownedTotals' => $ownedTotals,
             'mostValuable' => $mostValuable,
             'rarities' => $rarities,
-            'isOwner' => $this->isOwnerViewing(),
+            'canEditSet' => $this->isOwnerViewing() && auth()->user()?->can('use-collection') === true,
         ])->layoutData([
             'title' => "{$this->set->name} · {$name}'s collection",
             'description' => sprintf(

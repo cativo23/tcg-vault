@@ -15,8 +15,10 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 /**
  * Import progress for the set grid. It is its own component so the poll
  * re-renders only this banner: the grid's chips and Alpine state are never
- * morphed by a poll, and the grid redraws (event below) only when cards
- * actually arrive.
+ * morphed by a poll. When cards arrive it dispatches `set-cards-changed`,
+ * at most once per REFRESH_INTERVAL_SECONDS while importing and once more
+ * when the import completes or stalls; the grid's Alpine component decides
+ * when it is safe to redraw.
  *
  * A set counts as importing while it has fewer local cards than tcgdex's
  * announced total; with no announced total there is nothing to wait for.
@@ -24,9 +26,10 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 final class SetImportBanner extends Component
 {
     /** Seconds without a new card arriving before an import counts as stalled. */
-    private const IMPORT_STALL_SECONDS = 600;
+    public const IMPORT_STALL_SECONDS = 600;
 
-    public const RETRY_LIMIT_PER_MINUTE = 3;
+    /** Minimum seconds between two grid redraws while cards keep arriving. */
+    public const REFRESH_INTERVAL_SECONDS = 20;
 
     #[Locked]
     public string $setTcgdexId = '';
@@ -38,81 +41,125 @@ final class SetImportBanner extends Component
     #[Locked]
     public int $lastProgressAt = 0;
 
+    // The card count the grid was last told about, and when.
+    #[Locked]
+    public int $announcedCount = 0;
+
+    #[Locked]
+    public int $announcedAt = 0;
+
+    // Whether this page saw the set short of cards; only then does finishing
+    // announce "All cards loaded".
+    #[Locked]
+    public bool $sawImport = false;
+
     public string $notice = '';
+
+    /** @var array{local: int, total: int, missing: int}|null */
+    private ?array $progress = null;
 
     public function mount(string $setTcgdexId): void
     {
         $this->setTcgdexId = $setTcgdexId;
-        $this->lastSeenCount = $this->localCount();
+
+        $progress = $this->progress();
+        $this->lastSeenCount = $progress['local'];
+        $this->announcedCount = $progress['local'];
         $this->lastProgressAt = now()->getTimestamp();
+        $this->announcedAt = now()->getTimestamp();
+        $this->sawImport = $progress['missing'] > 0;
     }
 
     /** The poll target: records progress and tells the grid when cards arrived. */
     public function check(): void
     {
-        $count = $this->localCount();
+        $local = $this->progress()['local'];
+        $now = now()->getTimestamp();
 
-        if ($count === $this->lastSeenCount) {
-            return;
+        if ($local !== $this->lastSeenCount) {
+            $this->lastSeenCount = $local;
+            $this->lastProgressAt = $now;
         }
 
-        $this->lastSeenCount = $count;
-        $this->lastProgressAt = now()->getTimestamp();
-        $this->dispatch('set-cards-changed');
+        // Cards the grid has not drawn yet are announced on a slow cadence
+        // while the import runs, and at once when it finishes or stalls.
+        $settled = $this->progress()['missing'] === 0 || $this->isStalled();
+
+        if ($local !== $this->announcedCount && ($settled || $now - $this->announcedAt >= self::REFRESH_INTERVAL_SECONDS)) {
+            $this->announcedCount = $local;
+            $this->announcedAt = $now;
+            $this->dispatch('set-cards-changed');
+        }
     }
 
-    /** Re-dispatches the (unique) import for a set that is still short of cards. */
+    /**
+     * Re-dispatches the (unique) import, but only for a stalled one: every
+     * accepted retry fans out per-card sync jobs, so a client cannot ask
+     * while cards are still arriving. One retry per user and set per stall
+     * window.
+     */
     public function retryImport(): void
     {
-        if ($this->missingCount() < 1) {
+        if (! $this->isStalled()) {
             return;
         }
 
-        $key = 'import-retry:'.auth()->id();
+        $key = 'import-retry:'.auth()->id().':'.$this->setTcgdexId;
 
-        if (RateLimiter::tooManyAttempts($key, self::RETRY_LIMIT_PER_MINUTE)) {
-            $this->notice = 'Already retrying: give it a minute.';
+        if (RateLimiter::tooManyAttempts($key, 1)) {
+            $this->notice = 'Already retried: give it a few minutes.';
 
             return;
         }
 
-        RateLimiter::hit($key, 60);
+        RateLimiter::hit($key, self::IMPORT_STALL_SECONDS);
 
         $this->notice = '';
         ImportSetJob::dispatch($this->setTcgdexId);
         $this->lastProgressAt = now()->getTimestamp();
     }
 
-    private function set(): Set
+    private function isStalled(): bool
     {
-        return Set::where('tcgdex_id', $this->setTcgdexId)->first() ?? throw new NotFoundHttpException;
+        return $this->progress()['missing'] > 0
+            && now()->getTimestamp() - $this->lastProgressAt >= self::IMPORT_STALL_SECONDS;
     }
 
-    private function localCount(): int
+    /**
+     * Local card count, announced total and the shortfall, read once per
+     * request. No announced total (null or 0) means nothing is missing, and
+     * a surplus never goes negative.
+     *
+     * @return array{local: int, total: int, missing: int}
+     */
+    private function progress(): array
     {
-        return $this->set()->cards()->count();
-    }
+        if ($this->progress === null) {
+            $set = Set::where('tcgdex_id', $this->setTcgdexId)->first() ?? throw new NotFoundHttpException;
+            $local = $set->cards()->count();
+            $total = (int) $set->card_count;
 
-    private function missingCount(): int
-    {
-        $set = $this->set();
-        $total = (int) $set->card_count;
+            $this->progress = ['local' => $local, 'total' => $total, 'missing' => $total > 0 ? max(0, $total - $local) : 0];
+        }
 
-        return $total > 0 ? max(0, $total - $set->cards()->count()) : 0;
+        return $this->progress;
     }
 
     public function render(): View
     {
-        $set = $this->set();
-        $localCount = $set->cards()->count();
-        $missingCount = (int) $set->card_count > 0 ? max(0, (int) $set->card_count - $localCount) : 0;
+        $progress = $this->progress();
+
+        if ($progress['missing'] > 0) {
+            $this->sawImport = true;
+        }
 
         return view('livewire.admin.set-import-banner', [
-            'localCount' => $localCount,
-            'totalCount' => (int) $set->card_count,
-            'missingCount' => $missingCount,
-            'importing' => $missingCount > 0,
-            'stalled' => $missingCount > 0 && now()->getTimestamp() - $this->lastProgressAt >= self::IMPORT_STALL_SECONDS,
+            'localCount' => $progress['local'],
+            'totalCount' => $progress['total'],
+            'missingCount' => $progress['missing'],
+            'importing' => $progress['missing'] > 0,
+            'stalled' => $this->isStalled(),
+            'finished' => $this->sawImport && $progress['missing'] === 0,
         ]);
     }
 }

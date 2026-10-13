@@ -260,6 +260,8 @@ const setGridData = () => ({
     timers: new Map(),
     pending: [],
     unhook: null,
+    unhookMorph: null,
+    refreshQueued: false,
 
     init() {
         // Livewire's promise for a call never settles when its request fails,
@@ -269,10 +271,38 @@ const setGridData = () => ({
         this.unhook = window.Livewire.hook('request', ({ payload, fail }) => {
             fail(({ status, preventDefault }) => this.settleFailedRequest(payload, status, preventDefault));
         });
+
+        // A render that was already in flight when a chip was tapped morphs
+        // the chip from server HTML that has no busy flag; put it back.
+        this.unhookMorph = window.Livewire.hook('morphed', ({ component }) => {
+            if (component.id !== this.$wire.id) return;
+            this.busy.forEach((key) => this.$root.querySelector(`[data-chip="${key}"]`)?.setAttribute('aria-busy', 'true'));
+        });
+    },
+
+    idle() {
+        return this.busy.size === 0 && this.pending.length === 0;
+    },
+
+    // The import banner reports new cards: redraw the grid now when no quick
+    // add or undo is in flight, otherwise once they have all settled, so a
+    // redraw never lands on a chip that is waiting for the server.
+    refreshWhenIdle() {
+        if (this.idle()) {
+            this.refreshQueued = false;
+            this.$wire.$refresh();
+            return;
+        }
+        this.refreshQueued = true;
+    },
+
+    flushQueuedRefresh() {
+        if (this.refreshQueued && this.idle()) this.refreshWhenIdle();
     },
 
     destroy() {
         this.unhook?.();
+        this.unhookMorph?.();
         this.timers.forEach((timer) => clearTimeout(timer));
         this.pending.splice(0).forEach((entry) => entry.dispose());
         this.$root.querySelectorAll('[data-chip]').forEach((chip) => clearTimeout(chip._failTimer));
@@ -439,6 +469,14 @@ const setGridData = () => ({
     },
 
     async add(chip) {
+        try {
+            await this.addCopy(chip);
+        } finally {
+            this.flushQueuedRefresh();
+        }
+    },
+
+    async addCopy(chip) {
         const cardId = Number(chip.dataset.card);
         // The chip's variant goes to the server verbatim; '' means "no variant".
         const variant = chip.dataset.variant;
@@ -485,6 +523,14 @@ const setGridData = () => ({
     // stays disabled after any outcome, because a failed round trip may
     // still have been applied by the server.
     async undo(toast) {
+        try {
+            await this.undoCopy(toast);
+        } finally {
+            this.flushQueuedRefresh();
+        }
+    },
+
+    async undoCopy(toast) {
         if (!toast.undoable) return;
         toast.undoable = false;
         // The toast must not vanish mid-request; its result gets its own full duration.

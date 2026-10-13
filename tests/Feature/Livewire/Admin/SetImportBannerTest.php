@@ -10,7 +10,6 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Support\Facades\Queue;
-use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Livewire;
 
 /** A signed-in collector who may use /admin. */
@@ -40,8 +39,8 @@ test('an incomplete set shows how many cards have loaded and keeps polling', fun
     bannerSet(2);
 
     Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
-        ->assertSee('Loading cards… 2/5')
-        ->assertSeeHtml('role="status"')
+        ->assertSee('Loading cards…')
+        ->assertSeeHtml('<span class="mono">2/5</span>')
         ->assertSeeHtml('wire:poll.5s');
 });
 
@@ -90,11 +89,29 @@ test('a card arriving resets the stall clock', function () {
 
     $this->travel(9)->minutes();
     $component->call('check')
-        ->assertSee('Loading cards… 2/5')
+        ->assertSee('Loading cards…')
+        ->assertSeeHtml('<span class="mono">2/5</span>')
         ->assertDontSee('cards missing');
 });
 
-test('a card arriving tells the grid to redraw', function () {
+test('the live region is the always-present root and the changing count is not read out', function () {
+    bannerUser();
+    bannerSet(2);
+
+    Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
+        ->assertSeeHtml('role="status" aria-atomic="true"')
+        ->assertSeeHtml('<span aria-hidden="true">Loading cards…');
+});
+
+test('the live region stays in place when there is nothing to announce', function () {
+    bannerUser();
+    bannerSet(5);
+
+    Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
+        ->assertSeeHtml('role="status" aria-atomic="true"');
+});
+
+test('a card arriving tells the grid to redraw once the refresh interval has passed', function () {
     bannerUser();
     $set = bannerSet(1);
 
@@ -104,7 +121,58 @@ test('a card arriving tells the grid to redraw', function () {
 
     Card::create(['tcgdex_id' => 'me05-002', 'set_id' => $set->id, 'local_id' => '002', 'name' => 'Card 2']);
 
+    $this->travel(SetImportBanner::REFRESH_INTERVAL_SECONDS)->seconds();
     $component->call('check')->assertDispatched('set-cards-changed');
+});
+
+test('polls that see a card arrive are coalesced into one redraw per interval while importing', function () {
+    bannerUser();
+    $set = bannerSet(1);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+
+    Card::create(['tcgdex_id' => 'me05-002', 'set_id' => $set->id, 'local_id' => '002', 'name' => 'Card 2']);
+    $this->travel(5)->seconds();
+    $component->call('check')->assertNotDispatched('set-cards-changed');
+
+    Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Card 3']);
+    $this->travel(5)->seconds();
+    $component->call('check')->assertNotDispatched('set-cards-changed');
+
+    $this->travel(SetImportBanner::REFRESH_INTERVAL_SECONDS)->seconds();
+    $component->call('check')->assertDispatched('set-cards-changed');
+
+    // Nothing new since that redraw: the next poll stays quiet.
+    $component->call('check')->assertNotDispatched('set-cards-changed');
+});
+
+test('the last cards are announced at once when the import completes', function () {
+    bannerUser();
+    $set = bannerSet(4);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+
+    Card::create(['tcgdex_id' => 'me05-005', 'set_id' => $set->id, 'local_id' => '005', 'name' => 'Card 5']);
+    $this->travel(2)->seconds();
+
+    $component->call('check')
+        ->assertDispatched('set-cards-changed')
+        ->assertSee('All cards loaded')
+        ->assertDontSeeHtml('wire:poll');
+});
+
+test('cards that arrived before a stall are announced when the import stalls', function () {
+    bannerUser();
+    $set = bannerSet(1);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+
+    $this->travel(5)->seconds();
+    Card::create(['tcgdex_id' => 'me05-002', 'set_id' => $set->id, 'local_id' => '002', 'name' => 'Card 2']);
+    $component->call('check')->assertNotDispatched('set-cards-changed');
+
+    $this->travel(11)->minutes();
+    $component->call('check')->assertDispatched('set-cards-changed')->assertSee('3 cards missing');
 });
 
 test('a poll with nothing new leaves the grid alone', function () {
@@ -116,7 +184,20 @@ test('a poll with nothing new leaves the grid alone', function () {
         ->assertNotDispatched('set-cards-changed');
 });
 
-test('retry dispatches the import again and restarts polling', function () {
+test('a retry while cards are still arriving queues nothing', function () {
+    Queue::fake();
+    bannerUser();
+    bannerSet(1);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+
+    $this->travel(9)->minutes();
+    $component->call('retryImport');
+
+    Queue::assertNothingPushed();
+});
+
+test('a retry after a stall queues the import once and restarts polling', function () {
     Queue::fake();
     bannerUser();
     bannerSet(1);
@@ -127,10 +208,52 @@ test('retry dispatches the import again and restarts polling', function () {
     $component->call('check')->assertSee('4 cards missing');
 
     $component->call('retryImport')
-        ->assertSee('Loading cards… 1/5')
+        ->assertSee('Loading cards…')
+        ->assertSeeHtml('<span class="mono">1/5</span>')
         ->assertSeeHtml('wire:poll.5s');
 
     Queue::assertPushed(ImportSetJob::class, fn (ImportSetJob $job) => $job->setTcgdexId === 'me05');
+    Queue::assertPushed(ImportSetJob::class, 1);
+
+    // The stall clock restarted, so an immediate second press is refused.
+    $component->call('retryImport');
+    Queue::assertPushed(ImportSetJob::class, 1);
+});
+
+test('a second retry inside the stall window is refused and says so', function () {
+    Queue::fake();
+    bannerUser();
+    bannerSet(1);
+
+    // Two open tabs, both showing the stalled banner.
+    $first = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+    $second = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+
+    $this->travel(11)->minutes();
+
+    $first->call('retryImport');
+    Queue::assertPushed(ImportSetJob::class, 1);
+
+    $second->call('retryImport')->assertSee('Already retried');
+
+    Queue::assertPushed(ImportSetJob::class, 1);
+});
+
+test('the retry limit is per set', function () {
+    Queue::fake();
+    bannerUser();
+    bannerSet(1);
+    Set::create(['tcgdex_id' => 'me06', 'name' => 'Other', 'card_count' => 4]);
+
+    $first = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+    $second = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me06']);
+
+    $this->travel(11)->minutes();
+
+    $first->call('retryImport');
+    $second->call('retryImport');
+
+    Queue::assertPushed(ImportSetJob::class, 2);
 });
 
 test('retry does nothing once the set is complete', function () {
@@ -138,7 +261,9 @@ test('retry does nothing once the set is complete', function () {
     bannerUser();
     bannerSet(5);
 
-    Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])->call('retryImport');
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+    $this->travel(11)->minutes();
+    $component->call('retryImport');
 
     Queue::assertNothingPushed();
 });
@@ -148,44 +273,28 @@ test('retry does nothing for a set with no known size', function () {
     bannerUser();
     bannerSet(1, null);
 
-    Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])->call('retryImport');
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+    $this->travel(11)->minutes();
+    $component->call('retryImport');
 
     Queue::assertNothingPushed();
 });
 
-test('retry is limited to a few presses a minute per user', function () {
-    Queue::fake();
-    $user = bannerUser();
-    bannerSet(1);
-
-    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
-
-    foreach (range(1, 5) as $press) {
-        $component->call('retryImport');
-    }
-
-    // The import is unique, so the fake queue keeps one push; the limiter
-    // shows how many presses actually went through.
-    expect(RateLimiter::attempts('import-retry:'.$user->id))->toBe(SetImportBanner::RETRY_LIMIT_PER_MINUTE);
-
-    $this->travel(61)->seconds();
-    $component->call('retryImport');
-
-    expect(RateLimiter::attempts('import-retry:'.$user->id))->toBe(1);
-});
-
-test('a rate-limited retry says so instead of failing silently', function () {
+test('more local cards than the announced total is not an import and never goes negative', function () {
     Queue::fake();
     bannerUser();
-    bannerSet(1);
+    bannerSet(6);
 
-    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
+        ->assertDontSee('Loading cards')
+        ->assertDontSee('missing')
+        ->assertDontSee('All cards loaded')
+        ->assertDontSeeHtml('wire:poll');
 
-    foreach (range(1, SetImportBanner::RETRY_LIMIT_PER_MINUTE + 1) as $press) {
-        $component->call('retryImport');
-    }
+    $this->travel(11)->minutes();
+    $component->call('check')->call('retryImport')->assertDontSee('missing');
 
-    $component->assertSee('Already retrying');
+    Queue::assertNothingPushed();
 });
 
 test('the grid mounts the banner, and the grid itself never polls', function () {
@@ -193,7 +302,8 @@ test('the grid mounts the banner, and the grid itself never polls', function () 
     bannerSet(2);
 
     Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
-        ->assertSee('Loading cards… 2/5')
+        ->assertSee('Loading cards…')
+        ->assertSeeHtml('<span class="mono">2/5</span>')
         ->assertSeeHtml('nw-import-banner');
 
     // Only the banner element polls, so a poll never re-renders chips.
@@ -206,7 +316,8 @@ test('a set with no cards yet says they are on their way', function () {
     bannerSet(0);
 
     Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
-        ->assertSee('Loading cards… 0/5')
+        ->assertSee('Loading cards…')
+        ->assertSeeHtml('<span class="mono">0/5</span>')
         ->assertSee('Cards are on their way')
         ->assertDontSee('No cards match');
 });
@@ -221,13 +332,10 @@ test('a complete set with no matches keeps the no-match message', function () {
         ->assertDontSee('Cards are on their way');
 });
 
-test('the grid redraws when the banner reports new cards', function () {
+test('the grid refreshes itself only through the client-side idle gate', function () {
     bannerUser();
-    $set = bannerSet(1);
+    bannerSet(2);
 
-    $component = Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])->assertDontSee('Card 2');
-
-    Card::create(['tcgdex_id' => 'me05-002', 'set_id' => $set->id, 'local_id' => '002', 'name' => 'Card 2']);
-
-    $component->dispatch('set-cards-changed')->assertSee('Card 2');
+    Livewire::test(SetGrid::class, ['setTcgdexId' => 'me05'])
+        ->assertSeeHtml('x-on:set-cards-changed.window="refreshWhenIdle()"');
 });

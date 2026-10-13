@@ -89,10 +89,6 @@ final class SetGrid extends Component
     #[On('card-copies-changed')]
     public function refreshAfterCardChange(): void {}
 
-    /** The import banner saw new cards arrive; the re-render draws them. */
-    #[On('set-cards-changed')]
-    public function refreshAfterImportProgress(): void {}
-
     public function sortBy(string $sort): void
     {
         if (in_array($sort, self::SORTS, true)) {

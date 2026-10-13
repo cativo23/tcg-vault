@@ -1,6 +1,6 @@
 @use('App\Modules\Catalog\Support\Rarity')
 
-<div class="nw-wrap py-10" x-data="setGrid" x-on:card-editor-closed.window="$nextTick(() => document.getElementById($event.detail.triggerId)?.focus())">
+<div class="nw-wrap py-10" x-data="setGrid" x-on:set-cards-changed.window="refreshWhenIdle()" x-on:card-editor-closed.window="$nextTick(() => document.getElementById($event.detail.triggerId)?.focus())">
     <section class="nw-masthead">
         <div class="nw-eyebrow">
             <a href="{{ route('admin.sets.index') }}" wire:navigate>My sets</a>
