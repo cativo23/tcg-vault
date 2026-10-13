@@ -21,11 +21,15 @@ use Illuminate\Support\Facades\DB;
  * last point, today, is the headline figure.
  *
  * The resolver chain only ever needs, per (card, source, variant) and
- * day, the newest row and the newest priced row on or before that day:
- * every chain step picks the newest row of some of those groups, and the
- * staleness reference is the newest priced marketplace row. Postgres
- * reduces each day's window to those rows, so a year-long chart loads a
- * few rows per print per sample day instead of the whole history.
+ * day, the newest row and the newest priced row in that window: every
+ * chain step picks the newest row of some of those groups, and the
+ * staleness reference is the newest priced marketplace row. The groups
+ * are listed once; then, one sample day at a time, two index lookups per
+ * group (LATERAL ... ORDER BY captured_on DESC LIMIT 1 on the unique
+ * (card_id, source, variant, captured_on) index) return those rows. A
+ * day's rows are priced and dropped before the next day is loaded, so
+ * memory holds about two rows per group however long the range is, and
+ * no query binds a value per card or per row.
  */
 final class CollectionValueSeries
 {
@@ -49,11 +53,11 @@ final class CollectionValueSeries
             return collect();
         }
 
-        $rowsByDay = $this->rowsOn($this->idsOf($cards), $days);
+        $groups = json_encode($this->groupsOf($cards), JSON_THROW_ON_ERROR);
 
-        return collect($days)->map(function (CarbonImmutable $day) use ($cards, $rowsByDay, $currency): array {
+        return collect($days)->map(function (CarbonImmutable $day) use ($cards, $groups, $currency): array {
             $key = $day->toDateString();
-            $byCard = $rowsByDay->get($key, collect())->groupBy('card_id');
+            $byCard = $this->rowsOn($groups, $day)->groupBy('card_id');
             // Each day sees only its own rows: a row kept for an earlier
             // day's window must never price a later day.
             $dayCards = $cards->map(fn (Card $card) => (clone $card)->setRelation(
@@ -73,62 +77,63 @@ final class CollectionValueSeries
             return null;
         }
 
-        $min = CardPriceSnapshot::query()->whereIn('card_id', $this->idsOf($cards))->min('captured_on');
+        $min = CardPriceSnapshot::query()->whereRaw('card_id = ANY(?::bigint[])', [$this->idArray($cards)])->min('captured_on');
 
         return $min === null ? null : CarbonImmutable::parse($min);
     }
 
     /**
-     * Per sample day, the rows that decide its prices, in id order (the
-     * resolver breaks same-day ties by load order, and the headline's
-     * eager load comes back in id order).
+     * Every (card, source, variant) the cards have a snapshot for, as the
+     * rows of a JSON recordset.
      *
-     * @param  list<int>  $cardIds
-     * @param  list<CarbonImmutable>  $days
-     * @return Collection<string, Collection<int, CardPriceSnapshot>>
+     * @param  Collection<int, Card>  $cards
+     * @return list<array{card_id: int, source: string, variant: string}>
      */
-    private function rowsOn(array $cardIds, array $days): Collection
+    private function groupsOf(Collection $cards): array
     {
-        $bindings = [
-            '{'.implode(',', array_map(fn (CarbonImmutable $d) => $d->toDateString(), $days)).'}',
-            CardPriceSnapshot::RECENT_DAYS,
-            '{'.implode(',', $cardIds).'}',
-        ];
+        $rows = DB::select(
+            'SELECT DISTINCT card_id, source, variant FROM card_price_snapshots WHERE card_id = ANY(?::bigint[])',
+            [$this->idArray($cards)],
+        );
 
-        $pairs = DB::select(<<<'SQL'
-            WITH days AS (SELECT unnest(?::date[]) AS day),
-            windowed AS (
-                SELECT d.day, s.id, s.card_id, s.source, s.variant, s.captured_on, s.market_minor
-                FROM days d
-                JOIN card_price_snapshots s
-                  ON s.captured_on <= d.day
-                 AND (s.captured_on >= d.day - ?::int OR s.source = 'manual')
-                WHERE s.card_id = ANY(?::bigint[])
-            )
-            (SELECT DISTINCT ON (day, card_id, source, variant) day, id
-                FROM windowed
-                ORDER BY day, card_id, source, variant, captured_on DESC)
-            UNION
-            (SELECT DISTINCT ON (day, card_id, source, variant) day, id
-                FROM windowed
-                WHERE market_minor IS NOT NULL
-                ORDER BY day, card_id, source, variant, captured_on DESC)
-            SQL, $bindings);
+        return array_values(array_map(fn ($r): array => ['card_id' => (int) $r->card_id, 'source' => (string) $r->source, 'variant' => (string) $r->variant], $rows));
+    }
 
-        $rows = CardPriceSnapshot::query()
-            ->select(CardPriceSnapshot::CHART_COLUMNS)
-            ->whereIn('id', array_unique(array_map(fn ($p) => (int) $p->id, $pairs)))
-            ->orderBy('id')
-            ->get()
-            ->keyBy('id');
+    /**
+     * The rows that decide one day's prices, in id order: per group, the
+     * newest row in the day's window and the newest priced one (often the
+     * same row). The order is the one the headline's eager load uses, so a
+     * same-day tie between groups breaks the same way on both sides.
+     *
+     * @param  string  $groups  JSON from groupsOf()
+     * @return Collection<int, CardPriceSnapshot>
+     */
+    private function rowsOn(string $groups, CarbonImmutable $day): Collection
+    {
+        $columns = implode(', ', array_map(fn (string $c): string => "s.{$c}", CardPriceSnapshot::CHART_COLUMNS));
+        $window = <<<'SQL'
+            WHERE s.card_id = g.card_id AND s.source = g.source AND s.variant = g.variant
+              AND s.captured_on <= ?::date
+              AND (s.captured_on >= ?::date - ?::int OR s.source = 'manual')
+            SQL;
+        $date = $day->toDateString();
+        $bind = [$date, $date, CardPriceSnapshot::RECENT_DAYS];
 
-        return collect($pairs)
-            ->groupBy(fn ($p) => substr((string) $p->day, 0, 10))
-            ->map(fn (Collection $dayPairs) => $dayPairs
-                ->map(fn ($p) => $rows->get((int) $p->id))
-                ->filter()
-                ->sortBy('id')
-                ->values());
+        $rows = DB::select(<<<SQL
+            SELECT x.*
+            FROM jsonb_to_recordset(?::jsonb) AS g(card_id bigint, source text, variant text)
+            CROSS JOIN LATERAL (
+                (SELECT {$columns} FROM card_price_snapshots s {$window}
+                    ORDER BY s.captured_on DESC LIMIT 1)
+                UNION
+                (SELECT {$columns} FROM card_price_snapshots s {$window}
+                    AND s.market_minor IS NOT NULL
+                    ORDER BY s.captured_on DESC LIMIT 1)
+            ) x
+            ORDER BY x.id
+            SQL, [$groups, ...$bind, ...$bind]);
+
+        return new Collection(CardPriceSnapshot::hydrate(array_map(fn ($r): array => (array) $r, $rows))->all());
     }
 
     /**
@@ -138,5 +143,15 @@ final class CollectionValueSeries
     private function idsOf(Collection $cards): array
     {
         return array_values($cards->map(fn (Card $card): int => (int) $card->id)->all());
+    }
+
+    /**
+     * The card ids as one Postgres array literal, so a query binds a single value however many cards there are.
+     *
+     * @param  Collection<int, Card>  $cards
+     */
+    private function idArray(Collection $cards): string
+    {
+        return '{'.implode(',', $this->idsOf($cards)).'}';
     }
 }

@@ -13,6 +13,7 @@ use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\PublicCollection;
 use App\Modules\Collection\Services\Valuation;
+use Illuminate\Support\Facades\DB;
 
 beforeEach(function () {
     $this->user = User::factory()->create(['username' => 'carlos']);
@@ -204,4 +205,24 @@ test('every point of a mixed collection matches pricing the full window the slow
 
         expect($point['minor'])->toBe($valuation->totalsByCurrencyOver($dayCards, [$day])[$day->toDateString()]['USD'] ?? 0, $day->toDateString());
     }
+});
+
+test('no query binds a value per card or per row, so a large collection stays under the parameter limit', function () {
+    foreach (range(1, 12) as $n) {
+        $card = ($this->own)(sprintf('%03d', $n));
+        foreach (range(0, 40) as $ago) {
+            ($this->price)($card, $ago, 100 + $ago);
+        }
+    }
+
+    $cards = PublicCollection::for($this->user)->cardsQuery()->get();
+    $max = 0;
+    DB::listen(function ($query) use (&$max) {
+        $max = max($max, count($query->bindings));
+    });
+
+    $series = (new CollectionValueSeries(new Valuation(new CardPriceResolver)))->for($cards, 'USD', ChartRange::OneMonth);
+
+    expect($series)->toHaveCount(31)
+        ->and($max)->toBeLessThanOrEqual(8);
 });
