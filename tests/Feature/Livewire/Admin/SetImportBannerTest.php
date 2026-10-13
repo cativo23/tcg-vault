@@ -78,6 +78,7 @@ test('after ten minutes with no new card the banner falls back to a slow poll an
 });
 
 test('a banner mounted on a set that stopped growing long ago keeps fast polling through a grace period, then stalls', function () {
+    Queue::fake();
     bannerUser();
     bannerSet(2);
 
@@ -96,6 +97,9 @@ test('a banner mounted on a set that stopped growing long ago keeps fast polling
         ->assertSee('3 cards missing')
         ->assertSee('Retry')
         ->assertDontSeeHtml('wire:poll.5s');
+
+    $component->call('retryImport');
+    Queue::assertPushed(ImportSetJob::class, 1);
 });
 
 test('a stalled banner keeps a slow fallback poll so a recovering queue is noticed', function () {
