@@ -9,7 +9,6 @@ use App\Modules\Catalog\Data\CardSummaryData;
 use App\Modules\Catalog\Data\SetSummaryData;
 use App\Modules\Catalog\Exceptions\CardNotFoundException;
 use App\Modules\Catalog\Exceptions\CatalogUnavailableException;
-use App\Modules\Catalog\Exceptions\MalformedCatalogResponseException;
 use App\Modules\Catalog\Exceptions\SetNotFoundException;
 
 interface CardCatalogProvider
