@@ -2,12 +2,17 @@
 
 declare(strict_types=1);
 
+use App\Livewire\Admin\Sets;
 use App\Models\User;
+use App\Modules\Catalog\Contracts\CardCatalogProvider;
+use App\Modules\Catalog\Data\SetSummaryData;
+use App\Modules\Catalog\Exceptions\CatalogUnavailableException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Database\Seeders\PermissionSeeder;
+use Livewire\Livewire;
 
 beforeEach(function () {
     $this->seed(PermissionSeeder::class);
@@ -129,4 +134,150 @@ test('a signed-in user without use-collection gets a 403 on the set pages', func
 
     $this->get('/admin/sets')->assertForbidden();
     $this->get('/admin/sets/me05')->assertForbidden();
+});
+
+function pickerSet(string $id, string $name, ?int $count = 100, ?string $logo = null): SetSummaryData
+{
+    return new SetSummaryData(tcgdexId: $id, name: $name, series: null, releasedOn: null, cardCount: $count, logoUrl: $logo);
+}
+
+/** @param list<SetSummaryData> $sets */
+function pickerCatalog(array $sets): void
+{
+    test()->mock(CardCatalogProvider::class, fn ($mock) => $mock->shouldReceive('listSets')->andReturn($sets));
+}
+
+function pickerUser(): User
+{
+    $user = User::factory()->create();
+    test()->actingAs($user);
+
+    return $user;
+}
+
+test('the picker is closed on load and does not ask tcgdex for the list', function () {
+    pickerUser();
+    test()->mock(CardCatalogProvider::class, fn ($mock) => $mock->shouldNotReceive('listSets'));
+
+    Livewire::test(Sets::class)
+        ->assertSet('pickerOpen', false)
+        ->assertSeeHtml('id="add-set-trigger"')
+        ->assertDontSeeHtml('role="dialog"');
+});
+
+test('opening the picker lists the sets with their card counts', function () {
+    pickerUser();
+    pickerCatalog([
+        pickerSet('me05', 'Pitch Black', 120, 'https://assets.tcgdex.net/en/me/me05/logo.png'),
+        pickerSet('miscp', 'Miscellaneous Promos', 1),
+    ]);
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->assertSet('pickerOpen', true)
+        ->assertSee('Pitch Black')
+        ->assertSee('Miscellaneous Promos')
+        ->assertSeeHtml('<span class="mono">120</span>')
+        ->assertSeeHtml('src="https://assets.tcgdex.net/en/me/me05/logo.png"');
+});
+
+test('the picker is an accessible dialog', function () {
+    pickerUser();
+    pickerCatalog([pickerSet('me05', 'Pitch Black')]);
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->assertSeeHtml('role="dialog"')
+        ->assertSeeHtml('aria-modal="true"')
+        ->assertSeeHtml('aria-labelledby="set-picker-title"')
+        ->assertSeeHtml('id="set-picker-title"')
+        ->assertSeeHtml('for="set-picker-search"')
+        ->assertSeeHtml('aria-label="Close"');
+});
+
+test('the picker lists the newest sets first', function () {
+    pickerUser();
+    pickerCatalog([pickerSet('base1', 'Base Set'), pickerSet('me05', 'Pitch Black')]);
+
+    Livewire::test(Sets::class)->call('openPicker')->assertSeeInOrder(['Pitch Black', 'Base Set']);
+});
+
+test('the filter matches a set by name or by id, ignoring case', function () {
+    pickerUser();
+    pickerCatalog([pickerSet('me05', 'Pitch Black'), pickerSet('base1', 'Base Set'), pickerSet('sv08', 'Surging Sparks')]);
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->set('pickerSearch', 'PITCH')
+        ->assertSee('Pitch Black')
+        ->assertDontSee('Base Set')
+        ->set('pickerSearch', 'sv08')
+        ->assertSee('Surging Sparks')
+        ->assertDontSee('Pitch Black');
+});
+
+test('a filter with no match says so', function () {
+    pickerUser();
+    pickerCatalog([pickerSet('me05', 'Pitch Black')]);
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->set('pickerSearch', 'zzz')
+        ->assertSee('No sets match')
+        ->assertDontSee('Pitch Black');
+});
+
+test('sets the owner already has are tagged but still selectable', function () {
+    $user = pickerUser();
+    $mine = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 120]);
+    mySetsOwn($user, $mine, '116', 'Mega Darkrai ex');
+    pickerCatalog([pickerSet('me05', 'Pitch Black'), pickerSet('base1', 'Base Set')]);
+
+    $html = Livewire::test(Sets::class)->call('openPicker')->html();
+
+    expect(substr_count($html, 'In My sets'))->toBe(1)
+        ->and(substr_count($html, 'wire:click="chooseSet'))->toBe(2);
+});
+
+test('a failed set list shows an error with a retry, and retry recovers', function () {
+    pickerUser();
+    $calls = 0;
+    test()->mock(CardCatalogProvider::class, fn ($mock) => $mock->shouldReceive('listSets')->andReturnUsing(
+        function () use (&$calls) {
+            if (++$calls === 1) {
+                throw CatalogUnavailableException::forSetListing(new RuntimeException('down'));
+            }
+
+            return [pickerSet('me05', 'Pitch Black')];
+        },
+    ));
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->assertSee("Couldn't load the set list", false)
+        ->assertSeeHtml('wire:click="$refresh"')
+        ->assertDontSee('Pitch Black')
+        ->refresh()
+        ->assertDontSee("Couldn't load the set list", false)
+        ->assertSee('Pitch Black');
+});
+
+test('closing the picker clears the filter and tells the page to return focus', function () {
+    pickerUser();
+    pickerCatalog([pickerSet('me05', 'Pitch Black')]);
+
+    Livewire::test(Sets::class)
+        ->call('openPicker')
+        ->set('pickerSearch', 'pitch')
+        ->call('closePicker')
+        ->assertSet('pickerOpen', false)
+        ->assertSet('pickerSearch', '')
+        ->assertDispatched('set-picker-closed')
+        ->assertDontSeeHtml('role="dialog"');
+});
+
+test('the empty state offers the picker as well as adding a single card', function () {
+    pickerUser();
+
+    Livewire::test(Sets::class)->assertSee('No sets yet')->assertSeeHtml('wire:click="openPicker"');
 });
