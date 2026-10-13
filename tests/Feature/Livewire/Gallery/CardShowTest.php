@@ -360,3 +360,13 @@ test('the read a variant borrows its price from is listed among the market reads
         ->assertViewHas('snapshot', fn ($s) => $s->is($default))
         ->assertViewHas('marketReads', fn ($reads) => $reads->contains(fn ($r) => $r->is($default)));
 });
+
+test('a card with no catalog variants and one hand-entered print shows no switcher and lists its copies', function () {
+    $seed = seedCardPage();
+    ownCopy($seed, 'holofoil', 1, 'only copy');
+
+    Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('switcher', false)
+        ->assertViewHas('items', fn ($items) => $items->count() === 1)
+        ->assertSee('only copy');
+});
