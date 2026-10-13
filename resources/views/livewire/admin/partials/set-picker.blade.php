@@ -46,10 +46,10 @@
             @elseif ($picker['sets'] === [])
                 <p class="px-5 pb-6 text-sm" style="color: var(--muted)">No sets match “{{ $pickerSearch }}”.</p>
             @else
-                <ul class="nw-pick-list">
+                <ul class="nw-pick-list" x-on:click.capture="if ($el.querySelector('[aria-disabled]')) { $event.preventDefault(); $event.stopPropagation() }">
                     @foreach ($picker['sets'] as $candidate)
                         <li wire:key="pick-{{ $candidate->tcgdexId }}">
-                            <button type="button" class="nw-pick-row" wire:click="chooseSet(@js($candidate->tcgdexId))" wire:loading.class="is-busy" wire:target="chooseSet">
+                            <button type="button" class="nw-pick-row" wire:click="chooseSet(@js($candidate->tcgdexId))" wire:loading.class="is-busy" wire:loading.attr="aria-disabled" wire:target="chooseSet">
                                 <span class="logo">
                                     @if ($candidate->logoUrl)
                                         <img src="{{ $candidate->logoUrl }}" alt="" loading="lazy" decoding="async" data-optional>
