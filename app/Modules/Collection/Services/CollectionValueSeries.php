@@ -24,9 +24,12 @@ use Illuminate\Support\Facades\DB;
  * day, the newest row and the newest priced row in that window: every
  * chain step picks the newest row of some of those groups, and the
  * staleness reference is the newest priced marketplace row. The groups
- * are listed once; then, one sample day at a time, two index lookups per
- * group (LATERAL ... ORDER BY captured_on DESC LIMIT 1 on the unique
- * (card_id, source, variant, captured_on) index) return those rows. A
+ * are listed once; then, one sample day at a time, two lookups per group
+ * (LATERAL ... ORDER BY captured_on DESC LIMIT 1) return those rows. The
+ * window's lower bound is part of the index range on the unique
+ * (card_id, source, variant, captured_on) index (a manual group has none),
+ * so a group that stopped syncing or has no priced row in the window stops
+ * at the window's edge instead of walking its whole history. A
  * day's rows are priced and dropped before the next day is loaded, so
  * memory holds about two rows per group however long the range is, and
  * no query binds a value per card or per row.
@@ -102,8 +105,8 @@ final class CollectionValueSeries
     /**
      * The rows that decide one day's prices, in id order: per group, the
      * newest row in the day's window and the newest priced one (often the
-     * same row). The order is the one the headline's eager load uses, so a
-     * same-day tie between groups breaks the same way on both sides.
+     * same row). The resolver breaks same-day ties itself, so the order
+     * here only keeps the result stable.
      *
      * @param  string  $groups  JSON from groupsOf()
      * @return Collection<int, CardPriceSnapshot>
@@ -114,7 +117,7 @@ final class CollectionValueSeries
         $window = <<<'SQL'
             WHERE s.card_id = g.card_id AND s.source = g.source AND s.variant = g.variant
               AND s.captured_on <= ?::date
-              AND (s.captured_on >= ?::date - ?::int OR s.source = 'manual')
+              AND s.captured_on >= CASE WHEN g.source = 'manual' THEN '-infinity'::date ELSE ?::date - ?::int END
             SQL;
         $date = $day->toDateString();
         $bind = [$date, $date, CardPriceSnapshot::RECENT_DAYS];
