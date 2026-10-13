@@ -1222,6 +1222,21 @@ test('the collection page shows the note left by an add', function () {
         ->assertSee('Pitch Black wasn&#039;t imported today', false);
 });
 
+test('a save refused by the rate limit never runs the photo stripper', function () {
+    Storage::fake('collection-photos');
+
+    $component = addScreenWithCardSelected($this)
+        ->set('rows.0.photo', UploadedFile::fake()->image('card.jpg'));
+
+    for ($i = 0; $i < AddCollectionItem::SAVE_LIMIT_PER_MINUTE; $i++) {
+        RateLimiter::hit('add-collection-item:'.auth()->id(), 60);
+    }
+
+    $component->call('save')->assertHasErrors('selectedTcgdexId');
+
+    expect($this->photoStripper->stripped)->toBe([]);
+});
+
 test('saving too often in a minute is refused before any catalog lookup', function () {
     $user = User::factory()->create();
     $this->actingAs($user);

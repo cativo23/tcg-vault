@@ -372,6 +372,18 @@ final class AddCollectionItem extends Component
             $seen[$key] = true;
         }
 
+        // Each save strips its photos, makes a tcgdex lookup and may queue a
+        // set import, so it is capped per account before any of that work.
+        $limiterKey = 'add-collection-item:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($limiterKey, self::SAVE_LIMIT_PER_MINUTE)) {
+            $this->addError('selectedTcgdexId', 'Too many cards added in a minute. Wait a moment, then try again.');
+
+            return null;
+        }
+
+        RateLimiter::hit($limiterKey, 60);
+
         // Location and other metadata come off each upload before anything
         // is stored; a photo that can't be stripped is refused, never kept
         // as uploaded.
@@ -386,18 +398,6 @@ final class AddCollectionItem extends Component
                 return null;
             }
         }
-
-        // Each save makes a tcgdex lookup and may queue a set import, so it
-        // is capped per account before any of that work starts.
-        $limiterKey = 'add-collection-item:'.auth()->id();
-
-        if (RateLimiter::tooManyAttempts($limiterKey, self::SAVE_LIMIT_PER_MINUTE)) {
-            $this->addError('selectedTcgdexId', 'Too many cards added in a minute. Wait a moment, then try again.');
-
-            return null;
-        }
-
-        RateLimiter::hit($limiterKey, 60);
 
         $storedPhotoPaths = [];
 
