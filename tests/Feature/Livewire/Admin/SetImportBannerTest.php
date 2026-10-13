@@ -62,7 +62,7 @@ test('a set whose size tcgdex never reported is not treated as importing', funct
         ->assertDontSeeHtml('wire:poll');
 })->with([[null], [0]]);
 
-test('after ten minutes with no new card the banner stops polling and offers a retry', function () {
+test('after ten minutes with no new card the banner falls back to a slow poll and offers a retry', function () {
     bannerUser();
     bannerSet(2);
 
@@ -75,6 +75,18 @@ test('after ten minutes with no new card the banner stops polling and offers a r
         ->assertSee('Retry')
         ->assertDontSeeHtml('wire:poll.5s')
         ->assertDontSee('Loading cards');
+});
+
+test('a set whose newest card is already older than the stall window is stalled on arrival', function () {
+    bannerUser();
+    bannerSet(2);
+
+    $this->travel(11)->minutes();
+
+    Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
+        ->assertSee('3 cards missing')
+        ->assertSee('Retry')
+        ->assertDontSeeHtml('wire:poll.5s');
 });
 
 test('a stalled banner keeps a slow fallback poll so a recovering queue is noticed', function () {

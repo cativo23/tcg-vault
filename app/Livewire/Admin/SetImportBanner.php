@@ -7,6 +7,7 @@ namespace App\Livewire\Admin;
 use App\Jobs\ImportSetJob;
 use App\Modules\Catalog\Models\Set;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -72,7 +73,10 @@ final class SetImportBanner extends Component
         $progress = $this->progress();
         $this->lastSeenCount = $progress['local'];
         $this->announcedCount = $progress['local'];
-        $this->lastProgressAt = now()->getTimestamp();
+        // The stall clock starts at the newest card already stored, not at
+        // this visit, so a set that stopped growing long ago is stalled at once.
+        $newest = Set::where('tcgdex_id', $setTcgdexId)->first()?->cards()->max('created_at');
+        $this->lastProgressAt = $newest !== null ? Carbon::parse($newest)->getTimestamp() : now()->getTimestamp();
         $this->announcedAt = now()->getTimestamp();
         $this->sawImport = $progress['missing'] > 0;
     }
