@@ -210,11 +210,14 @@ Rules that came out of building it:
   card opens on its priciest variant). Wraps on narrow
   screens; 44px on coarse pointers. Hidden when the card has one variant or none.
 - **Range pills** `.nw-range-pills > .nw-variant-pill` in the card page's price history
-  panel head — the variant pill's voice, tighter padding: `1M · 3M · 6M · 1Y`,
+  panel head and the Activity page's collection value panel head — the variant pill's voice, tighter padding: `1M · 3M · 6M · 1Y`,
   `.on` = filled ink with `aria-pressed="true"`. The selection lives in `?range=`
   (absent = 1M). The panel head says the range ("Price history · 3 months"); when
   the data starts after the range start, a muted "History since 15 Sep" sits under
-  the chart (date in `.mono`).
+  the chart (date in `.mono`). The Activity value panel uses the same pills (`?range=`,
+  absent = 1M); its head reads "+$12.40 · 3 months" and the same "History since …"
+  line sits under its chart. The buttons carry no `aria-label` of their own (the
+  visible text is the name); the group carries one.
 
 ## Theming — dark mode (2026-09-16)
 Three-state precedence, same as every browser-native dark mode: no

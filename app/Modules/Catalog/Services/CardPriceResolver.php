@@ -94,9 +94,9 @@ final class CardPriceResolver
 
     /**
      * For each day, the newest of $snapshots captured on or before it.
-     * Same pick as filtering to the day and taking the first after a
-     * newest-first sortByDesc(): the sort is stable, so a tie on the day
-     * goes to whichever row comes first in $snapshots.
+     * Same pick as filtering to the day and taking the first of
+     * newestFirst(): a tie on the day goes by source, variant and id, whatever
+     * order $snapshots was loaded in.
      *
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
      * @param  Collection<int, string>  $dayKeys
@@ -104,7 +104,7 @@ final class CardPriceResolver
      */
     private function newestOnOrBefore(Collection $snapshots, Collection $dayKeys): array
     {
-        $newestFirst = $snapshots->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->values()->all();
+        $newestFirst = $this->newestFirst($snapshots)->all();
         $count = count($newestFirst);
         $i = 0;
         $picked = [];
@@ -120,13 +120,30 @@ final class CardPriceResolver
     }
 
     /**
+     * Newest day first; rows tying on the day go by source, then variant,
+     * then lowest id, so the pick never depends on the order a screen
+     * happened to load the relation in (the unique index returns rows
+     * by source and variant, which is the order this keeps).
+     *
+     * @param  Collection<int, CardPriceSnapshot>  $snapshots
+     * @return Collection<int, CardPriceSnapshot>
+     */
+    private function newestFirst(Collection $snapshots): Collection
+    {
+        return $snapshots
+            ->sort(fn (CardPriceSnapshot $a, CardPriceSnapshot $b) => [$b->capturedOnKey(), $a->source, $a->variant, $a->id]
+                <=> [$a->capturedOnKey(), $b->source, $b->variant, $b->id])
+            ->values();
+    }
+
+    /**
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
      */
     private function variantFrom(Collection $snapshots, ?string $variant): ?CardPriceSnapshot
     {
         return $this->firstCurrent(
             $this->borrowedOnlyIfOwnPriced(array_map(
-                fn (Collection $step) => $step->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->first(),
+                fn (Collection $step) => $this->newestFirst($step)->first(),
                 $this->chainFor($snapshots, $variant),
             ), $variant),
             $this->marketPriced($snapshots)->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey()),
@@ -136,19 +153,20 @@ final class CardPriceResolver
     /**
      * The priority chain a price is picked from, best first.
      *
-     * Card-level (no variant): tcgplayer normal/holofoil, then
-     * cardmarket's 'default' row, then any base-print row. A special
-     * print (a Master Ball reverse, a stamped promo) is a separate
-     * product; pricing the card as a whole from one would show a plain
-     * copy at a price it doesn't fetch.
+     * Card-level (no variant): tcgplayer normal, then tcgplayer holofoil (a
+     * stale or unpriced normal falls through to a current holofoil, but two
+     * current prints resolve to the normal one), then cardmarket's
+     * 'default' row, then any base-print row. A special print (a Master
+     * Ball reverse, a stamped promo) is a separate product; pricing the
+     * card as a whole from one would show a plain copy at a price it
+     * doesn't fetch.
      *
      * For a variant: that exact variant on tcgplayer, then on any
      * marketplace, then a manual price for it (entered for a print tcgdex
      * doesn't price — current market data still beats it), then, for a
-     * normal or holo print whose own price froze, the card-wide
-     * 'default' row.
-     * Never another print's row otherwise: a variant with no price of its
-     * own resolves to nothing rather than to a different print's value.
+     * normal or holo print whose own price froze, the card-wide 'default'
+     * row. Never another print's row otherwise: a variant with no price of
+     * its own resolves to nothing rather than to a different print's value.
      *
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
      * @return array<int, Collection<int, CardPriceSnapshot>>
@@ -159,7 +177,8 @@ final class CardPriceResolver
             $base = $snapshots->reject(fn (CardPriceSnapshot $s) => CardVariants::isSpecial($s->variant));
 
             return [
-                $base->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && in_array($s->variant, ['normal', 'holofoil'], true)),
+                $base->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && $s->variant === 'normal'),
+                $base->filter(fn (CardPriceSnapshot $s) => $s->source === 'tcgplayer' && $s->variant === 'holofoil'),
                 $base->filter(fn (CardPriceSnapshot $s) => $s->source === 'cardmarket' && $s->variant === 'default'),
                 $base,
             ];
@@ -224,7 +243,7 @@ final class CardPriceResolver
         [$tcgplayer, $market] = $this->chainFor($snapshots, $variant);
 
         foreach ([$tcgplayer, $market] as $step) {
-            $pick = $step->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->first();
+            $pick = $this->newestFirst($step)->first();
 
             if ($pick !== null && $pick->market_minor !== null && $pick->capturedOnKey() >= $cutoff) {
                 return true;
@@ -307,7 +326,7 @@ final class CardPriceResolver
     {
         return $card->priceSnapshots
             ->filter(fn (CardPriceSnapshot $s) => $s->variant === 'default')
-            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
+            ->pipe(fn (Collection $defaults) => $this->newestFirst($defaults))
             ->first();
     }
 

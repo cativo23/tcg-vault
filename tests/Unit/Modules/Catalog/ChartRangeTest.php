@@ -41,10 +41,23 @@ test('one month samples every day, 31 points including both ends', function () {
     expect(count($days))->toBe(31)->and($days[0]->toDateString())->toBe('2026-09-13');
 });
 
-test('sample days never start before the earliest data day', function () {
+test('sample days start on the earliest data day when the stride would skip it', function () {
     $days = ChartRange::OneYear->sampleDays(CarbonImmutable::parse('2026-10-13'), CarbonImmutable::parse('2026-09-20'));
 
-    expect(array_map(fn ($d) => $d->toDateString(), $days))->toBe(['2026-09-22', '2026-09-29', '2026-10-06', '2026-10-13']);
+    expect(array_map(fn ($d) => $d->toDateString(), $days))->toBe(['2026-09-20', '2026-09-22', '2026-09-29', '2026-10-06', '2026-10-13']);
+});
+
+test('two days of history sample both on every range', function (ChartRange $range) {
+    $days = $range->sampleDays(CarbonImmutable::parse('2026-10-13'), CarbonImmutable::parse('2026-10-11'));
+
+    expect(array_map(fn ($d) => $d->toDateString(), $days))->toContain('2026-10-11', '2026-10-13')
+        ->and($days[0]->toDateString())->toBe('2026-10-11');
+})->with(fn () => ChartRange::cases());
+
+test('history older than the range keeps the plain grid', function () {
+    $days = ChartRange::ThreeMonths->sampleDays(CarbonImmutable::parse('2026-10-13'), CarbonImmutable::parse('2026-07-01'));
+
+    expect($days[0]->toDateString())->toBe('2026-07-15')->and(count($days))->toBe(31);
 });
 
 test('an earliest day exactly on a stride point is the first sampled day', function () {

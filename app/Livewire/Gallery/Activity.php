@@ -6,14 +6,14 @@ namespace App\Livewire\Gallery;
 
 use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
-use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\CollectionItem;
+use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\Valuation;
-use Carbon\CarbonImmutable;
 use Illuminate\Contracts\View\View;
-use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
@@ -30,8 +30,22 @@ final class Activity extends Component
 
     private const MAX_FEED = 40;
 
-    /** Never longer than the price history the cards are loaded with. */
-    private const MAX_SERIES_DAYS = CardPriceSnapshot::RECENT_DAYS;
+    /**
+     * The chart's range, from `?range=`. Untrusted like CardShow's, hence
+     * the union: ChartRange::fromInput() turns anything unknown into one
+     * month.
+     *
+     * @var string|array<array-key, mixed>|null
+     */
+    #[Url(as: 'range', except: '1m', history: true)]
+    public string|array|null $range = '1m';
+
+    public function selectRange(mixed $key): void
+    {
+        if (is_string($key)) {
+            $this->range = $key;
+        }
+    }
 
     public function mount(string $username): void
     {
@@ -106,7 +120,18 @@ final class Activity extends Component
 
         $totals = $valuation->totalsByCurrency($cards);
         $primaryCurrency = array_key_first($totals);
-        $series = $primaryCurrency ? $this->valueSeries($cards, $primaryCurrency, $resolver, $valuation) : collect();
+        $chartRange = ChartRange::fromInput($this->range);
+        $seriesService = new CollectionValueSeries($valuation);
+        $series = collect();
+        $historySince = null;
+
+        if ($primaryCurrency) {
+            $series = $seriesService->for($cards, $primaryCurrency, $chartRange);
+            // The series asked for it already; this reads the same answer.
+            $earliest = $seriesService->earliestDay($cards);
+            $startsAfterRange = $earliest !== null && $earliest->toDateString() > $chartRange->start(today())->toDateString();
+            $historySince = $series->isNotEmpty() && $startsAfterRange ? $series->first()['date'] : null;
+        }
 
         $name = $this->collectorName();
 
@@ -122,49 +147,12 @@ final class Activity extends Component
             'totals' => $totals,
             'series' => $series,
             'primaryCurrency' => $primaryCurrency,
+            'chartRange' => $chartRange,
+            'historySince' => $historySince,
         ])->layoutData([
             'title' => "Activity · {$name}'s collection",
             'description' => "Price movements and recent additions in {$name}'s Pokémon TCG collection.",
             'isOwner' => $this->isOwnerViewing(),
         ]);
-    }
-
-    /**
-     * Collection value per snapshot day, in ONE currency: for each day,
-     * every OWNED COPY is priced from its own variant as of that day and
-     * counted only when that price is in $currency (mixing would
-     * fabricate a total). Days come from the union of every card's
-     * snapshot dates, capped to the most recent MAX_SERIES_DAYS.
-     *
-     * Per copy, not per card: a collector holding one normal and one
-     * reverse-holofoil of the same card owns two differently priced
-     * things, and pricing the card once times the total quantity charts
-     * a collection nobody has. Valuation::totalsByCurrencyOver() is the
-     * same summation the headline figure uses, so the series' last point
-     * and the number printed above it always agree.
-     *
-     * @param  Collection<int, Card>  $cards
-     * @return Collection<int, array{date: CarbonImmutable, minor: int}>
-     */
-    private function valueSeries($cards, string $currency, CardPriceResolver $resolver, Valuation $valuation)
-    {
-        $dates = $cards
-            ->flatMap(fn (Card $card) => $resolver->distinctSnapshotDates($card))
-            ->unique(fn ($d) => $d->toDateString())
-            ->sortBy(fn ($d) => $d->toDateString())
-            ->values()
-            ->take(-self::MAX_SERIES_DAYS);
-
-        if ($dates->count() < 2) {
-            return collect();
-        }
-
-        // All days in one pass over each card's history, not one pass per day.
-        $totalsByDay = $valuation->totalsByCurrencyOver($cards, $dates);
-
-        return $dates->map(fn ($date) => [
-            'date' => CarbonImmutable::parse($date),
-            'minor' => $totalsByDay[$date->toDateString()][$currency] ?? 0,
-        ])->values();
     }
 }
