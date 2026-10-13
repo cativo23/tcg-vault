@@ -8,9 +8,13 @@ use App\Livewire\Admin\SetImportBanner;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\ImportBudget;
+use App\Modules\Catalog\Services\ImportBudgetResult;
 use Database\Seeders\PermissionSeeder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+use Illuminate\Support\Sleep;
 
 /** A signed-in collector who may use /admin. */
 function bannerUser(): User
@@ -335,6 +339,96 @@ test('retry does nothing for a set with no known size', function () {
     $this->travel(11)->minutes();
     $component->call('retryImport');
 
+    Queue::assertNothingPushed();
+});
+
+/** Spends $userId's daily import budget on sets other than me05. */
+function spendBudget(int $userId): void
+{
+    for ($i = 1; $i <= ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($userId, "x{$i}");
+    }
+}
+
+test('a retry is refused once the daily import budget is spent', function () {
+    Queue::fake();
+    $this->travelTo(now()->startOfDay()->addHours(12));
+    $user = bannerUser();
+    bannerSet(1);
+    spendBudget($user->id);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+    $this->travel(11)->minutes();
+
+    $component->call('retryImport')->assertSee('Daily import limit reached — try again tomorrow.');
+
+    Queue::assertNothingPushed();
+});
+
+test('a retry of a set this user already started today is free', function () {
+    Queue::fake();
+    $this->travelTo(now()->startOfDay()->addHours(12));
+    $user = bannerUser();
+    bannerSet(1);
+    app(ImportBudget::class)->tryStart($user->id, 'me05');
+    for ($i = 1; $i < ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
+    }
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+    $this->travel(11)->minutes();
+
+    $component->call('retryImport');
+
+    Queue::assertPushed(ImportSetJob::class, 1);
+});
+
+test('a retry draws from the daily import budget', function () {
+    Queue::fake();
+    $this->travelTo(now()->startOfDay()->addHours(12));
+    $user = bannerUser();
+    bannerSet(1);
+    for ($i = 1; $i < ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
+    }
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+    $this->travel(11)->minutes();
+    $component->call('retryImport');
+
+    Queue::assertPushed(ImportSetJob::class, 1);
+    expect(app(ImportBudget::class)->tryStart($user->id, 'other'))->toBe(ImportBudgetResult::Exhausted);
+});
+
+test("another user's spent budget does not refuse this user's retry", function () {
+    Queue::fake();
+    $this->travelTo(now()->startOfDay()->addHours(12));
+    bannerUser();
+    bannerSet(1);
+    spendBudget(User::factory()->create()->id);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+    $this->travel(11)->minutes();
+    $component->call('retryImport');
+
+    Queue::assertPushed(ImportSetJob::class, 1);
+});
+
+test('a busy budget refuses the retry and says to try again', function () {
+    Queue::fake();
+    $user = bannerUser();
+    bannerSet(1);
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+    $this->travel(11)->minutes();
+    // The lock wait sleeps; a fake sleep that moves the clock keeps it
+    // finite under frozen test time and instant.
+    Sleep::fake(syncWithCarbon: true);
+    $lock = Cache::lock('import-budget:lock:'.$user->id, 10);
+    $lock->get();
+
+    $component->call('retryImport')->assertSee('Another import is being started — try again.');
+
+    $lock->release();
     Queue::assertNothingPushed();
 });
 
