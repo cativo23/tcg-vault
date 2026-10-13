@@ -16,8 +16,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * Import progress for the set grid. It is its own component so the poll
  * re-renders only this banner: the grid's chips and Alpine state are never
  * morphed by a poll. When cards arrive it dispatches `set-cards-changed`,
- * at most once per REFRESH_INTERVAL_SECONDS while importing and once more
- * when the import completes or stalls; the grid's Alpine component decides
+ * at most once per REFRESH_INTERVAL_SECONDS while importing and at once
+ * when the import completes; the grid's Alpine component decides
  * when it is safe to redraw.
  *
  * A set counts as importing while it has fewer local cards than tcgdex's
@@ -82,8 +82,9 @@ final class SetImportBanner extends Component
         }
 
         // Cards the grid has not drawn yet are announced on a slow cadence
-        // while the import runs, and at once when it finishes or stalls.
-        $settled = $this->progress()['missing'] === 0 || $this->isStalled();
+        // while the import runs, and at once when it finishes. A stall needs
+        // longer than the cadence, so it never waits on it.
+        $settled = $this->progress()['missing'] === 0;
 
         if ($local !== $this->announcedCount && ($settled || $now - $this->announcedAt >= self::REFRESH_INTERVAL_SECONDS)) {
             $this->announcedCount = $local;
