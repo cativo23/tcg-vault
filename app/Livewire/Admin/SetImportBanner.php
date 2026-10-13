@@ -162,6 +162,16 @@ final class SetImportBanner extends Component
     }
 
     /**
+     * The daily-limit message keeps the fast poll for this long, so an
+     * import someone else just started on the same set still shows as
+     * loading within seconds.
+     */
+    private function pastMountGrace(): bool
+    {
+        return now()->getTimestamp() >= $this->mountedAt + self::MOUNT_GRACE_SECONDS;
+    }
+
+    /**
      * Local card count, announced total and the shortfall, read once per
      * request. No announced total (null or 0) means nothing is missing, and
      * a surplus never goes negative.
@@ -204,7 +214,7 @@ final class SetImportBanner extends Component
             'importing' => $progress['missing'] > 0,
             'stalled' => $stalled,
             'budgetSpent' => $budgetSpent,
-            'pollSeconds' => $stalled || $budgetSpent ? self::STALLED_POLL_SECONDS : 5,
+            'pollSeconds' => $stalled || ($budgetSpent && $this->pastMountGrace()) ? self::STALLED_POLL_SECONDS : 5,
             'finished' => $this->sawImport && $progress['missing'] === 0,
         ]);
     }

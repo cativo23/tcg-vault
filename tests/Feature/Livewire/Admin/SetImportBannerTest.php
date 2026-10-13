@@ -551,3 +551,20 @@ test('cards arriving for a set this user cannot start show as loading', function
         ->assertSee('Loading cards…')
         ->assertDontSee('daily limit');
 });
+
+test('the daily-limit banner keeps the fast poll through the mount grace, then slows down', function () {
+    $this->travelTo(now()->startOfDay()->addHours(12));
+    $user = bannerUser();
+    bannerSet(2);
+    spendBudget($user->id);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
+        ->assertSee('not imported')
+        ->assertSeeHtml('wire:poll.5s');
+
+    $this->travel(SetImportBanner::MOUNT_GRACE_SECONDS + 1)->seconds();
+
+    $component->call('check')
+        ->assertSeeHtml('wire:poll.'.SetImportBanner::STALLED_POLL_SECONDS.'s')
+        ->assertDontSeeHtml('wire:poll.5s');
+});
