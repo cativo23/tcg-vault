@@ -185,41 +185,6 @@ test('resolveForVariant returns null when the card has no snapshot for that vari
     expect($resolved)->toBeNull();
 });
 
-test('historyFor returns the daily series for a SPECIFIC snapshot, not whatever resolve() would pick', function () {
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-051', 'set_id' => $set->id, 'local_id' => '051', 'name' => 'Inkay']);
-
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 11]);
-    $holoYesterday = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 18]);
-    $holoToday = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 20]);
-
-    $card->load('priceSnapshots');
-    $resolver = new CardPriceResolver;
-
-    $history = $resolver->historyFor($card, $holoToday);
-
-    expect($history->pluck('id')->all())->toBe([$holoYesterday->id, $holoToday->id]);
-});
-
-test('historyFor returns an empty collection for a null snapshot', function () {
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-
-    expect((new CardPriceResolver)->historyFor($card, null))->toBeEmpty();
-});
-
-test('history is historyFor applied to resolve()\'s own pick, unchanged', function () {
-    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1000]);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1200]);
-    $card->load('priceSnapshots');
-    $resolver = new CardPriceResolver;
-
-    expect($resolver->history($card)->pluck('id')->all())
-        ->toBe($resolver->historyFor($card, $resolver->resolve($card))->pluck('id')->all());
-});
-
 test('distinctSnapshotDates returns one entry per day, most recent first, regardless of how many source rows exist per day', function () {
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
@@ -454,4 +419,17 @@ test('historyIn returns the snapshot\'s own source and variant from the given da
 
 test('historyIn is empty for a null snapshot', function () {
     expect((new CardPriceResolver)->historyIn(null, today()))->toBeEmpty();
+});
+
+test('historyIn follows the snapshot it is given, not whatever resolve() would pick', function () {
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-051', 'set_id' => $set->id, 'local_id' => '051', 'name' => 'Inkay']);
+
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 11]);
+    $holoYesterday = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 18]);
+    $holoToday = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 20]);
+
+    $history = (new CardPriceResolver)->historyIn($holoToday, today()->subDays(30));
+
+    expect($history->pluck('id')->all())->toBe([$holoYesterday->id, $holoToday->id]);
 });

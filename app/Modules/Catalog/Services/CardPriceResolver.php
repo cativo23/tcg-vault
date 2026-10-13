@@ -416,44 +416,11 @@ final class CardPriceResolver
     }
 
     /**
-     * The full daily series for the source/variant that resolve() picks
-     * today, oldest first — the input for a price-history sparkline.
-     * Empty when the card has never been priced.
-     *
-     * @return Collection<int, CardPriceSnapshot>
-     */
-    public function history(Card $card): Collection
-    {
-        return $this->historyFor($card, $this->resolve($card));
-    }
-
-    /**
-     * The daily series for a SPECIFIC snapshot's own source+variant —
-     * e.g. the headline variant a collector's copy resolves to
-     * (`Valuation::headlineSnapshot()`), which resolve()'s card-level
-     * chain might not have picked. A sparkline for one variant next to a
-     * headline price from another would be showing the wrong history.
-     *
-     * @return Collection<int, CardPriceSnapshot>
-     */
-    public function historyFor(Card $card, ?CardPriceSnapshot $resolved): Collection
-    {
-        if ($resolved === null) {
-            return collect();
-        }
-
-        return $card->priceSnapshots
-            ->filter(fn (CardPriceSnapshot $s) => $s->source === $resolved->source
-                && $s->variant === $resolved->variant
-                && $s->market_minor !== null)
-            ->sortBy(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
-            ->values();
-    }
-
-    /**
-     * historyFor() over a date range, read from the database rather than
-     * the loaded relation: screens load only the recent window, and a
-     * chart can reach back further than that.
+     * The daily series for a SPECIFIC snapshot's own source+variant over a
+     * date range — e.g. the headline variant a collector's copy resolves
+     * to, which resolve()'s card-level chain might not have picked — read
+     * from the database rather than the loaded relation: screens load only
+     * the recent window, and a chart can reach back further than that.
      *
      * @return Collection<int, CardPriceSnapshot>
      */
