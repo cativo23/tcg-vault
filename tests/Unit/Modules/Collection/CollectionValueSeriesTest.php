@@ -88,7 +88,8 @@ test('a row older than a day\'s own 30-day window does not price that day', func
 test('manual prices count at any age, from their own day on', function () {
     $a = ($this->own)('001');
     ($this->price)($a, 150, 4200, 'normal', 'manual');
-    ($this->price)($a, 200, 1, 'normal', 'cardmarket', 'EUR'); // gives the collection an earlier first day
+    // An EUR row moves the collection's earliest day before the manual price without adding to the USD series.
+    ($this->price)($a, 200, 1, 'normal', 'cardmarket', 'EUR');
 
     $series = ($this->series)(ChartRange::OneYear);
     $before = $series->filter(fn ($p) => $p['date']->lt(today()->subDays(150)));
@@ -132,4 +133,75 @@ test('the earliest day is the first snapshot of any owned card', function () {
     $cards = PublicCollection::for($this->user)->cardsQuery()->get();
 
     expect((new CollectionValueSeries(new Valuation(new CardPriceResolver)))->earliestDay($cards)?->toDateString())->toBe(today()->subDays(12)->toDateString());
+});
+
+test('a row exactly 30 days before a sampled day prices it and one 31 days before does not', function () {
+    $a = ($this->own)('001');
+    $b = ($this->own)('002');
+    ($this->price)($a, 40, 100);
+    ($this->price)($b, 41, 7777);
+
+    $series = ($this->series)(ChartRange::OneMonth);
+    $at = fn (int $ago) => $series->first(fn ($p) => $p['date']->isSameDay(today()->subDays($ago)))['minor'];
+
+    // Day -11: a's row is 29 days old and b's 30: both inside. Day -10: b's is 31 days old, out.
+    expect($at(11))->toBe(7877)
+        ->and($at(10))->toBe(100)
+        ->and($at(9))->toBe(0);
+});
+
+test('every point of a mixed collection matches pricing the full window the slow way', function () {
+    $a = ($this->own)('001', 'normal', 2);
+    $b = ($this->own)('002', 'reverse-holofoil');
+    $c = ($this->own)('003');
+    $d = ($this->own)('004');
+    $e = ($this->own)('005');
+
+    for ($ago = 100; $ago >= 0; $ago--) {
+        // priced to 5 days ago, then an unpriced newest row over older priced ones
+        ($this->price)($a, $ago, $ago <= 4 ? null : 100 + $ago);
+        // a second marketplace on the very same days as the first
+        ($this->price)($a, $ago, 50 + ($ago % 7), 'normal', 'cardmarket');
+        if ($ago % 2 === 0) {
+            ($this->price)($b, $ago, 300 + $ago, 'reverse-holofoil');
+            ($this->price)($b, $ago, $ago % 4 === 0 ? null : 20 + $ago);
+        }
+        // a card whose rows stop
+        if ($ago >= 60) {
+            ($this->price)($c, $ago, 900 - $ago);
+        }
+    }
+    // A sparse tcgplayer print beside a marketplace that alternates priced and unpriced days: on an
+    // unpriced day the newest cardmarket row says nothing, so the staleness reference is the priced
+    // row a day older, which makes a 4+ day old tcgplayer row stale and leaves the manual price.
+    for ($ago = 100; $ago >= 0; $ago--) {
+        ($this->price)($e, $ago, $ago % 2 === 1 ? 40 + $ago : null, 'normal', 'cardmarket');
+        if ($ago % 10 === 0) {
+            ($this->price)($e, $ago, 2000 + $ago);
+        }
+    }
+    ($this->price)($e, 90, 777, 'normal', 'manual');
+
+    // a manual price, and a sparse marketplace beside it
+    ($this->price)($d, 80, 4200, 'normal', 'manual');
+    ($this->price)($d, 33, 600);
+    ($this->price)($d, 12, null);
+
+    $cards = PublicCollection::for($this->user)->cardsQuery()->get();
+    $all = CardPriceSnapshot::query()->orderBy('id')->get()->groupBy('card_id');
+    $series = ($this->series)(ChartRange::ThreeMonths);
+    $valuation = new Valuation(new CardPriceResolver);
+
+    expect($series->count())->toBeGreaterThan(30);
+
+    foreach ($series as $point) {
+        $day = $point['date'];
+        $floor = $day->subDays(CardPriceSnapshot::RECENT_DAYS)->toDateString();
+        $dayCards = $cards->map(fn ($card) => (clone $card)->setRelation('priceSnapshots', $all->get($card->id, collect())
+            ->filter(fn ($r) => $r->captured_on->toDateString() <= $day->toDateString()
+                && ($r->captured_on->toDateString() >= $floor || $r->source === 'manual'))
+            ->values()));
+
+        expect($point['minor'])->toBe($valuation->totalsByCurrencyOver($dayCards, [$day])[$day->toDateString()]['USD'] ?? 0, $day->toDateString());
+    }
 });
