@@ -509,3 +509,45 @@ test('an import that overshoots the announced total still finishes cleanly', fun
         ->assertSee('All cards loaded')
         ->assertDontSeeHtml('wire:poll');
 });
+
+test('a set this user cannot start today says the daily limit is reached instead of loading', function () {
+    $this->travelTo(now()->startOfDay()->addHours(12));
+    $user = bannerUser();
+    bannerSet(2);
+    spendBudget($user->id);
+
+    Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
+        ->assertDontSee('Loading cards')
+        ->assertSee('3 cards missing — daily import limit reached, try again tomorrow.')
+        ->assertDontSee('Retry');
+});
+
+test('a set this user already started today keeps loading even with the budget spent', function () {
+    $this->travelTo(now()->startOfDay()->addHours(12));
+    $user = bannerUser();
+    bannerSet(2);
+    app(ImportBudget::class)->tryStart($user->id, 'me05');
+    for ($i = 1; $i < ImportBudget::DAILY_LIMIT; $i++) {
+        app(ImportBudget::class)->tryStart($user->id, "x{$i}");
+    }
+
+    Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05'])
+        ->assertSee('Loading cards…')
+        ->assertDontSee('daily import limit');
+});
+
+test('cards arriving for a set this user cannot start show as loading', function () {
+    $this->travelTo(now()->startOfDay()->addHours(12));
+    $user = bannerUser();
+    $set = bannerSet(2);
+    spendBudget($user->id);
+
+    $component = Livewire::test(SetImportBanner::class, ['setTcgdexId' => 'me05']);
+
+    $this->travel(1)->minutes();
+    Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Card 3']);
+
+    $component->call('check')
+        ->assertSee('Loading cards…')
+        ->assertDontSee('daily import limit');
+});

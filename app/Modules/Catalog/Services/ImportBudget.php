@@ -28,11 +28,22 @@ final class ImportBudget
 
     private const LOCK_WAIT_SECONDS = 3;
 
+    /**
+     * Whether tryStart() would answer Exhausted for this set right now: the
+     * user has spent today's budget and did not start this set today. A
+     * read without the lock, for display only; tryStart() stays the check
+     * that counts.
+     */
+    public function isSpentFor(int $userId, string $setTcgdexId): bool
+    {
+        [$countKey, $startedKey] = $this->keys($userId, $setTcgdexId);
+
+        return ! Cache::has($startedKey) && (int) Cache::get($countKey, 0) >= self::DAILY_LIMIT;
+    }
+
     public function tryStart(int $userId, string $setTcgdexId): ImportBudgetResult
     {
-        $date = now()->utc()->toDateString();
-        $countKey = "import-budget:count:{$userId}:{$date}";
-        $startedKey = "import-budget:started:{$userId}:{$date}:{$setTcgdexId}";
+        [$countKey, $startedKey] = $this->keys($userId, $setTcgdexId);
 
         try {
             return Cache::lock("import-budget:lock:{$userId}", self::LOCK_SECONDS)->block(
@@ -60,5 +71,16 @@ final class ImportBudget
         } catch (LockTimeoutException) {
             return ImportBudgetResult::Busy;
         }
+    }
+
+    /** @return array{0: string, 1: string} today's count key and this set's started key */
+    private function keys(int $userId, string $setTcgdexId): array
+    {
+        $date = now()->utc()->toDateString();
+
+        return [
+            "import-budget:count:{$userId}:{$date}",
+            "import-budget:started:{$userId}:{$date}:{$setTcgdexId}",
+        ];
     }
 }

@@ -190,13 +190,21 @@ final class SetImportBanner extends Component
             $this->sawImport = true;
         }
 
+        // With no card arriving since the page opened and no way for this
+        // user to start the set today, "Loading cards" would promise an
+        // import that may not be running and a retry that would be refused.
+        $budgetSpent = $progress['missing'] > 0
+            && $this->lastProgressAt <= $this->mountedAt
+            && app(ImportBudget::class)->isSpentFor((int) auth()->id(), $this->setTcgdexId);
+
         return view('livewire.admin.set-import-banner', [
             'localCount' => $progress['local'],
             'totalCount' => $progress['total'],
             'missingCount' => $progress['missing'],
             'importing' => $progress['missing'] > 0,
             'stalled' => $stalled,
-            'pollSeconds' => $stalled ? self::STALLED_POLL_SECONDS : 5,
+            'budgetSpent' => $budgetSpent,
+            'pollSeconds' => $stalled || $budgetSpent ? self::STALLED_POLL_SECONDS : 5,
             'finished' => $this->sawImport && $progress['missing'] === 0,
         ]);
     }
