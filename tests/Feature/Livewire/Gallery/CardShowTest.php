@@ -2,13 +2,16 @@
 
 declare(strict_types=1);
 
+use App\Livewire\Gallery\CardShow;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use App\Modules\Collection\Services\Valuation;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Livewire;
 
 function seedCardPage(bool $public = true): array
 {
@@ -209,4 +212,138 @@ test('a manual price copied from a feed says so, is never shown as a move, and d
     $response->assertSee('copied by hand from TCGplayer (tcgcsv)');
     $response->assertSee('entered '.today()->subYear()->addDay()->format('j M Y'));
     $response->assertDontSee('class="amt up"', false);
+});
+
+function seedVariantCard(): array
+{
+    $seed = seedCardPage();
+    $seed['card']->update(['variants' => ['normal' => true, 'reverse' => true, 'holo' => false]]);
+    $card = $seed['card'];
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 42]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 110]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 37]);
+
+    return $seed;
+}
+
+function ownCopy(array $seed, ?string $variant, int $quantity = 1, ?string $notes = null): void
+{
+    CollectionItem::create(['collection_id' => $seed['collection']->id, 'card_id' => $seed['card']->id, 'card_tcgdex_id' => 'me05-116', 'variant' => $variant, 'condition' => 'NM', 'quantity' => $quantity, 'notes' => $notes]);
+}
+
+test('the card page opens on the priciest variant the collector owns', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal', 2);
+
+    Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('selected', fn ($s) => $s['key'] === 'normal');
+});
+
+test('a card the collector does not own opens on its priciest variant', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal'); // an owned card makes the set reachable; the page under test is 003
+    $other = $seed['other'];
+    $other->update(['variants' => ['normal' => true, 'reverse' => true]]);
+    CardPriceSnapshot::create(['card_id' => $other->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5]);
+    CardPriceSnapshot::create(['card_id' => $other->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 90]);
+
+    Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '003'])
+        ->assertViewHas('selected', fn ($s) => $s['key'] === 'reverse-holofoil');
+});
+
+test('the default price on the card page is the price on its set grid tile', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+    ownCopy($seed, 'reverse-holofoil');
+
+    $card = $seed['card']->fresh()->load(['priceSnapshots', 'collectionItems']);
+    $tile = (new Valuation)->headlineSnapshot($card);
+
+    Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('snapshot', fn ($s) => $s->is($tile));
+});
+
+test('a variant in the URL switches the price, the reads and the copies', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal', 2, 'binder copy');
+    ownCopy($seed, 'reverse-holofoil', 1, 'pulled at league');
+
+    Livewire::withQueryParams(['variant' => 'normal'])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('selected', fn ($s) => $s['key'] === 'normal')
+        ->assertViewHas('snapshot', fn ($s) => $s->variant === 'normal' && $s->market_minor === 42)
+        ->assertSee('binder copy')
+        ->assertDontSee('pulled at league')
+        ->assertSee('3 copies'); // the header stays card-wide
+});
+
+test('selecting a pill switches the variant and updates the URL', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+
+    Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->call('selectVariant', 'reverse-holofoil')
+        ->assertSet('variant', 'reverse-holofoil')
+        ->assertViewHas('snapshot', fn ($s) => $s->variant === 'reverse-holofoil');
+});
+
+test('an unknown variant in the URL falls back to the default instead of failing', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+
+    $this->get('/carlos/me05/116?variant=%3Cb%3Ejunk%3C%2Fb%3E')->assertOk()->assertDontSee('<b>junk</b>', false);
+
+    Livewire::withQueryParams(['variant' => 'holofoil:nope'])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('selected', fn ($s) => $s['key'] === 'normal');
+});
+
+test('a non-string variant in the URL does not break the page', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+
+    $this->get('/carlos/me05/116?variant[]=x')->assertOk();
+});
+
+test('copies with no variant are reachable as the unspecified pill', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+    ownCopy($seed, null, 1, 'loose copy');
+
+    Livewire::withQueryParams(['variant' => 'unspecified'])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('selected', fn ($s) => $s['key'] === 'unspecified' && $s['variant'] === null)
+        ->assertSee('loose copy');
+});
+
+test('the whole-card average shows under normal only', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+
+    $reads = fn (string $variant) => Livewire::withQueryParams(['variant' => $variant])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->viewData('marketReads')->pluck('variant')->all();
+
+    expect($reads('normal'))->toContain('default')
+        ->and($reads('reverse-holofoil'))->not->toContain('default')
+        ->and($reads('reverse-holofoil'))->toBe(['reverse-holofoil']);
+});
+
+test('a card with a single variant shows no switcher', function () {
+    $seed = seedCardPage();
+    $seed['card']->update(['variants' => ['holo' => true]]);
+    ownCopy($seed, 'holofoil');
+
+    Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('switcher', false);
+});
+
+test('a variant with no price says so instead of borrowing another', function () {
+    $seed = seedVariantCard();
+    $seed['card']->update(['variants' => ['normal' => true, 'reverse' => true, 'holo' => true]]);
+    ownCopy($seed, 'normal');
+
+    Livewire::withQueryParams(['variant' => 'holofoil'])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertViewHas('snapshot', fn ($s) => $s === null);
 });
