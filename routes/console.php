@@ -32,6 +32,19 @@ Schedule::command('catalog:check-pricing-freshness')->dailyAt('04:00');
 // tcgdex's and, in fill mode, written for the prints tcgdex doesn't price.
 Schedule::job(new SyncTcgcsvPricesJob)->dailyAt('20:30');
 
+// Prices move during the daily sync and the tcgcsv sync above; the Activity
+// value chart's cache key follows them, so the first visitor after each would
+// pay a rebuild of many seconds. Hourly, one queued job per public user (the
+// scheduler container is too small to compute them itself). The lock
+// expires in 50 minutes, so a container stopped mid-run cannot hold it for
+// the default day.
+Schedule::command('gallery:warm-value-series')
+    ->hourly()
+    ->withoutOverlapping(50)
+    ->onFailure(fn () => app(DiscordAlerter::class)->send(
+        '⚠️ tcg-vault: gallery:warm-value-series itself errored — the Activity charts are not being warmed.'
+    ));
+
 // The `backup` container writes its nightly dump at 03:00 UTC (see
 // docker/prod/backup/backup.sh); this runs three hours later so a slow night
 // still has room to finish.
