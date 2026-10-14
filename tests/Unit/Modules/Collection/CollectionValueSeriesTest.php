@@ -335,3 +335,55 @@ test('a new price, an edited copy, a deleted copy and another range each give a 
     CardPriceSnapshot::query()->where('card_id', $a->id)->where('source', 'tcgplayer')->where('variant', 'normal')->where('captured_on', today())->update(['market_minor' => 200, 'updated_at' => now()->addMinute()]);
     expect($last())->toBe(600);
 });
+
+test('a price row older than the range plus the recent window leaves the cached series in place, one inside it rebuilds', function () {
+    $a = ($this->own)('001');
+    foreach ([200, 40, 10, 0] as $ago) {
+        ($this->price)($a, $ago, 100 + $ago);
+    }
+    ($this->price)($a, 5, 777, 'normal', 'manual');
+
+    $cards = PublicCollection::for($this->user)->cardsQuery()->get();
+    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
+    $service->for($cards, 'USD', ChartRange::OneMonth);
+
+    $rebuilds = function () use ($service, $cards): int {
+        $lateral = 0;
+        DB::listen(function ($query) use (&$lateral) {
+            $lateral += str_contains(strtolower($query->sql), 'lateral') ? 1 : 0;
+        });
+        $service->for($cards, 'USD', ChartRange::OneMonth);
+
+        return $lateral;
+    };
+
+    // 200 days back is outside the month plus its 30-day window.
+    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today()->subDays(200))->update(['market_minor' => 1, 'updated_at' => now()->addMinute()]);
+    expect($rebuilds())->toBe(0);
+
+    // 40 days back is inside it.
+    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today()->subDays(40))->update(['market_minor' => 2, 'updated_at' => now()->addMinutes(2)]);
+    expect($rebuilds())->toBeGreaterThan(0);
+});
+
+test('a manual price moves the key whatever its age', function () {
+    $a = ($this->own)('001');
+    foreach ([40, 0] as $ago) {
+        ($this->price)($a, $ago, 100);
+    }
+    ($this->price)($a, 300, 555, 'normal', 'manual');
+
+    $cards = PublicCollection::for($this->user)->cardsQuery()->get();
+    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
+    $service->for($cards, 'USD', ChartRange::OneMonth);
+
+    CardPriceSnapshot::query()->where('card_id', $a->id)->where('source', 'manual')->update(['market_minor' => 600, 'updated_at' => now()->addMinute()]);
+
+    $lateral = 0;
+    DB::listen(function ($query) use (&$lateral) {
+        $lateral += str_contains(strtolower($query->sql), 'lateral') ? 1 : 0;
+    });
+    $service->for($cards, 'USD', ChartRange::OneMonth);
+
+    expect($lateral)->toBeGreaterThan(0);
+});

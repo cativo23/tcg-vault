@@ -39,7 +39,7 @@ use Illuminate\Support\Facades\DB;
  * collection page is public, so every visit would pay it. The finished
  * series is cached for the day, per range and currency. The key carries a
  * fingerprint that changes whenever the result could: the count and newest
- * updated_at of the cards' price rows (a new, edited or deleted price) and
+ * updated_at of the cards' price rows that can reach the range (a new, edited or deleted price) and
  * each owned copy's id, card, variant, quantity and updated_at (a copy
  * added, removed or edited, or made public or private). A hit costs the one
  * aggregate query that computes the fingerprint.
@@ -47,7 +47,7 @@ use Illuminate\Support\Facades\DB;
 final class CollectionValueSeries
 {
     /** Bump when the series' calculation changes, so a deploy doesn't serve a series the old code computed. */
-    private const CACHE_VERSION = 1;
+    private const CACHE_VERSION = 2;
 
     public function __construct(private readonly Valuation $valuation) {}
 
@@ -65,7 +65,7 @@ final class CollectionValueSeries
         }
 
         $today = CarbonImmutable::today()->toDateString();
-        $key = 'collection-value-series:v'.self::CACHE_VERSION.":{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards)}";
+        $key = 'collection-value-series:v'.self::CACHE_VERSION.":{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards, $range)}";
         $cached = Cache::get($key);
 
         if (is_array($cached)) {
@@ -129,15 +129,19 @@ final class CollectionValueSeries
 
     /**
      * What the series depends on besides the day, range and currency: the
-     * cards' price rows and the owned copies.
+     * cards' price rows and the owned copies. Only the price rows that can
+     * price a sampled day count: those captured from the range's start
+     * minus the RECENT_DAYS window on, and manual ones at any age. An older
+     * row cannot move the series, so it must not cost a rebuild.
      *
      * @param  Collection<int, Card>  $cards
      */
-    private function fingerprint(Collection $cards): string
+    private function fingerprint(Collection $cards, ChartRange $range): string
     {
+        $from = $range->start(CarbonImmutable::today())->subDays(CardPriceSnapshot::RECENT_DAYS)->toDateString();
         $prices = DB::selectOne(
-            'SELECT count(*) AS n, max(updated_at) AS newest FROM card_price_snapshots WHERE card_id = ANY(?::bigint[])',
-            [$this->idArray($cards)],
+            "SELECT count(*) AS n, max(updated_at) AS newest FROM card_price_snapshots WHERE card_id = ANY(?::bigint[]) AND (captured_on >= ?::date OR source = 'manual')",
+            [$this->idArray($cards), $from],
         );
         $holdings = [];
 
