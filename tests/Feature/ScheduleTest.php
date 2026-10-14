@@ -29,3 +29,10 @@ test('old unaccepted invites are pruned daily', function () {
 test('old moderation records are pruned daily', function () {
     expect((string) scheduledEvent('model:prune')?->command)->toContain("--model='".ModerationAction::class."'");
 });
+
+test('the Activity value series is warmed hourly without overlapping', function () {
+    $event = scheduledEvent('gallery:warm-value-series');
+
+    expect($event?->expression)->toBe('0 * * * *')
+        ->and($event?->withoutOverlapping)->toBeTrue();
+});
