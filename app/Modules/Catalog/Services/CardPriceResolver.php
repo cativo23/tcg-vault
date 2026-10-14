@@ -11,11 +11,37 @@ use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use WeakMap;
 
+/**
+ * Single-date picks walk a per-card index: each loaded `priceSnapshots`
+ * collection is read once (raw attributes, no magic getters), sorted
+ * newest-first with newestFirst()'s tie order, and kept with the card's
+ * newest priced marketplace day. A chain step's pick is then the first
+ * index row matching the step, which is the newest row of that step's
+ * subset under the tie order. resolve() and resolveForVariant() picks are
+ * memoized on the same entry.
+ *
+ * The index is keyed on the collection object itself, so a reload or
+ * setRelation() gets a fresh one. Changing a loaded relation in place
+ * (push()/put()/forget() on it, or editing one of its models' attributes)
+ * after a pick was made is not supported: the old pick would be served.
+ *
+ * @phpstan-type IndexRow array{day: string, source: mixed, variant: mixed, id: mixed, minor: mixed, currency: mixed, special: bool, pos: int, model: CardPriceSnapshot}
+ * @phpstan-type Index array{rows: list<IndexRow>, synced: ?string, card: array{0?: CardPriceSnapshot|null}, variants: array<string, CardPriceSnapshot|null>}
+ */
 final class CardPriceResolver
 {
     /** How far behind the newest price a higher-priority one may be and still win. */
     public const STALE_AFTER_DAYS = 3;
+
+    /** @var WeakMap<Collection<int, CardPriceSnapshot>, Index> */
+    private WeakMap $indexes;
+
+    public function __construct()
+    {
+        $this->indexes = new WeakMap;
+    }
 
     public function resolve(Card $card): ?CardPriceSnapshot
     {
@@ -29,7 +55,15 @@ final class CardPriceResolver
         // PER card. Sorting happens here in PHP instead of via
         // `orderByDesc()` in SQL, since the property access can't carry
         // query constraints.
-        return $this->resolveFrom($card->priceSnapshots);
+        $snapshots = $card->priceSnapshots;
+        $index = $this->indexOf($snapshots);
+
+        if (! array_key_exists(0, $index['card'])) {
+            $index['card'][0] = $this->pickFrom($index, null);
+            $this->indexes[$snapshots] = $index;
+        }
+
+        return $index['card'][0];
     }
 
     /**
@@ -43,7 +77,19 @@ final class CardPriceResolver
      */
     public function resolveForVariant(Card $card, ?string $variant): ?CardPriceSnapshot
     {
-        return $this->variantFrom($card->priceSnapshots, $variant);
+        if ($variant === null) {
+            return $this->resolve($card);
+        }
+
+        $snapshots = $card->priceSnapshots;
+        $index = $this->indexOf($snapshots);
+
+        if (! array_key_exists($variant, $index['variants'])) {
+            $index['variants'][$variant] = $this->pickFrom($index, $variant);
+            $this->indexes[$snapshots] = $index;
+        }
+
+        return $index['variants'][$variant];
     }
 
     /**
@@ -56,12 +102,7 @@ final class CardPriceResolver
      */
     public function resolveForVariantAsOf(Card $card, ?string $variant, CarbonInterface $asOf): ?CardPriceSnapshot
     {
-        $asOfKey = $asOf->toDateString();
-
-        return $this->variantFrom(
-            $card->priceSnapshots->filter(fn (CardPriceSnapshot $s) => $s->capturedOnKey() <= $asOfKey),
-            $variant,
-        );
+        return $this->pickFrom($this->indexOf($card->priceSnapshots), $variant, $asOf->toDateString());
     }
 
     /**
@@ -70,7 +111,7 @@ final class CardPriceResolver
      * value-over-time series needs. Each step of the priority chain is
      * "the newest row of this subset on or before the day", so the chain
      * is resolved per subset and the first current hit wins (see
-     * firstCurrent()), exactly as variantFrom() and resolveFrom() pick it.
+     * firstCurrent()), exactly as pickFrom() picks it.
      *
      * @param  Collection<int, string>  $dayKeys  'Y-m-d' days
      * @return array<string, CardPriceSnapshot|null> keyed by day
@@ -135,39 +176,180 @@ final class CardPriceResolver
      */
     private function newestFirst(Collection $snapshots): Collection
     {
-        $rows = [];
-
-        foreach ($snapshots as $snapshot) {
-            $attributes = $snapshot->getAttributes();
-            $rows[] = [
-                $snapshot->capturedOnKey(),
-                $attributes['source'] ?? null,
-                $attributes['variant'] ?? null,
-                $attributes['id'] ?? null,
-                $snapshot,
-            ];
-        }
-
-        usort($rows, fn (array $a, array $b) => $b[0] <=> $a[0]
-            ?: $a[1] <=> $b[1]
-            ?: $a[2] <=> $b[2]
-            ?: $a[3] <=> $b[3]);
-
-        return new Collection(array_column($rows, 4));
+        return new Collection(array_column($this->sortedRows($snapshots), 'model'));
     }
 
     /**
+     * The rows of $snapshots as plain arrays, in newestFirst() order. Each
+     * row's raw attributes are read once, here; sorting and every chain
+     * walk then touch only these arrays. usort() is stable, so rows tying
+     * on every key keep their load order, which `pos` records.
+     *
      * @param  Collection<int, CardPriceSnapshot>  $snapshots
+     * @return list<IndexRow>
      */
-    private function variantFrom(Collection $snapshots, ?string $variant): ?CardPriceSnapshot
+    private function sortedRows(Collection $snapshots): array
     {
-        return $this->firstCurrent(
-            $this->borrowedOnlyIfOwnPriced(array_map(
-                fn (Collection $step) => $this->newestFirst($step)->first(),
-                $this->chainFor($snapshots, $variant),
-            ), $variant),
-            $this->marketPriced($snapshots)->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey()),
-        );
+        $rows = [];
+        $pos = 0;
+
+        foreach ($snapshots as $snapshot) {
+            $attributes = $snapshot->getAttributes();
+            $variant = $attributes['variant'] ?? null;
+            $rows[] = [
+                'day' => $snapshot->capturedOnKey(),
+                'source' => $attributes['source'] ?? null,
+                'variant' => $variant,
+                'id' => $attributes['id'] ?? null,
+                'minor' => $attributes['market_minor'] ?? null,
+                'currency' => $attributes['currency'] ?? null,
+                'special' => is_string($variant) && CardVariants::isSpecial($variant),
+                'pos' => $pos++,
+                'model' => $snapshot,
+            ];
+        }
+
+        usort($rows, fn (array $a, array $b) => $b['day'] <=> $a['day']
+            ?: $a['source'] <=> $b['source']
+            ?: $a['variant'] <=> $b['variant']
+            ?: $a['id'] <=> $b['id']);
+
+        return $rows;
+    }
+
+    /**
+     * The index of one loaded relation, built on first use.
+     *
+     * @param  Collection<int, CardPriceSnapshot>  $snapshots
+     * @return Index
+     */
+    private function indexOf(Collection $snapshots): array
+    {
+        if (! isset($this->indexes[$snapshots])) {
+            $rows = $this->sortedRows($snapshots);
+            $synced = null;
+
+            // Newest first, so the first priced marketplace row is the newest.
+            foreach ($rows as $row) {
+                if ($row['source'] !== 'manual' && $row['minor'] !== null) {
+                    $synced = $row['day'];
+                    break;
+                }
+            }
+
+            $this->indexes[$snapshots] = ['rows' => $rows, 'synced' => $synced, 'card' => [], 'variants' => []];
+        }
+
+        return $this->indexes[$snapshots];
+    }
+
+    /**
+     * The chain pick for $variant (null: the card-level chain), counting
+     * only rows captured on or before $onOrBefore when one is given — the
+     * same pick as filtering the relation to those days first.
+     *
+     * @param  Index  $index
+     */
+    private function pickFrom(array $index, ?string $variant, ?string $onOrBefore = null): ?CardPriceSnapshot
+    {
+        $picks = $this->stepPicks($index['rows'], $variant, $onOrBefore);
+
+        if ($variant !== null) {
+            $picks = $this->borrowedOnlyIfOwnPriced($picks, $variant);
+        }
+
+        return $this->firstCurrent($picks, $onOrBefore === null ? $index['synced'] : $this->syncedOnOrBefore($index['rows'], $onOrBefore));
+    }
+
+    /**
+     * The newest priced marketplace day on or before $onOrBefore.
+     *
+     * @param  list<IndexRow>  $rows
+     */
+    private function syncedOnOrBefore(array $rows, string $onOrBefore): ?string
+    {
+        foreach ($rows as $row) {
+            if ($row['day'] <= $onOrBefore && $row['source'] !== 'manual' && $row['minor'] !== null) {
+                return $row['day'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * One pick per chainFor() step, in one pass over the index: each
+     * step's pick is the first row (newest, under the tie order) that
+     * belongs to the step's subset.
+     *
+     * @param  list<IndexRow>  $rows
+     * @return array<int, CardPriceSnapshot|null>
+     */
+    private function stepPicks(array $rows, ?string $variant, ?string $onOrBefore): array
+    {
+        $steps = $variant === null || in_array($variant, ['normal', 'holofoil'], true) ? 4 : 3;
+        $picks = array_fill(0, $steps, null);
+        $left = $steps;
+
+        foreach ($rows as $row) {
+            if ($onOrBefore !== null && $row['day'] > $onOrBefore) {
+                continue;
+            }
+
+            foreach ($this->stepsOf($row, $variant, $steps) as $step) {
+                if ($picks[$step] === null) {
+                    $picks[$step] = $row['model'];
+                    $left--;
+                }
+            }
+
+            if ($left === 0) {
+                break;
+            }
+        }
+
+        return $picks;
+    }
+
+    /**
+     * Which chainFor() steps a row belongs to.
+     *
+     * @param  IndexRow  $row
+     * @return list<int>
+     */
+    private function stepsOf(array $row, ?string $variant, int $steps): array
+    {
+        if ($variant === null) {
+            if ($row['special']) {
+                return [];
+            }
+
+            return match (true) {
+                $row['source'] === 'tcgplayer' && $row['variant'] === 'normal' => [0, 3],
+                $row['source'] === 'tcgplayer' && $row['variant'] === 'holofoil' => [1, 3],
+                $row['source'] === 'cardmarket' && $row['variant'] === 'default' => [2, 3],
+                default => [3],
+            };
+        }
+
+        $in = [];
+
+        if ($row['variant'] === $variant) {
+            if ($row['source'] === 'manual') {
+                $in[] = 2;
+            } else {
+                if ($row['source'] === 'tcgplayer') {
+                    $in[] = 0;
+                }
+                $in[] = 1;
+            }
+        }
+
+        if ($steps === 4 && $row['variant'] === 'default') {
+            $in[] = 3;
+        }
+
+        return $in;
     }
 
     /**
@@ -258,13 +440,11 @@ final class CardPriceResolver
      */
     public function hasCurrentMarketPrice(Card $card, string $variant): bool
     {
-        $snapshots = $card->priceSnapshots;
-        $cutoff = $this->currentFrom($this->marketPriced($snapshots)->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey()));
-        [$tcgplayer, $market] = $this->chainFor($snapshots, $variant);
+        $index = $this->indexOf($card->priceSnapshots);
+        $cutoff = $this->currentFrom($index['synced']);
+        [$tcgplayer, $market] = $this->stepPicks($index['rows'], $variant, null);
 
-        foreach ([$tcgplayer, $market] as $step) {
-            $pick = $this->newestFirst($step)->first();
-
+        foreach ([$tcgplayer, $market] as $pick) {
             if ($pick !== null && $pick->market_minor !== null && $pick->capturedOnKey() >= $cutoff) {
                 return true;
             }
@@ -344,10 +524,13 @@ final class CardPriceResolver
      */
     public function resolveCardWide(Card $card): ?CardPriceSnapshot
     {
-        return $card->priceSnapshots
-            ->filter(fn (CardPriceSnapshot $s) => $s->variant === 'default')
-            ->pipe(fn (Collection $defaults) => $this->newestFirst($defaults))
-            ->first();
+        foreach ($this->indexOf($card->priceSnapshots)['rows'] as $row) {
+            if ($row['variant'] === 'default') {
+                return $row['model'];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -357,13 +540,7 @@ final class CardPriceResolver
      */
     public function resolveAsOf(Card $card, CarbonInterface $asOf): ?CardPriceSnapshot
     {
-        $asOfKey = $asOf->toDateString();
-
-        $eligible = $card->priceSnapshots->filter(
-            fn (CardPriceSnapshot $s) => $s->capturedOnKey() <= $asOfKey,
-        );
-
-        return $this->resolveFrom($eligible);
+        return $this->pickFrom($this->indexOf($card->priceSnapshots), null, $asOf->toDateString());
     }
 
     /**
@@ -404,15 +581,27 @@ final class CardPriceResolver
     public function previousComparable(Card $card, CardPriceSnapshot $latest): ?CardPriceSnapshot
     {
         $latestKey = $latest->capturedOnKey();
+        $wanted = $latest->getAttributes();
+        $found = null;
 
-        return $card->priceSnapshots
-            ->filter(fn (CardPriceSnapshot $s) => $s->capturedOnKey() < $latestKey
-                && $s->source === $latest->source
-                && $s->variant === $latest->variant
-                && $s->currency === $latest->currency
-                && $s->market_minor !== null)
-            ->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())
-            ->first();
+        // The newest matching day wins; within that day, the row loaded
+        // first, as a stable sort by day alone would leave it.
+        foreach ($this->indexOf($card->priceSnapshots)['rows'] as $row) {
+            if ($found !== null && $row['day'] !== $found['day']) {
+                break;
+            }
+
+            if ($row['day'] < $latestKey
+                && $row['source'] === ($wanted['source'] ?? null)
+                && $row['variant'] === ($wanted['variant'] ?? null)
+                && $row['currency'] === ($wanted['currency'] ?? null)
+                && $row['minor'] !== null
+                && ($found === null || $row['pos'] < $found['pos'])) {
+                $found = $row;
+            }
+        }
+
+        return $found['model'] ?? null;
     }
 
     /**
@@ -516,13 +705,5 @@ final class CardPriceResolver
             ->where('source', $resolved->source)
             ->where('variant', $resolved->variant)
             ->whereNotNull('market_minor');
-    }
-
-    /**
-     * @param  Collection<int, CardPriceSnapshot>  $snapshots
-     */
-    private function resolveFrom(Collection $snapshots): ?CardPriceSnapshot
-    {
-        return $this->variantFrom($snapshots, null);
     }
 }

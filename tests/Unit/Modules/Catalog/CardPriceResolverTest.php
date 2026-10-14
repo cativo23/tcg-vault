@@ -8,6 +8,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Support\ChartRange;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\LegacyCardPriceResolver;
 
 test('prefers tcgplayer normal over everything else', function () {
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
@@ -556,6 +557,51 @@ test('sorts a long history far faster than a comparator that reads model attribu
         <=> [$a->capturedOnKey(), $b->source, $b->variant, $b->id])->values());
 
     expect($precomputed * 3)->toBeLessThan($perComparison);
+});
+
+test('walks a long history far faster than a chain that reads model attributes per row', function () {
+    // The resolver reads each row's attributes once, into a per-card index,
+    // and every chain walk after that touches only plain arrays. The legacy
+    // resolver filters the loaded models through magic getters on every
+    // pick. Both resolve the same 50 variants of one 400-row card in the
+    // same process, so the ratio does not depend on the machine; distinct
+    // variants keep the memo out of it. Each side gets a warm-up run and
+    // keeps its best of three. Per-row attribute reads in the walk bring
+    // the ratio near 1.
+    mt_srand(2);
+    $card = new Card;
+    $card->setRelation('priceSnapshots', collect(range(1, 400))->map(fn (int $i) => (new CardPriceSnapshot)->forceFill([
+        'id' => $i,
+        'source' => ['tcgplayer', 'cardmarket', 'manual'][$i % 3],
+        'variant' => $i % 5 === 0 ? 'holofoil' : 'normal',
+        'captured_on' => today()->subDays($i % 30)->toDateString(),
+        'currency' => 'USD',
+        'market_minor' => $i % 4 === 0 ? null : $i * 10,
+    ]))->shuffle());
+    $variants = array_merge(['normal', 'holofoil'], array_map(fn (int $i) => "print-{$i}", range(1, 48)));
+
+    $best = function (callable $makeResolver) use ($card, $variants): int {
+        $run = function () use ($makeResolver, $card, $variants): void {
+            $resolver = $makeResolver();
+            foreach ($variants as $variant) {
+                $resolver->resolveForVariant($card, $variant);
+            }
+        };
+        $run();
+        $times = [];
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $start = hrtime(true);
+            $run();
+            $times[] = hrtime(true) - $start;
+        }
+
+        return min($times);
+    };
+
+    $indexed = $best(fn () => new CardPriceResolver);
+    $perRow = $best(fn () => new LegacyCardPriceResolver);
+
+    expect($indexed * 3)->toBeLessThan($perRow);
 });
 
 test('orders a long history newest day first, then source, variant and id', function () {
