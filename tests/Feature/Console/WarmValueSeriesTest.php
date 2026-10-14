@@ -221,11 +221,12 @@ test('the logged peak memory is the job\'s own', function () {
     $user = publicCollector('carlos');
     $junk = str_repeat('x', 80 * 1024 * 1024);
     unset($junk);
+    $baselineMb = memory_get_usage() / 1048576;
     Log::spy();
 
     (new WarmValueSeriesJob($user->id))->handle();
 
-    Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context = []) => isset($context['peak_mb']) && $context['peak_mb'] < 80)->once();
+    Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context = []) => isset($context['peak_mb']) && $context['peak_mb'] < $baselineMb + 60)->once();
 });
 
 test('a user\'s warm run loads the cards once for every range, not once per range', function () {
