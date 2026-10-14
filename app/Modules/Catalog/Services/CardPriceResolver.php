@@ -22,16 +22,43 @@ use WeakMap;
  * subset under the tie order. resolve() and resolveForVariant() picks are
  * memoized on the same entry.
  *
+ * The index reads `id`, `source`, `variant` and `currency` straight from
+ * getAttributes() and compares them as raw values, so CardPriceSnapshot
+ * must not cast or mutate any of them.
+ *
  * The index is keyed on the collection object itself, so a reload or
  * setRelation() gets a fresh one. Changing a loaded relation in place
  * (push()/put()/forget() on it, or editing one of its models' attributes)
  * after a pick was made is not supported: the old pick would be served.
  *
- * @phpstan-type IndexRow array{day: string, source: mixed, variant: mixed, id: mixed, minor: mixed, currency: mixed, special: bool, pos: int, model: CardPriceSnapshot}
+ * @phpstan-type IndexRow array{0: string, 1: mixed, 2: mixed, 3: mixed, 4: mixed, 5: mixed, 6: bool, 7: int, 8: CardPriceSnapshot}
  * @phpstan-type Index array{rows: list<IndexRow>, synced: ?string, card: array{0?: CardPriceSnapshot|null}, variants: array<string, CardPriceSnapshot|null>}
  */
 final class CardPriceResolver
 {
+    /*
+     * Index rows are positional lists, not keyed arrays: a gallery page
+     * keeps one per loaded price row for the whole request, and a keyed
+     * row costs about twice the memory of a list.
+     */
+    private const DAY = 0;
+
+    private const SOURCE = 1;
+
+    private const VARIANT = 2;
+
+    private const ID = 3;
+
+    private const MINOR = 4;
+
+    private const CURRENCY = 5;
+
+    private const SPECIAL = 6;
+
+    private const POS = 7;
+
+    private const MODEL = 8;
+
     /** How far behind the newest price a higher-priority one may be and still win. */
     public const STALE_AFTER_DAYS = 3;
 
@@ -176,7 +203,7 @@ final class CardPriceResolver
      */
     private function newestFirst(Collection $snapshots): Collection
     {
-        return new Collection(array_column($this->sortedRows($snapshots), 'model'));
+        return new Collection(array_column($this->sortedRows($snapshots), self::MODEL));
     }
 
     /**
@@ -197,22 +224,22 @@ final class CardPriceResolver
             $attributes = $snapshot->getAttributes();
             $variant = $attributes['variant'] ?? null;
             $rows[] = [
-                'day' => $snapshot->capturedOnKey(),
-                'source' => $attributes['source'] ?? null,
-                'variant' => $variant,
-                'id' => $attributes['id'] ?? null,
-                'minor' => $attributes['market_minor'] ?? null,
-                'currency' => $attributes['currency'] ?? null,
-                'special' => is_string($variant) && CardVariants::isSpecial($variant),
-                'pos' => $pos++,
-                'model' => $snapshot,
+                self::DAY => $snapshot->capturedOnKey(),
+                self::SOURCE => $attributes['source'] ?? null,
+                self::VARIANT => $variant,
+                self::ID => $attributes['id'] ?? null,
+                self::MINOR => $attributes['market_minor'] ?? null,
+                self::CURRENCY => $attributes['currency'] ?? null,
+                self::SPECIAL => is_string($variant) && CardVariants::isSpecial($variant),
+                self::POS => $pos++,
+                self::MODEL => $snapshot,
             ];
         }
 
-        usort($rows, fn (array $a, array $b) => $b['day'] <=> $a['day']
-            ?: $a['source'] <=> $b['source']
-            ?: $a['variant'] <=> $b['variant']
-            ?: $a['id'] <=> $b['id']);
+        usort($rows, fn (array $a, array $b) => $b[self::DAY] <=> $a[self::DAY]
+            ?: $a[self::SOURCE] <=> $b[self::SOURCE]
+            ?: $a[self::VARIANT] <=> $b[self::VARIANT]
+            ?: $a[self::ID] <=> $b[self::ID]);
 
         return $rows;
     }
@@ -231,8 +258,8 @@ final class CardPriceResolver
 
             // Newest first, so the first priced marketplace row is the newest.
             foreach ($rows as $row) {
-                if ($row['source'] !== 'manual' && $row['minor'] !== null) {
-                    $synced = $row['day'];
+                if ($row[self::SOURCE] !== 'manual' && $row[self::MINOR] !== null) {
+                    $synced = $row[self::DAY];
                     break;
                 }
             }
@@ -269,8 +296,8 @@ final class CardPriceResolver
     private function syncedOnOrBefore(array $rows, string $onOrBefore): ?string
     {
         foreach ($rows as $row) {
-            if ($row['day'] <= $onOrBefore && $row['source'] !== 'manual' && $row['minor'] !== null) {
-                return $row['day'];
+            if ($row[self::DAY] <= $onOrBefore && $row[self::SOURCE] !== 'manual' && $row[self::MINOR] !== null) {
+                return $row[self::DAY];
             }
         }
 
@@ -292,13 +319,13 @@ final class CardPriceResolver
         $left = $steps;
 
         foreach ($rows as $row) {
-            if ($onOrBefore !== null && $row['day'] > $onOrBefore) {
+            if ($onOrBefore !== null && $row[self::DAY] > $onOrBefore) {
                 continue;
             }
 
             foreach ($this->stepsOf($row, $variant, $steps) as $step) {
                 if ($picks[$step] === null) {
-                    $picks[$step] = $row['model'];
+                    $picks[$step] = $row[self::MODEL];
                     $left--;
                 }
             }
@@ -320,32 +347,32 @@ final class CardPriceResolver
     private function stepsOf(array $row, ?string $variant, int $steps): array
     {
         if ($variant === null) {
-            if ($row['special']) {
+            if ($row[self::SPECIAL]) {
                 return [];
             }
 
             return match (true) {
-                $row['source'] === 'tcgplayer' && $row['variant'] === 'normal' => [0, 3],
-                $row['source'] === 'tcgplayer' && $row['variant'] === 'holofoil' => [1, 3],
-                $row['source'] === 'cardmarket' && $row['variant'] === 'default' => [2, 3],
+                $row[self::SOURCE] === 'tcgplayer' && $row[self::VARIANT] === 'normal' => [0, 3],
+                $row[self::SOURCE] === 'tcgplayer' && $row[self::VARIANT] === 'holofoil' => [1, 3],
+                $row[self::SOURCE] === 'cardmarket' && $row[self::VARIANT] === 'default' => [2, 3],
                 default => [3],
             };
         }
 
         $in = [];
 
-        if ($row['variant'] === $variant) {
-            if ($row['source'] === 'manual') {
+        if ($row[self::VARIANT] === $variant) {
+            if ($row[self::SOURCE] === 'manual') {
                 $in[] = 2;
             } else {
-                if ($row['source'] === 'tcgplayer') {
+                if ($row[self::SOURCE] === 'tcgplayer') {
                     $in[] = 0;
                 }
                 $in[] = 1;
             }
         }
 
-        if ($steps === 4 && $row['variant'] === 'default') {
+        if ($steps === 4 && $row[self::VARIANT] === 'default') {
             $in[] = 3;
         }
 
@@ -525,8 +552,8 @@ final class CardPriceResolver
     public function resolveCardWide(Card $card): ?CardPriceSnapshot
     {
         foreach ($this->indexOf($card->priceSnapshots)['rows'] as $row) {
-            if ($row['variant'] === 'default') {
-                return $row['model'];
+            if ($row[self::VARIANT] === 'default') {
+                return $row[self::MODEL];
             }
         }
 
@@ -587,21 +614,21 @@ final class CardPriceResolver
         // The newest matching day wins; within that day, the row loaded
         // first, as a stable sort by day alone would leave it.
         foreach ($this->indexOf($card->priceSnapshots)['rows'] as $row) {
-            if ($found !== null && $row['day'] !== $found['day']) {
+            if ($found !== null && $row[self::DAY] !== $found[self::DAY]) {
                 break;
             }
 
-            if ($row['day'] < $latestKey
-                && $row['source'] === ($wanted['source'] ?? null)
-                && $row['variant'] === ($wanted['variant'] ?? null)
-                && $row['currency'] === ($wanted['currency'] ?? null)
-                && $row['minor'] !== null
-                && ($found === null || $row['pos'] < $found['pos'])) {
+            if ($row[self::DAY] < $latestKey
+                && $row[self::SOURCE] === ($wanted['source'] ?? null)
+                && $row[self::VARIANT] === ($wanted['variant'] ?? null)
+                && $row[self::CURRENCY] === ($wanted['currency'] ?? null)
+                && $row[self::MINOR] !== null
+                && ($found === null || $row[self::POS] < $found[self::POS])) {
                 $found = $row;
             }
         }
 
-        return $found['model'] ?? null;
+        return $found[self::MODEL] ?? null;
     }
 
     /**
