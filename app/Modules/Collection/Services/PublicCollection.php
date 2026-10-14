@@ -11,6 +11,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Scopes\TenantScope;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection as SupportCollection;
 
@@ -73,17 +74,33 @@ final class PublicCollection
      * copies). Recent, not all: the sync adds rows for every card every
      * day, and each screen walks them in PHP.
      *
+     * With $withPrices false the price rows are left out (the set too), for
+     * a caller that loads them itself in batches through recentPrices().
+     *
      * @return Builder<Card>
      */
-    public function cardsQuery(): Builder
+    public function cardsQuery(bool $withPrices = true): Builder
     {
-        return Card::query()
+        $query = Card::query()
             ->whereHas('collectionItems', fn (Builder $q) => $this->scopeItems($q))
             ->with([
-                'set',
-                'priceSnapshots' => fn ($q) => $q->recent(),
                 'collectionItems' => fn ($q) => $this->scopeItems($q)->orderBy('created_at'),
             ]);
+
+        return $withPrices
+            ? $query->with(['set', 'priceSnapshots' => fn ($q) => $q->recent()])
+            : $query;
+    }
+
+    /**
+     * Loads the recent price rows onto cards that cardsQuery(false) fetched,
+     * the same rows cardsQuery() would have eager-loaded.
+     *
+     * @param  EloquentCollection<int, Card>  $cards
+     */
+    public function recentPrices(EloquentCollection $cards): void
+    {
+        $cards->load(['priceSnapshots' => fn ($q) => $q->recent()]);
     }
 
     /**

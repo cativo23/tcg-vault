@@ -439,3 +439,27 @@ test('the public entry point has no currency and no series for a user with nothi
         ->and($result['series'])->toBeEmpty()
         ->and($result['earliest'])->toBeNull();
 });
+
+test('warming sums the totals over card chunks, so its primary currency and keys are the page\'s', function () {
+    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
+    $price = $this->price;
+    // Valuation::order() puts USD first and otherwise keeps the order currencies first appear in, which
+    // follows the cards' load order; the page and the warm-up must agree on it across chunks of cards.
+    $first = ($this->own)('000');
+    foreach ([40, 0] as $ago) {
+        $price($first, $ago, 100, 'normal', 'cardmarket', 'EUR');
+    }
+    for ($i = 1; $i < CollectionValueSeries::WARM_CHUNK + 5; $i++) {
+        $card = ($this->own)(sprintf('%03d', $i));
+        foreach ([40, 0] as $ago) {
+            $price($card, $ago, 50000, 'normal', 'cardmarket', 'GBP');
+        }
+    }
+
+    $result = $service->warm(PublicCollection::for($this->user), ChartRange::cases());
+    $page = $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneYear);
+
+    expect($result)->toBe(['computed' => 4, 'warm' => 0])
+        ->and($page['cached'])->toBeTrue()
+        ->and($service->warm(PublicCollection::for($this->user), ChartRange::cases()))->toBe(['computed' => 0, 'warm' => 4]);
+});
