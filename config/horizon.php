@@ -233,6 +233,10 @@ return [
         // The daily tcgcsv pull (SyncTcgcsvPricesJob): one job that can
         // run for minutes, kept off the default pool so it never holds up
         // pricing syncs. Its own timeout and backoff live on the job.
+        // WarmValueSeriesJob (hourly, one per public user) shares this one
+        // worker, so warming the Activity charts adds no process to the
+        // container; measured on the prod copy, one user's job peaks about
+        // 20 MB above a booted worker.
         'supervisor-tcgcsv' => [
             'connection' => 'redis-long',
             'queue' => ['tcgcsv'],

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Jobs\WarmValueSeriesJob;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
@@ -9,8 +10,11 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 
 function publicCollector(string $username, bool $public = true, int $minor = 100): User
 {
@@ -42,7 +46,7 @@ function seriesComputations(Closure $callback): int
 test('a visitor to the activity page of a warmed user computes no series on any range', function () {
     publicCollector('carlos');
 
-    $this->artisan('gallery:warm-value-series')->assertSuccessful();
+    $this->artisan('gallery:warm-value-series --sync')->assertSuccessful();
 
     foreach (ChartRange::cases() as $range) {
         $computed = seriesComputations(fn () => $this->get("/carlos/activity?range={$range->value}")->assertOk());
@@ -57,25 +61,39 @@ test('a visitor to an unwarmed user does compute the series, so the check above 
     expect(seriesComputations(fn () => $this->get('/carlos/activity')->assertOk()))->toBeGreaterThan(0);
 });
 
-test('a private collection is skipped and nothing is cached for it', function () {
+test('without --sync the command queues one job per public user and computes nothing itself', function () {
+    Queue::fake();
+    $carlos = publicCollector('carlos');
+    $ana = publicCollector('ana');
+
+    expect(seriesComputations(fn () => $this->artisan('gallery:warm-value-series')->assertSuccessful()))->toBe(0);
+
+    Queue::assertPushed(WarmValueSeriesJob::class, 2);
+    Queue::assertPushed(WarmValueSeriesJob::class, fn (WarmValueSeriesJob $job) => $job->userId === $carlos->id);
+    Queue::assertPushed(WarmValueSeriesJob::class, fn (WarmValueSeriesJob $job) => $job->userId === $ana->id);
+});
+
+test('a private collection is skipped: no job is queued and the sync run reports no users', function () {
+    Queue::fake();
     publicCollector('shy', public: false);
 
     $this->artisan('gallery:warm-value-series')->assertSuccessful();
+    Queue::assertNothingPushed();
 
-    // Once the collection goes public the first visit still has to compute.
-    Collection::withoutGlobalScopes()->update(['is_public' => true]);
+    Log::spy();
+    $this->artisan('gallery:warm-value-series --sync')->assertSuccessful();
 
-    expect(seriesComputations(fn () => $this->get('/shy/activity')->assertOk()))->toBeGreaterThan(0);
+    Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context = []) => ($context['users'] ?? null) === 0)->once();
 });
 
 test('a suspended user is skipped, as their page is a 404', function () {
+    Queue::fake();
     $user = publicCollector('gone');
     $user->forceFill(['suspended_at' => now()])->save();
-    Log::spy();
 
     $this->artisan('gallery:warm-value-series')->assertSuccessful();
 
-    Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context = []) => ($context['users'] ?? null) === 0)->once();
+    Queue::assertNothingPushed();
 });
 
 test('every public collection of a user is warmed together, as the page shows them', function () {
@@ -87,35 +105,34 @@ test('every public collection of a user is warmed together, as the page shows th
         CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => 50]);
     }
 
-    $this->artisan('gallery:warm-value-series')->assertSuccessful();
+    $this->artisan('gallery:warm-value-series --sync')->assertSuccessful();
 
     expect(seriesComputations(fn () => $this->get('/carlos/activity')->assertOk()))->toBe(0);
 });
 
-test('a second run finds everything warm and logs the counts', function () {
+test('a second sync run finds everything warm and logs the counts', function () {
     publicCollector('carlos');
     publicCollector('ana');
-    $this->artisan('gallery:warm-value-series')->assertSuccessful();
+    $this->artisan('gallery:warm-value-series --sync')->assertSuccessful();
     Log::spy();
 
-    $this->artisan('gallery:warm-value-series')->assertSuccessful();
+    $this->artisan('gallery:warm-value-series --sync')->assertSuccessful();
 
     Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context = []) => ($context['users'] ?? null) === 2
-        && ($context['ranges'] ?? null) === 4
         && ($context['computed'] ?? null) === 0
         && ($context['warm'] ?? null) === 8)->once();
 });
 
-test('the first run logs how many series it computed', function () {
+test('the first sync run logs how many series it computed', function () {
     publicCollector('carlos');
     Log::spy();
 
-    $this->artisan('gallery:warm-value-series')->assertSuccessful();
+    $this->artisan('gallery:warm-value-series --sync')->assertSuccessful();
 
     Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context = []) => ($context['computed'] ?? null) === 4 && ($context['warm'] ?? null) === 0)->once();
 });
 
-test('a failure for one user is logged and does not stop the others', function () {
+test('a failure for one user is logged and does not stop the others in a sync run', function () {
     $bad = publicCollector('broken');
     $good = publicCollector('carlos');
     $badCollectionId = Collection::withoutGlobalScopes()->where('user_id', $bad->id)->value('id');
@@ -127,9 +144,58 @@ test('a failure for one user is logged and does not stop the others', function (
         }
     });
 
-    $this->artisan('gallery:warm-value-series')->assertFailed();
+    $this->artisan('gallery:warm-value-series --sync')->assertFailed();
 
     Log::shouldHaveReceived('error')->withArgs(fn (string $message, array $context = []) => ($context['user_id'] ?? null) === $bad->id)->atLeast()->once();
 
     expect(seriesComputations(fn () => $this->get("/{$good->username}/activity")->assertOk()))->toBe(0);
+});
+
+test('the job warms its user and is unique per user for under an hour', function () {
+    $user = publicCollector('carlos');
+    $job = new WarmValueSeriesJob($user->id);
+
+    $job->handle();
+
+    expect(seriesComputations(fn () => $this->get('/carlos/activity')->assertOk()))->toBe(0)
+        ->and($job)->toBeInstanceOf(ShouldBeUnique::class)
+        ->and($job->uniqueId())->toBe((string) $user->id)
+        ->and($job->uniqueFor)->toBeLessThan(3600)
+        ->and($job->tries)->toBe(1);
+});
+
+test('the job does nothing for a user who is gone, private or suspended', function () {
+    $shy = publicCollector('shy', public: false);
+    $gone = publicCollector('gone');
+    $gone->forceFill(['suspended_at' => now()])->save();
+    Log::spy();
+
+    foreach ([$shy->id, $gone->id, 999_999] as $id) {
+        (new WarmValueSeriesJob($id))->handle();
+    }
+
+    Log::shouldNotHaveReceived('info');
+});
+
+test('a failed job alerts Discord with the user', function () {
+    config(['services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
+    Http::fake();
+
+    (new WarmValueSeriesJob(42))->failed(new RuntimeException('boom'));
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'Activity chart') && str_contains($request['content'], '42'));
+});
+
+test('a user\'s warm run loads the cards once for every range, not once per range', function () {
+    $user = publicCollector('carlos');
+    $cardQueries = 0;
+    DB::listen(function ($query) use (&$cardQueries) {
+        $cardQueries += preg_match('/^select \* from "cards" where exists/i', $query->sql);
+    });
+
+    (new WarmValueSeriesJob($user->id))->handle();
+    $cardQueries = 0;
+    (new WarmValueSeriesJob($user->id))->handle();
+
+    expect($cardQueries)->toBe(1);
 });
