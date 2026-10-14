@@ -387,3 +387,55 @@ test('a manual price moves the key whatever its age', function () {
 
     expect($lateral)->toBeGreaterThan(0);
 });
+
+test('the public entry point returns what an anonymous visitor sees: cards, totals, primary currency, series and earliest day', function () {
+    $a = ($this->own)('001', 'normal', 2);
+    foreach ([40, 10, 0] as $ago) {
+        ($this->price)($a, $ago, 100 + $ago);
+    }
+    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
+
+    $result = $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::ThreeMonths);
+
+    expect($result['cards']->pluck('id')->all())->toBe([$a->id])
+        ->and($result['totals'])->toBe(['USD' => 200])
+        ->and($result['currency'])->toBe('USD')
+        ->and($result['series']->last()['minor'])->toBe(200)
+        ->and($result['earliest']?->toDateString())->toBe(today()->subDays(40)->toDateString())
+        ->and($result['cached'])->toBeFalse();
+
+    expect($service->forPublicCollection(PublicCollection::for($this->user), ChartRange::ThreeMonths)['cached'])->toBeTrue();
+});
+
+test('the public entry point sees every public collection of the user and never a private one', function () {
+    $a = ($this->own)('001');
+    ($this->price)($a, 0, 100);
+    ($this->price)($a, 10, 100);
+
+    $second = Collection::factory()->for($this->user)->create(['is_public' => true, 'slug' => 'second']);
+    $b = Card::create(['tcgdex_id' => 'me05-002', 'set_id' => $this->set->id, 'local_id' => '002', 'name' => 'Card 002']);
+    CollectionItem::create(['collection_id' => $second->id, 'card_id' => $b->id, 'card_tcgdex_id' => $b->tcgdex_id, 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    ($this->price)($b, 0, 50);
+    ($this->price)($b, 10, 50);
+
+    $hidden = Collection::factory()->for($this->user)->create(['is_public' => false, 'slug' => 'hidden']);
+    $c = Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $this->set->id, 'local_id' => '003', 'name' => 'Card 003']);
+    CollectionItem::create(['collection_id' => $hidden->id, 'card_id' => $c->id, 'card_tcgdex_id' => $c->tcgdex_id, 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    ($this->price)($c, 0, 9999);
+
+    $result = (new CollectionValueSeries(new Valuation(new CardPriceResolver)))->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    expect($result['totals'])->toBe(['USD' => 150])
+        ->and($result['series']->last()['minor'])->toBe(150);
+});
+
+test('the public entry point has no currency and no series for a user with nothing public', function () {
+    Collection::query()->update(['is_public' => false]);
+
+    $result = (new CollectionValueSeries(new Valuation(new CardPriceResolver)))->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    expect($result['cards'])->toBeEmpty()
+        ->and($result['currency'])->toBeNull()
+        ->and($result['series'])->toBeEmpty()
+        ->and($result['earliest'])->toBeNull();
+});

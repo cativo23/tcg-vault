@@ -49,10 +49,57 @@ final class CollectionValueSeries
     /** Bump when the series' calculation changes, so a deploy doesn't serve a series the old code computed. */
     private const CACHE_VERSION = 2;
 
+    /** Bounded: a public route must never fan out unbounded per-card work. */
+    public const MAX_CARDS = 500;
+
     public function __construct(private readonly Valuation $valuation) {}
 
     /** @var array<string, ?string> earliest day by card-id array, so a render asks the database once */
     private array $earliest = [];
+
+    /** Whether the last for() call was served from the cache, or had nothing to compute. */
+    private bool $lastCallCached = true;
+
+    /**
+     * What an anonymous visitor to the Activity page gets for a user: the
+     * public collection's cards (capped at MAX_CARDS), their totals, the
+     * primary currency (the first of those totals), and that currency's
+     * value series and earliest priced day over the range. The page and
+     * the warm-up both call this, so the warm-up fills exactly the keys a
+     * visitor reads.
+     *
+     * @return array{
+     *     cards: EloquentCollection<int, Card>,
+     *     totals: array<string, int>,
+     *     currency: ?string,
+     *     series: Collection<int, array{date: CarbonImmutable, minor: int}>,
+     *     earliest: ?CarbonImmutable,
+     *     cached: bool,
+     * }
+     */
+    public function forPublicCollection(PublicCollection $public, ChartRange $range): array
+    {
+        $cards = $public->cardsQuery()->take(self::MAX_CARDS)->get();
+        $totals = $this->valuation->totalsByCurrency($cards);
+        $currency = array_key_first($totals);
+        $this->lastCallCached = true;
+
+        if ($currency === null) {
+            return ['cards' => $cards, 'totals' => $totals, 'currency' => null, 'series' => collect(), 'earliest' => null, 'cached' => true];
+        }
+
+        $series = $this->for($cards, $currency, $range);
+
+        return [
+            'cards' => $cards,
+            'totals' => $totals,
+            'currency' => $currency,
+            'series' => $series,
+            // The series asked for it already; this reads the same answer.
+            'earliest' => $this->earliestDay($cards),
+            'cached' => $this->lastCallCached,
+        ];
+    }
 
     /**
      * @param  Collection<int, Card>  $cards  owned cards, collectionItems loaded
@@ -60,6 +107,8 @@ final class CollectionValueSeries
      */
     public function for(Collection $cards, string $currency, ChartRange $range): Collection
     {
+        $this->lastCallCached = true;
+
         if ($cards->isEmpty()) {
             return collect();
         }
@@ -67,6 +116,8 @@ final class CollectionValueSeries
         $today = CarbonImmutable::today()->toDateString();
         $key = 'collection-value-series:v'.self::CACHE_VERSION.":{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards, $range)}";
         $cached = Cache::get($key);
+
+        $this->lastCallCached = is_array($cached);
 
         if (is_array($cached)) {
             $this->earliest[$this->idArray($cards)] = $cached['earliest'];
