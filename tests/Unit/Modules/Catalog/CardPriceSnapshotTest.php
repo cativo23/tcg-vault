@@ -40,3 +40,14 @@ test('a manual price stands until replaced, so it is always in the recent window
     expect($manual->fresh()->isRecent())->toBeTrue();
     expect(CardPriceSnapshot::recent()->pluck('id')->all())->toBe([$manual->id]);
 });
+
+test('id, source, variant and currency have no declared cast', function () {
+    // CardPriceResolver's index compares these raw attributes (from
+    // getAttributes()) with === and <=>; a declared cast on any of them
+    // would make the index pick differently from the model's accessors.
+    $casts = (new ReflectionMethod(CardPriceSnapshot::class, 'casts'))->invoke(new CardPriceSnapshot);
+
+    foreach (['id', 'source', 'variant', 'currency'] as $attribute) {
+        expect($casts)->not->toHaveKey($attribute);
+    }
+});

@@ -63,6 +63,13 @@ function parityScenarios(): array
             ['ebay', 'normal', 0, 'USD', 200], ['cardmarket', 'normal', 0, 'USD', 100], ['tcgplayer', 'holofoil', 0, 'USD', 300],
             ['cardmarket', 'holofoil', 0, 'EUR', 280], ['ebay', 'reverse-holofoil', 0, 'USD', 150], ['cardmarket', 'reverse-holofoil', 0, 'EUR', 140],
         ],
+        // No tcgplayer normal/holofoil and no cardmarket default, so the card-level pick falls to the
+        // any-base-print step, where only the source then variant tie order separates same-day rows:
+        // cardmarket|normal wins, and flipping either comparison picks another row.
+        'card-level tie order alone decides' => [
+            ['ebay', 'normal', 0, 'USD', 200], ['cardmarket', 'reverse-holofoil', 0, 'EUR', 140],
+            ['cardmarket', 'normal', 0, 'EUR', 100], ['ebay', 'holofoil', 0, 'USD', 300],
+        ],
         'mixed currencies on one print' => [
             ['tcgplayer', 'normal', 0, 'USD', 100], ['tcgplayer', 'normal', 1, 'EUR', 95], ['cardmarket', 'normal', 1, 'EUR', 90],
             ['manual', 'normal', 3, 'GBP', 85], ['tcgplayer', 'normal', 2, 'USD', 98],
