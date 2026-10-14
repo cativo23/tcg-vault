@@ -6,6 +6,7 @@ use App\Models\ModerationAction;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Http;
 
 function scheduledEvent(string $needle): ?Event
 {
@@ -30,9 +31,21 @@ test('old moderation records are pruned daily', function () {
     expect((string) scheduledEvent('model:prune')?->command)->toContain("--model='".ModerationAction::class."'");
 });
 
-test('the Activity value series is warmed hourly without overlapping', function () {
+test('the Activity value series is queued hourly, with a lock that expires within the hour', function () {
     $event = scheduledEvent('gallery:warm-value-series');
 
     expect($event?->expression)->toBe('0 * * * *')
-        ->and($event?->withoutOverlapping)->toBeTrue();
+        ->and($event?->withoutOverlapping)->toBeTrue()
+        ->and($event?->expiresAt)->toBe(50);
+});
+
+test('a failing warm-up dispatch alerts Discord', function () {
+    config(['services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
+    Http::fake();
+    $event = scheduledEvent('gallery:warm-value-series');
+    $event->exitCode = 1;
+
+    $event->callAfterCallbacks(app());
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'gallery:warm-value-series'));
 });
