@@ -16,6 +16,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -27,9 +28,9 @@ use Throwable;
  * It runs on the queue, not in the 128M scheduler container, and one job
  * per user keeps a large or failing collection from holding up the rest.
  * It shares the tcgcsv supervisor's single worker rather than adding a
- * process to the Horizon container (see config/horizon.php); that worker
- * restarts past its memory threshold, so the heap a big collection grows
- * is returned after the job.
+ * process to the Horizon container (see config/horizon.php). That worker
+ * restarts only when it ends a job above its 64 MB threshold; a job on the
+ * collection measured for this stays below it.
  *
  * Unique per user for less than the hourly schedule's period, so a slow run
  * is not stacked on by the next hour's dispatch, and a lost lock cannot
@@ -61,6 +62,9 @@ final class WarmValueSeriesJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(): void
     {
+        // So the logged peak is this job's, not that of an earlier job in the same worker.
+        memory_reset_peak_usage();
+
         $counts = $this->warm();
 
         if ($counts !== null) {
@@ -97,9 +101,18 @@ final class WarmValueSeriesJob implements ShouldBeUnique, ShouldQueue
         return (new CollectionValueSeries(new Valuation(new CardPriceResolver)))->warm($public, ChartRange::cases());
     }
 
+    /**
+     * The alert names the user and the exception class only: a database
+     * error's message carries SQL and card ids, and Discord caps a message
+     * at 2000 characters. The full exception is logged. One alert per user
+     * per day, so an hourly failure does not repeat itself.
+     */
     public function failed(Throwable $e): void
     {
         Log::error('gallery:warm-value-series failed for a user', ['user_id' => $this->userId, 'exception' => $e]);
-        app(DiscordAlerter::class)->send("⚠️ tcg-vault: the Activity chart for user {$this->userId} was not warmed ({$e->getMessage()}).");
+
+        if (Cache::add("gallery:warm-value-series:alerted:{$this->userId}:".now()->toDateString(), true, now()->addDay())) {
+            app(DiscordAlerter::class)->send('⚠️ tcg-vault: the Activity chart for user '.$this->userId.' was not warmed ('.class_basename($e).'); see the log.');
+        }
     }
 }

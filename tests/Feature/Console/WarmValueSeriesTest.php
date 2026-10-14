@@ -177,13 +177,55 @@ test('the job does nothing for a user who is gone, private or suspended', functi
     Log::shouldNotHaveReceived('info');
 });
 
-test('a failed job alerts Discord with the user', function () {
+test('a failed job alerts Discord with the user and the exception class, never its message', function () {
+    config(['services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
+    Http::fake();
+    Log::spy();
+    $sql = 'SQLSTATE[HY000]: select * from "cards" where id in (1,2,3) '.str_repeat('x', 3000);
+
+    (new WarmValueSeriesJob(42))->failed(new RuntimeException($sql));
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'Activity chart')
+        && str_contains($request['content'], '42')
+        && str_contains($request['content'], 'RuntimeException')
+        && ! str_contains($request['content'], 'SQLSTATE')
+        && ! str_contains($request['content'], 'cards')
+        && strlen($request['content']) < 300);
+    Log::shouldHaveReceived('error')->withArgs(fn (string $message, array $context = []) => ($context['user_id'] ?? null) === 42 && $context['exception'] instanceof RuntimeException)->once();
+});
+
+test('a user\'s failures alert Discord once a day, and another user\'s still alert', function () {
     config(['services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
     Http::fake();
 
-    (new WarmValueSeriesJob(42))->failed(new RuntimeException('boom'));
+    (new WarmValueSeriesJob(42))->failed(new RuntimeException('a'));
+    (new WarmValueSeriesJob(42))->failed(new RuntimeException('b'));
+    (new WarmValueSeriesJob(43))->failed(new RuntimeException('c'));
 
-    Http::assertSent(fn ($request) => str_contains($request['content'], 'Activity chart') && str_contains($request['content'], '42'));
+    Http::assertSentCount(2);
+
+    $this->travel(1)->day();
+    (new WarmValueSeriesJob(42))->failed(new RuntimeException('d'));
+
+    Http::assertSentCount(3);
+});
+
+test('the job runs on the tcgcsv queue of the redis-long connection', function () {
+    $job = new WarmValueSeriesJob(1);
+
+    expect($job->connection)->toBe('redis-long')
+        ->and($job->queue)->toBe('tcgcsv');
+});
+
+test('the logged peak memory is the job\'s own', function () {
+    $user = publicCollector('carlos');
+    $junk = str_repeat('x', 80 * 1024 * 1024);
+    unset($junk);
+    Log::spy();
+
+    (new WarmValueSeriesJob($user->id))->handle();
+
+    Log::shouldHaveReceived('info')->withArgs(fn (string $message, array $context = []) => isset($context['peak_mb']) && $context['peak_mb'] < 80)->once();
 });
 
 test('a user\'s warm run loads the cards once for every range, not once per range', function () {
