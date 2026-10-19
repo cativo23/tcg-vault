@@ -13,6 +13,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\DecidingPriceRows;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -31,12 +32,13 @@ use Tests\Support\ViewDataFingerprint;
  * frozen series, manual prices, mixed currencies, tcgcsv days, ghost cards
  * and copies of several variants.
  */
-function seedPagesCollection(): void
+function seedPagesCollection(int $seed = 1910): void
 {
-    mt_srand(1910);
     $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
     $public = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $private = Collection::factory()->for($user)->create(['is_public' => false, 'slug' => 'vault']);
+    // Seeded after the factories, whose fakers draw from the same generator.
+    mt_srand($seed);
     $sets = [
         Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 30, 'released_on' => '2026-01-01']),
         Set::create(['tcgdex_id' => 'sv08', 'name' => 'Surging Sparks', 'card_count' => 20, 'released_on' => '2025-01-01']),
@@ -80,6 +82,9 @@ function seedPagesCollection(): void
             continue;
         }
         foreach (range(1, mt_rand(1, 3)) as $copy) {
+            // Each copy added at its own moment, so "newest" orders have no ties
+            // for the database to break differently from one query to the next.
+            Carbon::setTestNow($now->copy()->subMinutes($n * 3 + $copy));
             CollectionItem::create([
                 'collection_id' => $n % 7 === 0 ? $private->id : $public->id, 'card_id' => $card->id,
                 'card_tcgdex_id' => $card->tcgdex_id, 'variant' => [null, 'normal', 'holofoil', 'reverse-holofoil'][mt_rand(0, 3)],
@@ -87,6 +92,8 @@ function seedPagesCollection(): void
             ]);
         }
     }
+
+    Carbon::setTestNow($now);
 
     foreach (array_chunk(array_values($rows), 500) as $chunk) {
         CardPriceSnapshot::insert($chunk);
