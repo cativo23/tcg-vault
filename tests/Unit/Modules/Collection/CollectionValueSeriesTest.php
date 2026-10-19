@@ -7,6 +7,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Services\DecidingPriceRows;
 use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
@@ -32,7 +33,7 @@ beforeEach(function () {
 
         return (new CollectionValueSeries(new Valuation(new CardPriceResolver)))->for($cards, 'USD', $range);
     };
-    $this->headline = fn () => (new Valuation(new CardPriceResolver))->totalsByCurrency(PublicCollection::for($this->user)->cardsQuery()->get())['USD'] ?? 0;
+    $this->headline = fn () => (new Valuation(new CardPriceResolver))->totalsByCurrency((new DecidingPriceRows)->loadOnto(PublicCollection::for($this->user)->cardsQuery()->get()))['USD'] ?? 0;
     $this->seedMixed = function (): void {
         $a = ($this->own)('101', 'normal', 2);
         $b = ($this->own)('102', 'reverse-holofoil');

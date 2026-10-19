@@ -8,6 +8,7 @@ use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Services\DecidingPriceRows;
 use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Services\Valuation;
 use Illuminate\Contracts\View\View;
@@ -108,8 +109,11 @@ final class Index extends Component
         // already uses. Bounded by MAX_CARDS, same as before.
         //
         // Keyed by id so the grid below can reuse these already-loaded
-        // cards (and their price history) instead of loading them again.
-        $allCards = $public->cardsQuery()->take(self::MAX_CARDS)->get()->keyBy('id');
+        // cards (and their price rows) instead of loading them again. The
+        // rows are the ones that decide current prices (see
+        // DecidingPriceRows), which every figure on this page is.
+        $prices = app(DecidingPriceRows::class);
+        $allCards = $prices->loadOnto($public->cardsQuery()->take(self::MAX_CARDS)->get())->keyBy('id');
         $headlines = $allCards->map(fn (Card $card) => $valuation->headlineSnapshot($card));
         $sets = $public->setsQuery()->orderByDesc('released_on')->get();
 
@@ -189,7 +193,7 @@ final class Index extends Component
         $missingIds = $gridIds->diff($allCards->keys());
         $pool = $missingIds->isEmpty()
             ? $allCards
-            : $allCards->union($public->cardsQuery()->whereKey($missingIds)->get()->keyBy('id'));
+            : $allCards->union($prices->loadOnto($public->cardsQuery()->whereKey($missingIds)->get())->keyBy('id'));
         $headlineOf = fn (Card $card) => $headlines->has($card->id) ? $headlines->get($card->id) : $valuation->headlineSnapshot($card);
 
         $gridCards = $gridIds->map(fn ($id) => $pool->get($id))->filter();

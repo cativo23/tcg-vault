@@ -6,6 +6,7 @@ namespace App\Modules\Collection\Services;
 
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
+use App\Modules\Catalog\Services\DecidingPriceRows;
 use App\Modules\Catalog\Support\ChartRange;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -68,7 +69,8 @@ final class CollectionValueSeries
 
     /**
      * What an anonymous visitor to the Activity page gets for a user: the
-     * public collection's cards (capped at MAX_CARDS), their totals, the
+     * public collection's cards (capped at MAX_CARDS) with the price rows that
+     * decide their current prices (see DecidingPriceRows), their totals, the
      * primary currency (see primaryCurrency()), and that currency's value
      * series and earliest priced day over the range. The page calls this;
      * warm() fills the same cache keys.
@@ -84,7 +86,7 @@ final class CollectionValueSeries
      */
     public function forPublicCollection(PublicCollection $public, ChartRange $range): array
     {
-        $cards = $public->cardsQuery()->take(self::MAX_CARDS)->get();
+        $cards = app(DecidingPriceRows::class)->loadOnto($public->cardsQuery()->take(self::MAX_CARDS)->get());
         $totals = $this->valuation->totalsByCurrency($cards);
         $currency = $this->primaryCurrency($totals);
 
@@ -110,7 +112,8 @@ final class CollectionValueSeries
      * page reads for this user, and says how many were computed and how many
      * were already there. The cards are loaded once for every range, without
      * their price rows: the page's totals are summed over batches of
-     * WARM_CHUNK cards whose rows are loaded and dropped in turn, and the
+     * WARM_CHUNK cards whose deciding price rows (see DecidingPriceRows) are
+     * loaded and dropped in turn, the same rows the page prices from, and the
      * series itself prices each sampled day from its own rows. So the heap
      * holds a batch of price rows, not the collection's whole recent history.
      *
@@ -119,12 +122,12 @@ final class CollectionValueSeries
      */
     public function warm(PublicCollection $public, array $ranges): array
     {
-        $cards = $public->cardsQuery(withPrices: false)->take(self::MAX_CARDS)->get();
+        $cards = $public->cardsQuery()->take(self::MAX_CARDS)->get();
+        $loader = app(DecidingPriceRows::class);
         $totals = [];
 
         foreach ($cards->chunk(self::WARM_CHUNK) as $chunk) {
-            $batch = new EloquentCollection($chunk->all());
-            $public->recentPrices($batch);
+            $batch = $loader->loadOnto(new EloquentCollection($chunk->all()));
 
             foreach ($this->valuation->totalsByCurrency($batch) as $currency => $minor) {
                 $totals[$currency] = ($totals[$currency] ?? 0) + $minor;
