@@ -38,16 +38,28 @@ use Illuminate\Support\Facades\DB;
  * Even so, a year of history costs seconds on a large collection, and the
  * collection page is public, so every visit would pay it. The finished
  * series is cached for the day, per range and currency. The key carries a
- * fingerprint that changes whenever the result could: the count and newest
- * updated_at of the cards' price rows (a new, edited or deleted price) and
- * each owned copy's id, card, variant, quantity and updated_at (a copy
- * added, removed or edited, or made public or private). A hit costs the one
- * aggregate query that computes the fingerprint.
+ * fingerprint of what the series is computed from: the count and newest
+ * updated_at of the price rows that can price a sampled day (captured from
+ * the range's start minus the RECENT_DAYS window on, plus manual rows at
+ * any age: a new, edited or deleted price) and each owned copy's id, card,
+ * variant, quantity and updated_at (a copy added, removed or edited, or
+ * made public or private). A row older than that cannot move a value, but
+ * one added or removed there can move the earliest priced day, which the
+ * cached payload carries for "History since"; that stays as cached until
+ * midnight. A hit costs the fingerprint's aggregate query on top of
+ * whatever the caller loaded to ask: the page's cards, or, for warm(),
+ * the cards without their price rows.
  */
 final class CollectionValueSeries
 {
     /** Bump when the series' calculation changes, so a deploy doesn't serve a series the old code computed. */
-    private const CACHE_VERSION = 1;
+    private const CACHE_VERSION = 2;
+
+    /** Bounded: a public route must never fan out unbounded per-card work. */
+    public const MAX_CARDS = 500;
+
+    /** How many cards warm() loads price rows for at a time. */
+    public const WARM_CHUNK = 40;
 
     public function __construct(private readonly Valuation $valuation) {}
 
@@ -55,17 +67,122 @@ final class CollectionValueSeries
     private array $earliest = [];
 
     /**
+     * What an anonymous visitor to the Activity page gets for a user: the
+     * public collection's cards (capped at MAX_CARDS), their totals, the
+     * primary currency (see primaryCurrency()), and that currency's value
+     * series and earliest priced day over the range. The page calls this;
+     * warm() fills the same cache keys.
+     *
+     * @return array{
+     *     cards: EloquentCollection<int, Card>,
+     *     totals: array<string, int>,
+     *     currency: ?string,
+     *     series: Collection<int, array{date: CarbonImmutable, minor: int}>,
+     *     earliest: ?CarbonImmutable,
+     *     cached: bool,
+     * }
+     */
+    public function forPublicCollection(PublicCollection $public, ChartRange $range): array
+    {
+        $cards = $public->cardsQuery()->take(self::MAX_CARDS)->get();
+        $totals = $this->valuation->totalsByCurrency($cards);
+        $currency = $this->primaryCurrency($totals);
+
+        if ($currency === null) {
+            return ['cards' => $cards, 'totals' => $totals, 'currency' => null, 'series' => collect(), 'earliest' => null, 'cached' => true];
+        }
+
+        [$series, $cached] = $this->cachedSeries($cards, $currency, $range);
+
+        return [
+            'cards' => $cards,
+            'totals' => $totals,
+            'currency' => $currency,
+            'series' => $series,
+            // The series asked for it already; this reads the same answer.
+            'earliest' => $this->earliestDay($cards),
+            'cached' => $cached,
+        ];
+    }
+
+    /**
+     * Makes sure the series cache holds, for each range, what the Activity
+     * page reads for this user, and says how many were computed and how many
+     * were already there. The cards are loaded once for every range, without
+     * their price rows: the page's totals are summed over batches of
+     * WARM_CHUNK cards whose rows are loaded and dropped in turn, and the
+     * series itself prices each sampled day from its own rows. So the heap
+     * holds a batch of price rows, not the collection's whole recent history.
+     *
+     * @param  list<ChartRange>  $ranges
+     * @return array{computed: int, warm: int}
+     */
+    public function warm(PublicCollection $public, array $ranges): array
+    {
+        $cards = $public->cardsQuery(withPrices: false)->take(self::MAX_CARDS)->get();
+        $totals = [];
+
+        foreach ($cards->chunk(self::WARM_CHUNK) as $chunk) {
+            $batch = new EloquentCollection($chunk->all());
+            $public->recentPrices($batch);
+
+            foreach ($this->valuation->totalsByCurrency($batch) as $currency => $minor) {
+                $totals[$currency] = ($totals[$currency] ?? 0) + $minor;
+            }
+
+            $batch->each(fn (Card $card) => $card->unsetRelation('priceSnapshots'));
+        }
+
+        $currency = $this->primaryCurrency(Valuation::order($totals));
+        $counts = ['computed' => 0, 'warm' => 0];
+
+        if ($currency === null) {
+            return $counts;
+        }
+
+        foreach ($ranges as $range) {
+            $counts[$this->cachedSeries($cards, $currency, $range)[1] ? 'warm' : 'computed']++;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * The currency the page charts: the first of the totals as
+     * Valuation::order() sorts them (USD, otherwise the currency that
+     * came first).
+     *
+     * @param  array<string, int>  $totals  ordered by Valuation::order()
+     */
+    private function primaryCurrency(array $totals): ?string
+    {
+        return array_key_first($totals);
+    }
+
+    /**
      * @param  Collection<int, Card>  $cards  owned cards, collectionItems loaded
      * @return Collection<int, array{date: CarbonImmutable, minor: int}>
      */
     public function for(Collection $cards, string $currency, ChartRange $range): Collection
     {
+        return $this->cachedSeries($cards, $currency, $range)[0];
+    }
+
+    /**
+     * for(), and whether the series came from the cache (an empty
+     * collection has nothing to compute and counts as cached).
+     *
+     * @param  Collection<int, Card>  $cards
+     * @return array{0: Collection<int, array{date: CarbonImmutable, minor: int}>, 1: bool}
+     */
+    private function cachedSeries(Collection $cards, string $currency, ChartRange $range): array
+    {
         if ($cards->isEmpty()) {
-            return collect();
+            return [collect(), true];
         }
 
         $today = CarbonImmutable::today()->toDateString();
-        $key = 'collection-value-series:v'.self::CACHE_VERSION.":{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards)}";
+        $key = 'collection-value-series:v'.self::CACHE_VERSION.":{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards, $range)}";
         $cached = Cache::get($key);
 
         if (is_array($cached)) {
@@ -74,10 +191,10 @@ final class CollectionValueSeries
             /** @var list<array{date: string, minor: int}> $points */
             $points = $cached['points'];
 
-            return new Collection(array_map(
+            return [new Collection(array_map(
                 fn (array $p): array => ['date' => CarbonImmutable::parse($p['date']), 'minor' => $p['minor']],
                 $points,
-            ));
+            )), true];
         }
 
         $series = $this->build($cards, $currency, $range);
@@ -89,7 +206,7 @@ final class CollectionValueSeries
                 ->all(),
         ], CarbonImmutable::now()->endOfDay());
 
-        return $series;
+        return [$series, false];
     }
 
     /**
@@ -129,15 +246,19 @@ final class CollectionValueSeries
 
     /**
      * What the series depends on besides the day, range and currency: the
-     * cards' price rows and the owned copies.
+     * cards' price rows and the owned copies. Only the price rows that can
+     * price a sampled day count: those captured from the range's start
+     * minus the RECENT_DAYS window on, and manual ones at any age. An older
+     * row cannot move the series, so it must not cost a rebuild.
      *
      * @param  Collection<int, Card>  $cards
      */
-    private function fingerprint(Collection $cards): string
+    private function fingerprint(Collection $cards, ChartRange $range): string
     {
+        $from = $range->start(CarbonImmutable::today())->subDays(CardPriceSnapshot::RECENT_DAYS)->toDateString();
         $prices = DB::selectOne(
-            'SELECT count(*) AS n, max(updated_at) AS newest FROM card_price_snapshots WHERE card_id = ANY(?::bigint[])',
-            [$this->idArray($cards)],
+            "SELECT count(*) AS n, max(updated_at) AS newest FROM card_price_snapshots WHERE card_id = ANY(?::bigint[]) AND (captured_on >= ?::date OR source = 'manual')",
+            [$this->idArray($cards), $from],
         );
         $holdings = [];
 

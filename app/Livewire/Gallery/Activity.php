@@ -25,9 +25,6 @@ final class Activity extends Component
 {
     use ResolvesPublicCollection;
 
-    /** Bounded: a public route must never fan out unbounded per-card work. */
-    private const MAX_CARDS = 500;
-
     private const MAX_FEED = 40;
 
     /**
@@ -58,7 +55,9 @@ final class Activity extends Component
         $resolver = new CardPriceResolver;
         $valuation = new Valuation($resolver);
 
-        $cards = $public->cardsQuery()->take(self::MAX_CARDS)->get();
+        $seriesService = new CollectionValueSeries($valuation);
+        $chartRange = ChartRange::fromInput($this->range);
+        ['cards' => $cards, 'totals' => $totals, 'currency' => $primaryCurrency, 'series' => $series, 'earliest' => $earliest] = $seriesService->forPublicCollection($public, $chartRange);
 
         $moves = $cards
             ->map(function (Card $card) use ($resolver, $valuation) {
@@ -118,20 +117,8 @@ final class Activity extends Component
             ->take(self::MAX_FEED)
             ->values();
 
-        $totals = $valuation->totalsByCurrency($cards);
-        $primaryCurrency = array_key_first($totals);
-        $chartRange = ChartRange::fromInput($this->range);
-        $seriesService = new CollectionValueSeries($valuation);
-        $series = collect();
-        $historySince = null;
-
-        if ($primaryCurrency) {
-            $series = $seriesService->for($cards, $primaryCurrency, $chartRange);
-            // The series asked for it already; this reads the same answer.
-            $earliest = $seriesService->earliestDay($cards);
-            $startsAfterRange = $earliest !== null && $earliest->toDateString() > $chartRange->start(today())->toDateString();
-            $historySince = $series->isNotEmpty() && $startsAfterRange ? $series->first()['date'] : null;
-        }
+        $startsAfterRange = $earliest !== null && $earliest->toDateString() > $chartRange->start(today())->toDateString();
+        $historySince = $series->isNotEmpty() && $startsAfterRange ? $series->first()['date'] : null;
 
         $name = $this->collectorName();
 
