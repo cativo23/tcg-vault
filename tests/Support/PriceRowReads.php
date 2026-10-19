@@ -68,6 +68,6 @@ final class PriceRowReads
         return preg_match('/^SELECT count\(\*\) AS n, max\(updated_at\) AS newest FROM card_price_snapshots/', $sql) === 1
             || preg_match('/^select min\("captured_on"\) as "?aggregate"? from "card_price_snapshots"/', $sql) === 1
             || preg_match('/^SELECT DISTINCT card_id, source, variant FROM card_price_snapshots/', $sql) === 1
-            || str_contains($sql, 'jsonb_to_recordset');
+            || preg_match('/^SELECT x\.\*\s+FROM jsonb_to_recordset/', $sql) === 1;
     }
 }
