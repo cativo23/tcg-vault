@@ -167,4 +167,5 @@ test('a gallery page loads its price rows through the deciding-rows query, never
     'sets' => [Sets::class, [], []],
     'set page' => [Show::class, ['setTcgdexId' => 'me05'], []],
     'set page, searched' => [Show::class, ['setTcgdexId' => 'me05'], ['search' => 'Card']],
+    'activity' => [Activity::class, [], []],
 ]);

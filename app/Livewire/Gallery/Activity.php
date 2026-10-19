@@ -7,6 +7,7 @@ namespace App\Livewire\Gallery;
 use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Services\DecidingPriceRows;
 use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionValueSeries;
@@ -81,14 +82,24 @@ final class Activity extends Component
             })
             ->filter();
 
-        $additions = $public->itemsQuery()
-            // priceSnapshots eager-loaded here, not `load()`ed per row
-            // inside the map: resolveForVariant() reads the relation as a
-            // property, so a per-row load would mean one query per feed
-            // entry on a public route.
-            ->with(['card.set', 'card.priceSnapshots' => fn ($q) => $q->recent()])
-            ->take(self::MAX_FEED)
-            ->get()
+        $items = $public->itemsQuery()->take(self::MAX_FEED)->get();
+
+        // An added copy's card is almost always one the headline already
+        // loaded, price rows included: reuse it, so its rows are neither
+        // loaded nor resolved twice. Only a card past MAX_CARDS is loaded
+        // here, in one batch through the same deciding-rows query.
+        $loaded = $cards->keyBy('id');
+        $missing = $items->pluck('card_id')->unique()->diff($loaded->keys())->values();
+
+        if ($missing->isNotEmpty()) {
+            $loaded = $loaded->union(app(DecidingPriceRows::class)->loadOnto(
+                Card::query()->with('set')->whereKey($missing)->get(),
+            )->keyBy('id'));
+        }
+
+        $items->each(fn (CollectionItem $item) => $item->setRelation('card', $loaded->get($item->card_id)));
+
+        $additions = $items
             ->map(fn (CollectionItem $item) => [
                 'kind' => 'added',
                 'card' => $item->card,

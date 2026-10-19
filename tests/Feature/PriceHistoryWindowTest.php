@@ -82,11 +82,11 @@ test('a set page loads only the deciding rows of the recent window', function ()
     expect(loadedDays($entries->first()['card']))->toBe(expectedDecidingDays());
 });
 
-test('the activity feed loads only recent price history for added copies', function () {
+test('the activity feed loads only the deciding rows of the recent window for added copies', function () {
     $added = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed')
         ->firstWhere('kind', 'added');
 
-    expect(loadedDays($added['card']))->toBe(expectedRecentDays());
+    expect(loadedDays($added['card']))->toBe(expectedDecidingDays());
 });
 
 test('the collector admin list loads only recent price history', function () {
