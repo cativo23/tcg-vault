@@ -146,7 +146,7 @@ final class Index extends Component
 
         // The grid itself: filters and (for name/newest/number) the sort
         // order are pushed into SQL, which only picks card ids — the
-        // cards come from $allCards above, so their price history is
+        // cards come from $allCards above, so their deciding price rows are
         // loaded once per render, and only the loaded window ($this->take
         // of them) is priced for its delta.
         $gridQuery = $public->cardsQuery()->select('cards.id');
