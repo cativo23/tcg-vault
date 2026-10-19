@@ -14,6 +14,7 @@ use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\PublicCollection;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
+use Tests\Support\PriceRowReads;
 
 test('shows a price delta for a card with two snapshot days', function () {
     $user = User::factory()->create(['username' => 'carlos']);
@@ -452,8 +453,19 @@ test('a feed copy whose card is past the headline\'s card cap is still priced', 
     $leftOut = Card::whereKeyNot($headlineCards)->sole();
     CollectionItem::where('card_id', $leftOut->id)->update(['created_at' => $now->copy()->addDay()]);
 
-    $added = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed')->where('kind', 'added');
+    $added = null;
+    $reads = PriceRowReads::during(function () use (&$added) {
+        $added = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed')->where('kind', 'added');
+    });
 
-    expect($added->first()['card']->id)->toBe($leftOut->id)
+    // The past-cap path ran: the headline's load left the card out, and a
+    // second deciding load fetched exactly it. If the page's unordered load
+    // ever picks other cards than the query above, this fails rather than
+    // passing without reaching the path.
+    expect($reads->stray)->toBe([])
+        ->and($reads->deciding)->toHaveCount(2)
+        ->and($reads->decidingIds(0))->not->toContain($leftOut->id)
+        ->and($reads->decidingIds(1))->toBe([$leftOut->id])
+        ->and($added->first()['card']->id)->toBe($leftOut->id)
         ->and($added->every(fn (array $e) => $e['snapshot']?->market_minor === 1000 + $e['card']->id))->toBeTrue();
 });
