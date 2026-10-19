@@ -6,6 +6,25 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-10-19
+
+### Changed
+
+- Gallery pages resolve prices from a plain index of each card's rows,
+  built once per page load, instead of reading every price row through the
+  model on each step. Prices are unchanged; resolving them takes about a
+  fifteenth of the time.
+- The Activity value chart is computed ahead of visitors: an hourly queued
+  job warms it for every public collection and range, so the first visit
+  after a price sync no longer waits for a rebuild. The chart's cache key
+  only looks at the price rows that can move it. A failing warm-up alerts
+  on Discord, at most once a day per collection.
+
+### Deploy
+
+No migrations. Nothing to run after the deploy. The warm-up runs on the
+existing tcgcsv Horizon queue.
+
 ## [1.6.1] - 2026-10-13
 
 ### Fixed
