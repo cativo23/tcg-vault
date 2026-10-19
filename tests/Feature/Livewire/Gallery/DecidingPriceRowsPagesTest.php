@@ -10,14 +10,19 @@ use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Services\DecidingPriceRows;
+use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use App\Modules\Collection\Services\CollectionValueSeries;
+use App\Modules\Collection\Services\PublicCollection;
+use App\Modules\Collection\Services\Valuation;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\Support\FullRecentPriceRows;
+use Tests\Support\PriceRowReads;
 use Tests\Support\ViewDataFingerprint;
 
 /*
@@ -155,24 +160,37 @@ test('a gallery page shows the same values from the deciding rows as from the wh
         ->and($deciding['html'])->toBe($full['html']);
 })->with('gallery pages');
 
-test('a gallery page loads its price rows through the deciding-rows query, never the whole window', function (string $component, array $params, array $query) {
+/*
+ * The guard on PublicCollection::cardsQuery()'s contract: its cards come
+ * without price rows, and a page that forgets DecidingPriceRows would read
+ * them some other way, eagerly over the window or lazily, one card's whole
+ * history at a time. Every read of card_price_snapshots is counted; only the
+ * deciding query and the value series' own reads are allowed.
+ */
+test('a gallery page reads price rows only through the deciding query', function (string $component, array $params, array $query, int $decidingLoads) {
     seedPagesCollection();
-    $windowLoads = 0;
-    $decidingLoads = 0;
-    DB::listen(function ($query) use (&$windowLoads, &$decidingLoads) {
-        // An eager load of the relation over the recent window, or the deciding-rows query.
-        $windowLoads += preg_match('/^select \* from "card_price_snapshots" where "card_price_snapshots"."card_id" in/i', $query->sql);
-        $decidingLoads += preg_match('/row_number\(\) over \(partition by card_id, source, variant order by captured_on desc\)/i', $query->sql);
-    });
 
-    Livewire::withQueryParams($query)->test($component, ['username' => 'carlos', ...$params]);
+    $reads = PriceRowReads::during(fn () => Livewire::withQueryParams($query)->test($component, ['username' => 'carlos', ...$params]));
 
-    expect($decidingLoads)->toBeGreaterThan(0)
-        ->and($windowLoads)->toBe(0);
+    expect($reads->stray)->toBe([])
+        ->and($reads->deciding)->toHaveCount($decidingLoads);
 })->with([
-    'index' => [Index::class, [], []],
-    'sets' => [Sets::class, [], []],
-    'set page' => [Show::class, ['setTcgdexId' => 'me05'], []],
-    'set page, searched' => [Show::class, ['setTcgdexId' => 'me05'], ['search' => 'Card']],
-    'activity' => [Activity::class, [], []],
+    'index' => [Index::class, [], [], 1],
+    'index, searched' => [Index::class, [], ['search' => 'Card 1'], 1],
+    'sets' => [Sets::class, [], [], 1],
+    'set page' => [Show::class, ['setTcgdexId' => 'me05'], [], 1],
+    // A search narrows the grid, so the set's owned cards load again for the stats.
+    'set page, searched' => [Show::class, ['setTcgdexId' => 'me05'], ['search' => 'Card'], 2],
+    'activity' => [Activity::class, [], [], 1],
 ]);
+
+test('the value series\' public entry point reads price rows only through the deciding query', function () {
+    seedPagesCollection();
+
+    $reads = PriceRowReads::during(fn () => (new CollectionValueSeries(new Valuation(new CardPriceResolver)))
+        ->forPublicCollection(PublicCollection::for(User::where('username', 'carlos')->sole()), ChartRange::ThreeMonths));
+
+    expect($reads->stray)->toBe([])
+        ->and($reads->deciding)->toHaveCount(1)
+        ->and($reads->series)->not->toBeEmpty();
+});
