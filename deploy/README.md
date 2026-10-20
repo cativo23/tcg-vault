@@ -308,6 +308,13 @@ deleted since the backup are deleted again, so none of them can sign in.
    dcp run --rm --no-deps -T app php artisan auth:clear-resets
    dcp run --rm --no-deps -T app php artisan model:prune --model='App\Modules\Invites\Models\Invite' --model='App\Models\ModerationAction'
    ```
+   And stop serving cached prices: the gallery caches price rows under a
+   price-data version that only the app's own writes move, and the restore
+   wrote around it. Any other change to `card_price_snapshots` made with
+   `psql` needs the same command:
+   ```bash
+   dcp run --rm --no-deps -T app php artisan prices:bump-version
+   ```
 5. Start again, then check that `migrate:status` shows nothing pending:
    ```bash
    dcp start app horizon scheduler backup
