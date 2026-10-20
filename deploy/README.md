@@ -62,6 +62,7 @@ Required `.env` values to fill: `APP_KEY`, `DB_PASSWORD`, `REDIS_PASSWORD`, `RES
 and the key in `SENTRY_LARAVEL_DSN` (from the `tcg-vault` project's settings in the
 Bugsink dashboard at `errors.cativo.dev` — VPN required)
 (the rest are pre-filled in the template).
+`compose.prod.yml` sets `REDIS_CLIENT=phpredis` on app, horizon and scheduler, overriding any `REDIS_CLIENT` in `.env`.
 
 Optional: `DISCORD_ALERT_WEBHOOK_URL` — a Discord webhook URL for
 operational alerts (see `App\Support\DiscordAlerter`). Left unset,
