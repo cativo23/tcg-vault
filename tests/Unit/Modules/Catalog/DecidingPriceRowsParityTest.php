@@ -470,6 +470,30 @@ test('a price written after the rows were cached is the one the next load return
         ->and((new CardPriceResolver)->resolve($after)?->market_minor)->toBe(777);
 });
 
+test('a price committed while the rows are being read is not served under the version that follows it', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $card = decidingCard($set, 1, [['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490]]);
+    $loader = new DecidingPriceRows;
+    $written = false;
+
+    // The write lands right after the deciding query has read the old rows.
+    DB::listen(function ($query) use ($card, &$written) {
+        if (! $written && str_contains($query->sql, 'priced_rank')) {
+            $written = true;
+            CardPriceSnapshot::where('card_id', $card->id)->whereDate('captured_on', today())->sole()->update(['market_minor' => 777]);
+        }
+    });
+
+    $loader->loadOnto(Card::whereKey($card->id)->get());
+    $reads = decidingPriceReads(function () use ($loader, $card, &$after) {
+        $after = $loader->loadOnto(Card::whereKey($card->id)->get())->sole();
+    });
+
+    expect($written)->toBeTrue()
+        ->and($reads)->toBe(1)
+        ->and((new CardPriceResolver)->resolve($after)?->market_minor)->toBe(777);
+});
+
 test('the next day reads the rows again, since the recent window moved', function () {
     $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
     $card = decidingCard($set, 1, [['tcgplayer', 'normal', CardPriceSnapshot::RECENT_DAYS, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490]]);
