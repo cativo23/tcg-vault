@@ -6,8 +6,10 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\PriceDataVersion;
+use Illuminate\Cache\ArrayStore;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Str;
 
 /*
@@ -141,4 +143,26 @@ test('a bump after the cache lost the version starts fresh instead of at 1', fun
     app(PriceDataVersion::class)->bump();
 
     expect(priceVersion())->toBeGreaterThan(1);
+});
+
+test('a bump that cannot increment reports the failure, drops the version and never throws to the writer', function () {
+    Exceptions::fake();
+    $card = versionCard();
+
+    Cache::extend('flaky', fn () => Cache::repository(new class extends ArrayStore
+    {
+        public function increment($key, $value = 1)
+        {
+            throw new RuntimeException('redis went away');
+        }
+    }));
+    config(['cache.stores.flaky' => ['driver' => 'flaky'], 'cache.default' => 'flaky']);
+    $before = priceVersion();
+
+    // The row is committed: the caller must not see the cache failing.
+    CardPriceSnapshot::create(versionRow($card));
+
+    Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'redis went away');
+    expect(Cache::get(PriceDataVersion::KEY))->toBeNull()
+        ->and(priceVersion())->not->toBe($before);
 });

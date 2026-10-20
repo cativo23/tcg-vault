@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Catalog\Services;
 
 use Illuminate\Support\Facades\Cache;
+use Throwable;
 
 /**
  * One integer in the cache store that changes whenever card_price_snapshots
@@ -45,12 +46,25 @@ final class PriceDataVersion
 
     public function bump(): void
     {
-        // Incrementing a missing key yields 1: the version was lost, so it
-        // starts fresh instead.
-        $version = Cache::increment(self::KEY);
+        try {
+            // Incrementing a missing key yields 1: the version was lost, so it
+            // starts fresh instead.
+            $version = Cache::increment(self::KEY);
 
-        if ($version === false || (int) $version <= 1) {
-            Cache::put(self::KEY, self::seed(), self::TTL_SECONDS);
+            if ($version === false || (int) $version <= 1) {
+                Cache::put(self::KEY, self::seed(), self::TTL_SECONDS);
+            }
+        } catch (Throwable $e) {
+            // The write that called this is already committed, so the caller
+            // must not fail over the cache. Dropping the key makes the next
+            // read reseed at a random point, which invalidates every entry.
+            report($e);
+
+            try {
+                Cache::forget(self::KEY);
+            } catch (Throwable $forgetFailure) {
+                report($forgetFailure);
+            }
         }
     }
 
