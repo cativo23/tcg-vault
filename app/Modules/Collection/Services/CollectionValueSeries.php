@@ -45,6 +45,15 @@ use Illuminate\Support\Facades\DB;
  * new, edited or deleted price, the earliest priced day included, always
  * rebuilds; and each owned copy's id, card, variant, quantity and
  * updated_at (a copy added, removed or edited, or made public or private).
+ *
+ * The version is one global counter, not a per-collection figure: any price
+ * write, for any card, rebuilds every collection's series. In practice that
+ * matches a fingerprint of the collection's own price rows, because every
+ * card receives a new snapshot each day and those daily writes cluster
+ * between 00:00 and 01:xx UTC, so each collection's own rows change in the
+ * same stretch anyway. The hourly warm() job repopulates the series after
+ * that.
+ *
  * A hit costs no query beyond whatever the caller loaded to ask: the
  * page's cards, or, for warm(), the cards without their price rows.
  */
