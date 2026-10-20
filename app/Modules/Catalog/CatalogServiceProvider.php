@@ -6,10 +6,13 @@ namespace App\Modules\Catalog;
 
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Contracts\CardImageFallback;
+use App\Modules\Catalog\Listeners\BumpPriceDataVersion;
 use App\Modules\Catalog\Providers\TcgdexCardCatalogProvider;
 use App\Modules\Catalog\Services\TcgdexImageFallback;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceParser;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 final class CatalogServiceProvider extends ServiceProvider
@@ -34,5 +37,10 @@ final class CatalogServiceProvider extends ServiceProvider
                 new TcgcsvPriceParser,
             ),
         );
+    }
+
+    public function boot(): void
+    {
+        Event::listen(QueryExecuted::class, BumpPriceDataVersion::class);
     }
 }
