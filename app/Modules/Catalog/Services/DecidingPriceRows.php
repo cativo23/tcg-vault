@@ -77,19 +77,9 @@ class DecidingPriceRows
         // Read before the rows: a write that commits after this bumps past it.
         $version = app(PriceDataVersion::class)->current();
         $key = self::cacheKey($ids);
-        $entry = Cache::get($key);
+        $values = self::cachedValues(Cache::get($key), $version, $from, $idList);
 
-        if (is_array($entry)
-            && ($entry['version'] ?? null) === $version
-            && ($entry['from'] ?? null) === $from
-            && ($entry['ids'] ?? null) === $idList
-            && ($entry['columns'] ?? null) === CardPriceSnapshot::CHART_COLUMNS
-            && is_string($entry['rows'] ?? null)
-            // An entry that won't inflate is read again, never an error.
-            && is_string($packed = @gzuncompress($entry['rows']))) {
-            /** @var list<list<mixed>> $values */
-            $values = unserialize($packed, ['allowed_classes' => false]);
-        } else {
+        if ($values === null) {
             $values = $this->query($idList, $from);
             Cache::put($key, [
                 'version' => $version,
@@ -114,6 +104,43 @@ class DecidingPriceRows
         }
 
         return $cards;
+    }
+
+    /**
+     * The rows of a cache entry, or null when it is not one this load may
+     * use: another version, window or card set, or an entry that won't
+     * inflate or unserialize to rows. Null reads the database, never errors.
+     *
+     * @return list<list<mixed>>|null
+     */
+    private static function cachedValues(mixed $entry, int $version, string $from, string $idList): ?array
+    {
+        if (! is_array($entry)
+            || ($entry['version'] ?? null) !== $version
+            || ($entry['from'] ?? null) !== $from
+            || ($entry['ids'] ?? null) !== $idList
+            || ($entry['columns'] ?? null) !== CardPriceSnapshot::CHART_COLUMNS
+            || ! is_string($entry['rows'] ?? null)
+            || ! is_string($packed = @gzuncompress($entry['rows']))) {
+            return null;
+        }
+
+        $values = @unserialize($packed, ['allowed_classes' => false]);
+
+        if (! is_array($values)) {
+            return null;
+        }
+
+        $width = count(CardPriceSnapshot::CHART_COLUMNS);
+
+        foreach ($values as $row) {
+            if (! is_array($row) || count($row) !== $width) {
+                return null;
+            }
+        }
+
+        /** @var list<list<mixed>> $values */
+        return $values;
     }
 
     /**

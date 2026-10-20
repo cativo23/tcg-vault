@@ -494,6 +494,25 @@ test('a price committed while the rows are being read is not served under the ve
         ->and((new CardPriceResolver)->resolve($after)?->market_minor)->toBe(777);
 });
 
+test('an entry that inflates but does not unserialize to rows is read from the database again', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $card = decidingCard($set, 1, [['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490]]);
+    $loader = new DecidingPriceRows;
+    $loader->loadOnto(Card::whereKey($card->id)->get());
+    $key = DecidingPriceRows::cacheKey([$card->id]);
+
+    foreach ([gzcompress('not serialized at all', 1), gzcompress(serialize('a string'), 1), gzcompress(serialize(false), 1)] as $corrupt) {
+        Cache::put($key, array_merge(Cache::get($key), ['rows' => $corrupt]), 60);
+
+        $reads = decidingPriceReads(function () use ($loader, $card, &$loaded) {
+            $loaded = $loader->loadOnto(Card::whereKey($card->id)->get())->sole();
+        });
+
+        expect($reads)->toBe(1)
+            ->and($loaded->priceSnapshots)->toHaveCount(2);
+    }
+});
+
 test('the next day reads the rows again, since the recent window moved', function () {
     $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
     $card = decidingCard($set, 1, [['tcgplayer', 'normal', CardPriceSnapshot::RECENT_DAYS, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490]]);
