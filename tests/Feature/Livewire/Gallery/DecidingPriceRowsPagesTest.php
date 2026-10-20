@@ -222,7 +222,8 @@ test('a public page caches the rows of its public cards only', function () {
 
     Livewire::test(Index::class, ['username' => 'carlos']);
     $entry = Cache::get(DecidingPriceRows::cacheKey($publicIds));
-    $cachedCards = array_values(array_unique(array_column($entry['rows'], array_search('card_id', CardPriceSnapshot::CHART_COLUMNS, true))));
+    $rows = unserialize(gzuncompress($entry['rows']));
+    $cachedCards = array_values(array_unique(array_column($rows, array_search('card_id', CardPriceSnapshot::CHART_COLUMNS, true))));
 
     expect(CardPriceSnapshot::whereIn('card_id', $privateOnly)->exists())->toBeTrue()
         ->and($entry['ids'])->toBe(implode(',', $publicIds))

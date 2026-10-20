@@ -12,6 +12,7 @@ use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\FullRecentPriceRows;
 
@@ -482,4 +483,18 @@ test('the next day reads the rows again, since the recent window moved', functio
 
     expect($reads)->toBe(1)
         ->and([$before, $after])->toBe([2, 1]);
+});
+
+test('a cached entry stores its rows compressed, to keep the cache small', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    foreach (decidingRandomCards(30) as $n => $rows) {
+        decidingCard($set, $n, $rows);
+    }
+    $cards = (new DecidingPriceRows)->loadOnto(Card::all());
+    $rows = $cards->flatMap(fn (Card $c) => $c->priceSnapshots)->map(fn (CardPriceSnapshot $s) => array_values($s->getAttributes()))->all();
+
+    $entry = Cache::get(DecidingPriceRows::cacheKey($cards->modelKeys()));
+
+    expect($entry['rows'])->toBeString()
+        ->and(strlen($entry['rows']))->toBeLessThan(intdiv(strlen(serialize($rows)), 4));
 });

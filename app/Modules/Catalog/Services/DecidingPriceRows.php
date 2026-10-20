@@ -43,8 +43,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Rows carry CardPriceSnapshot::CHART_COLUMNS, not the `raw` payload.
  *
- * The rows are cached per set of cards (see cacheKey()), as plain values
- * hydrated on every read, for up to a day. An entry is used only while the
+ * The rows are cached per set of cards (see cacheKey()), as plain values,
+ * compressed, hydrated on every read, for up to a day. An entry is used only while the
  * price-data version (PriceDataVersion) and the window's first day are the
  * ones it was read under, and only for exactly the card ids it was read
  * for, so a price written since, a window that moved at midnight, or a
@@ -83,9 +83,12 @@ class DecidingPriceRows
             && ($entry['version'] ?? null) === $version
             && ($entry['from'] ?? null) === $from
             && ($entry['ids'] ?? null) === $idList
-            && ($entry['columns'] ?? null) === CardPriceSnapshot::CHART_COLUMNS) {
+            && ($entry['columns'] ?? null) === CardPriceSnapshot::CHART_COLUMNS
+            && is_string($entry['rows'] ?? null)
+            // An entry that won't inflate is read again, never an error.
+            && is_string($packed = @gzuncompress($entry['rows']))) {
             /** @var list<list<mixed>> $values */
-            $values = $entry['rows'];
+            $values = unserialize($packed, ['allowed_classes' => false]);
         } else {
             $values = $this->query($idList, $from);
             Cache::put($key, [
@@ -93,7 +96,9 @@ class DecidingPriceRows
                 'from' => $from,
                 'ids' => $idList,
                 'columns' => CardPriceSnapshot::CHART_COLUMNS,
-                'rows' => $values,
+                // Compressed: a collection's rows serialize to over half a
+                // megabyte and compress about tenfold at the fastest level.
+                'rows' => gzcompress(serialize($values), 1),
             ], self::TTL_SECONDS);
         }
 
