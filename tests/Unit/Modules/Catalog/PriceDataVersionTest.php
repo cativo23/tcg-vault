@@ -166,3 +166,27 @@ test('a bump that cannot increment reports the failure, drops the version and ne
     expect(Cache::get(PriceDataVersion::KEY))->toBeNull()
         ->and(priceVersion())->not->toBe($before);
 });
+
+test('a bump never increments a missing key, so no reader sees a fresh 1 in between', function () {
+    $seen = new ArrayObject;
+    Cache::extend('watching', fn () => Cache::repository(new class($seen) extends ArrayStore
+    {
+        public function __construct(private readonly ArrayObject $seen)
+        {
+            parent::__construct();
+        }
+
+        public function increment($key, $value = 1)
+        {
+            $this->seen['present'] = $this->get($key) !== null;
+
+            return parent::increment($key, $value);
+        }
+    }));
+    config(['cache.stores.watching' => ['driver' => 'watching'], 'cache.default' => 'watching']);
+
+    app(PriceDataVersion::class)->bump();
+
+    expect($seen['present'] ?? null)->toBeTrue()
+        ->and(priceVersion())->toBeGreaterThan(1);
+});

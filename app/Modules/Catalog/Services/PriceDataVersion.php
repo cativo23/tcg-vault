@@ -47,10 +47,13 @@ final class PriceDataVersion
     public function bump(): void
     {
         try {
-            // Incrementing a missing key yields 1: the version was lost, so it
-            // starts fresh instead.
+            // Seed a lost key first, so the increment never creates it at 1
+            // for a reader to see in between. A key that exists is left alone.
+            Cache::add(self::KEY, self::seed(), self::TTL_SECONDS);
+
             $version = Cache::increment(self::KEY);
 
+            // The key vanished between the two calls: start fresh.
             if ($version === false || (int) $version <= 1) {
                 Cache::put(self::KEY, self::seed(), self::TTL_SECONDS);
             }
