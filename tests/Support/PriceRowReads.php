@@ -10,8 +10,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * Records every query that touches card_price_snapshots while a callback
  * runs, split into the DecidingPriceRows query and everything else. The
- * value series' own reads (its fingerprint count, earliest-day min(), group
- * list and per-day lookups) are set aside: they query the database by
+ * value series' own reads (its earliest-day min(), group list and per-day
+ * lookups) are set aside: they query the database by
  * design and never fill a card's relation. Anything left in `stray` read
  * price rows some other way: an eager load of the recent window, or a lazy
  * one-card-at-a-time load of a card's whole history. Not used by the app.
@@ -65,8 +65,7 @@ final class PriceRowReads
 
     private static function isSeriesRead(string $sql): bool
     {
-        return preg_match('/^SELECT count\(\*\) AS n, max\(updated_at\) AS newest FROM card_price_snapshots/', $sql) === 1
-            || preg_match('/^select min\("captured_on"\) as "?aggregate"? from "card_price_snapshots"/', $sql) === 1
+        return preg_match('/^select min\("captured_on"\) as "?aggregate"? from "card_price_snapshots"/', $sql) === 1
             || preg_match('/^SELECT DISTINCT card_id, source, variant FROM card_price_snapshots/', $sql) === 1
             || preg_match('/^SELECT x\.\*\s+FROM jsonb_to_recordset/', $sql) === 1;
     }

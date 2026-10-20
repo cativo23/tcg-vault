@@ -305,9 +305,8 @@ test('a second identical call is served from the cache without rebuilding the se
 
     expect($second->map(fn ($p) => [$p['date']->toDateString(), $p['minor']])->all())->toBe($first->map(fn ($p) => [$p['date']->toDateString(), $p['minor']])->all())
         ->and($second->first()['date'])->toBeInstanceOf(CarbonImmutable::class)
-        ->and(collect($queries)->filter(fn ($sql) => str_contains(strtolower($sql), 'lateral')))->toBeEmpty()
-        ->and(collect($queries)->filter(fn ($sql) => str_contains($sql, 'card_price_snapshots')))->toHaveCount(1) // the fingerprint
-        ->and($queries)->toHaveCount(1);
+        // The key is the price-data version and the owned copies the caller loaded: no query at all.
+        ->and($queries)->toBe([]);
 });
 
 test('a new price, an edited copy, a deleted copy and another range each give a fresh series', function () {
@@ -337,12 +336,11 @@ test('a new price, an edited copy, a deleted copy and another range each give a 
     expect($last())->toBe(600);
 });
 
-test('a price row older than the range plus the recent window leaves the cached series in place, one inside it rebuilds', function () {
+test('any price write rebuilds the cached series, whatever the row\'s age', function () {
     $a = ($this->own)('001');
     foreach ([200, 40, 10, 0] as $ago) {
         ($this->price)($a, $ago, 100 + $ago);
     }
-    ($this->price)($a, 5, 777, 'normal', 'manual');
 
     $cards = PublicCollection::for($this->user)->cardsQuery()->get();
     $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
@@ -358,12 +356,14 @@ test('a price row older than the range plus the recent window leaves the cached 
         return $lateral;
     };
 
-    // 200 days back is outside the month plus its 30-day window.
-    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today()->subDays(200))->update(['market_minor' => 1, 'updated_at' => now()->addMinute()]);
     expect($rebuilds())->toBe(0);
 
-    // 40 days back is inside it.
-    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today()->subDays(40))->update(['market_minor' => 2, 'updated_at' => now()->addMinutes(2)]);
+    // 200 days back is outside the month plus its 30-day window, so it can't
+    // move a point; the version is coarser than that and rebuilds anyway.
+    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today()->subDays(200))->update(['market_minor' => 1]);
+    expect($rebuilds())->toBeGreaterThan(0);
+
+    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today()->subDays(40))->update(['market_minor' => 2]);
     expect($rebuilds())->toBeGreaterThan(0);
 });
 
