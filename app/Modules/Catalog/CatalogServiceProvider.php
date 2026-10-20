@@ -19,6 +19,9 @@ final class CatalogServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // The listener runs on every query: build it once, not per statement.
+        $this->app->singleton(BumpPriceDataVersion::class);
+
         $this->app->singleton(
             CardImageFallback::class,
             fn () => new TcgdexImageFallback((string) config('tcgdex.base_url')),
