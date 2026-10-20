@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-10-20
+
+### Changed
+
+- Postgres gets room to keep the whole database (about 220 MB) in memory:
+  `shared_buffers` 48 MB to 128 MB, `effective_cache_size` 256 MB (it was
+  the 4 GB default), and the container's memory limit 192 MB to 384 MB. The
+  cache hit ratio was about 91%.
+
+### Deploy
+
+No migrations. The deploy recreates the Postgres container, so the database
+is unavailable for a few seconds; the app and the queue workers retry.
+
 ## [1.6.4] - 2026-10-20
 
 ### Changed
