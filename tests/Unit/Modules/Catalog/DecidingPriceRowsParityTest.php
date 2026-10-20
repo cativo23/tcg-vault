@@ -378,3 +378,108 @@ test('no cards means no query', function () {
     expect((new DecidingPriceRows)->loadOnto(new EloquentCollection)->all())->toBe([])
         ->and($queries)->toBe(0);
 });
+
+/**
+ * Runs $callback and returns how many queries read card_price_snapshots.
+ */
+function decidingPriceReads(callable $callback): int
+{
+    $reads = 0;
+    DB::listen(function ($query) use (&$reads) {
+        if (str_contains($query->sql, 'card_price_snapshots')) {
+            $reads++;
+        }
+    });
+    $callback();
+
+    return $reads;
+}
+
+/**
+ * Each card's loaded rows as plain attribute arrays, in relation order.
+ *
+ * @param  EloquentCollection<int, Card>  $cards
+ * @return array<int, list<array<string, mixed>>>
+ */
+function decidingLoaded(EloquentCollection $cards): array
+{
+    return $cards->mapWithKeys(fn (Card $c) => [$c->id => $c->priceSnapshots->map(fn (CardPriceSnapshot $s) => [
+        get_class($s), $s->exists, $s->getAttributes(), $s->getRawOriginal(),
+    ])->all()])->all();
+}
+
+test('loading the same cards again reads no price rows and sets exactly the same relations', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    foreach (array_merge(array_values(decidingScenarios()), decidingRandomCards(10)) as $n => $rows) {
+        decidingCard($set, $n, $rows);
+    }
+
+    $missReads = decidingPriceReads(function () use (&$miss) {
+        $miss = (new DecidingPriceRows)->loadOnto(Card::orderBy('id')->get());
+    });
+    // In the other order: the cache key is the set of cards, not their order.
+    $hitReads = decidingPriceReads(function () use (&$hit) {
+        $hit = (new DecidingPriceRows)->loadOnto(Card::orderByDesc('id')->get());
+    });
+
+    $expected = decidingLoaded($miss);
+    $actual = decidingLoaded($hit);
+    $differing = array_keys(array_filter($expected, fn (array $rows, int $id) => ($actual[$id] ?? null) !== $rows, ARRAY_FILTER_USE_BOTH));
+
+    expect($missReads)->toBe(1)
+        ->and($hitReads)->toBe(0)
+        ->and($differing)->toBe([])
+        ->and(array_keys($actual))->toEqualCanonicalizing(array_keys($expected))
+        ->and(collect($expected)->flatten(1)->count())->toBeGreaterThan(100);
+});
+
+test('different card sets never share cached rows', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $cards = [];
+    foreach (array_slice(array_values(decidingScenarios()), 0, 6) as $n => $rows) {
+        $cards[] = decidingCard($set, $n, $rows);
+    }
+    $all = collect($cards)->pluck('id')->all();
+    $some = array_slice($all, 0, 3);
+    $loader = new DecidingPriceRows;
+
+    $loader->loadOnto(Card::whereIn('id', $all)->get());
+    $reads = decidingPriceReads(function () use ($loader, $some, &$loaded) {
+        $loaded = $loader->loadOnto(Card::whereIn('id', $some)->get());
+    });
+
+    expect($reads)->toBe(1)
+        ->and($loaded->flatMap(fn (Card $c) => $c->priceSnapshots)->pluck('card_id')->unique()->sort()->values()->all())
+        ->toBe(CardPriceSnapshot::whereIn('card_id', $some)->distinct()->orderBy('card_id')->pluck('card_id')->all())
+        ->and(DecidingPriceRows::cacheKey($some))->not->toBe(DecidingPriceRows::cacheKey($all));
+});
+
+test('a price written after the rows were cached is the one the next load returns', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $card = decidingCard($set, 1, [['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490]]);
+    $loader = new DecidingPriceRows;
+    $loader->loadOnto(Card::whereKey($card->id)->get());
+
+    CardPriceSnapshot::where('card_id', $card->id)->whereDate('captured_on', today())->sole()->update(['market_minor' => 777]);
+    $reads = decidingPriceReads(function () use ($loader, $card, &$after) {
+        $after = $loader->loadOnto(Card::whereKey($card->id)->get())->sole();
+    });
+
+    expect($reads)->toBe(1)
+        ->and((new CardPriceResolver)->resolve($after)?->market_minor)->toBe(777);
+});
+
+test('the next day reads the rows again, since the recent window moved', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $card = decidingCard($set, 1, [['tcgplayer', 'normal', CardPriceSnapshot::RECENT_DAYS, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490]]);
+    $loader = new DecidingPriceRows;
+    $before = $loader->loadOnto(Card::whereKey($card->id)->get())->sole()->priceSnapshots->count();
+
+    $this->travel(1)->days();
+    $reads = decidingPriceReads(function () use ($loader, $card, &$after) {
+        $after = $loader->loadOnto(Card::whereKey($card->id)->get())->sole()->priceSnapshots->count();
+    });
+
+    expect($reads)->toBe(1)
+        ->and([$before, $after])->toBe([2, 1]);
+});

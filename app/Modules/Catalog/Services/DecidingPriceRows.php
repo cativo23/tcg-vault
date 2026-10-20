@@ -7,6 +7,7 @@ namespace App\Modules\Catalog\Services;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -41,9 +42,25 @@ use Illuminate\Support\Facades\DB;
  * reads the database and is unaffected.
  *
  * Rows carry CardPriceSnapshot::CHART_COLUMNS, not the `raw` payload.
+ *
+ * The rows are cached per set of cards (see cacheKey()), as plain values
+ * hydrated on every read, for up to a day. An entry is used only while the
+ * price-data version (PriceDataVersion) and the window's first day are the
+ * ones it was read under, and only for exactly the card ids it was read
+ * for, so a price written since, a window that moved at midnight, or a
+ * different set of cards (a public page's versus one that includes private
+ * copies) all read the database again. Two galleries with exactly the same
+ * cards share an entry: the rows depend on the cards alone. A miss
+ * overwrites the entry, so a card set holds one entry however often prices
+ * change.
  */
 class DecidingPriceRows
 {
+    /** Bump when the query or the entry's shape changes, so a deploy never reads an entry the old code wrote. */
+    private const CACHE_VERSION = 1;
+
+    private const TTL_SECONDS = 86400;
+
     /**
      * @param  EloquentCollection<int, Card>  $cards
      * @return EloquentCollection<int, Card> the same cards, relation set
@@ -54,6 +71,67 @@ class DecidingPriceRows
             return $cards;
         }
 
+        $ids = $cards->map(fn (Card $card): int => (int) $card->getKey())->unique()->sort()->values()->all();
+        $idList = implode(',', $ids);
+        $from = CardPriceSnapshot::recentFrom()->toDateString();
+        // Read before the rows: a write that commits after this bumps past it.
+        $version = app(PriceDataVersion::class)->current();
+        $key = self::cacheKey($ids);
+        $entry = Cache::get($key);
+
+        if (is_array($entry)
+            && ($entry['version'] ?? null) === $version
+            && ($entry['from'] ?? null) === $from
+            && ($entry['ids'] ?? null) === $idList
+            && ($entry['columns'] ?? null) === CardPriceSnapshot::CHART_COLUMNS) {
+            /** @var list<list<mixed>> $values */
+            $values = $entry['rows'];
+        } else {
+            $values = $this->query($idList, $from);
+            Cache::put($key, [
+                'version' => $version,
+                'from' => $from,
+                'ids' => $idList,
+                'columns' => CardPriceSnapshot::CHART_COLUMNS,
+                'rows' => $values,
+            ], self::TTL_SECONDS);
+        }
+
+        $byCard = [];
+        $attributes = array_map(fn (array $row): array => array_combine(CardPriceSnapshot::CHART_COLUMNS, $row), $values);
+
+        foreach (CardPriceSnapshot::hydrate($attributes) as $snapshot) {
+            $byCard[$snapshot->card_id][] = $snapshot;
+        }
+
+        foreach ($cards as $card) {
+            $card->setRelation('priceSnapshots', new EloquentCollection($byCard[$card->getKey()] ?? []));
+        }
+
+        return $cards;
+    }
+
+    /**
+     * The cache key for a set of card ids, in any order.
+     *
+     * @param  array<int, int>  $ids
+     */
+    public static function cacheKey(array $ids): string
+    {
+        $ids = array_map('intval', $ids);
+        sort($ids);
+
+        return 'deciding-price-rows:v'.self::CACHE_VERSION.':'.sha1(implode(',', array_unique($ids)));
+    }
+
+    /**
+     * The deciding rows of the cards, in id order, each as its
+     * CHART_COLUMNS values in that order.
+     *
+     * @return list<list<mixed>>
+     */
+    private function query(string $idList, string $from): array
+    {
         $columns = implode(', ', CardPriceSnapshot::CHART_COLUMNS);
         // Running counts over newest-first partitions: a priced row's count
         // is its rank among the priced rows of its partition.
@@ -74,19 +152,10 @@ class DecidingPriceRows
                or (market_minor is not null and source <> 'manual' and origin_rank = 1)
             order by id
             SQL, [
-            '{'.$cards->map(fn (Card $card): int => (int) $card->getKey())->implode(',').'}',
-            CardPriceSnapshot::recentFrom()->toDateString(),
+            '{'.$idList.'}',
+            $from,
         ]);
 
-        $byCard = [];
-        foreach (CardPriceSnapshot::hydrate(array_map(fn (object $row): array => (array) $row, $rows)) as $snapshot) {
-            $byCard[$snapshot->card_id][] = $snapshot;
-        }
-
-        foreach ($cards as $card) {
-            $card->setRelation('priceSnapshots', new EloquentCollection($byCard[$card->getKey()] ?? []));
-        }
-
-        return $cards;
+        return array_values(array_map(fn (object $row): array => array_values((array) $row), $rows));
     }
 }
