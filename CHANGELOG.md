@@ -6,6 +6,32 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-10-20
+
+### Changed
+
+- Gallery pages read the price rows that decide each card's price from a
+  cache instead of the database. The cache is keyed on a price-data
+  version that goes up after every committed write to the price table,
+  from any code path, so a page never shows a price older than the latest
+  write. A cached page reads no price rows; the server-side SQL per page
+  falls from about 90-200 ms to about 15-25 ms.
+- The Activity value chart's cache key uses that same version instead of
+  a query over the price rows.
+- Livewire's script is published into the image and served as a static,
+  long-lived cached file instead of through PHP.
+- The app and Postgres containers may use up to two CPUs (was one), so
+  overlapping requests no longer slow each other down.
+- Redis is used through the phpredis extension (`REDIS_CLIENT=phpredis`,
+  set in the production compose file).
+
+### Deploy
+
+No migrations. After restoring a database dump or editing prices by hand
+in `psql`, run `php artisan prices:bump-version`; otherwise cached prices
+can stay stale for up to a day. The deploy recreates the app and Postgres
+containers with the new CPU limits.
+
 ## [1.6.3] - 2026-10-19
 
 ### Changed
