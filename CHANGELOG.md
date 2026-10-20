@@ -6,6 +6,22 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-10-19
+
+### Changed
+
+- The public collection, sets, set pages and Activity load only the price
+  rows that can decide a price shown on them (the newest row per print and
+  source, the two newest priced ones per currency, and the newest per price
+  origin) instead of the whole 30-day window: about a tenth of the rows and
+  of the memory. Prices, totals and changes are unchanged.
+- Activity's "Latest" feed reuses the cards the page already loaded instead
+  of loading their prices a second time.
+
+### Deploy
+
+No migrations. Nothing to run after the deploy.
+
 ## [1.6.2] - 2026-10-19
 
 ### Changed
