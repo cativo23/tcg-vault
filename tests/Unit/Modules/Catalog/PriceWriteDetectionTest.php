@@ -29,6 +29,7 @@ dataset('statements that read the price rows', [
     'explain' => ['explain select * from card_price_snapshots'],
     'explain analyze of a select' => ['EXPLAIN (ANALYZE, BUFFERS) select * from card_price_snapshots'],
     'column named like a keyword' => ['select updated_at, created_at from card_price_snapshots'],
+    'read of schema-qualified cards' => ['select * from public.cards where id = ?'],
     'read of cards' => ['select * from cards where id = ?'],
 ]);
 
@@ -57,7 +58,15 @@ dataset('statements that write the price rows', [
     'select then drop' => ['select 1 from card_price_snapshots; drop table card_price_snapshots'],
     'select then alter' => ['select 1 from card_price_snapshots; alter table card_price_snapshots add column x int'],
     'call of a procedure' => ['call refresh_card_price_snapshots()'],
-    'do block' => ["do \$\$ begin perform 1 from card_price_snapshots; end \$\$"],
+    'do block' => ['do $$ begin perform 1 from card_price_snapshots; end $$'],
+    'delete from schema-qualified cards' => ['delete from public.cards where id = ?'],
+    'delete from quoted schema, bare cards' => ['delete from "public".cards where id = ?'],
+    'delete from fully quoted schema-qualified cards' => ['delete from "public"."cards"'],
+    'delete from quoted cards' => ['delete from "cards"'],
+    'truncate table schema-qualified cards' => ['truncate table public.cards'],
+    'delete from schema-qualified sets' => ['delete from public.sets where id = ?'],
+    'delete with a comment before from' => ['delete /* c */ from cards'],
+    'delete with newline before from' => ["delete\n from cards"],
 ]);
 
 test('a read of the price rows is not counted as a write', function (string $sql) {

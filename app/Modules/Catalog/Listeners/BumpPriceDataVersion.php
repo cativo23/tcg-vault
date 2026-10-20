@@ -57,7 +57,7 @@ final class BumpPriceDataVersion
             return false;
         }
 
-        return preg_match('/\b(delete\s+from|truncate)\b[^;]*?(?<![\w.])"?(cards|sets)"?(?!\w)/i', $sql) === 1;
+        return preg_match('/\b(?:delete(?:\s|\/\*.*?\*\/)+from|truncate)\b[^;]*?(?<![\w.])(?:(?:"[^"]*"|\w+)\s*\.\s*)?"?(?:cards|sets)"?(?!\w)/is', $sql) === 1;
     }
 
     /**
