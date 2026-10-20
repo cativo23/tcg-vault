@@ -17,6 +17,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Http;
 use Spatie\LaravelData\DataCollection;
+use Tests\Support\ShownPrices;
 
 function fakeCardDetail(): CardDetailData
 {
@@ -339,4 +340,27 @@ test('ensureSet refuses a set tcgdex answers for under a different id', function
     expect(fn () => (new CatalogSyncService($provider))->ensureSet('me05'))
         ->toThrow(CatalogIdentityMismatchException::class);
     expect(Set::count())->toBe(0);
+});
+
+test('a re-synced tcgdex price is the one the next gallery render shows', function () {
+    $priced = fn (int $minor) => new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', rarity: null, variants: ['holo' => true],
+        officialImageUrl: 'https://assets.tcgdex.net/en/me/me05/116/high.webp', raw: ['id' => 'me05-116'],
+        prices: new DataCollection(PriceEntryData::class, [
+            new PriceEntryData(source: 'tcgplayer', variant: 'holofoil', currency: 'USD', marketMinor: $minor, lowMinor: null, trendMinor: null, sourceUpdatedAt: null, raw: []),
+        ]),
+    );
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn($priced(19524), $priced(20100));
+    $provider->shouldReceive('findSet')->with('me05')->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: null, releasedOn: null, cardCount: null, logoUrl: null,
+    ));
+    $service = new CatalogSyncService($provider);
+    $username = ShownPrices::ownPublicly($service->syncCard('me05-116'), 'holofoil');
+    $before = ShownPrices::totals($username);
+
+    $service->syncCard('me05-116');
+
+    expect($before)->toBe(['USD' => 19524])
+        ->and(ShownPrices::totals($username))->toBe(['USD' => 20100]);
 });

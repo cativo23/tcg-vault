@@ -12,6 +12,7 @@ use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\FullRecentPriceRows;
 
@@ -377,4 +378,166 @@ test('no cards means no query', function () {
 
     expect((new DecidingPriceRows)->loadOnto(new EloquentCollection)->all())->toBe([])
         ->and($queries)->toBe(0);
+});
+
+/**
+ * Runs $callback and returns how many queries read card_price_snapshots.
+ */
+function decidingPriceReads(callable $callback): int
+{
+    $reads = 0;
+    DB::listen(function ($query) use (&$reads) {
+        if (str_contains($query->sql, 'card_price_snapshots')) {
+            $reads++;
+        }
+    });
+    $callback();
+
+    return $reads;
+}
+
+/**
+ * Each card's loaded rows as plain attribute arrays, in relation order.
+ *
+ * @param  EloquentCollection<int, Card>  $cards
+ * @return array<int, list<array<string, mixed>>>
+ */
+function decidingLoaded(EloquentCollection $cards): array
+{
+    return $cards->mapWithKeys(fn (Card $c) => [$c->id => $c->priceSnapshots->map(fn (CardPriceSnapshot $s) => [
+        get_class($s), $s->exists, $s->getAttributes(), $s->getRawOriginal(),
+    ])->all()])->all();
+}
+
+test('loading the same cards again reads no price rows and sets exactly the same relations', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    foreach (array_merge(array_values(decidingScenarios()), decidingRandomCards(10)) as $n => $rows) {
+        decidingCard($set, $n, $rows);
+    }
+
+    $missReads = decidingPriceReads(function () use (&$miss) {
+        $miss = (new DecidingPriceRows)->loadOnto(Card::orderBy('id')->get());
+    });
+    // In the other order: the cache key is the set of cards, not their order.
+    $hitReads = decidingPriceReads(function () use (&$hit) {
+        $hit = (new DecidingPriceRows)->loadOnto(Card::orderByDesc('id')->get());
+    });
+
+    $expected = decidingLoaded($miss);
+    $actual = decidingLoaded($hit);
+    $differing = array_keys(array_filter($expected, fn (array $rows, int $id) => ($actual[$id] ?? null) !== $rows, ARRAY_FILTER_USE_BOTH));
+
+    expect($missReads)->toBe(1)
+        ->and($hitReads)->toBe(0)
+        ->and($differing)->toBe([])
+        ->and(array_keys($actual))->toEqualCanonicalizing(array_keys($expected))
+        ->and(collect($expected)->flatten(1)->count())->toBeGreaterThan(100);
+});
+
+test('different card sets never share cached rows', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $cards = [];
+    foreach (array_slice(array_values(decidingScenarios()), 0, 6) as $n => $rows) {
+        $cards[] = decidingCard($set, $n, $rows);
+    }
+    $all = collect($cards)->pluck('id')->all();
+    $some = array_slice($all, 0, 3);
+    $loader = new DecidingPriceRows;
+
+    $loader->loadOnto(Card::whereIn('id', $all)->get());
+    $reads = decidingPriceReads(function () use ($loader, $some, &$loaded) {
+        $loaded = $loader->loadOnto(Card::whereIn('id', $some)->get());
+    });
+
+    expect($reads)->toBe(1)
+        ->and($loaded->flatMap(fn (Card $c) => $c->priceSnapshots)->pluck('card_id')->unique()->sort()->values()->all())
+        ->toBe(CardPriceSnapshot::whereIn('card_id', $some)->distinct()->orderBy('card_id')->pluck('card_id')->all())
+        ->and(DecidingPriceRows::cacheKey($some))->not->toBe(DecidingPriceRows::cacheKey($all));
+});
+
+test('a price written after the rows were cached is the one the next load returns', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $card = decidingCard($set, 1, [['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490]]);
+    $loader = new DecidingPriceRows;
+    $loader->loadOnto(Card::whereKey($card->id)->get());
+
+    CardPriceSnapshot::where('card_id', $card->id)->whereDate('captured_on', today())->sole()->update(['market_minor' => 777]);
+    $reads = decidingPriceReads(function () use ($loader, $card, &$after) {
+        $after = $loader->loadOnto(Card::whereKey($card->id)->get())->sole();
+    });
+
+    expect($reads)->toBe(1)
+        ->and((new CardPriceResolver)->resolve($after)?->market_minor)->toBe(777);
+});
+
+test('a price committed while the rows are being read is not served under the version that follows it', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $card = decidingCard($set, 1, [['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490]]);
+    $loader = new DecidingPriceRows;
+    $written = false;
+
+    // The write lands right after the deciding query has read the old rows.
+    DB::listen(function ($query) use ($card, &$written) {
+        if (! $written && str_contains($query->sql, 'priced_rank')) {
+            $written = true;
+            CardPriceSnapshot::where('card_id', $card->id)->whereDate('captured_on', today())->sole()->update(['market_minor' => 777]);
+        }
+    });
+
+    $loader->loadOnto(Card::whereKey($card->id)->get());
+    $reads = decidingPriceReads(function () use ($loader, $card, &$after) {
+        $after = $loader->loadOnto(Card::whereKey($card->id)->get())->sole();
+    });
+
+    expect($written)->toBeTrue()
+        ->and($reads)->toBe(1)
+        ->and((new CardPriceResolver)->resolve($after)?->market_minor)->toBe(777);
+});
+
+test('an entry that inflates but does not unserialize to rows is read from the database again', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $card = decidingCard($set, 1, [['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490]]);
+    $loader = new DecidingPriceRows;
+    $loader->loadOnto(Card::whereKey($card->id)->get());
+    $key = DecidingPriceRows::cacheKey([$card->id]);
+
+    foreach ([gzcompress('not serialized at all', 1), gzcompress(serialize('a string'), 1), gzcompress(serialize(false), 1)] as $corrupt) {
+        Cache::put($key, array_merge(Cache::get($key), ['rows' => $corrupt]), 60);
+
+        $reads = decidingPriceReads(function () use ($loader, $card, &$loaded) {
+            $loaded = $loader->loadOnto(Card::whereKey($card->id)->get())->sole();
+        });
+
+        expect($reads)->toBe(1)
+            ->and($loaded->priceSnapshots)->toHaveCount(2);
+    }
+});
+
+test('the next day reads the rows again, since the recent window moved', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $card = decidingCard($set, 1, [['tcgplayer', 'normal', CardPriceSnapshot::RECENT_DAYS, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490]]);
+    $loader = new DecidingPriceRows;
+    $before = $loader->loadOnto(Card::whereKey($card->id)->get())->sole()->priceSnapshots->count();
+
+    $this->travel(1)->days();
+    $reads = decidingPriceReads(function () use ($loader, $card, &$after) {
+        $after = $loader->loadOnto(Card::whereKey($card->id)->get())->sole()->priceSnapshots->count();
+    });
+
+    expect($reads)->toBe(1)
+        ->and([$before, $after])->toBe([2, 1]);
+});
+
+test('a cached entry stores its rows compressed, to keep the cache small', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    foreach (decidingRandomCards(30) as $n => $rows) {
+        decidingCard($set, $n, $rows);
+    }
+    $cards = (new DecidingPriceRows)->loadOnto(Card::all());
+    $rows = $cards->flatMap(fn (Card $c) => $c->priceSnapshots)->map(fn (CardPriceSnapshot $s) => array_values($s->getAttributes()))->all();
+
+    $entry = Cache::get(DecidingPriceRows::cacheKey($cards->modelKeys()));
+
+    expect($entry['rows'])->toBeString()
+        ->and(strlen($entry['rows']))->toBeLessThan(intdiv(strlen(serialize($rows)), 4));
 });

@@ -7,6 +7,7 @@ namespace App\Modules\Collection\Services;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\DecidingPriceRows;
+use App\Modules\Catalog\Services\PriceDataVersion;
 use App\Modules\Catalog\Support\ChartRange;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -39,22 +40,27 @@ use Illuminate\Support\Facades\DB;
  * Even so, a year of history costs seconds on a large collection, and the
  * collection page is public, so every visit would pay it. The finished
  * series is cached for the day, per range and currency. The key carries a
- * fingerprint of what the series is computed from: the count and newest
- * updated_at of the price rows that can price a sampled day (captured from
- * the range's start minus the RECENT_DAYS window on, plus manual rows at
- * any age: a new, edited or deleted price) and each owned copy's id, card,
- * variant, quantity and updated_at (a copy added, removed or edited, or
- * made public or private). A row older than that cannot move a value, but
- * one added or removed there can move the earliest priced day, which the
- * cached payload carries for "History since"; that stays as cached until
- * midnight. A hit costs the fingerprint's aggregate query on top of
- * whatever the caller loaded to ask: the page's cards, or, for warm(),
- * the cards without their price rows.
+ * fingerprint of what the series is computed from: the price-data version
+ * (PriceDataVersion), which moves on every write to any price row, so a
+ * new, edited or deleted price, the earliest priced day included, always
+ * rebuilds; and each owned copy's id, card, variant, quantity and
+ * updated_at (a copy added, removed or edited, or made public or private).
+ *
+ * The version is one global counter, not a per-collection figure: any price
+ * write, for any card, rebuilds every collection's series. Every card gets
+ * a new snapshot daily, in two windows: the catalog refresh, a few hours
+ * after midnight UTC, and a smaller tcgcsv sync at 20:30 UTC. A write in
+ * either window rebuilds every collection's series, as a fingerprint of the
+ * collection's own price rows effectively did, and the hourly warm() job
+ * repopulates it afterwards.
+ *
+ * A hit costs no query beyond whatever the caller loaded to ask: the
+ * page's cards, or, for warm(), the cards without their price rows.
  */
 final class CollectionValueSeries
 {
     /** Bump when the series' calculation changes, so a deploy doesn't serve a series the old code computed. */
-    private const CACHE_VERSION = 2;
+    private const CACHE_VERSION = 3;
 
     /** Bounded: a public route must never fan out unbounded per-card work. */
     public const MAX_CARDS = 500;
@@ -185,7 +191,7 @@ final class CollectionValueSeries
         }
 
         $today = CarbonImmutable::today()->toDateString();
-        $key = 'collection-value-series:v'.self::CACHE_VERSION.":{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards, $range)}";
+        $key = 'collection-value-series:v'.self::CACHE_VERSION.":{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards)}";
         $cached = Cache::get($key);
 
         if (is_array($cached)) {
@@ -249,20 +255,12 @@ final class CollectionValueSeries
 
     /**
      * What the series depends on besides the day, range and currency: the
-     * cards' price rows and the owned copies. Only the price rows that can
-     * price a sampled day count: those captured from the range's start
-     * minus the RECENT_DAYS window on, and manual ones at any age. An older
-     * row cannot move the series, so it must not cost a rebuild.
+     * price rows, as the price-data version, and the owned copies.
      *
      * @param  Collection<int, Card>  $cards
      */
-    private function fingerprint(Collection $cards, ChartRange $range): string
+    private function fingerprint(Collection $cards): string
     {
-        $from = $range->start(CarbonImmutable::today())->subDays(CardPriceSnapshot::RECENT_DAYS)->toDateString();
-        $prices = DB::selectOne(
-            "SELECT count(*) AS n, max(updated_at) AS newest FROM card_price_snapshots WHERE card_id = ANY(?::bigint[]) AND (captured_on >= ?::date OR source = 'manual')",
-            [$this->idArray($cards), $from],
-        );
         $holdings = [];
 
         foreach ($cards as $card) {
@@ -279,7 +277,7 @@ final class CollectionValueSeries
 
         ksort($holdings);
 
-        return sha1(json_encode([$prices->n ?? 0, $prices->newest ?? null, array_values($holdings)], JSON_THROW_ON_ERROR));
+        return sha1(json_encode([app(PriceDataVersion::class)->current(), array_values($holdings)], JSON_THROW_ON_ERROR));
     }
 
     /**

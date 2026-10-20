@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Mockery\MockInterface;
 use Psr\Log\LoggerInterface;
+use Tests\Support\ShownPrices;
 
 // The faked tcgcsv builds are dated; a gap price is only written for a
 // build under 36 hours old, so every test runs the evening after them.
@@ -676,4 +677,27 @@ test('an admin-confirmed link is still held back by an upstream glitch far beyon
     runTcgcsvSync();
 
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(0);
+});
+
+test('a price tcgcsv fills is the one the next gallery render shows', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    tcgcsvLog();
+    $card = gapFixture();
+    $username = ShownPrices::ownPublicly($card, 'holofoil:cosmos');
+    $before = ShownPrices::totals($username);
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::sequence()->push('2026-10-07T20:05:57+0000')->push('2026-10-07T21:05:57+0000'),
+        'tcgcsv.com/tcgplayer/3/2374/prices' => Http::sequence()
+            ->push(tcgcsvPricesResponse([['productId' => 659941, 'lowPrice' => 0.53, 'marketPrice' => 1.29, 'subTypeName' => 'Holofoil']]))
+            ->push(tcgcsvPricesResponse([['productId' => 659941, 'lowPrice' => 0.60, 'marketPrice' => 1.35, 'subTypeName' => 'Holofoil']])),
+        'tcgcsv.com/tcgplayer/3/24269/prices' => Http::response(tcgcsvPricesResponse([]), 200),
+    ]);
+
+    runTcgcsvSync();
+    $filled = ShownPrices::totals($username);
+    runTcgcsvSync();
+
+    expect($before)->toBe(['EUR' => 144])
+        ->and($filled)->toBe(['USD' => 129])
+        ->and(ShownPrices::totals($username))->toBe(['USD' => 135]);
 });

@@ -3,6 +3,9 @@ services:
     image: ${DOCKER_USERNAME:-cativo23}/tcg-vault:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: [.env]
+    # Overrides any REDIS_CLIENT in .env: the image ships the phpredis extension.
+    environment:
+      REDIS_CLIENT: phpredis
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -33,6 +36,9 @@ services:
     image: ${DOCKER_USERNAME:-cativo23}/tcg-vault:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: [.env]
+    # Overrides any REDIS_CLIENT in .env, as on app.
+    environment:
+      REDIS_CLIENT: phpredis
     command: ["php", "artisan", "horizon"]
     depends_on:
       postgres: { condition: service_healthy }
@@ -95,6 +101,7 @@ services:
     healthcheck:
       disable: true
     environment:
+      REDIS_CLIENT: phpredis
       TCGVAULT_BACKUP_PATH: /backups
     volumes:
       - app-logs:/var/www/html/storage/logs

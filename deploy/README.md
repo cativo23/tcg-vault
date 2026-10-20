@@ -62,6 +62,7 @@ Required `.env` values to fill: `APP_KEY`, `DB_PASSWORD`, `REDIS_PASSWORD`, `RES
 and the key in `SENTRY_LARAVEL_DSN` (from the `tcg-vault` project's settings in the
 Bugsink dashboard at `errors.cativo.dev` — VPN required)
 (the rest are pre-filled in the template).
+`compose.prod.yml` sets `REDIS_CLIENT=phpredis` on app, horizon and scheduler, overriding any `REDIS_CLIENT` in `.env`.
 
 Optional: `DISCORD_ALERT_WEBHOOK_URL` — a Discord webhook URL for
 operational alerts (see `App\Support\DiscordAlerter`). Left unset,
@@ -307,6 +308,13 @@ deleted since the backup are deleted again, so none of them can sign in.
    dcp run --rm --no-deps -T app php artisan telescope:prune --hours=48
    dcp run --rm --no-deps -T app php artisan auth:clear-resets
    dcp run --rm --no-deps -T app php artisan model:prune --model='App\Modules\Invites\Models\Invite' --model='App\Models\ModerationAction'
+   ```
+   And stop serving cached prices: the gallery caches price rows under a
+   price-data version that only the app's own writes move, and the restore
+   wrote around it. Any other change to `card_price_snapshots` made with
+   `psql` needs the same command:
+   ```bash
+   dcp run --rm --no-deps -T app php artisan prices:bump-version
    ```
 5. Start again, then check that `migrate:status` shows nothing pending:
    ```bash

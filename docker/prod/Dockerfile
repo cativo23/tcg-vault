@@ -62,6 +62,13 @@ RUN rm -f /var/www/html/bootstrap/cache/packages.php /var/www/html/bootstrap/cac
 # Task 4) — so bake the symlink at build time, not as a runtime AUTORUN step.
 RUN php artisan storage:link
 
+# Livewire's script, copied into public/vendor/livewire from the vendor
+# tree baked above, so nginx serves it as a static file with the base
+# image's immutable caching instead of routing it through PHP. Livewire
+# links the published copy once its manifest matches the package's, which
+# it always does here: both come from the same vendor directory.
+RUN php artisan livewire:publish --assets
+
 # Warm caches at boot (env vars exist then; they don't at build time),
 # but NEVER auto-migrate — migrations are always a deliberate manual step.
 ENV AUTORUN_ENABLED=true \

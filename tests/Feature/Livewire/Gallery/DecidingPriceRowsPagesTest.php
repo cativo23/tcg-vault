@@ -15,11 +15,13 @@ use App\Modules\Catalog\Services\DecidingPriceRows;
 use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use App\Modules\Collection\Scopes\TenantScope;
 use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\PublicCollection;
 use App\Modules\Collection\Services\Valuation;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\Support\FullRecentPriceRows;
 use Tests\Support\PriceRowReads;
@@ -106,7 +108,8 @@ function seedPagesCollection(int $seed = 1910): void
 }
 
 /**
- * The page's view data and HTML, rendered with $loader bound.
+ * The page's view data and HTML, rendered with $loader bound, from an
+ * empty cache unless $flush is false.
  *
  * @param  class-string  $component
  * @param  array<string, mixed>  $params
@@ -114,10 +117,13 @@ function seedPagesCollection(int $seed = 1910): void
  * @param  list<string>  $keys
  * @return array{data: array<string, mixed>, html: string}
  */
-function renderPageWith(DecidingPriceRows $loader, string $component, array $params, array $query, array $keys): array
+function renderPageWith(DecidingPriceRows $loader, string $component, array $params, array $query, array $keys, bool $flush = true): array
 {
     app()->instance(DecidingPriceRows::class, $loader);
-    Cache::flush();
+
+    if ($flush) {
+        Cache::flush();
+    }
 
     try {
         $page = Livewire::withQueryParams($query)->test($component, $params);
@@ -155,9 +161,13 @@ test('a gallery page shows the same values from the deciding rows as from the wh
 
     $full = renderPageWith(new FullRecentPriceRows, $component, $params, $query, $keys);
     $deciding = renderPageWith(new DecidingPriceRows, $component, $params, $query, $keys);
+    // Again over the cache the render above filled.
+    $cached = renderPageWith(new DecidingPriceRows, $component, $params, $query, $keys, flush: false);
 
     expect($deciding['data'])->toBe($full['data'])
-        ->and($deciding['html'])->toBe($full['html']);
+        ->and($deciding['html'])->toBe($full['html'])
+        ->and($cached['data'])->toBe($full['data'])
+        ->and($cached['html'])->toBe($full['html']);
 })->with('gallery pages');
 
 /*
@@ -165,15 +175,21 @@ test('a gallery page shows the same values from the deciding rows as from the wh
  * without price rows, and a page that forgets DecidingPriceRows would read
  * them some other way, eagerly over the window or lazily, one card's whole
  * history at a time. Every read of card_price_snapshots is counted; only the
- * deciding query and the value series' own reads are allowed.
+ * deciding query and the value series' own reads are allowed. The first
+ * render runs one deciding query per set of cards it prices; the second
+ * finds them cached and reads no price rows at all.
  */
-test('a gallery page reads price rows only through the deciding query', function (string $component, array $params, array $query, int $decidingLoads) {
+test('a gallery page reads price rows only through the deciding query, and not at all when they are cached', function (string $component, array $params, array $query, int $decidingLoads) {
     seedPagesCollection();
+    $render = fn () => Livewire::withQueryParams($query)->test($component, ['username' => 'carlos', ...$params]);
 
-    $reads = PriceRowReads::during(fn () => Livewire::withQueryParams($query)->test($component, ['username' => 'carlos', ...$params]));
+    $miss = PriceRowReads::during($render);
+    $hit = PriceRowReads::during($render);
 
-    expect($reads->stray)->toBe([])
-        ->and($reads->deciding)->toHaveCount($decidingLoads);
+    expect($miss->stray)->toBe([])
+        ->and($miss->deciding)->toHaveCount($decidingLoads)
+        ->and($hit->stray)->toBe([])
+        ->and($hit->deciding)->toBe([]);
 })->with([
     'index' => [Index::class, [], [], 1],
     'index, searched' => [Index::class, [], ['search' => 'Card 1'], 1],
@@ -194,3 +210,56 @@ test('the value series\' public entry point reads price rows only through the de
         ->and($reads->deciding)->toHaveCount(1)
         ->and($reads->series)->not->toBeEmpty();
 });
+
+test('a public page caches the rows of its public cards only', function () {
+    seedPagesCollection();
+    $user = User::where('username', 'carlos')->sole();
+    $publicIds = PublicCollection::for($user)->cardsQuery()->orderBy('id')->pluck('id')->all();
+    $privateOnly = CollectionItem::withoutGlobalScope(TenantScope::class)
+        ->whereIn('collection_id', Collection::withoutGlobalScope(TenantScope::class)->where('is_public', false)->select('id'))
+        ->whereNotIn('card_id', $publicIds)
+        ->pluck('card_id')->unique()->values()->all();
+
+    Livewire::test(Index::class, ['username' => 'carlos']);
+    $entry = Cache::get(DecidingPriceRows::cacheKey($publicIds));
+    $rows = unserialize(gzuncompress($entry['rows']));
+    $cachedCards = array_values(array_unique(array_column($rows, array_search('card_id', CardPriceSnapshot::CHART_COLUMNS, true))));
+
+    expect(CardPriceSnapshot::whereIn('card_id', $privateOnly)->exists())->toBeTrue()
+        ->and($entry['ids'])->toBe(implode(',', $publicIds))
+        ->and(array_intersect($cachedCards, $privateOnly))->toBe([])
+        ->and(array_diff($cachedCards, $publicIds))->toBe([]);
+});
+
+test('after a price write the next render shows the new price, not the cached one', function (Closure $write) {
+    $this->freezeTime();
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true]);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-1', 'set_id' => $set->id, 'local_id' => '1', 'name' => 'Card 1']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => $card->tcgdex_id, 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 500]);
+    $render = fn () => Livewire::test(Index::class, ['username' => 'carlos'])->viewData('totals');
+
+    $before = $render();
+    $cached = PriceRowReads::during($render);
+    $write($card);
+
+    expect($before)->toBe(['USD' => 500])
+        ->and($cached->deciding)->toBe([])
+        ->and($render())->toBe(['USD' => 650]);
+})->with([
+    'Eloquent update' => [fn (Card $card) => CardPriceSnapshot::where('card_id', $card->id)->sole()->update(['market_minor' => 650])],
+    'query-builder update' => [fn (Card $card) => DB::table('card_price_snapshots')->where('card_id', $card->id)->update(['market_minor' => 650])],
+    'raw SQL update' => [fn (Card $card) => DB::update('UPDATE card_price_snapshots SET market_minor = 650 WHERE card_id = ?', [$card->id])],
+    'insert of a newer row' => [fn (Card $card) => CardPriceSnapshot::insert([[
+        'card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today()->toDateString(),
+        'currency' => 'USD', 'market_minor' => 650, 'created_at' => now(), 'updated_at' => now(),
+    ]])],
+    'delete of the newest row' => [function (Card $card) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 650]);
+        // The insert above bumped the version too; render so the cache holds the 500 again.
+        Livewire::test(Index::class, ['username' => 'carlos']);
+        CardPriceSnapshot::where('card_id', $card->id)->whereDate('captured_on', today()->subDay())->delete();
+    }],
+]);

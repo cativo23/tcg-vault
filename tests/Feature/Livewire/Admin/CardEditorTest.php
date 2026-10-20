@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role;
 use Tests\Support\FakePhotoMetadataStripper;
+use Tests\Support\ShownPrices;
 
 test('an admin can update an items notes', function () {
     $user = User::factory()->create();
@@ -1615,4 +1616,21 @@ test('adding variant rows too fast is refused with a friendly error and creates 
         ->assertCount('editingRows', 1);
 
     expect(CollectionItem::where('card_id', $card->id)->count())->toBe(1);
+});
+
+test('a manual price set in the editor is the one the next gallery render shows', function () {
+    Role::findOrCreate('super-admin');
+    $admin = User::factory()->create();
+    $admin->assignRole('super-admin');
+    $this->actingAs($admin);
+    [$card] = prizePackBudew($admin);
+    $username = ShownPrices::ownPublicly($card, 'holofoil:cosmos+player-rewards-program');
+    $editor = Livewire::test(CardEditor::class)->call('openCardEditor', $card->id);
+
+    $editor->set('editingRows.0.manual_price', '0.70')->call('saveManualPrice', 0);
+    $first = ShownPrices::totals($username);
+    $editor->set('editingRows.0.manual_price', '0.75')->call('saveManualPrice', 0);
+
+    expect($first)->toBe(['USD' => 70])
+        ->and(ShownPrices::totals($username))->toBe(['USD' => 75]);
 });
