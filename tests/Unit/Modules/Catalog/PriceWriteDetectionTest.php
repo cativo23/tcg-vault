@@ -54,6 +54,10 @@ dataset('statements that write the price rows', [
     'delete of cards (cascades)' => ['delete from cards where id = ?'],
     'delete of sets, quoted (cascades)' => ['delete from "sets" where "id" = ?'],
     'truncate cards (cascades)' => ['truncate cards cascade'],
+    'select then drop' => ['select 1 from card_price_snapshots; drop table card_price_snapshots'],
+    'select then alter' => ['select 1 from card_price_snapshots; alter table card_price_snapshots add column x int'],
+    'call of a procedure' => ['call refresh_card_price_snapshots()'],
+    'do block' => ["do \$\$ begin perform 1 from card_price_snapshots; end \$\$"],
 ]);
 
 test('a read of the price rows is not counted as a write', function (string $sql) {

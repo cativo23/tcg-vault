@@ -77,6 +77,6 @@ final class BumpPriceDataVersion
 
         $body = preg_replace('/\bfor\s+(?:no\s+key\s+update|key\s+share|update|share)\b/i', ' ', $sql) ?? $sql;
 
-        return preg_match('/\b(insert|update|delete|truncate|merge|copy)\b/i', $body) !== 1;
+        return preg_match('/\b(insert|update|delete|truncate|merge|copy|drop|alter|call|do)\b/i', $body) !== 1;
     }
 }
