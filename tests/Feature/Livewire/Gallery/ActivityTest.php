@@ -10,8 +10,11 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use App\Modules\Collection\Services\CollectionValueSeries;
+use App\Modules\Collection\Services\PublicCollection;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
+use Tests\Support\PriceRowReads;
 
 test('shows a price delta for a card with two snapshot days', function () {
     $user = User::factory()->create(['username' => 'carlos']);
@@ -401,4 +404,68 @@ test('the range buttons stay when there is not enough history to chart', functio
     $this->get('/carlos/activity')
         ->assertSee('A value chart appears once two daily price snapshots exist.')
         ->assertSee("selectRange('3m')", false);
+});
+
+test('the feed reuses the cards the headline loaded, so their price rows load once', function () {
+    ownedCardPricedDaysAgo([0 => 300, 1 => 290, 5 => 250]);
+    ownedCardPricedDaysAgo([0 => 900, 2 => 880], 'me05-117', 'reverse-holofoil');
+
+    $priceRowLoads = 0;
+    DB::listen(function ($query) use (&$priceRowLoads) {
+        // Any query that loads price rows themselves; the series' count and
+        // min() aggregates and its per-day lookups are not row loads.
+        if (preg_match('/^select \* from "card_price_snapshots"|row_number\(\) over/i', $query->sql)) {
+            $priceRowLoads++;
+        }
+    });
+
+    $feed = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed');
+
+    expect($priceRowLoads)->toBe(1)
+        ->and($feed->where('kind', 'added')->map(fn (array $e) => $e['snapshot']?->market_minor)->sort()->values()->all())->toBe([300, 900])
+        ->and($feed->where('kind', 'move')->map(fn (array $e) => $e['delta']->deltaMinor)->sort()->values()->all())->toBe([10, 20]);
+});
+
+test('a feed copy whose card is past the headline\'s card cap is still priced', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $now = now();
+    $count = CollectionValueSeries::MAX_CARDS + 1;
+
+    DB::table('cards')->insert(collect(range(1, $count))->map(fn (int $i) => [
+        'tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i,
+        'name' => "Card {$i}", 'created_at' => $now, 'updated_at' => $now,
+    ])->all());
+    DB::table('collection_items')->insert(Card::orderBy('id')->pluck('tcgdex_id', 'id')->map(fn (string $tcgdexId, int $id) => [
+        'collection_id' => $collection->id, 'card_id' => $id, 'card_tcgdex_id' => $tcgdexId, 'variant' => 'normal',
+        'condition' => 'NM', 'quantity' => 1, 'created_at' => $now->copy()->addSeconds($id), 'updated_at' => $now,
+    ])->values()->all());
+    DB::table('card_price_snapshots')->insert(Card::orderBy('id')->pluck('id')->map(fn (int $id) => [
+        'card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal',
+        'captured_on' => today()->toDateString(), 'currency' => 'USD', 'market_minor' => 1000 + $id,
+        'created_at' => $now, 'updated_at' => $now,
+    ])->all());
+
+    // The same query the page runs, so the same card is left out; its copy
+    // becomes the newest, so the feed lists it.
+    $headlineCards = PublicCollection::for($user)->cardsQuery()->take(CollectionValueSeries::MAX_CARDS)->get()->modelKeys();
+    $leftOut = Card::whereKeyNot($headlineCards)->sole();
+    CollectionItem::where('card_id', $leftOut->id)->update(['created_at' => $now->copy()->addDay()]);
+
+    $added = null;
+    $reads = PriceRowReads::during(function () use (&$added) {
+        $added = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed')->where('kind', 'added');
+    });
+
+    // The past-cap path ran: the headline's load left the card out, and a
+    // second deciding load fetched exactly it. If the page's unordered load
+    // ever picks other cards than the query above, this fails rather than
+    // passing without reaching the path.
+    expect($reads->stray)->toBe([])
+        ->and($reads->deciding)->toHaveCount(2)
+        ->and($reads->decidingIds(0))->not->toContain($leftOut->id)
+        ->and($reads->decidingIds(1))->toBe([$leftOut->id])
+        ->and($added->first()['card']->id)->toBe($leftOut->id)
+        ->and($added->every(fn (array $e) => $e['snapshot']?->market_minor === 1000 + $e['card']->id))->toBeTrue();
 });

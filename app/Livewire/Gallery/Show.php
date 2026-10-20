@@ -8,6 +8,7 @@ use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Services\DecidingPriceRows;
 use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Services\Valuation;
 use Illuminate\Contracts\View\View;
@@ -78,10 +79,10 @@ final class Show extends Component
         $resolver = new CardPriceResolver;
         $valuation = new Valuation($resolver);
 
+        $prices = app(DecidingPriceRows::class);
         $cardsQuery = $this->set->cards()
             ->with([
                 'set',
-                'priceSnapshots' => fn ($q) => $q->recent(),
                 'collectionItems' => fn ($q) => $public->scopeItems($q)->orderBy('created_at'),
             ]);
 
@@ -94,7 +95,9 @@ final class Show extends Component
             $cardsQuery->where('rarity', $this->rarityFilter);
         }
 
-        $allEntries = $cardsQuery->get()->map(function (Card $card) use ($resolver, $valuation) {
+        // Only the price rows that decide current prices (see
+        // DecidingPriceRows): every figure on this page is a current one.
+        $allEntries = $prices->loadOnto($cardsQuery->get())->map(function (Card $card) use ($resolver, $valuation) {
             $snapshot = $valuation->headlineSnapshot($card);
 
             return [
@@ -135,10 +138,10 @@ final class Show extends Component
         // narrowed $cardsQuery away from "the whole set".
         $ownedCards = ($this->search === '' && $this->rarityFilter === '')
             ? $allEntries->filter(fn ($e) => $e['owned'])->pluck('card')
-            : $this->set->cards()
+            : $prices->loadOnto($this->set->cards()
                 ->whereHas('collectionItems', fn ($q) => $public->scopeItems($q))
-                ->with(['priceSnapshots' => fn ($q) => $q->recent(), 'collectionItems' => fn ($q) => $public->scopeItems($q)])
-                ->get();
+                ->with(['collectionItems' => fn ($q) => $public->scopeItems($q)])
+                ->get());
 
         $ownedTotals = $valuation->totalsByCurrency($ownedCards);
         $mostValuable = $ownedCards

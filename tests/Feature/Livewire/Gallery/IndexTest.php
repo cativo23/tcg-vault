@@ -12,6 +12,7 @@ use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
+use Tests\Support\PriceRowReads;
 
 function seedCollection(): array
 {
@@ -400,6 +401,48 @@ test('a collection past the stat band\'s card cap still fills the grid with card
 
     expect($entries)->toHaveCount(601)
         ->and($entries->pluck('card.name')->all())->toBe(collect(range(1, 601))->map(fn (int $i) => sprintf('Card %04d', $i))->all());
+});
+
+test('cards past the stat band\'s card cap are priced through the deciding query too', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $now = now();
+    DB::table('cards')->insert(collect(range(1, 601))->map(fn (int $i) => [
+        'tcgdex_id' => "me05-$i", 'set_id' => $set->id, 'local_id' => (string) $i,
+        'name' => sprintf('Card %04d', $i), 'created_at' => $now, 'updated_at' => $now,
+    ])->all());
+    DB::table('collection_items')->insert(Card::pluck('tcgdex_id', 'id')->map(fn (string $tcgdexId, int $id) => [
+        'collection_id' => $collection->id, 'card_id' => $id, 'card_tcgdex_id' => $tcgdexId, 'variant' => 'normal',
+        'condition' => 'NM', 'quantity' => 1, 'created_at' => $now, 'updated_at' => $now,
+    ])->values()->all());
+    // Two priced days per card, so each tile also carries a delta.
+    DB::table('card_price_snapshots')->insert(Card::pluck('id')->flatMap(fn (int $id) => [
+        ['card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today()->toDateString(), 'currency' => 'USD', 'market_minor' => 1000 + $id, 'created_at' => $now, 'updated_at' => $now],
+        ['card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today()->subDay()->toDateString(), 'currency' => 'USD', 'market_minor' => 900 + $id, 'created_at' => $now, 'updated_at' => $now],
+    ])->all());
+
+    $entries = null;
+    $reads = PriceRowReads::during(function () use (&$entries) {
+        $entries = Livewire::withQueryParams(['sort' => 'name'])
+            ->test(Index::class, ['username' => 'carlos'])
+            ->set('take', 601)
+            ->viewData('entries');
+    });
+
+    // The last render (take=601) loads the stat band's 600 cards, then the
+    // one card they left out through a second deciding query. The first
+    // render (24 cards) may or may not need its own past-cap load.
+    $last = count($reads->deciding) - 1;
+    $band = $reads->decidingIds($last - 1);
+    $pastCap = array_values(array_diff(Card::pluck('id')->all(), $band));
+
+    expect($entries)->toHaveCount(601)
+        ->and($entries->every(fn (array $e) => $e['snapshot']?->market_minor === 1000 + $e['card']->id && $e['delta']?->deltaMinor === 100))->toBeTrue()
+        ->and($reads->stray)->toBe([])
+        ->and($band)->toHaveCount(600)
+        ->and($pastCap)->toHaveCount(1)
+        ->and($reads->decidingIds($last))->toBe($pastCap);
 });
 
 test('"Prices updated" dates the latest marketplace sync and names its origins, never a manual entry', function () {

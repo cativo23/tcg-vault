@@ -19,8 +19,10 @@ use Livewire\Livewire;
 
 // Every listing screen walks a card's price history in PHP, and the sync
 // adds rows for every card every day — so they load only the recent
-// window, never the whole history. The card detail page prices from the
-// same window and reads its chart through a range-bounded query.
+// window, never the whole history. The public gallery pages go further and
+// load only the rows of that window that can decide a current price (see
+// DecidingPriceRows). The card detail page prices from the same window and
+// reads its chart through a range-bounded query.
 
 beforeEach(function () {
     $this->user = User::factory()->create(['username' => 'carlos']);
@@ -45,35 +47,46 @@ function expectedRecentDays(): array
     return collect([CardPriceSnapshot::RECENT_DAYS, 1, 0])->map(fn (int $d) => today()->subDays($d)->toDateString())->all();
 }
 
+/**
+ * The rows of the recent window that can decide a current price (see
+ * DecidingPriceRows): the newest and the previous priced one.
+ */
+function expectedDecidingDays(): array
+{
+    return collect([1, 0])->map(fn (int $d) => today()->subDays($d)->toDateString())->all();
+}
+
 test('the recent scope keeps the window up to and including its first day', function () {
     $days = CardPriceSnapshot::query()->recent()->get()->map->capturedOnKey()->sort()->values()->all();
 
     expect($days)->toBe(expectedRecentDays());
 });
 
-test('the public collection loads only recent price history', function () {
+test('the public collection\'s cards come without price rows, for a page to load the deciding ones', function () {
     $card = PublicCollection::for($this->user)->cardsQuery()->firstOrFail();
 
-    expect(loadedDays($card))->toBe(expectedRecentDays());
+    expect($card->relationLoaded('priceSnapshots'))->toBeFalse()
+        ->and($card->relationLoaded('set'))->toBeTrue()
+        ->and($card->relationLoaded('collectionItems'))->toBeTrue();
 });
 
-test('the collection grid loads only recent price history', function () {
+test('the collection grid loads only the deciding rows of the recent window', function () {
     $entries = Livewire::test(Index::class, ['username' => 'carlos'])->viewData('entries');
 
-    expect(loadedDays($entries->first()['card']))->toBe(expectedRecentDays());
+    expect(loadedDays($entries->first()['card']))->toBe(expectedDecidingDays());
 });
 
-test('a set page loads only recent price history', function () {
+test('a set page loads only the deciding rows of the recent window', function () {
     $entries = Livewire::test(Show::class, ['username' => 'carlos', 'setTcgdexId' => 'me05'])->viewData('entries');
 
-    expect(loadedDays($entries->first()['card']))->toBe(expectedRecentDays());
+    expect(loadedDays($entries->first()['card']))->toBe(expectedDecidingDays());
 });
 
-test('the activity feed loads only recent price history for added copies', function () {
+test('the activity feed loads only the deciding rows of the recent window for added copies', function () {
     $added = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed')
         ->firstWhere('kind', 'added');
 
-    expect(loadedDays($added['card']))->toBe(expectedRecentDays());
+    expect(loadedDays($added['card']))->toBe(expectedDecidingDays());
 });
 
 test('the collector admin list loads only recent price history', function () {
