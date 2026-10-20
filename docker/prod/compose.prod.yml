@@ -18,7 +18,7 @@ services:
     networks: [space-server_web, tcgvault-internal]
     deploy:
       resources:
-        limits: { cpus: '1.0', memory: 192M }
+        limits: { cpus: '2.0', memory: 192M }
         reservations: { cpus: '0.1', memory: 96M }
     labels:
       - "traefik.enable=true"
@@ -131,7 +131,7 @@ services:
       start_period: 20s
     deploy:
       resources:
-        limits: { cpus: '1.0', memory: 192M }
+        limits: { cpus: '2.0', memory: 192M }
         reservations: { cpus: '0.1', memory: 96M }
 
   # Nightly database dump + photo archive into ~/deploy/tcg-vault/backups,
