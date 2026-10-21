@@ -8,6 +8,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use App\Modules\Collection\Services\ValueSeriesWarmup;
 use Illuminate\Bus\UniqueLock;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Queue\Connectors\ConnectorInterface;
@@ -36,6 +37,7 @@ beforeEach(function () {
     // Forget what setting the fixtures up queued, and the unique locks it took.
     $this->settle = function (): void {
         (new UniqueLock(Cache::driver()))->release(new WarmValueSeriesJob($this->user->id));
+        $this->app->forgetScopedInstances();
         ($this->queue)()->pushed = [];
     };
     $this->queued = fn (): array => ($this->queue)()->pushed;
@@ -226,11 +228,72 @@ test('a lock that cannot be acquired is reported and never frees another job\'s 
     config(['cache.stores.lock-trouble' => ['driver' => 'lock-trouble'], 'cache.default' => 'lock-trouble']);
 
     $item = ($this->item)(); // queues the user's warm and holds its lock
+    $this->app->forgetScopedInstances(); // a later request
     $failing['on'] = true;
     $item->update(['quantity' => 5]); // cannot take the lock: reported, queues nothing
+    $this->app->forgetScopedInstances();
     $item->update(['quantity' => 6]); // the first job's lock must still be held
 
     Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'lock store went away');
+    expect(($this->queued)())->toHaveCount(1);
+});
+
+test('a burst of edits looks the collection up once and queues once', function () {
+    $items = [($this->item)()];
+    foreach (range(1, 4) as $n) {
+        $items[] = CollectionItem::create([
+            'collection_id' => $this->collection->id, 'card_id' => $this->card->id, 'card_tcgdex_id' => $this->card->tcgdex_id,
+            'variant' => "v{$n}", 'condition' => 'NM', 'quantity' => 1,
+        ]);
+    }
+    ($this->settle)();
+
+    $lookups = 0;
+    DB::listen(function ($query) use (&$lookups) {
+        $lookups += str_contains($query->sql, 'from "collections"') ? 1 : 0;
+    });
+
+    foreach ($items as $i => $item) {
+        $item->update(['quantity' => 10 + $i]);
+    }
+
+    expect($lookups)->toBe(1)
+        ->and(($this->queued)())->toHaveCount(1);
+});
+
+test('the burst guard expires with the delay, so a later edit is looked at again', function () {
+    $item = ($this->item)();
+    ($this->settle)();
+    $lookups = 0;
+    DB::listen(function ($query) use (&$lookups) {
+        $lookups += str_contains($query->sql, 'from "collections"') ? 1 : 0;
+    });
+
+    $item->update(['quantity' => 3]);
+    $item->update(['quantity' => 4]);
+    expect($lookups)->toBe(1);
+
+    $this->travel(ValueSeriesWarmup::DELAY_SECONDS + 1)->seconds();
+    $item->update(['quantity' => 5]);
+
+    expect($lookups)->toBe(2);
+});
+
+test('a burst inside a transaction that rolls back leaves the next edit free to queue', function () {
+    $item = ($this->item)();
+    ($this->settle)();
+
+    try {
+        DB::transaction(function () use ($item) {
+            $item->update(['quantity' => 3]);
+            $item->update(['quantity' => 4]);
+            throw new RuntimeException('roll back');
+        });
+    } catch (RuntimeException) {
+    }
+
+    $item->fresh()->update(['quantity' => 6]);
+
     expect(($this->queued)())->toHaveCount(1);
 });
 

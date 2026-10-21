@@ -18,7 +18,7 @@ final class CollectionObserver
     public function updated(Collection $collection): void
     {
         if ($collection->wasChanged('is_public')) {
-            ValueSeriesWarmup::afterChangeFor((int) $collection->user_id);
+            app(ValueSeriesWarmup::class)->afterChangeFor((int) $collection->user_id);
         }
     }
 }

@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Collection\Observers;
 
-use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
-use App\Modules\Collection\Scopes\TenantScope;
 use App\Modules\Collection\Services\ValueSeriesWarmup;
 
 /**
@@ -50,10 +48,6 @@ final class CollectionItemObserver
 
     private function warmOwnerOf(int $collectionId): void
     {
-        $collection = Collection::withoutGlobalScope(TenantScope::class)->find($collectionId, ['id', 'user_id', 'is_public']);
-
-        if ($collection !== null && $collection->is_public) {
-            ValueSeriesWarmup::afterChangeFor((int) $collection->user_id);
-        }
+        app(ValueSeriesWarmup::class)->afterChangeInCollection($collectionId);
     }
 }
