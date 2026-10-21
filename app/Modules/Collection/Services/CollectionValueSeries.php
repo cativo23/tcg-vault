@@ -111,6 +111,8 @@ final class CollectionValueSeries
             Log::warning('activity chart built on a page view', [
                 'user_id' => $public->user->id,
                 'range' => $range->value,
+                // The owner opening their own page is not the visitor the warm jobs are for.
+                'owner' => auth()->id() === $public->user->id,
                 'ms' => (int) round((hrtime(true) - $started) / 1_000_000),
             ]);
         }

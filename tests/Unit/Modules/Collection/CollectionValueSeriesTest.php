@@ -552,12 +552,20 @@ test('a page view that has to build the series logs a warning with the user, ran
     Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []) => $message === 'activity chart built on a page view'
         && $context['user_id'] === $this->user->id
         && $context['range'] === ChartRange::OneMonth->value
+        && $context['owner'] === false
         && is_int($context['ms']) && $context['ms'] >= 0)->once();
 
     // The hit adds no second warning to the one the build logged.
     $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
 
     Log::shouldHaveReceived('warning')->once();
+
+    // The owner looking at their own page is told apart from a visitor.
+    $this->actingAs($this->user);
+    $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::ThreeMonths);
+
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []) => ($context['range'] ?? null) === ChartRange::ThreeMonths->value
+        && $context['owner'] === true)->once();
 });
 
 test('the public entry point sees every public collection of the user and never a private one', function () {
