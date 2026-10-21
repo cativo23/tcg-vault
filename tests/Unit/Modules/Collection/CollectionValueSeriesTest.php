@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 beforeEach(function () {
+    // Fixtures, cache keys and the series all read "today": a run that crosses midnight must not split them.
+    $this->travelTo(now()->startOfDay()->addHours(12));
     $this->user = User::factory()->create(['username' => 'carlos']);
     $this->collection = Collection::factory()->for($this->user)->create(['is_public' => true, 'slug' => 'main']);
     $this->set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
