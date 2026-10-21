@@ -4,8 +4,11 @@ services:
     restart: unless-stopped
     env_file: [.env]
     # Overrides any REDIS_CLIENT in .env: the image ships the phpredis extension.
+    # Telescope is off in production (see the horizon service); the override
+    # also wins over any TELESCOPE_ENABLED in .env.
     environment:
       REDIS_CLIENT: phpredis
+      TELESCOPE_ENABLED: "false"
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -37,8 +40,15 @@ services:
     restart: unless-stopped
     env_file: [.env]
     # Overrides any REDIS_CLIENT in .env, as on app.
+    #
+    # Telescope is off here: its job watcher queues an update for every job
+    # even though production's filter drops the entry, the update finds
+    # nothing and re-queues itself up to three times, which made up most of
+    # what this container ran during the nightly price sync and most of the
+    # job records Redis held.
     environment:
       REDIS_CLIENT: phpredis
+      TELESCOPE_ENABLED: "false"
     command: ["php", "artisan", "horizon"]
     depends_on:
       postgres: { condition: service_healthy }
@@ -102,6 +112,7 @@ services:
       disable: true
     environment:
       REDIS_CLIENT: phpredis
+      TELESCOPE_ENABLED: "false"
       TCGVAULT_BACKUP_PATH: /backups
     volumes:
       - app-logs:/var/www/html/storage/logs
