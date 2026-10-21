@@ -6,6 +6,28 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.6] - 2026-10-21
+
+### Changed
+
+- Telescope is switched off in production, in the app, queue worker and
+  scheduler containers (the compose environment wins over `.env`). Its job
+  watcher queued an update for every job even though the production filter
+  dropped the entry, and each update that found nothing queued itself again
+  up to three times: during the nightly price sync that was most of the job
+  runs and most of the job records Redis held. Local development is
+  unchanged. To enable it again, edit `docker/prod/compose.prod.yml`.
+- Horizon keeps its recent and completed job records for 15 minutes (was
+  60), which bounds how much Redis holds once the nightly sync ends. Failed
+  jobs are still kept for 48 hours.
+- The frontend toolchain (vite and its bundled build tools) moves up by
+  patch versions to clear a high-severity `npm audit` advisory.
+
+### Deploy
+
+No migrations. The deploy recreates the app, queue worker and scheduler
+containers.
+
 ## [1.6.5] - 2026-10-20
 
 ### Changed
