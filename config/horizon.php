@@ -122,8 +122,10 @@ return [
     // Recent and completed records (about 3 kB each, one per job run) are
     // kept for minutes: the nightly price sync runs tens of thousands of
     // jobs, and an hour of them is what Redis would hold when it ends.
+    // 'recent' matches 'completed' because a completed job's record
+    // expires with 'completed' and the recent list skips ids without one.
     'trim' => [
-        'recent' => 30,
+        'recent' => 15,
         'pending' => 60,
         'completed' => 15,
         'recent_failed' => 2880,
