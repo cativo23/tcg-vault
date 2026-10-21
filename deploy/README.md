@@ -319,10 +319,13 @@ deleted since the backup are deleted again, so none of them can sign in.
    ```
    And stop serving cached prices: the gallery caches price rows under a
    price-data version, and the Activity chart caches past days under a
-   price-history epoch; only the app's own writes move the version, and
-   nothing but this command moves the epoch, so the restore wrote around
-   both. Any other change to `card_price_snapshots` made with `psql` needs
-   the same command:
+   price-history epoch. Only the app's own price writes move the version,
+   and nothing but this command moves the epoch, so the restore wrote
+   around both. The same goes for any other change to a
+   `card_price_snapshots` row dated before today, by `psql` or by the app
+   (a data migration, tinker, a backfill): run the same command after it.
+   It exits non-zero if the cache would not take the change; run it again
+   once the cache is back:
    ```bash
    dcp run --rm --no-deps -T app php artisan prices:bump-version
    ```
