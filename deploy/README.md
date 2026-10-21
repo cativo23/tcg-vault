@@ -129,6 +129,12 @@ docker compose -f compose.prod.yml exec app php artisan photos:strip-metadata
 # cards synced before the fallback existed. Idempotent; checks each file
 # exists before saving it.
 docker compose -f compose.prod.yml exec app php artisan catalog:backfill-images
+# After a release that changes how the Activity chart is cached (the key
+# prefix, e.g. collection-value-series:v4, starts cold): fill it now
+# instead of leaving the first visitor of each public collection to pay
+# the rebuild. Runs in this process, one user at a time; the hourly
+# schedule does the same in the background.
+docker compose -f compose.prod.yml exec app php artisan gallery:warm-value-series --sync
 ```
 
 ## Manual price refresh
@@ -312,9 +318,14 @@ deleted since the backup are deleted again, so none of them can sign in.
    dcp run --rm --no-deps -T app php artisan model:prune --model='App\Modules\Invites\Models\Invite' --model='App\Models\ModerationAction'
    ```
    And stop serving cached prices: the gallery caches price rows under a
-   price-data version that only the app's own writes move, and the restore
-   wrote around it. Any other change to `card_price_snapshots` made with
-   `psql` needs the same command:
+   price-data version, and the Activity chart caches past days under a
+   price-history epoch. Only the app's own price writes move the version,
+   and nothing but this command moves the epoch, so the restore wrote
+   around both. The same goes for any other change to a
+   `card_price_snapshots` row dated before today, by `psql` or by the app
+   (a data migration, tinker, a backfill): run the same command after it.
+   It exits non-zero if the cache would not take the change; run it again
+   once the cache is back:
    ```bash
    dcp run --rm --no-deps -T app php artisan prices:bump-version
    ```
@@ -360,6 +371,15 @@ publish the known-good tag as a new GitHub Release.
   is a private bridge used by nothing else on the host — not `space-server_web` — since
   `horizon` exposes no port/service and gains nothing from sitting on the same
   ~25-container shared network `app` needs for Traefik ingress.
+- **The Activity chart's cache outlives price writes.** Its key carries the day, the
+  owned prints (card, variant, summed quantity) and the price-history epoch, not the
+  price data: a price written today is stamped today and cannot change a past day, and
+  today's point is replaced with the page's live headline at read time. Past history
+  corrected by hand needs `prices:bump-version`. A holdings change queues a
+  `WarmValueSeriesJob` 60 s later (model observers on `CollectionItem` and `Collection`),
+  and the hourly `gallery:warm-value-series` covers the rest, the new day's key at
+  00:00 UTC included. Page views that had to build the series log a warning
+  (`activity chart built on a page view`).
 - **Own Postgres/Redis**, not shared with tacoview's — decided deliberately (coupling
   cost > RAM saved, especially once tacoview resumes).
 - **Caches** are warmed at container boot via serversideup `AUTORUN_*` flags;

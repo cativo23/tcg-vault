@@ -5,9 +5,11 @@ namespace Tests;
 use App\Modules\Catalog\Contracts\CardImageFallback;
 use App\Modules\Collection\Contracts\PhotoMetadataStripper;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Queue\Connectors\ConnectorInterface;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\FakePhotoMetadataStripper;
 use Tests\Support\NullCardImageFallback;
+use Tests\Support\RecordingQueue;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -24,5 +26,17 @@ abstract class TestCase extends BaseTestCase
 
         $this->photoStripper = new FakePhotoMetadataStripper;
         $this->app->instance(PhotoMetadataStripper::class, $this->photoStripper);
+
+        // Jobs built for the redis-long connection (WarmValueSeriesJob is queued by
+        // model observers on every holdings change) must not reach Redis, which CI
+        // does not have. The connection keeps its other settings.
+        $this->app['queue']->addConnector('recording', fn (): ConnectorInterface => new class implements ConnectorInterface
+        {
+            public function connect(array $config)
+            {
+                return new RecordingQueue;
+            }
+        });
+        config(['queue.connections.redis-long.driver' => 'recording']);
     }
 }

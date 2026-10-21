@@ -32,12 +32,14 @@ Schedule::command('catalog:check-pricing-freshness')->dailyAt('04:00');
 // tcgdex's and, in fill mode, written for the prints tcgdex doesn't price.
 Schedule::job(new SyncTcgcsvPricesJob)->dailyAt('20:30');
 
-// Prices move during the daily sync and the tcgcsv sync above; the Activity
-// value chart's cache key follows them, so the first visitor after each would
-// pay a rebuild of many seconds. Hourly, one queued job per public user (the
-// scheduler container is too small to compute them itself). The lock
-// expires in 50 minutes, so a container stopped mid-run cannot hold it for
-// the default day.
+// The Activity value chart's cache is keyed on the day and on what each public
+// collection holds, so price writes don't rebuild it; the day's key changes at
+// midnight UTC, and a holdings change queues a warm of its own. This hourly run
+// fills what is still missing (the new day's key above all, but also changes
+// the holdings observers cannot see), so a visitor rarely pays a rebuild of many
+// seconds. One queued job per public user (the scheduler container is too small
+// to compute them itself). The lock expires in 50 minutes, so a container
+// stopped mid-run cannot hold it for the default day.
 Schedule::command('gallery:warm-value-series')
     ->hourly()
     ->withoutOverlapping(50)

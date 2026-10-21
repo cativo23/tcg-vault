@@ -14,11 +14,14 @@ use Throwable;
 
 /**
  * Warms the cache behind the Activity page's value chart, so a visitor
- * after a price sync reads it instead of paying the rebuild. For every
- * user with a public collection (suspended members excluded, as their
- * page is a 404) it queues a WarmValueSeriesJob, which warms every chart
- * range with what an anonymous visitor's Activity page asks for. Prices
- * change during the daily sync and the tcgcsv sync, so this runs hourly.
+ * reads it instead of paying the rebuild. For every user with a public
+ * collection (suspended members excluded, as their page is a 404) it queues
+ * a WarmValueSeriesJob, which warms every chart range with what an anonymous
+ * visitor's Activity page asks for. The series is keyed on the day and on
+ * what the collections hold, not on prices, so price writes don't rebuild it;
+ * the key changes at midnight UTC and the model observers warm after a
+ * holdings change. This hourly run covers the rest: the new day's key and any
+ * change that skipped the observers (bulk queries).
  *
  * The work is on the queue because the scheduler container is small; the
  * command itself only lists user ids. --sync runs the jobs here instead,

@@ -7,13 +7,14 @@ namespace App\Modules\Collection\Services;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\DecidingPriceRows;
-use App\Modules\Catalog\Services\PriceDataVersion;
+use App\Modules\Catalog\Services\PriceHistoryEpoch;
 use App\Modules\Catalog\Support\ChartRange;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The collection's value over a chart range, one point per sampled day,
@@ -39,20 +40,21 @@ use Illuminate\Support\Facades\DB;
  *
  * Even so, a year of history costs seconds on a large collection, and the
  * collection page is public, so every visit would pay it. The finished
- * series is cached for the day, per range and currency. The key carries a
- * fingerprint of what the series is computed from: the price-data version
- * (PriceDataVersion), which moves on every write to any price row, so a
- * new, edited or deleted price, the earliest priced day included, always
- * rebuilds; and each owned copy's id, card, variant, quantity and
- * updated_at (a copy added, removed or edited, or made public or private).
+ * series is cached for the day, per range and currency. Past days never
+ * change: every price write is stamped with today, so a price written
+ * today cannot move a point already computed for an earlier day, and the
+ * key does not carry the price data at all. It carries what is left to
+ * change the series: the day (a new day is a new key, which also heals any
+ * mistake at midnight), the owned prints as the valuation reads them
+ * (fingerprint()), and the price-history epoch (PriceHistoryEpoch), which
+ * only `prices:bump-version` moves, for a past day corrected by hand.
  *
- * The version is one global counter, not a per-collection figure: any price
- * write, for any card, rebuilds every collection's series. Every card gets
- * a new snapshot daily, in two windows: the catalog refresh, a few hours
- * after midnight UTC, and a smaller tcgcsv sync at 20:30 UTC. A write in
- * either window rebuilds every collection's series, as a fingerprint of the
- * collection's own price rows effectively did, and the hourly warm() job
- * repopulates it afterwards.
+ * Today is the one point that can change during the day, so the page
+ * replaces the stored series' last point with its headline total
+ * (forPublicCollection()); for() and warm() deal in the stored series.
+ *
+ * Holdings changes rebuild the series; the hourly warm() job and the
+ * collection observers repopulate it in the background.
  *
  * A hit costs no query beyond whatever the caller loaded to ask: the
  * page's cards, or, for warm(), the cards without their price rows.
@@ -60,7 +62,7 @@ use Illuminate\Support\Facades\DB;
 final class CollectionValueSeries
 {
     /** Bump when the series' calculation changes, so a deploy doesn't serve a series the old code computed. */
-    private const CACHE_VERSION = 3;
+    private const CACHE_VERSION = 4;
 
     /** Bounded: a public route must never fan out unbounded per-card work. */
     public const MAX_CARDS = 500;
@@ -100,17 +102,50 @@ final class CollectionValueSeries
             return ['cards' => $cards, 'totals' => $totals, 'currency' => null, 'series' => collect(), 'earliest' => null, 'cached' => true];
         }
 
+        $started = hrtime(true);
         [$series, $cached] = $this->cachedSeries($cards, $currency, $range);
+
+        // A visitor waited for the rebuild: the warm jobs are meant to make this rare, and
+        // production logs warnings and above, so this is how it shows up.
+        if (! $cached) {
+            Log::warning('activity chart built on a page view', [
+                'user_id' => $public->user->id,
+                'range' => $range->value,
+                // The owner opening their own page is not the visitor the warm jobs are for.
+                'owner' => auth()->id() === $public->user->id,
+                'ms' => (int) round((hrtime(true) - $started) / 1_000_000),
+            ]);
+        }
 
         return [
             'cards' => $cards,
             'totals' => $totals,
             'currency' => $currency,
-            'series' => $series,
+            'series' => $this->withTodayAt($series, $totals[$currency]),
             // The series asked for it already; this reads the same answer.
             'earliest' => $this->earliestDay($cards),
             'cached' => $cached,
         ];
+    }
+
+    /**
+     * The stored series with today's point set to the page's headline, so a
+     * price written since the series was built shows without a rebuild.
+     * Today's point is the headline by construction (see the class docblock),
+     * and every earlier point is a past day the cache can trust.
+     *
+     * @param  Collection<int, array{date: CarbonImmutable, minor: int}>  $series
+     * @return Collection<int, array{date: CarbonImmutable, minor: int}>
+     */
+    private function withTodayAt(Collection $series, int $headline): Collection
+    {
+        $last = $series->last();
+
+        if ($last === null || ! $last['date']->isSameDay(CarbonImmutable::today())) {
+            return $series;
+        }
+
+        return $series->slice(0, -1)->push(['date' => $last['date'], 'minor' => $headline])->values();
     }
 
     /**
@@ -191,7 +226,7 @@ final class CollectionValueSeries
         }
 
         $today = CarbonImmutable::today()->toDateString();
-        $key = 'collection-value-series:v'.self::CACHE_VERSION.":{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards)}";
+        $key = 'collection-value-series:v'.self::CACHE_VERSION.":{$range->value}:{$currency}:{$today}:{$this->fingerprint($cards)}:".app(PriceHistoryEpoch::class)->current();
         $cached = Cache::get($key);
 
         if (is_array($cached)) {
@@ -208,8 +243,16 @@ final class CollectionValueSeries
 
         $series = $this->build($cards, $currency, $range);
 
+        // Nothing priced yet: there is no series to keep, and the first
+        // price that arrives must not wait for midnight to show. Only for()
+        // callers get here: the page and warm() chart a currency, and a
+        // currency exists only once some card is priced.
+        if ($this->earliestDay($cards) === null) {
+            return [$series, false];
+        }
+
         Cache::put($key, [
-            'earliest' => $this->earliestDay($cards)?->toDateString(),
+            'earliest' => $this->earliestDay($cards)->toDateString(),
             'points' => $series
                 ->map(fn (array $p): array => ['date' => $p['date']->toDateString(), 'minor' => $p['minor']])
                 ->all(),
@@ -254,30 +297,30 @@ final class CollectionValueSeries
     }
 
     /**
-     * What the series depends on besides the day, range and currency: the
-     * price rows, as the price-data version, and the owned copies.
+     * What the series depends on besides the day, range, currency and
+     * history epoch: the owned prints, as what the valuation reads from them.
+     * Per print (card and variant, a NULL variant kept apart from an empty
+     * one and from 'normal' because it takes the card-level chain), the sum
+     * of its copies' max(quantity, 1). Copy ids, timestamps, condition, grade,
+     * notes and photos never reach the price, so editing them keeps the key.
      *
      * @param  Collection<int, Card>  $cards
      */
     private function fingerprint(Collection $cards): string
     {
-        $holdings = [];
+        $prints = [];
 
         foreach ($cards as $card) {
             foreach ($card->collectionItems as $item) {
-                $holdings[(int) $item->id] = [
-                    (int) $item->id,
-                    (int) $item->card_id,
-                    $item->variant,
-                    (int) $item->quantity,
-                    (string) $item->updated_at,
-                ];
+                $key = json_encode([(int) $item->card_id, $item->variant], JSON_THROW_ON_ERROR);
+                $prints[$key] ??= [(int) $item->card_id, $item->variant, 0];
+                $prints[$key][2] += max((int) $item->quantity, 1);
             }
         }
 
-        ksort($holdings);
+        ksort($prints);
 
-        return sha1(json_encode([app(PriceDataVersion::class)->current(), array_values($holdings)], JSON_THROW_ON_ERROR));
+        return sha1(json_encode(array_values($prints), JSON_THROW_ON_ERROR));
     }
 
     /**

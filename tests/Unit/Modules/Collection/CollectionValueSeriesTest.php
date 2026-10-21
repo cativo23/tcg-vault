@@ -16,8 +16,11 @@ use App\Modules\Collection\Services\PublicCollection;
 use App\Modules\Collection\Services\Valuation;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 beforeEach(function () {
+    // Fixtures, cache keys and the series all read "today": a run that crosses midnight must not split them.
+    $this->travelTo(now()->startOfDay()->addHours(12));
     $this->user = User::factory()->create(['username' => 'carlos']);
     $this->collection = Collection::factory()->for($this->user)->create(['is_public' => true, 'slug' => 'main']);
     $this->set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
@@ -101,6 +104,8 @@ beforeEach(function () {
     };
 });
 
+// Also the parity guard between the series' own pricing (rowsOn()) and the page's headline
+// (DecidingPriceRows): the stored series' today must equal the headline on mixed fixtures.
 test('the last point is today and equals the headline total, on every range', function (ChartRange $range) {
     $a = ($this->own)('001', 'normal', 2);
     $b = ($this->own)('002', 'reverse-holofoil');
@@ -305,11 +310,11 @@ test('a second identical call is served from the cache without rebuilding the se
 
     expect($second->map(fn ($p) => [$p['date']->toDateString(), $p['minor']])->all())->toBe($first->map(fn ($p) => [$p['date']->toDateString(), $p['minor']])->all())
         ->and($second->first()['date'])->toBeInstanceOf(CarbonImmutable::class)
-        // The key is the price-data version and the owned copies the caller loaded: no query at all.
+        // The key is the owned prints the caller loaded plus the epoch: no query at all.
         ->and($queries)->toBe([]);
 });
 
-test('a new price, an edited copy, a deleted copy and another range each give a fresh series', function () {
+test('an edited copy, a deleted copy and another range each give a fresh series', function () {
     $a = ($this->own)('001');
     $b = ($this->own)('002');
     foreach ([40, 10, 0] as $ago) {
@@ -320,7 +325,7 @@ test('a new price, an edited copy, a deleted copy and another range each give a 
 
     expect($last())->toBe(110);
 
-    ($this->price)($a, 0, 500, 'holofoil'); // an unowned print: count changes, value does not
+    ($this->price)($a, 0, 500, 'holofoil'); // an unowned print: nothing changes
     expect($last())->toBe(110);
 
     $item = CollectionItem::where('card_id', $a->id)->first();
@@ -331,63 +336,155 @@ test('a new price, an edited copy, a deleted copy and another range each give a 
     expect($last())->toBe(300)
         ->and(($this->series)(ChartRange::OneMonth))->toHaveCount(31)
         ->and(($this->series)(ChartRange::ThreeMonths)->count())->toBeLessThan(31);
-
-    CardPriceSnapshot::query()->where('card_id', $a->id)->where('source', 'tcgplayer')->where('variant', 'normal')->where('captured_on', today())->update(['market_minor' => 200, 'updated_at' => now()->addMinute()]);
-    expect($last())->toBe(600);
 });
 
-test('any price write rebuilds the cached series, whatever the row\'s age', function () {
+/** Runs $work and says how many LATERAL queries (the series' per-day price reads) it issued. */
+function lateralQueriesIn(Closure $work): int
+{
+    $lateral = 0;
+    DB::listen(function ($query) use (&$lateral) {
+        $lateral += str_contains(strtolower($query->sql), 'lateral') ? 1 : 0;
+    });
+    $work();
+
+    return $lateral;
+}
+
+test('a price write dated today does not rebuild the cached series', function () {
     $a = ($this->own)('001');
     foreach ([200, 40, 10, 0] as $ago) {
         ($this->price)($a, $ago, 100 + $ago);
     }
+    ($this->series)(ChartRange::OneMonth);
 
-    $cards = PublicCollection::for($this->user)->cardsQuery()->get();
-    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
-    $service->for($cards, 'USD', ChartRange::OneMonth);
+    ($this->price)($a, 0, 999, 'holofoil');
+    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today())->where('variant', 'normal')->update(['market_minor' => 555]);
 
-    $rebuilds = function () use ($service, $cards): int {
-        $lateral = 0;
-        DB::listen(function ($query) use (&$lateral) {
-            $lateral += str_contains(strtolower($query->sql), 'lateral') ? 1 : 0;
-        });
-        $service->for($cards, 'USD', ChartRange::OneMonth);
-
-        return $lateral;
-    };
-
-    expect($rebuilds())->toBe(0);
-
-    // 200 days back is outside the month plus its 30-day window, so it can't
-    // move a point; the version is coarser than that and rebuilds anyway.
-    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today()->subDays(200))->update(['market_minor' => 1]);
-    expect($rebuilds())->toBeGreaterThan(0);
-
-    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today()->subDays(40))->update(['market_minor' => 2]);
-    expect($rebuilds())->toBeGreaterThan(0);
+    expect(lateralQueriesIn(fn () => ($this->series)(ChartRange::OneMonth)))->toBe(0);
 });
 
-test('a manual price moves the key whatever its age', function () {
+test('a backdated price fix is picked up after prices:bump-version, not before', function () {
+    $a = ($this->own)('001');
+    foreach ([200, 40, 10, 0] as $ago) {
+        ($this->price)($a, $ago, 100 + $ago);
+    }
+    ($this->series)(ChartRange::OneMonth);
+
+    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today()->subDays(10))->update(['market_minor' => 1]);
+    expect(lateralQueriesIn(fn () => ($this->series)(ChartRange::OneMonth)))->toBe(0);
+
+    $this->artisan('prices:bump-version')->assertSuccessful();
+
+    expect(lateralQueriesIn(fn () => ($this->series)(ChartRange::OneMonth)))->toBeGreaterThan(0);
+});
+
+test('a manual price corrected by hand is picked up after prices:bump-version, not before', function () {
     $a = ($this->own)('001');
     foreach ([40, 0] as $ago) {
         ($this->price)($a, $ago, 100);
     }
     ($this->price)($a, 300, 555, 'normal', 'manual');
-
-    $cards = PublicCollection::for($this->user)->cardsQuery()->get();
-    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
-    $service->for($cards, 'USD', ChartRange::OneMonth);
+    ($this->series)(ChartRange::OneMonth);
 
     CardPriceSnapshot::query()->where('card_id', $a->id)->where('source', 'manual')->update(['market_minor' => 600, 'updated_at' => now()->addMinute()]);
+    expect(lateralQueriesIn(fn () => ($this->series)(ChartRange::OneMonth)))->toBe(0);
 
-    $lateral = 0;
-    DB::listen(function ($query) use (&$lateral) {
-        $lateral += str_contains(strtolower($query->sql), 'lateral') ? 1 : 0;
-    });
-    $service->for($cards, 'USD', ChartRange::OneMonth);
+    $this->artisan('prices:bump-version')->assertSuccessful();
 
-    expect($lateral)->toBeGreaterThan(0);
+    expect(lateralQueriesIn(fn () => ($this->series)(ChartRange::OneMonth)))->toBeGreaterThan(0);
 });
+
+test('a series with no priced day yet is not cached, so the next render builds it', function () {
+    $a = ($this->own)('001');
+
+    expect(($this->series)(ChartRange::OneMonth))->toBeEmpty();
+
+    foreach ([40, 0] as $ago) {
+        ($this->price)($a, $ago, 100);
+    }
+
+    expect(($this->series)(ChartRange::OneMonth))->toHaveCount(31);
+});
+
+test('the fingerprint ignores everything the series does not read', function (Closure $edit) {
+    $a = ($this->own)('001', 'normal', 2);
+    foreach ([40, 0] as $ago) {
+        ($this->price)($a, $ago, 100);
+    }
+    ($this->series)(ChartRange::OneMonth);
+
+    $edit->call($this, $a, CollectionItem::where('card_id', $a->id)->first());
+
+    expect(lateralQueriesIn(fn () => ($this->series)(ChartRange::OneMonth)))->toBe(0);
+})->with([
+    'notes' => [fn (Card $a, CollectionItem $i) => $i->update(['notes' => 'sleeved'])],
+    'photo' => [fn (Card $a, CollectionItem $i) => $i->update(['photo_path' => 'x/y.jpg'])],
+    'condition' => [fn (Card $a, CollectionItem $i) => $i->update(['condition' => 'LP'])],
+    'grade' => [fn (Card $a, CollectionItem $i) => $i->update(['grade_company' => 'PSA', 'grade_value' => '10'])],
+    'updated_at' => [fn (Card $a, CollectionItem $i) => $i->forceFill(['updated_at' => now()->addHour()])->save()],
+    'a new copy id for the same print' => [function (Card $a, CollectionItem $i) {
+        $attrs = $i->only(['collection_id', 'card_id', 'card_tcgdex_id', 'variant', 'condition', 'quantity']);
+        $i->delete();
+        CollectionItem::create($attrs);
+    }],
+    'one copy of 2 split into two copies of 1' => [function (Card $a, CollectionItem $i) {
+        $attrs = $i->only(['collection_id', 'card_id', 'card_tcgdex_id', 'variant']);
+        $i->delete();
+        CollectionItem::create($attrs + ['condition' => 'NM', 'quantity' => 1]);
+        CollectionItem::create($attrs + ['condition' => 'LP', 'quantity' => 1]);
+    }],
+]);
+
+test('a copy with quantity 0 counts as one, as the valuation does', function () {
+    $a = ($this->own)('001', 'normal', 0);
+    foreach ([40, 0] as $ago) {
+        ($this->price)($a, $ago, 100);
+    }
+    ($this->series)(ChartRange::OneMonth);
+
+    CollectionItem::where('card_id', $a->id)->update(['quantity' => 1]);
+
+    expect(lateralQueriesIn(fn () => ($this->series)(ChartRange::OneMonth)))->toBe(0);
+});
+
+test('the fingerprint changes with what the valuation reads', function (Closure $edit) {
+    $a = ($this->own)('001', 'normal', 2);
+    $b = ($this->own)('002', 'normal');
+    foreach ([$a, $b] as $card) {
+        foreach ([40, 0] as $ago) {
+            ($this->price)($card, $ago, 100);
+        }
+    }
+    ($this->series)(ChartRange::OneMonth);
+
+    $edit->call($this, $a, $b);
+
+    expect(lateralQueriesIn(fn () => ($this->series)(ChartRange::OneMonth)))->toBeGreaterThan(0);
+})->with([
+    'variant' => [fn (Card $a, Card $b) => CollectionItem::where('card_id', $a->id)->update(['variant' => 'holofoil'])],
+    'quantity' => [fn (Card $a, Card $b) => CollectionItem::where('card_id', $a->id)->update(['quantity' => 3])],
+    'a removed print' => [fn (Card $a, Card $b) => CollectionItem::where('card_id', $b->id)->delete()],
+    'an added print' => [fn (Card $a, Card $b) => ($this->own)('003')],
+    'a second copy of a print in another variant' => [fn (Card $a, Card $b) => CollectionItem::create(['collection_id' => $this->collection->id, 'card_id' => $a->id, 'card_tcgdex_id' => $a->tcgdex_id, 'variant' => 'holofoil', 'condition' => 'NM', 'quantity' => 1])],
+    'a second copy of the same variant' => [fn (Card $a, Card $b) => CollectionItem::create(['collection_id' => $this->collection->id, 'card_id' => $a->id, 'card_tcgdex_id' => $a->tcgdex_id, 'variant' => 'normal', 'condition' => 'LP', 'quantity' => 1])],
+]);
+
+test('a NULL variant is kept apart from an empty one and from normal', function (?string $from, ?string $to) {
+    $a = ($this->own)('001', $from);
+    foreach ([40, 0] as $ago) {
+        ($this->price)($a, $ago, 100);
+    }
+    ($this->series)(ChartRange::OneMonth);
+
+    CollectionItem::where('card_id', $a->id)->update(['variant' => $to]);
+
+    expect(lateralQueriesIn(fn () => ($this->series)(ChartRange::OneMonth)))->toBeGreaterThan(0);
+})->with([
+    'null to normal' => [null, 'normal'],
+    'null to empty' => [null, ''],
+    'empty to normal' => ['', 'normal'],
+    'normal to null' => ['normal', null],
+]);
 
 test('the public entry point returns what an anonymous visitor sees: cards, totals, primary currency, series and earliest day', function () {
     $a = ($this->own)('001', 'normal', 2);
@@ -406,6 +503,71 @@ test('the public entry point returns what an anonymous visitor sees: cards, tota
         ->and($result['cached'])->toBeFalse();
 
     expect($service->forPublicCollection(PublicCollection::for($this->user), ChartRange::ThreeMonths)['cached'])->toBeTrue();
+});
+
+test('today\'s point follows the headline after a price write today, without rebuilding past points', function () {
+    $a = ($this->own)('001', 'normal', 2);
+    foreach ([40, 10, 0] as $ago) {
+        ($this->price)($a, $ago, 100 + $ago);
+    }
+    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
+    $first = $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today())->update(['market_minor' => 555]);
+
+    $lateral = 0;
+    DB::listen(function ($query) use (&$lateral) {
+        $lateral += str_contains(strtolower($query->sql), 'lateral') ? 1 : 0;
+    });
+    $second = $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    expect($lateral)->toBe(0)
+        ->and($second['cached'])->toBeTrue()
+        ->and($first['series']->last()['minor'])->toBe(200)
+        ->and($second['totals'])->toBe(['USD' => 1110])
+        ->and($second['series']->last()['minor'])->toBe(1110)
+        ->and($second['series']->last()['date']->toDateString())->toBe(today()->toDateString())
+        ->and($second['series']->slice(0, -1)->values()->all())->toEqual($first['series']->slice(0, -1)->values()->all())
+        // The stored series is untouched.
+        ->and(($this->series)(ChartRange::OneMonth)->last()['minor'])->toBe(200);
+});
+
+test('a public series too short to chart stays empty when today follows the headline', function () {
+    $a = ($this->own)('001');
+    ($this->price)($a, 0, 100);
+
+    $result = (new CollectionValueSeries(new Valuation(new CardPriceResolver)))->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    expect($result['series'])->toBeEmpty();
+});
+
+test('a page view that has to build the series logs a warning with the user, range and duration, and a hit logs nothing', function () {
+    $a = ($this->own)('001');
+    foreach ([40, 10, 0] as $ago) {
+        ($this->price)($a, $ago, 100);
+    }
+    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
+    Log::spy();
+
+    $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []) => $message === 'activity chart built on a page view'
+        && $context['user_id'] === $this->user->id
+        && $context['range'] === ChartRange::OneMonth->value
+        && $context['owner'] === false
+        && is_int($context['ms']) && $context['ms'] >= 0)->once();
+
+    // The hit adds no second warning to the one the build logged.
+    $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    Log::shouldHaveReceived('warning')->once();
+
+    // The owner looking at their own page is told apart from a visitor.
+    $this->actingAs($this->user);
+    $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::ThreeMonths);
+
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []) => ($context['range'] ?? null) === ChartRange::ThreeMonths->value
+        && $context['owner'] === true)->once();
 });
 
 test('the public entry point sees every public collection of the user and never a private one', function () {

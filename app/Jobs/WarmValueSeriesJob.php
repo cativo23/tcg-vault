@@ -12,7 +12,7 @@ use App\Modules\Collection\Services\PublicCollection;
 use App\Modules\Collection\Services\Valuation;
 use App\Support\DiscordAlerter;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -32,11 +32,13 @@ use Throwable;
  * restarts only when it ends a job above its 64 MB threshold; a job on the
  * collection measured for this stays below it.
  *
- * Unique per user for less than the hourly schedule's period, so a slow run
- * is not stacked on by the next hour's dispatch, and a lost lock cannot
- * silence a user for long. One attempt: the next hour's dispatch is the retry.
+ * Unique per user from dispatch until the job starts, for less than the
+ * hourly schedule's period: waiting jobs are not stacked, an edit made while
+ * a run is in progress still queues the next one (it may have missed that
+ * edit), and a lost lock cannot silence a user for long. One attempt: the
+ * next hour's dispatch is the retry.
  */
-final class WarmValueSeriesJob implements ShouldBeUnique, ShouldQueue
+final class WarmValueSeriesJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
@@ -46,8 +48,11 @@ final class WarmValueSeriesJob implements ShouldBeUnique, ShouldQueue
 
     public bool $failOnTimeout = true;
 
-    /** Seconds the per-user lock holds: under the hour between dispatches. */
+    /** Seconds the per-user lock holds at most: under the hour between dispatches. */
     public int $uniqueFor = 3000;
+
+    /** A run longer than this (seconds) for one user is worth a look: the chart is outgrowing the job's budget. */
+    public const SLOW_RUN_SECONDS = 200;
 
     public function __construct(public readonly int $userId)
     {
@@ -65,7 +70,13 @@ final class WarmValueSeriesJob implements ShouldBeUnique, ShouldQueue
         // So the logged peak is this job's, not that of an earlier job in the same worker.
         memory_reset_peak_usage();
 
+        $started = now();
         $counts = $this->warm();
+        $seconds = (int) $started->diffInSeconds(now());
+
+        if ($seconds > self::SLOW_RUN_SECONDS) {
+            Log::warning('gallery:warm-value-series run was slow for a user', ['user_id' => $this->userId, 'seconds' => $seconds]);
+        }
 
         if ($counts !== null) {
             Log::info('gallery:warm-value-series warmed a user', [
