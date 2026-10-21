@@ -112,8 +112,10 @@ docker compose -f compose.prod.yml exec app php artisan migrate --force
 # assignRole no-op if already done), and now also the only thing that
 # backfills roles/permissions onto accounts created before a given
 # deploy — skipping this after the roles/permissions/invites migration
-# lands locks the existing admin out of Horizon, Telescope, and their
-# own /admin, since those now gate on a permission nothing else grants.
+# lands locks the existing admin out of Horizon and their own /admin,
+# since those now gate on a permission nothing else grants. (Telescope is
+# switched off in production by the compose environment; enabling it again
+# means editing compose.prod.yml, not .env.)
 docker compose -f compose.prod.yml exec app php artisan db:seed
 # Creates or tops up the public example collection the landing page links
 # to (config tcgvault.demo). Idempotent; only needed when that card list

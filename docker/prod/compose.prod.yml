@@ -42,10 +42,10 @@ services:
     # Overrides any REDIS_CLIENT in .env, as on app.
     #
     # Telescope is off here: its job watcher queues an update for every job
-    # even though production's filter drops the entry, the update finds
-    # nothing and re-queues itself up to three times, which made up most of
-    # what this container ran during the nightly price sync and most of the
-    # job records Redis held.
+    # even though production's filter drops the entry, and an update that
+    # finds no entry queues itself again up to three times. Each of those
+    # runs is one more job record in Redis and one more run for this
+    # container.
     environment:
       REDIS_CLIENT: phpredis
       TELESCOPE_ENABLED: "false"
