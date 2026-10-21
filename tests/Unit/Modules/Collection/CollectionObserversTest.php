@@ -233,3 +233,16 @@ test('a lock that cannot be acquired is reported and never frees another job\'s 
     Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'lock store went away');
     expect(($this->queued)())->toHaveCount(1);
 });
+
+test('moving a copy between collections warms for both owners\' public sides', function () {
+    $item = ($this->item)();
+    $private = Collection::factory()->for($this->user)->create(['is_public' => false, 'slug' => 'hidden']);
+    ($this->settle)();
+
+    $item->update(['collection_id' => $private->id]);
+    expect(($this->queued)())->toHaveCount(1);
+
+    ($this->settle)();
+    $item->update(['collection_id' => $this->collection->id]);
+    expect(($this->queued)())->toHaveCount(1);
+});
