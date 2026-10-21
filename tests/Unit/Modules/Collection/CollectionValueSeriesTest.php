@@ -101,6 +101,8 @@ beforeEach(function () {
     };
 });
 
+// Also the parity guard between the series' own pricing (rowsOn()) and the page's headline
+// (DecidingPriceRows): the stored series' today must equal the headline on mixed fixtures.
 test('the last point is today and equals the headline total, on every range', function (ChartRange $range) {
     $a = ($this->own)('001', 'normal', 2);
     $b = ($this->own)('002', 'reverse-holofoil');
@@ -498,6 +500,42 @@ test('the public entry point returns what an anonymous visitor sees: cards, tota
         ->and($result['cached'])->toBeFalse();
 
     expect($service->forPublicCollection(PublicCollection::for($this->user), ChartRange::ThreeMonths)['cached'])->toBeTrue();
+});
+
+test('today\'s point follows the headline after a price write today, without rebuilding past points', function () {
+    $a = ($this->own)('001', 'normal', 2);
+    foreach ([40, 10, 0] as $ago) {
+        ($this->price)($a, $ago, 100 + $ago);
+    }
+    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
+    $first = $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    CardPriceSnapshot::query()->where('card_id', $a->id)->where('captured_on', today())->update(['market_minor' => 555]);
+
+    $lateral = 0;
+    DB::listen(function ($query) use (&$lateral) {
+        $lateral += str_contains(strtolower($query->sql), 'lateral') ? 1 : 0;
+    });
+    $second = $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    expect($lateral)->toBe(0)
+        ->and($second['cached'])->toBeTrue()
+        ->and($first['series']->last()['minor'])->toBe(200)
+        ->and($second['totals'])->toBe(['USD' => 1110])
+        ->and($second['series']->last()['minor'])->toBe(1110)
+        ->and($second['series']->last()['date']->toDateString())->toBe(today()->toDateString())
+        ->and($second['series']->slice(0, -1)->values()->all())->toEqual($first['series']->slice(0, -1)->values()->all())
+        // The stored series is untouched.
+        ->and(($this->series)(ChartRange::OneMonth)->last()['minor'])->toBe(200);
+});
+
+test('a public series too short to chart stays empty when today follows the headline', function () {
+    $a = ($this->own)('001');
+    ($this->price)($a, 0, 100);
+
+    $result = (new CollectionValueSeries(new Valuation(new CardPriceResolver)))->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    expect($result['series'])->toBeEmpty();
 });
 
 test('the public entry point sees every public collection of the user and never a private one', function () {

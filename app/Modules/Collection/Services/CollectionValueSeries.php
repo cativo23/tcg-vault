@@ -48,6 +48,10 @@ use Illuminate\Support\Facades\DB;
  * (fingerprint()), and the price-history epoch (PriceHistoryEpoch), which
  * only `prices:bump-version` moves, for a past day corrected by hand.
  *
+ * Today is the one point that can change during the day, so the page
+ * replaces the stored series' last point with its headline total
+ * (forPublicCollection()); for() and warm() deal in the stored series.
+ *
  * Holdings changes rebuild the series; the hourly warm() job and the
  * collection observers repopulate it in the background.
  *
@@ -103,11 +107,31 @@ final class CollectionValueSeries
             'cards' => $cards,
             'totals' => $totals,
             'currency' => $currency,
-            'series' => $series,
+            'series' => $this->withTodayAt($series, $totals[$currency]),
             // The series asked for it already; this reads the same answer.
             'earliest' => $this->earliestDay($cards),
             'cached' => $cached,
         ];
+    }
+
+    /**
+     * The stored series with today's point set to the page's headline, so a
+     * price written since the series was built shows without a rebuild.
+     * Today's point is the headline by construction (see the class docblock),
+     * and every earlier point is a past day the cache can trust.
+     *
+     * @param  Collection<int, array{date: CarbonImmutable, minor: int}>  $series
+     * @return Collection<int, array{date: CarbonImmutable, minor: int}>
+     */
+    private function withTodayAt(Collection $series, int $headline): Collection
+    {
+        $last = $series->last();
+
+        if ($last === null || ! $last['date']->isSameDay(CarbonImmutable::today())) {
+            return $series;
+        }
+
+        return $series->slice(0, -1)->push(['date' => $last['date'], 'minor' => $headline])->values();
     }
 
     /**
