@@ -244,7 +244,9 @@ final class CollectionValueSeries
         $series = $this->build($cards, $currency, $range);
 
         // Nothing priced yet: there is no series to keep, and the first
-        // price that arrives must not wait for midnight to show.
+        // price that arrives must not wait for midnight to show. Only for()
+        // callers get here: the page and warm() chart a currency, and a
+        // currency exists only once some card is priced.
         if ($this->earliestDay($cards) === null) {
             return [$series, false];
         }

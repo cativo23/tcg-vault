@@ -9,6 +9,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Bus\UniqueLock;
+use Illuminate\Cache\ArrayStore;
 use Illuminate\Queue\Connectors\ConnectorInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -160,22 +161,31 @@ test('the warm is queued when the surrounding transaction commits, and not at al
     expect(($this->queued)())->toHaveCount(1);
 });
 
-test('a queue that fails is reported and the save still succeeds', function () {
+test('a queue that fails is reported, the save still succeeds, and the next edit queues once it works', function () {
     Exceptions::fake();
-    $this->app['queue']->addConnector('exploding', fn (): ConnectorInterface => new class implements ConnectorInterface
+    $down = new ArrayObject(['on' => true]);
+    $this->app['queue']->addConnector('flaky-queue', fn (): ConnectorInterface => new class($down) implements ConnectorInterface
     {
+        public function __construct(private readonly ArrayObject $down) {}
+
         public function connect(array $config)
         {
-            return new class extends RecordingQueue
+            return new class($this->down) extends RecordingQueue
             {
+                public function __construct(private readonly ArrayObject $down) {}
+
                 public function later($delay, $job, $data = '', $queue = null)
                 {
-                    throw new RuntimeException('redis went away');
+                    if ($this->down['on']) {
+                        throw new RuntimeException('redis went away');
+                    }
+
+                    return parent::later($delay, $job, $data, $queue);
                 }
             };
         }
     });
-    config(['queue.connections.redis-long.driver' => 'exploding']);
+    config(['queue.connections.redis-long.driver' => 'flaky-queue']);
 
     $item = ($this->item)();
     $item->update(['quantity' => 4]);
@@ -183,4 +193,43 @@ test('a queue that fails is reported and the save still succeeds', function () {
     Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'redis went away');
     expect($item->fresh()->quantity)->toBe(4)
         ->and(CollectionItem::count())->toBe(1);
+
+    // The failed push gave the unique lock back: once the queue works again the next edit queues.
+    $down['on'] = false;
+    $item->update(['quantity' => 5]);
+
+    expect(($this->queued)())->toHaveCount(1);
+});
+
+test('a lock that cannot be acquired is reported and never frees another job\'s lock', function () {
+    Exceptions::fake();
+    $failing = new ArrayObject(['on' => false]);
+    Cache::extend('lock-trouble', fn () => Cache::repository(new class($failing) extends ArrayStore
+    {
+        public function __construct(private readonly ArrayObject $failing)
+        {
+            parent::__construct();
+        }
+
+        public function lock($name, $seconds = 0, $owner = null)
+        {
+            // Only the acquire fails; the cleanup that follows it works, as a brief outage would.
+            if ($this->failing['on']) {
+                $this->failing['on'] = false;
+
+                throw new RuntimeException('lock store went away');
+            }
+
+            return parent::lock($name, $seconds, $owner);
+        }
+    }));
+    config(['cache.stores.lock-trouble' => ['driver' => 'lock-trouble'], 'cache.default' => 'lock-trouble']);
+
+    $item = ($this->item)(); // queues the user's warm and holds its lock
+    $failing['on'] = true;
+    $item->update(['quantity' => 5]); // cannot take the lock: reported, queues nothing
+    $item->update(['quantity' => 6]); // the first job's lock must still be held
+
+    Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'lock store went away');
+    expect(($this->queued)())->toHaveCount(1);
 });

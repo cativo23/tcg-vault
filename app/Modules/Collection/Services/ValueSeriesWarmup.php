@@ -39,12 +39,15 @@ final class ValueSeriesWarmup
             } catch (Throwable $e) {
                 report($e);
 
-                // The lock was taken before the push failed: give it back, or this user's
-                // warm would be skipped until the lock expires.
-                try {
-                    (new UniqueLock(Cache::driver()))->release($job);
-                } catch (Throwable $releaseFailure) {
-                    report($releaseFailure);
+                // If the push failed after the lock was taken, give it back, or this user's warm
+                // would be skipped until the lock expires. A job that never got the lock has no
+                // owner, and releasing without one would drop the lock of another pending job.
+                if (is_string($job->uniqueLockOwner ?? null) && $job->uniqueLockOwner !== '') {
+                    try {
+                        (new UniqueLock(Cache::driver()))->release($job);
+                    } catch (Throwable $releaseFailure) {
+                        report($releaseFailure);
+                    }
                 }
             }
         });
