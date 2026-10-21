@@ -297,7 +297,7 @@ test('a burst inside a transaction that rolls back leaves the next edit free to 
     expect(($this->queued)())->toHaveCount(1);
 });
 
-test('moving a copy between collections warms for both owners\' public sides', function () {
+test('moving a copy between collections warms its owner when either the old or the new side is public', function () {
     $item = ($this->item)();
     $private = Collection::factory()->for($this->user)->create(['is_public' => false, 'slug' => 'hidden']);
     ($this->settle)();

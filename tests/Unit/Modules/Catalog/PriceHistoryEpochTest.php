@@ -30,6 +30,39 @@ test('a bump moves the epoch on', function () {
     expect(historyEpoch())->not->toBe($before);
 });
 
+test('prices:bump-version fails when only the epoch is refused, after moving the version', function () {
+    Exceptions::fake();
+    $versionBefore = app(PriceDataVersion::class)->current();
+    // Refuses only the epoch's key; the price-data version's key works.
+    Cache::extend('picky-epoch', fn () => Cache::repository(new class extends ArrayStore
+    {
+        public function increment($key, $value = 1)
+        {
+            if ($key === PriceHistoryEpoch::KEY) {
+                throw new RuntimeException('redis went away');
+            }
+
+            return parent::increment($key, $value);
+        }
+
+        public function forget($key)
+        {
+            if ($key === PriceHistoryEpoch::KEY) {
+                throw new RuntimeException('redis is read-only');
+            }
+
+            return parent::forget($key);
+        }
+    }));
+    config(['cache.stores.picky-epoch' => ['driver' => 'picky-epoch'], 'cache.default' => 'picky-epoch']);
+
+    $this->artisan('prices:bump-version')
+        ->expectsOutputToContain('cached value series')
+        ->assertFailed();
+
+    expect(app(PriceDataVersion::class)->current())->not->toBe($versionBefore);
+});
+
 test('an epoch the cache lost starts at a random point, not at 1', function () {
     $first = historyEpoch();
 

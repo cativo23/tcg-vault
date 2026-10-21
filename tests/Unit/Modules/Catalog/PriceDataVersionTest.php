@@ -6,6 +6,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\PriceDataVersion;
+use App\Modules\Catalog\Services\PriceHistoryEpoch;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -224,8 +225,14 @@ test('prices:bump-version fails when the price-data version could not be moved, 
         }
     }));
     config(['cache.stores.picky' => ['driver' => 'picky'], 'cache.default' => 'picky']);
+    $epochBefore = app(PriceHistoryEpoch::class)->current();
 
-    $this->artisan('prices:bump-version')->assertFailed();
+    $this->artisan('prices:bump-version')
+        ->expectsOutputToContain('cached price rows')
+        ->assertFailed();
+
+    // The epoch is attempted even though the version already failed.
+    expect(app(PriceHistoryEpoch::class)->current())->not->toBe($epochBefore);
 });
 
 test('a bump never increments a missing key, so no reader sees a fresh 1 in between', function () {
