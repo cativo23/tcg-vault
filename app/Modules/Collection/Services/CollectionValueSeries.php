@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The collection's value over a chart range, one point per sampled day,
@@ -101,7 +102,18 @@ final class CollectionValueSeries
             return ['cards' => $cards, 'totals' => $totals, 'currency' => null, 'series' => collect(), 'earliest' => null, 'cached' => true];
         }
 
+        $started = hrtime(true);
         [$series, $cached] = $this->cachedSeries($cards, $currency, $range);
+
+        // A visitor waited for the rebuild: the warm jobs are meant to make this rare, and
+        // production logs warnings and above, so this is how it shows up.
+        if (! $cached) {
+            Log::warning('activity chart built on a page view', [
+                'user_id' => $public->user->id,
+                'range' => $range->value,
+                'ms' => (int) round((hrtime(true) - $started) / 1_000_000),
+            ]);
+        }
 
         return [
             'cards' => $cards,

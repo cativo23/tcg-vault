@@ -51,6 +51,9 @@ final class WarmValueSeriesJob implements ShouldBeUniqueUntilProcessing, ShouldQ
     /** Seconds the per-user lock holds at most: under the hour between dispatches. */
     public int $uniqueFor = 3000;
 
+    /** A run longer than this (seconds) for one user is worth a look: the chart is outgrowing the job's budget. */
+    public const SLOW_RUN_SECONDS = 200;
+
     public function __construct(public readonly int $userId)
     {
         $this->onConnection('redis-long');
@@ -67,7 +70,13 @@ final class WarmValueSeriesJob implements ShouldBeUniqueUntilProcessing, ShouldQ
         // So the logged peak is this job's, not that of an earlier job in the same worker.
         memory_reset_peak_usage();
 
+        $started = now();
         $counts = $this->warm();
+        $seconds = (int) $started->diffInSeconds(now());
+
+        if ($seconds > self::SLOW_RUN_SECONDS) {
+            Log::warning('gallery:warm-value-series run was slow for a user', ['user_id' => $this->userId, 'seconds' => $seconds]);
+        }
 
         if ($counts !== null) {
             Log::info('gallery:warm-value-series warmed a user', [

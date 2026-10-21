@@ -16,6 +16,7 @@ use App\Modules\Collection\Services\PublicCollection;
 use App\Modules\Collection\Services\Valuation;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 beforeEach(function () {
     $this->user = User::factory()->create(['username' => 'carlos']);
@@ -536,6 +537,27 @@ test('a public series too short to chart stays empty when today follows the head
     $result = (new CollectionValueSeries(new Valuation(new CardPriceResolver)))->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
 
     expect($result['series'])->toBeEmpty();
+});
+
+test('a page view that has to build the series logs a warning with the user, range and duration, and a hit logs nothing', function () {
+    $a = ($this->own)('001');
+    foreach ([40, 10, 0] as $ago) {
+        ($this->price)($a, $ago, 100);
+    }
+    $service = new CollectionValueSeries(new Valuation(new CardPriceResolver));
+    Log::spy();
+
+    $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []) => $message === 'activity chart built on a page view'
+        && $context['user_id'] === $this->user->id
+        && $context['range'] === ChartRange::OneMonth->value
+        && is_int($context['ms']) && $context['ms'] >= 0)->once();
+
+    // The hit adds no second warning to the one the build logged.
+    $service->forPublicCollection(PublicCollection::for($this->user), ChartRange::OneMonth);
+
+    Log::shouldHaveReceived('warning')->once();
 });
 
 test('the public entry point sees every public collection of the user and never a private one', function () {
