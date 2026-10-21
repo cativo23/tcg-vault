@@ -6,6 +6,38 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.7] - 2026-10-21
+
+### Changed
+
+- The Activity value chart is no longer rebuilt by price writes. Past days
+  never change (every price write is stamped with the day it happens), so
+  the chart's cache key now carries the day, a fingerprint of the owned
+  prints (card, variant and the summed quantity, so editing a note, a photo
+  or a condition keeps it) and a price-history epoch, instead of the global
+  price-data version that every write moved. During the nightly price sync
+  every visit used to rebuild the chart (7-10 s); now only the page's
+  headline prices are read live. Today's point of the chart is the page's
+  headline total, so a price written today still shows without a rebuild.
+- The chart is warmed in the background about a minute after a public
+  collection changes (a copy added, removed, or changed in card, variant or
+  quantity, or a collection made public or private), and the warm job queues
+  a follow-up when an edit arrives while it is running.
+- A warning is logged when a visitor waits for the chart to be built (with
+  whether it was the owner), and when one user's warm run takes over 200
+  seconds; production logs warnings and above, so these show up.
+- `php artisan prices:bump-version` now also moves the price-history epoch
+  and exits with a failure, saying what is still being served, when the cache
+  refuses either bump. Run it after any write to a price row dated before
+  today, from psql or from the app (a data migration, tinker, a restored
+  dump).
+
+### Deploy
+
+No migrations. The new cache key starts cold, so after the deploy run
+`php artisan gallery:warm-value-series` once instead of waiting for the next
+hourly run.
+
 ## [1.6.6] - 2026-10-21
 
 ### Changed
