@@ -12,8 +12,9 @@ use Illuminate\Console\Command;
  * Moves the price-data version on by hand, for a write to
  * card_price_snapshots the app didn't make (psql, a restored dump), so the
  * cached price rows stop being served and the cached value series, which
- * trust past days, are rebuilt. Exits with a failure when the epoch behind
- * the value series could not be moved.
+ * trust past days, are rebuilt. Exits with a failure when either the version
+ * behind the price rows or the epoch behind the value series could not be
+ * moved.
  */
 final class BumpPriceDataVersion extends Command
 {
@@ -23,10 +24,18 @@ final class BumpPriceDataVersion extends Command
 
     public function handle(PriceDataVersion $version, PriceHistoryEpoch $epoch): int
     {
-        $version->bump();
+        // Both are attempted before judging either, so one failing never
+        // leaves the other unmoved.
+        $versionMoved = $version->bump();
+        $epochMoved = $epoch->bump();
 
-        if (! $epoch->bump()) {
-            $this->error('The price history epoch could not be bumped (the cache is not accepting writes); cached value series are still being served. Fix the cache and run this again.');
+        if (! $versionMoved || ! $epochMoved) {
+            $stale = array_filter([
+                $versionMoved ? null : 'cached price rows',
+                $epochMoved ? null : 'cached value series',
+            ]);
+
+            $this->error('The cache is not accepting writes, so these are still being served: '.implode(' and ', $stale).'. Fix the cache and run this again.');
 
             return self::FAILURE;
         }

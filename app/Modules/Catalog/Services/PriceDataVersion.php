@@ -44,7 +44,13 @@ final class PriceDataVersion
         return (int) $version;
     }
 
-    public function bump(): void
+    /**
+     * Moves the version on, and says whether every entry built under the old
+     * one is now unreachable: true when the version moved or its key was
+     * dropped (the next read reseeds at a random point), false when the cache
+     * refused both. Never throws.
+     */
+    public function bump(): bool
     {
         try {
             // Seed a lost key first, so the increment never creates it at 1
@@ -57,6 +63,8 @@ final class PriceDataVersion
             if ($version === false || (int) $version <= 1) {
                 Cache::put(self::KEY, self::seed(), self::TTL_SECONDS);
             }
+
+            return true;
         } catch (Throwable $e) {
             // The write that called this is already committed, so the caller
             // must not fail over the cache. Dropping the key makes the next
@@ -65,8 +73,12 @@ final class PriceDataVersion
 
             try {
                 Cache::forget(self::KEY);
+
+                return true;
             } catch (Throwable $forgetFailure) {
                 report($forgetFailure);
+
+                return false;
             }
         }
     }

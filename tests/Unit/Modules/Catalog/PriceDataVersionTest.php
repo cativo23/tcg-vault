@@ -167,6 +167,67 @@ test('a bump that cannot increment reports the failure, drops the version and ne
         ->and(priceVersion())->not->toBe($before);
 });
 
+test('a bump says it worked when it moved the version or dropped it, and not when the cache refused both', function () {
+    expect(app(PriceDataVersion::class)->bump())->toBeTrue();
+
+    Exceptions::fake();
+    Cache::extend('flaky-bump-result', fn () => Cache::repository(new class extends ArrayStore
+    {
+        public function increment($key, $value = 1)
+        {
+            throw new RuntimeException('redis went away');
+        }
+    }));
+    config(['cache.stores.flaky-bump-result' => ['driver' => 'flaky-bump-result'], 'cache.default' => 'flaky-bump-result']);
+
+    // The increment fails but the key is dropped, so every entry is unreachable.
+    expect(app(PriceDataVersion::class)->bump())->toBeTrue();
+
+    Cache::extend('dead-bump-result', fn () => Cache::repository(new class extends ArrayStore
+    {
+        public function increment($key, $value = 1)
+        {
+            throw new RuntimeException('redis went away');
+        }
+
+        public function forget($key)
+        {
+            throw new RuntimeException('redis is read-only');
+        }
+    }));
+    config(['cache.stores.dead-bump-result' => ['driver' => 'dead-bump-result'], 'cache.default' => 'dead-bump-result']);
+
+    expect(app(PriceDataVersion::class)->bump())->toBeFalse();
+});
+
+test('prices:bump-version fails when the price-data version could not be moved, even if the epoch moved', function () {
+    Exceptions::fake();
+    // Refuses only the price-data version's key; the epoch's key works.
+    Cache::extend('picky', fn () => Cache::repository(new class extends ArrayStore
+    {
+        public function increment($key, $value = 1)
+        {
+            if ($key === PriceDataVersion::KEY) {
+                throw new RuntimeException('redis went away');
+            }
+
+            return parent::increment($key, $value);
+        }
+
+        public function forget($key)
+        {
+            if ($key === PriceDataVersion::KEY) {
+                throw new RuntimeException('redis is read-only');
+            }
+
+            return parent::forget($key);
+        }
+    }));
+    config(['cache.stores.picky' => ['driver' => 'picky'], 'cache.default' => 'picky']);
+
+    $this->artisan('prices:bump-version')->assertFailed();
+});
+
 test('a bump never increments a missing key, so no reader sees a fresh 1 in between', function () {
     $seen = new ArrayObject;
     Cache::extend('watching', fn () => Cache::repository(new class($seen) extends ArrayStore

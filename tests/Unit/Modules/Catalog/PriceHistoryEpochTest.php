@@ -131,7 +131,8 @@ test('prices:bump-version fails with a clear message when the epoch could not be
     Exceptions::fake();
     useUnbumpableCache();
 
+    // Nothing can be written, so both are named as still being served.
     $this->artisan('prices:bump-version')
-        ->expectsOutputToContain('history epoch could not be bumped')
+        ->expectsOutputToContain('cached price rows and cached value series')
         ->assertFailed();
 });
