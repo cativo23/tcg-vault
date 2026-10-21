@@ -9,10 +9,12 @@ use Throwable;
 
 /**
  * One integer in the cache store that changes only when someone says past
- * price history was corrected by hand (`php artisan prices:bump-version`,
- * after a psql fix or a restored dump). Ordinary price writes never touch
- * it: they stamp today, and a cache keyed by day already ignores today's
- * rows for the days it holds. A cache of values computed from past days
+ * price history was corrected by hand: any write to a row dated before today,
+ * from psql or from the app (a data migration, tinker, a backfill, a restored
+ * dump), is followed by `php artisan prices:bump-version`. The PriceDataVersion
+ * listener does not move the epoch, so nothing else will. Ordinary price
+ * writes never touch it: they stamp today, and a cache keyed by day already
+ * ignores today's rows for the days it holds. A cache of values computed from past days
  * carries the epoch it was built under and is used only while it is the
  * same.
  *
@@ -39,7 +41,13 @@ final class PriceHistoryEpoch
         return (int) $epoch;
     }
 
-    public function bump(): void
+    /**
+     * Moves the epoch on, and says whether every entry built under the old
+     * one is now unreachable: true when the epoch moved or its key was
+     * dropped (the next read reseeds at a random point), false when the
+     * cache refused both. Never throws.
+     */
+    public function bump(): bool
     {
         try {
             // Seed a lost key first, so the increment never creates it at 1
@@ -52,6 +60,8 @@ final class PriceHistoryEpoch
             if ($epoch === false || (int) $epoch <= 1) {
                 Cache::put(self::KEY, self::seed(), self::TTL_SECONDS);
             }
+
+            return true;
         } catch (Throwable $e) {
             // Dropping the key makes the next read reseed at a random point,
             // which invalidates every entry built under the old epoch.
@@ -59,8 +69,12 @@ final class PriceHistoryEpoch
 
             try {
                 Cache::forget(self::KEY);
+
+                return true;
             } catch (Throwable $forgetFailure) {
                 report($forgetFailure);
+
+                return false;
             }
         }
     }

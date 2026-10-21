@@ -85,3 +85,53 @@ test('a bump that cannot increment reports the failure and drops the epoch', fun
     expect(Cache::get(PriceHistoryEpoch::KEY))->toBeNull()
         ->and(historyEpoch())->not->toBe($before);
 });
+
+test('a bump says it worked when it moved the epoch or dropped it', function () {
+    expect(app(PriceHistoryEpoch::class)->bump())->toBeTrue();
+
+    Exceptions::fake();
+    Cache::extend('flaky-increment', fn () => Cache::repository(new class extends ArrayStore
+    {
+        public function increment($key, $value = 1)
+        {
+            throw new RuntimeException('redis went away');
+        }
+    }));
+    config(['cache.stores.flaky-increment' => ['driver' => 'flaky-increment'], 'cache.default' => 'flaky-increment']);
+
+    // The increment failed but the key could be dropped, which invalidates just as well.
+    expect(app(PriceHistoryEpoch::class)->bump())->toBeTrue();
+});
+
+function useUnbumpableCache(): void
+{
+    Cache::extend('down', fn () => Cache::repository(new class extends ArrayStore
+    {
+        public function increment($key, $value = 1)
+        {
+            throw new RuntimeException('redis went away');
+        }
+
+        public function forget($key)
+        {
+            throw new RuntimeException('redis went away');
+        }
+    }));
+    config(['cache.stores.down' => ['driver' => 'down'], 'cache.default' => 'down']);
+}
+
+test('a bump says it failed when the epoch could neither be moved nor dropped', function () {
+    Exceptions::fake();
+    useUnbumpableCache();
+
+    expect(app(PriceHistoryEpoch::class)->bump())->toBeFalse();
+});
+
+test('prices:bump-version fails with a clear message when the epoch could not be bumped', function () {
+    Exceptions::fake();
+    useUnbumpableCache();
+
+    $this->artisan('prices:bump-version')
+        ->expectsOutputToContain('history epoch could not be bumped')
+        ->assertFailed();
+});
