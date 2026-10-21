@@ -10,7 +10,9 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Bus\UniqueLock;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -27,6 +29,10 @@ function publicCollector(string $username, bool $public = true, int $minor = 100
     foreach ([40, 10, 0] as $ago) {
         CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => $minor + $ago]);
     }
+
+    // Adding the copy queued a warm of its own (see the item observer) and took the
+    // user's unique lock; these tests are about the command's dispatches, so give it back.
+    (new UniqueLock(Cache::driver()))->release(new WarmValueSeriesJob($user->id));
 
     return $user;
 }
@@ -62,9 +68,9 @@ test('a visitor to an unwarmed user does compute the series, so the check above 
 });
 
 test('without --sync the command queues one job per public user and computes nothing itself', function () {
-    Queue::fake();
     $carlos = publicCollector('carlos');
     $ana = publicCollector('ana');
+    Queue::fake();
 
     expect(seriesComputations(fn () => $this->artisan('gallery:warm-value-series')->assertSuccessful()))->toBe(0);
 
@@ -74,8 +80,8 @@ test('without --sync the command queues one job per public user and computes not
 });
 
 test('a private collection is skipped: no job is queued and the sync run reports no users', function () {
-    Queue::fake();
     publicCollector('shy', public: false);
+    Queue::fake();
 
     $this->artisan('gallery:warm-value-series')->assertSuccessful();
     Queue::assertNothingPushed();
@@ -87,9 +93,9 @@ test('a private collection is skipped: no job is queued and the sync run reports
 });
 
 test('a suspended user is skipped, as their page is a 404', function () {
-    Queue::fake();
     $user = publicCollector('gone');
     $user->forceFill(['suspended_at' => now()])->save();
+    Queue::fake();
 
     $this->artisan('gallery:warm-value-series')->assertSuccessful();
 
@@ -158,7 +164,8 @@ test('the job warms its user and is unique per user for under an hour', function
     $job->handle();
 
     expect(seriesComputations(fn () => $this->get('/carlos/activity')->assertOk()))->toBe(0)
-        ->and($job)->toBeInstanceOf(ShouldBeUnique::class)
+        // Unique only until it starts, so an edit made during a run still queues the next one.
+        ->and($job)->toBeInstanceOf(ShouldBeUniqueUntilProcessing::class)
         ->and($job->uniqueId())->toBe((string) $user->id)
         ->and($job->uniqueFor)->toBeLessThan(3600)
         ->and($job->tries)->toBe(1);
