@@ -22,3 +22,12 @@ test('the production supervisor does not balance across queues', function () {
     expect($options->balance)->toBe('off');
     expect($options->queue)->toBe('default,imports');
 });
+
+test('Horizon keeps its recent and completed job records for minutes, not an hour', function () {
+    // Every job leaves a record in Redis (about 3 kB each) until it is
+    // trimmed, and the nightly price sync runs tens of thousands of them,
+    // so the retention window is what sets how much memory Redis holds
+    // once the drain is over.
+    expect(config('horizon.trim.recent'))->toBe(30);
+    expect(config('horizon.trim.completed'))->toBe(15);
+});

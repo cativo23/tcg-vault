@@ -118,10 +118,14 @@ return [
     // enough to investigate a real incident; the durable record is the
     // `failed_jobs` DB table (and, once shipped, Sentry — see
     // ROADMAP.md's v0.5.0), not this redis-side copy.
+    //
+    // Recent and completed records (about 3 kB each, one per job run) are
+    // kept for minutes: the nightly price sync runs tens of thousands of
+    // jobs, and an hour of them is what Redis would hold when it ends.
     'trim' => [
-        'recent' => 60,
+        'recent' => 30,
         'pending' => 60,
-        'completed' => 60,
+        'completed' => 15,
         'recent_failed' => 2880,
         'failed' => 2880,
         'monitored' => 10080,
