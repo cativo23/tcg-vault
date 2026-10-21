@@ -171,31 +171,32 @@ test('the job warms its user and is unique per user for under an hour', function
         ->and($job->tries)->toBe(1);
 });
 
-test('a run over 200 seconds for one user logs a warning, a faster one does not', function () {
+test('a run warns above 200 seconds for one user and not at or below it', function (int $seconds, bool $warns) {
     $user = publicCollector('carlos');
     $this->travelTo(now());
     $passes = 0;
-    $seconds = 0;
-    // The clock is frozen; the first query of a run moves it on, as a slow rebuild would.
-    DB::listen(function () use (&$passes, &$seconds) {
+    // The clock is frozen; the first query of the run moves it on, as a slow rebuild would.
+    DB::listen(function () use (&$passes, $seconds) {
         if ($passes++ === 0) {
             $this->travelTo(now()->addSeconds($seconds));
         }
     });
     Log::spy();
 
-    $seconds = 30;
     (new WarmValueSeriesJob($user->id))->handle();
-    Log::shouldNotHaveReceived('warning');
 
-    $passes = 0;
-    Cache::flush();
-    $seconds = 201;
-    (new WarmValueSeriesJob($user->id))->handle();
-    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []) => $message === 'gallery:warm-value-series run was slow for a user'
-        && $context['user_id'] === $user->id
-        && $context['seconds'] >= 200)->once();
-});
+    if ($warns) {
+        Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context = []) => $message === 'gallery:warm-value-series run was slow for a user'
+            && $context['user_id'] === $user->id
+            && $context['seconds'] === $seconds)->once();
+    } else {
+        Log::shouldNotHaveReceived('warning');
+    }
+})->with([
+    'well under' => [30, false],
+    'exactly 200' => [200, false],
+    '201' => [201, true],
+]);
 
 test('the job does nothing for a user who is gone, private or suspended', function () {
     $shy = publicCollector('shy', public: false);
