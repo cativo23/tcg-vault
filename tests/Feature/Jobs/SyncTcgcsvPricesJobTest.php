@@ -1040,6 +1040,43 @@ test('a default cardmarket price is no reference for a reverse holofoil link', f
     expect(tcgplayerRows($card))->toBe(0);
 });
 
+test('a default cardmarket price is no reference for a link tcgdex priced', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    // Far from the gap price: it would hold the price back if it were a reference.
+    $card = stampedPrintFixture(defaultMinor: 5000);
+    // An old tcgdex price on the product makes discovery keep the link as tcgdex-price.
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil', 'captured_on' => today()->subDays(10), 'currency' => 'USD', 'market_minor' => 55, 'raw' => ['productId' => 712938]]);
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->where('origin', 'tcgcsv')->value('market_minor'))->toBe(56);
+});
+
+test('a default cardmarket price is no reference when the link\'s product is no longer on the card', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture(entries: [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 999]]]);
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(tcgplayerRows($card))->toBe(0);
+});
+
+test('a default cardmarket price is no reference when the card has no main cardmarket product', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture(entries: [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['tcgplayer' => 712938]]]);
+    $card->update(['raw' => [...$card->raw, 'pricing' => ['cardmarket' => ['unit' => 'EUR']]]]);
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(tcgplayerRows($card))->toBe(0);
+});
+
 test('a third-party link with no cardmarket price at all is still unverified', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = stampedPrintFixture();
