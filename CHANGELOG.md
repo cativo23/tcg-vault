@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.11] - 2026-10-22
+
 ### Fixed
 
 - Cards of the 30th Classic Collection, MEE and part of MEP had no image: tcgdex
