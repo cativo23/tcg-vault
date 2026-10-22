@@ -228,8 +228,8 @@ final class TcgplayerLinkDiscovery
      * The product's subtype that prices this print. A base print needs its
      * own subtype (Normal / Holofoil / Reverse Holofoil); a special print is
      * a product of its own, so its only subtype is it, and so is a lone
-     * stamped print's (TCGplayer sells every 30th Celebration print as a
-     * Holofoil-only product, whatever tcgdex calls it). Null otherwise —
+     * stamped print's (the product is that print, so its only subtype prices
+     * it, whatever tcgdex calls the print). Null otherwise —
      * e.g. an old set's "1st Edition Holofoil", which this app has no key for.
      *
      * @param  array<string, TcgcsvPriceRow>  $subTypes
