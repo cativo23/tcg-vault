@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
+use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceRow;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
 use App\Support\DiscordAlerter;
@@ -65,9 +66,6 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
     /** When the last run that fetched every group finished; CheckPricingFreshness watches it. */
     public const LAST_RUN_CACHE_KEY = 'tcgcsv:last_run';
-
-    /** A build older than this is not stamped as today's price. */
-    private const MAX_FILL_BUILD_AGE_HOURS = 36;
 
     /**
      * A gap price this many times above or below the print's recent tcgcsv
@@ -168,7 +166,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         $mode = $this->mode();
         [$comparison, $gaps] = $this->compare($prices);
-        $buildTooOld = CarbonImmutable::parse($build)->lt(now()->subHours(self::MAX_FILL_BUILD_AGE_HOURS));
+        $buildTooOld = CarbonImmutable::parse($build)->lt(now()->subHours(TcgcsvFallbackPrices::MAX_BUILD_AGE_HOURS));
         [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold] = $mode === 'fill' && ! $buildTooOld
             ? $this->fillGaps($gaps, $build)
             : [0, [], 0, [], []];
