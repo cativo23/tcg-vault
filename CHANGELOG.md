@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A deck exclusive's non-holo print is priced from its own TCGplayer product.
+  tcgdex lists it as a separate product in TCGplayer's "Deck Exclusives" group,
+  which no set maps, and sends no TCGplayer price for it, so the app showed the
+  main product's cardmarket price (a few cents in EUR). The tcgcsv run now also
+  fetches the groups in `tcgcsv.extra_groups` (1840) and links a card's plain
+  `normal` print to such a product when the product's name and number are the
+  card's. About 19 cards are linked on the first run; their `normal` price
+  appears from then on, and existing prices and history are not changed.
+  A copy saved without a variant on such a card now shows the non-holo's price.
+
+No migrations. See "Extra groups" in `deploy/README.md`.
+
 ## [1.6.8] - 2026-10-22
 
 ### Fixed
