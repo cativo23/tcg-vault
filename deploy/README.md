@@ -126,8 +126,12 @@ docker compose -f compose.prod.yml exec app php artisan demo:seed-gallery
 # exiftool couldn't process.
 docker compose -f compose.prod.yml exec app php artisan photos:strip-metadata
 # Fills in images tcgdex's API leaves out (e.g. MEP and SVP promos) for
-# cards synced before the fallback existed. Idempotent; checks each file
-# exists before saving it.
+# cards synced before the fallback existed, and, for cards its asset server
+# has none for either (30th Classic Collection, MEE, part of MEP), the image
+# of the card's TCGplayer product — only when its plain-print links agree on
+# one product. Idempotent; checks each file exists before saving it. Add
+# --dry-run to list the pictures without writing them. Run it again after
+# new cards of those sets are synced and linked.
 docker compose -f compose.prod.yml exec app php artisan catalog:backfill-images
 # After a release that changes how the Activity chart is cached (the key
 # prefix, e.g. collection-value-series:v4, starts cold): fill it now

@@ -37,7 +37,7 @@
         <li><strong>Email:</strong> feedback and account emails (such as password resets and invitations) are sent through Resend, Inc., in the United States.</li>
         <li><strong>Error reports:</strong> when something breaks, a report goes to a self-hosted Bugsink instance on my own server infrastructure. It includes the request that failed, which can contain other things you typed.</li>
         <li><strong>Debug records:</strong> a short-lived log of failed requests and errors, which can include your IP address, account name and email, and the request details. It is deleted within 3 days. Passwords you type are masked before either record is kept.</li>
-        <li><strong>Card data and artwork:</strong> card images load directly from tcgdex (<code>assets.tcgdex.net</code>), so your browser contacts their servers and they see your IP address.</li>
+        <li><strong>Card data and artwork:</strong> card images load directly from tcgdex (<code>assets.tcgdex.net</code>) and, for the few cards tcgdex has no image for, from TCGplayer (<code>tcgplayer-cdn.tcgplayer.com</code>), so your browser contacts their servers and they see your IP address.</li>
     </ul>
     <p>Where data goes to the United States (Resend), the transfer relies on the EU–US Data Privacy Framework or the provider’s Standard Contractual Clauses. I don’t sell or share your data with anyone else.</p>
 
