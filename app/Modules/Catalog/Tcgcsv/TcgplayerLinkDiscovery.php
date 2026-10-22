@@ -9,6 +9,7 @@ use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Support\CardVariants;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Works out which TCGplayer product each of a card's prints is, from what
@@ -111,10 +112,14 @@ final class TcgplayerLinkDiscovery
             && $name !== '' && str_starts_with($this->words($identity['name']).' ', $name.' ');
     }
 
-    /** Lower-cased words separated by single spaces, so punctuation and spacing differences don't matter. */
+    /**
+     * Lower-cased words without accents, separated by single spaces, so
+     * punctuation, spacing and accent differences (TCGplayer spells
+     * "Flabébé" as "Flabebe") don't matter.
+     */
     private function words(string $text): string
     {
-        return trim((string) preg_replace('/[^\p{L}\p{N}]+/u', ' ', mb_strtolower($text)));
+        return trim((string) preg_replace('/[^a-z0-9]+/', ' ', Str::ascii(mb_strtolower($text))));
     }
 
     /**

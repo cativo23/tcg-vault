@@ -373,7 +373,18 @@ test('an extra-group product whose name only begins with the card\'s name is not
     expect(linksOf($card))->toBe([]);
 });
 
-test('a name with an apostrophe or accent still matches its product', function () {
+test('an accented card name matches the product TCGplayer spells without the accent', function () {
+    config(['tcgcsv.extra_groups' => [1840]]);
+    $card = linkCard('me05-062', ['pricing' => ['cardmarket' => ['idProduct' => 895847]], 'variants_detailed' => [
+        ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 897297, 'tcgplayer' => 707025]],
+    ]], 'me05', [24688], 'Flabébé');
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(1840, [707025 => ['Normal']]), deckIdentity('Flabebe - 062/084 (Non-Holo)'));
+
+    expect(linksOf($card))->toBe([['normal', 707025, 'Normal', 'tcgdex-thirdparty', 1840]]);
+});
+
+test('a name with an apostrophe still matches its product', function () {
     config(['tcgcsv.extra_groups' => [1840]]);
     $card = linkCard('me05-062', ['pricing' => ['cardmarket' => ['idProduct' => 895847]], 'variants_detailed' => [
         ['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 897297, 'tcgplayer' => 707025]],
