@@ -19,7 +19,10 @@ All notable changes to this project are documented here. Format follows
   Existing prices and history are not changed.
 
 No migrations. `TCGCSV_MODE=shadow` turns the fallback off with the rest of
-the fill.
+the fill; its comparison stats now count a frozen tcgdex price as a gap, so
+they shift while tcgdex is frozen. The day's tcgcsv log gains `fallback_kept`,
+`fallback_rejected_count` and `fallback_rejected_prints` (see "tcgcsv sync" in
+`deploy/README.md`).
 
 ## [1.6.7] - 2026-10-21
 

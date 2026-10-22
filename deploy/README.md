@@ -159,7 +159,8 @@ TCGplayer price was last updated over 3 days ago (tcgdex keeps re-sending a
 frozen price; rows with `origin = tcgcsv`); it never touches a tcgdex price
 that is current or one entered by hand.
 A gap price more than 3x off the print's tcgcsv price from the last 3 days,
-or 4x off its cardmarket price (moves under $2 excepted), is held back, named
+or off tcgdex's last TCGplayer price updated within 14 days, or 4x off its
+cardmarket price (moves under $2 excepted), is held back, named
 in the day's log (`gaps_implausible`) and sent to Discord — check that
 print's link. If the link is right (cardmarket often prices a stamped print
 like a staff or Pokémon Center promo as its plain one), confirm it as an admin
@@ -189,6 +190,23 @@ ago. A price with no update date counts as current, a kept price whose product
 or subtype no longer matches the print's link is ignored, and `shadow` mode
 leaves the sync as it was. tcgdex's price for a print tcgcsv has nothing kept
 for is still written as before.
+
+Two things to know when reading the day's log:
+
+- A print tcgdex already wrote for today can't be held back or written by the
+  evening run, so it is skipped before any check: it adds to neither
+  `gaps_unverified` nor `gaps_implausible_count`. If its tcgcsv price fails
+  the checks, the price is not kept and the print is counted in
+  `fallback_rejected_count` (the first ten named in `fallback_rejected_prints`).
+  A rising count means tcgdex's frozen price keeps being written; check those
+  prints' links.
+- A kept price lives its 36h even when the next evening's price for that print
+  fails its checks, so the midnight sync can still write the earlier one
+  (under 36h old when written).
+
+In `shadow` mode the comparison now sets a print whose tcgdex TCGplayer price
+was last updated over 3 days ago among `linked_without_tcgdex_price`, not
+`compared`, so the kept `tcgcsv:shadow:<day>` stats shift when tcgdex freezes.
 
 To roll back, set `TCGCSV_MODE=shadow` in `.env` and recreate the containers
 that read it (a plain `restart` keeps the old environment):
