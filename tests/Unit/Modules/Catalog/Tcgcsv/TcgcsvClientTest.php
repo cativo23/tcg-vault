@@ -114,6 +114,19 @@ test('reads a group\'s products as name and printed number by product id', funct
     ]);
 });
 
+test('a malformed product rejects the whole group, so a schema change never reads as no identities', function (mixed $product) {
+    Http::fake(['tcgcsv.com/tcgplayer/3/1840/products' => Http::response(['success' => true, 'results' => [
+        ['productId' => 707025, 'name' => 'Bastiodon - 062/084 (Non-Holo)', 'extendedData' => [['name' => 'Number', 'value' => '062/084']]],
+        $product,
+    ]], 200)]);
+
+    expect(fn () => app(TcgcsvClient::class)->products(1840))->toThrow(UnexpectedValueException::class);
+})->with([
+    'a string product id' => [['productId' => '707026', 'name' => 'Rampardos - 063/084']],
+    'no name' => [['productId' => 707026]],
+    'not an object' => ['junk'],
+]);
+
 test('a malformed products response surfaces instead of reading as an empty group', function () {
     Http::fake(['tcgcsv.com/tcgplayer/3/1840/products' => Http::response(['success' => false, 'results' => []], 200)]);
 

@@ -89,7 +89,8 @@ final class TcgcsvClient
     /**
      * A group's products as name and printed card number, by product id —
      * what identifies a product when its prices carry only an id. A product
-     * with no printed number (sealed product) has a null number.
+     * with no printed number (sealed product) has a null number; a malformed
+     * product rejects the whole group.
      *
      * @return array<int, array{name: string, number: ?string}>
      */
@@ -102,8 +103,10 @@ final class TcgcsvClient
 
         $products = [];
         foreach ($json['results'] as $product) {
+            // The whole group is rejected, as for prices: a schema change must
+            // not read as a group with no identities.
             if (! is_array($product) || ! is_int($product['productId'] ?? null) || ! is_string($product['name'] ?? null)) {
-                continue;
+                throw new UnexpectedValueException('tcgcsv products response has a malformed product.');
             }
 
             $number = null;
