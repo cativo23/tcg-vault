@@ -36,13 +36,12 @@ final class TcgplayerLinkDiscovery
         $skipped = 0;
 
         foreach ($this->candidates($card) as $variant => [$productId, $method, $ownProduct]) {
-            $verified = false;
-            $subTypes = $products[$productId] ?? null;
-
-            if ($subTypes === null && $ownProduct) {
-                $subTypes = $this->extraGroupProduct($card, $productId, $prices, $identities);
-                $verified = $subTypes !== null;
-            }
+            // Checked on every run, not only when the link is made: once it
+            // points at an extra group the product also turns up among the
+            // card's own groups' products, and must not lose its verification.
+            $subTypes = $ownProduct ? $this->extraGroupProduct($card, $productId, $prices, $identities) : null;
+            $verified = $subTypes !== null;
+            $subTypes ??= $products[$productId] ?? null;
 
             if ($subTypes === null) {
                 continue;
@@ -75,11 +74,9 @@ final class TcgplayerLinkDiscovery
      */
     private function extraGroupProduct(Card $card, int $productId, array $prices, array $identities): ?array
     {
-        $groups = config('tcgcsv.extra_groups');
-
-        foreach (is_array($groups) ? $groups : [] as $group) {
-            $subTypes = $prices[(int) $group][$productId] ?? null;
-            $identity = $identities[(int) $group][$productId] ?? null;
+        foreach (TcgcsvExtraGroups::ids() as $group) {
+            $subTypes = $prices[$group][$productId] ?? null;
+            $identity = $identities[$group][$productId] ?? null;
 
             if ($subTypes !== null && $identity !== null && $this->isPrintOf($card, $identity)) {
                 return $subTypes;
@@ -92,7 +89,7 @@ final class TcgplayerLinkDiscovery
     /**
      * Whether a product's printed number and name are the card's: the number
      * before the slash equals the card's local id, and the product's name
-     * starts with the card's.
+     * starts with the card's name as whole words ("Mew" is not "Mewtwo").
      *
      * @param  array{name: string, number: ?string}  $identity
      */
@@ -103,16 +100,16 @@ final class TcgplayerLinkDiscovery
         }
 
         $printed = ltrim(explode('/', $identity['number'])[0], '0');
-        $name = $this->plain($card->name);
+        $name = $this->words($card->name);
 
         return $printed !== '' && $printed === ltrim($card->local_id, '0')
-            && $name !== '' && str_starts_with($this->plain($identity['name']), $name);
+            && $name !== '' && str_starts_with($this->words($identity['name']).' ', $name.' ');
     }
 
-    /** Lower-cased letters and digits only, so punctuation and spacing differences don't matter. */
-    private function plain(string $text): string
+    /** Lower-cased words separated by single spaces, so punctuation and spacing differences don't matter. */
+    private function words(string $text): string
     {
-        return (string) preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($text));
+        return trim((string) preg_replace('/[^\p{L}\p{N}]+/u', ' ', mb_strtolower($text)));
     }
 
     /**
@@ -176,9 +173,9 @@ final class TcgplayerLinkDiscovery
 
             if (is_string($key)) {
                 $cardmarketProduct = $entry['thirdParty']['cardmarket'] ?? null;
+                $mainProduct = $raw['pricing']['cardmarket']['idProduct'] ?? null;
                 $ownProduct = $position === false && $plain && $key === 'normal'
-                    && is_int($cardmarketProduct)
-                    && $cardmarketProduct !== ($raw['pricing']['cardmarket']['idProduct'] ?? null);
+                    && is_int($cardmarketProduct) && is_int($mainProduct) && $cardmarketProduct !== $mainProduct;
 
                 $candidates[$key] ??= [$productId, 'tcgdex-thirdparty', $ownProduct];
             }
