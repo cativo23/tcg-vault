@@ -8,7 +8,7 @@ All notable changes to this project are documented here. Format follows
 
 ### Fixed
 
-- Prints no longer fall back to cardmarket's EUR when tcgdex stops updating
+- Linked prints no longer fall back to cardmarket's EUR when tcgdex stops updating
   its TCGplayer prices. The tcgdex sync now takes tcgcsv's TCGplayer price in
   the same pass, for a linked print tcgdex sent no price for or whose price
   TCGplayer last updated over 3 days ago (a frozen price tcgdex keeps
@@ -16,7 +16,8 @@ All notable changes to this project are documented here. Format follows
   tcgcsv run keeps each price that passes its checks for that sync, and a
   frozen tcgdex price is now counted as a gap, checked against tcgdex's own
   last price (14 days at most) like against tcgcsv's and cardmarket's.
-  Existing prices and history are not changed.
+  Existing prices and history are not changed. A print with no tcgcsv link
+  still shows tcgdex's price, frozen or not; linking it is a separate step.
 
 No migrations. `TCGCSV_MODE=shadow` turns the fallback off with the rest of
 the fill; its comparison stats now count a frozen tcgdex price as a gap, so

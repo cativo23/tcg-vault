@@ -159,7 +159,7 @@ TCGplayer price was last updated over 3 days ago (tcgdex keeps re-sending a
 frozen price; rows with `origin = tcgcsv`); it never touches a tcgdex price
 that is current or one entered by hand.
 A gap price more than 3x off the print's tcgcsv price from the last 3 days,
-or off tcgdex's last TCGplayer price updated within 14 days, or 4x off its
+or 3x off tcgdex's last TCGplayer price updated within 14 days, or 4x off its
 cardmarket price (moves under $2 excepted), is held back, named
 in the day's log (`gaps_implausible`) and sent to Discord — check that
 print's link. If the link is right (cardmarket often prices a stamped print
@@ -175,15 +175,17 @@ A hold is not permanent: once the old tcgcsv price is over 3
 days old, the new price is written unless cardmarket disagrees (by 4x, or
 15x for an admin link), and Discord
 gets a note naming it (`gaps_accepted_after_hold`). A link only tcgdex's
-third-party ids vouch for is not filled until a price exists to check it
-against (`gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
+third-party ids vouch for is not filled until a tcgcsv or cardmarket price
+exists to check it against (tcgdex's own price doesn't count for this one;
+`gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
 filled when the build is over 36h old. Any `TCGCSV_MODE` other than exactly
 `fill` runs as `shadow`.
 
 The evening run also keeps every price that passes its checks, for the tcgdex
 sync (`fallback_kept` in the day's log counts them): the cache holds one entry
 per print (`tcgcsv:fallback:<card id>|<variant>`) for 36h after tcgcsv's build.
-The tcgdex sync at midnight writes that price as the day's TCGplayer row
+Any tcgdex sync (the midnight one above all, but also adding a card or
+importing a set) writes that price as the day's TCGplayer row
 (`origin = tcgcsv`, USD) instead of tcgdex's when, for a linked print, tcgdex
 sent no TCGplayer price, a zero one, or one TCGplayer last updated over 3 days
 ago. A price with no update date counts as current, a kept price whose product
