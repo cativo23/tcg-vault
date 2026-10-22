@@ -381,11 +381,11 @@ function linkedDarkrai(): Card
 }
 
 /** The evening run's kept price for the card, as the store holds it. */
-function keptFor(Card $card, int $market = 14207, int $productId = 704873): TcgcsvFallbackPrices
+function keptFor(Card $card, int $market = 14207, int $productId = 704873, string $subType = 'Holofoil'): TcgcsvFallbackPrices
 {
     config(['tcgcsv.mode' => 'fill']);
     $store = new TcgcsvFallbackPrices;
-    $store->putMany([[$card->id, 'holofoil', new TcgcsvPriceRow(24688, $productId, 'Holofoil', $market, 13649)]], SYNC_FALLBACK_BUILD);
+    $store->putMany([[$card->id, 'holofoil', new TcgcsvPriceRow(24688, $productId, $subType, $market, 13649)]], SYNC_FALLBACK_BUILD);
 
     return $store;
 }
@@ -444,13 +444,31 @@ test('a linked print tcgdex sends no TCGplayer price for gets tcgcsv\'s in the s
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->sole()->origin)->toBe('tcgdex');
 });
 
-test('a TCGplayer price with no market price counts as missing and is replaced', function () {
+test('a TCGplayer price with a zero market price counts as missing and is replaced', function () {
     $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
     $card = linkedDarkrai();
 
     syncDarkrai([tcgplayerEntry(0, '2026-10-21T22:00:00Z')], keptFor($card));
 
     expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgcsv', 'market_minor' => 14207]);
+});
+
+test('a TCGplayer price with no market price counts as missing and is replaced', function () {
+    $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
+    $card = linkedDarkrai();
+
+    syncDarkrai([tcgplayerEntry(null, '2026-10-21T22:00:00Z')], keptFor($card));
+
+    expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgcsv', 'market_minor' => 14207]);
+});
+
+test('a stored tcgcsv price for another subtype than the link now points at is ignored', function () {
+    $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
+    $card = linkedDarkrai();
+
+    syncDarkrai([tcgplayerEntry(636, '2026-10-15T15:01:26Z')], keptFor($card, subType: 'Normal'));
+
+    expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgdex', 'market_minor' => 636]);
 });
 
 test('a TCGplayer price updated within three days is kept even with a tcgcsv price stored', function () {
