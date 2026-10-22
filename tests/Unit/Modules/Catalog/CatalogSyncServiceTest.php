@@ -543,3 +543,29 @@ test('after a sync that falls back, the collection shows tcgcsv\'s USD price ins
 
     expect(ShownPrices::totals($username))->toBe(['USD' => 14207]);
 });
+
+test('a deck exclusive normal print tcgdex never prices on TCGplayer gets tcgcsv\'s price in the same sync, and the collection shows it', function () {
+    $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-062', 'set_id' => $set->id, 'local_id' => '062', 'name' => 'Bastiodon']);
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 707025, 'sub_type' => 'Normal', 'group_id' => 1840, 'method' => 'tcgdex-thirdparty', 'verified_at' => now()]);
+    config(['tcgcsv.mode' => 'fill']);
+    $store = new TcgcsvFallbackPrices;
+    $store->putMany([[$card->id, 'normal', new TcgcsvPriceRow(1840, 707025, 'Normal', 122, 90)]], SYNC_FALLBACK_BUILD);
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-062')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-062', setTcgdexId: 'me05', localId: '062', name: 'Bastiodon', rarity: null, variants: ['normal' => true, 'holo' => true],
+        officialImageUrl: 'https://assets.tcgdex.net/en/me/me05/062/high.webp', raw: ['id' => 'me05-062'],
+        // tcgdex's only price for the print is the main product's cardmarket one.
+        prices: new DataCollection(PriceEntryData::class, [
+            new PriceEntryData(source: 'cardmarket', variant: 'normal', currency: 'EUR', marketMinor: 7, lowMinor: null, trendMinor: null, sourceUpdatedAt: CarbonImmutable::parse('2026-10-21T13:13:25Z'), raw: []),
+        ]),
+    ));
+
+    $synced = (new CatalogSyncService($provider, null, $store))->syncCard('me05-062');
+
+    $rows = CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->get();
+    expect($rows)->toHaveCount(1);
+    expect($rows->first()->only(['origin', 'variant', 'currency', 'market_minor']))->toBe(['origin' => 'tcgcsv', 'variant' => 'normal', 'currency' => 'USD', 'market_minor' => 122]);
+    expect(ShownPrices::totals(ShownPrices::ownPublicly($synced, 'normal')))->toBe(['USD' => 122]);
+});

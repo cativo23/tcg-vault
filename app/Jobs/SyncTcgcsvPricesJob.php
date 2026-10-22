@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
+use App\Modules\Catalog\Tcgcsv\TcgcsvExtraGroups;
 use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceRow;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
@@ -147,7 +148,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             return;
         }
 
-        [$prices, $fetched, $failedGroups, $partialRetry] = $this->fetchPrices($client, $build);
+        [$prices, $fetched, $failedGroups, $partialRetry, $identities] = $this->fetchPrices($client, $build);
 
         if ($failedGroups === []) {
             // Every group has this build; recorded before linking, so a
@@ -160,9 +161,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         $skipped = 0;
         $setIds = DB::table('set_tcgplayer_groups')->distinct()->pluck('set_id');
-        Card::whereIn('set_id', $setIds)->chunkById(200, function ($cards) use ($discovery, $prices, &$skipped) {
+        Card::whereIn('set_id', $setIds)->chunkById(200, function ($cards) use ($discovery, $prices, $identities, &$skipped) {
             foreach ($cards as $card) {
-                $skipped += $discovery->discover($card, $prices);
+                $skipped += $discovery->discover($card, $prices, $identities);
             }
         });
 
@@ -250,16 +251,24 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * and the remaining groups wait for the hourly retry. Anything else is
      * a bug and propagates.
      *
-     * @return array{array<int, array<int, array<string, TcgcsvPriceRow>>>, list<int>, list<int>, bool}
+     * The extra groups (config tcgcsv.extra_groups) are fetched too, with
+     * their products' names and numbers, which identify a product for a card
+     * no set maps it to; a group whose products can't be read counts as
+     * failed as a whole.
+     *
+     * @return array{array<int, array<int, array<string, TcgcsvPriceRow>>>, list<int>, list<int>, bool, array<int, array<int, array{name: string, number: ?string}>>}
      */
     private function fetchPrices(TcgcsvClient $client, string $build): array
     {
+        $extraGroups = collect(TcgcsvExtraGroups::ids());
         $all = DB::table('set_tcgplayer_groups')->distinct()->pluck('group_id')
             ->merge(CardTcgplayerLink::whereNotNull('group_id')->distinct()->pluck('group_id'))
+            ->merge($extraGroups)
             ->map(fn ($g) => (int) $g)->unique()->sort()->values();
         $groups = $all->reject(fn (int $g) => Cache::get("tcgcsv:group:{$g}") === $build)->values();
 
         $prices = [];
+        $identities = [];
         $fetched = [];
         $failed = [];
 
@@ -272,11 +281,18 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 foreach ($client->prices($groupId) as $row) {
                     $prices[$groupId][$row->productId][$row->subType] = $row;
                 }
+                if ($extraGroups->contains($groupId)) {
+                    usleep(self::PAUSE_MICROSECONDS);
+                    $identities[$groupId] = $client->products($groupId);
+                }
                 Cache::put("tcgcsv:group:{$groupId}", $build, now()->addDays(2));
                 $fetched[] = $groupId;
             } catch (ConnectionException|RequestException|UnexpectedValueException|MalformedCatalogResponseException $e) {
                 Log::channel('tcgcsv')->warning('tcgcsv group failed', ['group' => $groupId, 'error' => class_basename($e)]);
                 $failed[] = $groupId;
+                // Prices read before the products failed would be linked and
+                // priced without an identity check; the retry re-reads both.
+                unset($prices[$groupId]);
 
                 if ($e instanceof ConnectionException || ($e instanceof RequestException && $e->response->status() === 429)) {
                     // Stop: tcgcsv throttles a client for 10 minutes, and a
@@ -288,7 +304,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             }
         }
 
-        return [$prices, $fetched, $failed, $groups->count() < $all->count()];
+        return [$prices, $fetched, $failed, $groups->count() < $all->count(), $identities];
     }
 
     /**
@@ -323,7 +339,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $gaps = [];
         $priced = [];
 
-        $links = CardTcgplayerLink::query()->whereNotNull('group_id')->get(['card_id', 'variant', 'product_id', 'sub_type', 'group_id', 'method']);
+        $links = CardTcgplayerLink::query()->whereNotNull('group_id')->get(['card_id', 'variant', 'product_id', 'sub_type', 'group_id', 'method', 'verified_at']);
         foreach ($links as $link) {
             $row = $prices[(int) $link->group_id][$link->product_id][$link->sub_type] ?? null;
             if ($row === null || $row->marketMinor === null || $row->marketMinor <= 0) {
@@ -390,7 +406,10 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $since = $today->subDays(CardPriceResolver::STALE_AFTER_DAYS)->toDateString();
         $lastTcgcsv = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')
             ->where('captured_on', '>=', $since)->where('captured_on', '<', $today->toDateString()));
-        $cardmarket = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'cardmarket')->where('captured_on', '>=', $since));
+        $cardmarket = $this->withOwnCardmarket(
+            $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'cardmarket')->where('captured_on', '>=', $since)),
+            [...$gaps, ...$priced],
+        );
         $lastTcgdex = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgdex')
             ->where('source_updated_at', '>=', $today->subDays(self::TCGDEX_REFERENCE_DAYS)));
         $writtenToday = DB::table('card_price_snapshots')
@@ -485,15 +504,23 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * price to check it against, 'implausible' when it is far from any
      * reference (see MAX_RATIO_TO_LAST), otherwise 'accept'.
      *
+     * A link to an extra group's product whose identity was verified (name
+     * and number match the card's) is vouched for like an admin's: it is
+     * never 'unverified', and gets the wider cardmarket bound. Its
+     * cardmarket reference is the print's own average (withOwnCardmarket),
+     * the one on file for the card being the main product's.
+     *
      * @return 'accept'|'implausible'|'unverified'
      */
     private function verdict(CardTcgplayerLink $link, int $market, ?int $lastTcgcsv, ?int $lastTcgdex, ?int $cardmarket): string
     {
-        if ($lastTcgcsv === null && $cardmarket === null && (CardTcgplayerLink::TRUST[$link->method] ?? 0) < CardTcgplayerLink::TRUST['tcgdex-price']) {
+        $vouched = $link->method === 'admin' || $this->identityVerified($link);
+
+        if (! $vouched && $lastTcgcsv === null && $cardmarket === null && (CardTcgplayerLink::TRUST[$link->method] ?? 0) < CardTcgplayerLink::TRUST['tcgdex-price']) {
             return 'unverified';
         }
 
-        $cardmarketRatio = $link->method === 'admin' ? self::MAX_RATIO_TO_CARDMARKET_ADMIN : self::MAX_RATIO_TO_CARDMARKET;
+        $cardmarketRatio = $vouched ? self::MAX_RATIO_TO_CARDMARKET_ADMIN : self::MAX_RATIO_TO_CARDMARKET;
         if ($this->farFrom($market, $lastTcgcsv, self::MAX_RATIO_TO_LAST)
             || $this->farFrom($market, $lastTcgdex, self::MAX_RATIO_TO_LAST)
             || $this->farFrom($market, $cardmarket, $cardmarketRatio)) {
@@ -501,6 +528,57 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         }
 
         return 'accept';
+    }
+
+    /**
+     * Whether the link is to an extra group's product whose name and number
+     * were checked against the card's. An admin link is vouched for by the
+     * admin and keeps the cardmarket reference on file, whatever its group.
+     */
+    private function identityVerified(CardTcgplayerLink $link): bool
+    {
+        return $link->method !== 'admin' && $link->verified_at !== null
+            && in_array((int) $link->group_id, TcgcsvExtraGroups::ids(), true);
+    }
+
+    /**
+     * For each identity-verified link, the cardmarket reference becomes the
+     * print's own average from the card's `variants_detailed` entry for that
+     * product (EUR, in minor units), not the card's cardmarket price on file,
+     * which is the main product's; a print with no average has no reference.
+     *
+     * @param  array<string, int>  $cardmarket  "card_id|variant" → the cardmarket price on file
+     * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $pairs
+     * @return array<string, int>
+     */
+    private function withOwnCardmarket(array $cardmarket, array $pairs): array
+    {
+        $verified = array_filter(array_map(fn (array $pair) => $this->identityVerified($pair[0]) ? $pair[0] : null, $pairs));
+        if ($verified === []) {
+            return $cardmarket;
+        }
+
+        $raws = Card::whereIn('id', array_unique(array_map(fn (CardTcgplayerLink $l) => $l->card_id, $verified)))->pluck('raw', 'id');
+
+        foreach ($verified as $link) {
+            $key = "{$link->card_id}|{$link->variant}";
+            unset($cardmarket[$key]);
+
+            $raw = $raws[$link->card_id] ?? null;
+            foreach (is_array($raw) && is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [] as $entry) {
+                $average = is_array($entry) && ($entry['thirdParty']['tcgplayer'] ?? null) === $link->product_id
+                    ? ($entry['pricing']['cardmarket']['avg'] ?? null)
+                    : null;
+
+                if (is_numeric($average) && $average > 0) {
+                    $cardmarket[$key] = (int) round((float) $average * 100);
+
+                    break;
+                }
+            }
+        }
+
+        return $cardmarket;
     }
 
     /**

@@ -13,4 +13,12 @@ return [
     // doesn't price, and keeps each checked price for the tcgdex sync to
     // fall back on; 'shadow' only compares and writes nothing (rollback).
     'mode' => env('TCGCSV_MODE', 'fill'),
+
+    // TCGplayer groups whose products belong to many sets, so no set maps
+    // them (1840 is "Deck Exclusives": a deck's non-holo print is a product
+    // of its own there). A card links to one of their products only when it
+    // is that card's plain `normal` print on a product of its own and the
+    // product's number, total and name match the card; removing a group here
+    // does not undo links it already made.
+    'extra_groups' => [1840],
 ];

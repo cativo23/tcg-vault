@@ -14,7 +14,7 @@ use UnexpectedValueException;
 
 /**
  * tcgcsv.com's TCGplayer mirror: the daily build time and one group's
- * prices. Every request carries the custom User-Agent tcgcsv asks for;
+ * prices or products. Every request carries the custom User-Agent tcgcsv asks for;
  * callers fetch each group at most once per build.
  */
 final class TcgcsvClient
@@ -84,6 +84,42 @@ final class TcgcsvClient
     public function prices(int $groupId): array
     {
         return $this->parser->parse($groupId, json_decode($this->boundedBody("tcgplayer/3/{$groupId}/prices"), true));
+    }
+
+    /**
+     * A group's products as name and printed card number, by product id —
+     * what identifies a product when its prices carry only an id. A product
+     * with no printed number (sealed product) has a null number; a malformed
+     * product rejects the whole group.
+     *
+     * @return array<int, array{name: string, number: ?string}>
+     */
+    public function products(int $groupId): array
+    {
+        $json = json_decode($this->boundedBody("tcgplayer/3/{$groupId}/products"), true);
+        if (! is_array($json) || ($json['success'] ?? null) !== true || ! is_array($json['results'] ?? null)) {
+            throw new UnexpectedValueException('tcgcsv products response is not a successful list.');
+        }
+
+        $products = [];
+        foreach ($json['results'] as $product) {
+            // The whole group is rejected, as for prices: a schema change must
+            // not read as a group with no identities.
+            if (! is_array($product) || ! is_int($product['productId'] ?? null) || ! is_string($product['name'] ?? null)) {
+                throw new UnexpectedValueException('tcgcsv products response has a malformed product.');
+            }
+
+            $number = null;
+            foreach (is_array($product['extendedData'] ?? null) ? $product['extendedData'] : [] as $field) {
+                if (is_array($field) && ($field['name'] ?? null) === 'Number' && is_string($field['value'] ?? null)) {
+                    $number = $field['value'];
+                }
+            }
+
+            $products[$product['productId']] = ['name' => $product['name'], 'number' => $number];
+        }
+
+        return $products;
     }
 
     /**
