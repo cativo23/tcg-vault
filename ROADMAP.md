@@ -1,11 +1,31 @@
 # Roadmap
 
-The path from v0.5.0 to a v1.0 beta. Scope and ordering follow one rule:
+The path from v0.5.0 to a v1.0 beta, and what came after. Scope and ordering follow one rule:
 **irreversible risk first, then correctness, then the things a stranger
 sees.** A bug can be fixed after the fact; a lost database cannot.
 
 Versions follow [SemVer](https://semver.org/); every shipped item lands in
 `CHANGELOG.md` under its release.
+
+## Where things stand
+
+Checked against the code and production on 2026-10-22 (v1.6.11 live).
+
+- Three accounts: the owner, one other collector and the example gallery.
+  Registration is closed (invite-only) and two invites exist in total, so
+  the waves have barely started. The catalog holds 4,503 cards in 29 sets, the database is
+  235 MB, and `failed_jobs` holds 2 rows (a Telescope job from 2026-10-06,
+  and one `WarmValueSeriesJob` that hit its attempt limit on the morning of
+  2026-10-22, cause not investigated).
+- Nightly database dumps and photo archives are written and kept for 14
+  days (latest: 2026-10-22). They are still on the same host.
+- Prices: TCGplayer prices arrive from tcgdex and from tcgcsv. tcgdex froze
+  its TCGplayer prices on 2026-10-14, so since v1.6.8 tcgcsv's price takes
+  over for every linked print the same night (3,661 tcgcsv rows against
+  3,750 tcgdex rows on the day checked). Only `swsh3` has no TCGplayer
+  group, so none of its prints are linked.
+- Static analysis runs at Larastan level 8; CI runs Pint, Larastan, Pest and
+  `npm run build` plus a dependency audit and a production image build.
 
 ## Beta staging
 
@@ -14,8 +34,13 @@ arrive while the failure signal is still small enough to read.
 
 | Stage | Registration | What it unlocks |
 | --- | --- | --- |
-| **v1.0 — wide private beta** | Invite-only, via the existing switch in `Staff/PlatformSettings` | Invites go out in waves; error tracking accumulates real traffic; bugs get reported by people who can be asked a follow-up question |
-| **v1.1 — public beta** | Open to anyone | Mandatory email verification, signup abuse controls, uploaded-photo moderation, a terms-of-service with real teeth |
+| **v1.0 — wide private beta** (open since 2026-09-29) | Invite-only, via the existing switch in `Staff/PlatformSettings` | Invites go out in waves; error tracking accumulates real traffic; bugs get reported by people who can be asked a follow-up question |
+| **Public beta** (not scheduled; it kept the label "v1.1" only until v1.1.0 shipped special prints) | Open to anyone | Mandatory email verification, signup abuse controls, uploaded-photo moderation, a terms-of-service with real teeth |
+
+Of the public-beta list, none is built yet. Email verification is not
+mandatory: invite registration marks the address verified, and `User`
+deliberately does not implement `MustVerifyEmail`. Staff can suspend or delete
+a member, but the code has no review of an uploaded photo.
 
 Invite-only does not exempt v1.0 from a privacy policy, a feedback
 channel, or a live example gallery — the first two because real people's
@@ -35,12 +60,16 @@ roadmap safe to attempt.
   limit raised 256M → 384M for `BGREWRITEAOF`'s fork/copy-on-write
   headroom on top of Horizon's own ~160M telemetry floor; confirmed
   against live polaris2 usage (3.7GB free host RAM) before sizing it.
-- ~~**Persist `storage/logs`**~~ — done. `app-logs` named volume shared
-  across `app`/`horizon`/`scheduler` (they all write to the same
-  `storage_path('logs/laravel.log')`), `LOG_CHANNEL=daily` with 14-day
-  retention. Previously the logs lived in the container's writable layer
-  and went away with it on every deploy — the incident and the evidence
-  for it lost in the same motion.
+- **Persist `storage/logs`** — built, but not what production runs. The
+  `app-logs` named volume is mounted on `app`/`horizon`/`scheduler`, yet
+  production's `.env` sets `LOG_CHANNEL=stderr` (with `LOG_LEVEL=warning`), so
+  `storage/logs` is empty and the logs live in each container's Docker log:
+  10 MB × 5 files, and gone when the container is recreated, which every
+  deploy does. That is the original problem again (the evidence lost with
+  the container): the Redis name-resolution error seen at 18:08 UTC on
+  2026-10-22 was no longer readable after that evening's deploy. Open item
+  below: decide between `daily` on the volume and shipping the container logs
+  to Loki.
 - ~~**Error tracking**~~ — done. Self-hosted Bugsink (Sentry-protocol-
   compatible) on `space-server`, at `errors.cativo.dev` (VPN-gated
   dashboard). `app`/`horizon`/`scheduler` all reach it internally as
@@ -69,7 +98,9 @@ roadmap safe to attempt.
   `catalog:refresh-prices` re-dispatches every card daily regardless, so
   no manual re-sync was needed.
 - ~~**Schedule `telescope:prune`**~~ — done. Daily, `--hours=48`, matching
-  this project's other short-lived operational data retention.
+  this project's other short-lived operational data retention. Telescope has
+  been switched off in production since v1.6.6, so the prune has nothing to
+  do there; it stays for local development.
 - ~~**Verify the production environment**~~ — done. `APP_DEBUG=false` and
   `SESSION_SECURE_COOKIE=true` confirmed live on polaris2's actual `.env`
   (not just the template), and added as an explicit line in
@@ -209,40 +240,118 @@ everything above.
 - Production clean on the day: no failed jobs, no open errors beyond
   tcgdex's own occasional 503s, which retries absorb.
 
+## Shipped since v1.0.0
+
+Everything here is live; `CHANGELOG.md` has the detail.
+
+| Release | What it brought |
+| --- | --- |
+| v1.0.1 – v1.0.2 | Gallery speed (30-day price window, one load per page); Tailwind 4; the nightly sync retries tcgdex 5xx/429 quietly instead of reporting each attempt |
+| v1.1.0 – v1.1.2 | Special prints as their own variants (pattern reverses, cosmos holos, stamped promos) and hand-entered market prices behind `manage-catalog-prices`; a frozen price source no longer outranks a current one |
+| v1.2.0 – v1.2.1 | Price `origin` (`tcgdex`/`tcgcsv`/`hand`) and provenance labels; the tcgcsv shadow sync with its set→group mapping |
+| v1.3.0 – v1.3.1 | tcgcsv fills TCGplayer price gaps (held back and alerted when implausible); a wider cardmarket bound for admin-confirmed links |
+| v1.4.0 | Confetti foil in the "other print" picker |
+| v1.5.0 | My sets, the set grid with one-tap add and undo, "Add a set", per-user import and add limits |
+| v1.6.0 – v1.6.1 | Variant pills and chart ranges (1M–1Y) on the card page and Activity |
+| v1.6.2 – v1.6.7 | Gallery and Activity performance: price index, cached deciding rows, price-data version, Postgres memory, Telescope off, background chart warming |
+| v1.6.8 | tcgcsv replaces a missing or frozen tcgdex TCGplayer price in the same sync |
+| v1.6.9 | Deck-exclusive non-holo prints priced from TCGplayer's Deck Exclusives group |
+| v1.6.10 | 30th Celebration, MEP promos and a few other stamped prints linked to their product and priced |
+| v1.6.11 | Card images from the TCGplayer product for cards tcgdex has none for (`catalog:backfill-images`) |
+
+## Open follow-ups
+
+Checked against the code and production on 2026-10-22. Ordered by how soon
+each one costs something.
+
+- **Decide where logs live.** Production runs `LOG_CHANNEL=stderr`, so logs
+  are capped at 10 MB × 5 per container and vanish at every deploy (see
+  v0.6.0, "Persist `storage/logs`"). Either set `LOG_CHANNEL=daily` on the
+  existing volume (14 days) or ship container logs to the host's Loki and
+  say so in `deploy/README.md`. Until then an incident that straddles a
+  deploy cannot be read afterwards.
+- **Map `swsh3` (Darkness Ablaze) to its TCGplayer group.** It is the only
+  set without a group, so its 335 priced prints can never be linked or
+  taken over from tcgdex's frozen price; no collection holds one yet. The
+  group is 2675 ("SWSH03: Darkness Ablaze"); `catalog:propose-tcgplayer-groups`
+  cannot find it by abbreviation (tcgdex says `DAA`, tcgcsv `SWSH03`), so it
+  needs `--set=swsh3 --group=2675` once the cards match. Any other SWSH set
+  added later needs the same hand mapping.
+- **The tcgdex release that carries the merged data fixes.** The four
+  upstream pull requests (MEP and SVP group ids, 30th Celebration, 30th
+  Classic Collection) are all merged, but tcgdex's latest release is still
+  v2.48.0 (2026-09-16) and its API still sends no TCGplayer price for
+  `mep`, `30th` or `30th-c`. When it ships, check that those sets' links and
+  prices do not change and that the images and prices tcgcsv fills agree
+  with tcgdex's. The unresolved question of why tcgdex nulls about half its
+  TCGplayer entries each night (and froze the rest on 2026-10-14) is still
+  open upstream.
+- **Retire the hand-entered prices.** The tcgcsv plan's last phase: 10 manual
+  rows over 7 prints remain, and all 7 now have a tcgcsv link, so tcgcsv's
+  price already shows. Delete or archive them, and add the `price_source`
+  CSV column, which does not exist yet.
+- **Ten MEP cards have no TCGplayer link and no image**: mep-055 to
+  mep-063 and mep-Museum. They show the placeholder and a Cardmarket price.
+  Link them by hand (admin) or wait for tcgdex.
+- **Deck-exclusive prints with no TCGplayer id from tcgdex** (about 26
+  entries) are not covered by the Deck Exclusives group; each needs an admin
+  link.
+- **A copy saved without a variant on a deck-exclusive card shows the
+  non-holo price** (accepted for v1.6.9; other collectors' me05-062, 070
+  and 084).
+- **A flaky test:** `CollectionValueSeriesTest`, "warming sums the totals
+  over card chunks…", failed on CI on 2026-10-22 and passed on rerun. The
+  suspect is a query with no `ORDER BY`; unverified.
+- **Measure the Activity chart inside the nightly price window** (00:00–01:00
+  UTC) with real traffic, and watch the "activity chart built on a page
+  view" warnings against the triggers for a precomputed table (more than 3
+  builds a week for two weeks, one over 10 s for a non-owner, ten or more
+  public users, a warm run over 200 s).
+- **Deferred performance and operations work** (none of it urgent): Redis
+  has no `maxmemory` (its 384 MB container limit is the only bound);
+  raise Redis from 0.5 to 1.0 CPU and the scheduler from 0.25 to 0.5 in
+  `compose.prod.yml` (both are throttled during the nightly sync);
+  `pg_stat_statements`, `track_io_timing` and `work_mem` in one Postgres
+  restart; a `memory_limit` of 128M and FPM `max_requests` on the app service;
+  `srcset` images.
+- **Slim the CI/CD runs.** A feature plus its release runs the full suite
+  three to four times. Wanted later, not mid-task.
+- **Larastan level 9** (see "Unscheduled" above) is unchanged.
+
 ## Beyond v1
 
 Ordered by how often a collector is likely to ask for it, not by how
-interesting it is to build.
+interesting it is to build. None of the first five exists in the code yet.
 
 - Wishlist / want-list
 - Multiple collections per user (binders, a for-sale pile)
 - Deck lists
 - Trade and sale tracking
 - Usage analytics
-- **tcgcsv.com as the primary TCGplayer price source.** tcgdex prices
-  TCGplayer only for sets with a set-level group id and its API changes
-  only on a release, so whole sets went weeks without USD prices (30th
-  Celebration, MEP promos) and Prize Pack prints never got one. tcgdex
+- **tcgcsv.com as the primary TCGplayer price source** — mostly done. tcgdex
+  prices TCGplayer only for sets with a set-level group id and its API
+  changes only on a release, so whole sets went weeks without USD prices
+  (30th Celebration, MEP promos) and Prize Pack prints never got one. tcgdex
   itself reads TCGplayer prices from tcgcsv, so going direct continues the
   same series a day fresher; tcgdex stays the catalog and Cardmarket source.
-  Rows keep `source='tcgplayer'` with a new `origin` column
-  (`tcgdex`/`tcgcsv`/`hand`), so history, deltas and charts are untouched.
-  Prints link to TCGplayer products once (from tcgdex ids, card number in
-  the set's group, or an admin entry for Prize Pack), and one daily job
-  fetches about one request per group, following tcgcsv's usage rules
-  (custom User-Agent, check `last-updated.txt`, one pull a day). Phases,
-  each its own PR: schema + provenance labels; shadow sync that only
-  compares (5–7 days); fill gaps where tcgdex has no current price; primary
-  behind `TCGCSV_MODE` for rollback; then retire the hand-entered prices
-  and add a `price_source` CSV column. No backfill: tcgcsv's history
-  archive is withdrawn. Risks: a one-person service, and TCGplayer's own
-  data terms are unverified.
-- **Give the cache its own Redis instance.** It currently shares the
-  Horizon queue's Redis, and the two need conflicting
-  `maxmemory-policy` values (`noeviction` for queue data, `allkeys-lru`
-  for cache), so they can't share a process regardless of memory sizing.
-  Evaluate alongside centralizing Redis across other projects on the
-  same host rather than standing up a second one-off instance here.
+  Rows keep `source='tcgplayer'` with an `origin` column, so history, deltas
+  and charts are untouched. Prints link to TCGplayer products once (from
+  tcgdex ids, card number in the set's group, or an admin entry), and one
+  daily job fetches about one request per group, following tcgcsv's usage
+  rules (custom User-Agent, check `last-updated.txt`, one pull a day).
+  Phases: ~~schema and provenance labels~~ (v1.2.0), ~~shadow sync~~ (v1.2.0),
+  ~~fill gaps~~ (v1.3.0), ~~replace a missing or frozen tcgdex price in the
+  same sync~~ (v1.6.8, behind `TCGCSV_MODE`, which is `fill` in production and
+  `shadow` rolls it back). Left: retire the hand-entered prices and add the
+  `price_source` CSV column (see Open follow-ups). No backfill: tcgcsv's
+  history archive is withdrawn. Risks: a one-person service, and TCGplayer's
+  own data terms are unverified.
+- **Give the cache its own Redis instance.** It still shares the Horizon
+  queue's Redis (checked: one instance, `noeviction`, no `maxmemory`, AOF
+  on, 9 MB used). A cache wants an eviction policy and a queue must never
+  evict, so they cannot share a process once memory is bounded. Evaluate
+  alongside centralizing Redis across other projects on the same host
+  rather than standing up a second one-off instance here.
 - **Copy the backups off the host.** The nightly files still sit on the
   same VPS as the data, so losing polaris2 loses them too. The free tier
   (Cloudflare R2, 10GB) needs billing enabled on the Cloudflare account
