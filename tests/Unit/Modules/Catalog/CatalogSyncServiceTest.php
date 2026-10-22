@@ -500,6 +500,23 @@ test('in shadow mode a stale TCGplayer price is written as before', function () 
     expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgdex', 'market_minor' => 636]);
 });
 
+test('the service the container builds falls back too, since every caller resolves it that way', function () {
+    $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
+    $card = linkedDarkrai();
+    keptFor($card);
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(new CardDetailData(
+        tcgdexId: 'me05-116', setTcgdexId: 'me05', localId: '116', name: 'Mega Darkrai ex', rarity: null, variants: ['holo' => true],
+        officialImageUrl: 'https://assets.tcgdex.net/en/me/me05/116/high.webp', raw: ['id' => 'me05-116'],
+        prices: new DataCollection(PriceEntryData::class, [tcgplayerEntry(636, '2026-10-15T15:01:26Z')]),
+    ));
+    app()->instance(CardCatalogProvider::class, $provider);
+
+    app(CatalogSyncService::class)->syncCard('me05-116');
+
+    expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgcsv', 'market_minor' => 14207]);
+});
+
 test('after a sync that falls back, the collection shows tcgcsv\'s USD price instead of cardmarket\'s EUR', function () {
     $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
     $card = linkedDarkrai();

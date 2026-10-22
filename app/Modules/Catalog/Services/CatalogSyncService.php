@@ -196,7 +196,10 @@ final class CatalogSyncService
      */
     private function fallbacksFor(Card $card, CardDetailData $cardDetail): array
     {
-        if ($this->fallbackPrices === null || ! $this->fallbackPrices->enabled()) {
+        // The container leaves an optional, unbound class parameter at its
+        // default, so the store is resolved here like the image fallback.
+        $store = $this->fallbackPrices ?? app(TcgcsvFallbackPrices::class);
+        if (! $store->enabled()) {
             return [];
         }
 
@@ -214,7 +217,7 @@ final class CatalogSyncService
 
         $staleBefore = CarbonImmutable::today()->subDays(CardPriceResolver::STALE_AFTER_DAYS);
         $use = [];
-        foreach ($this->fallbackPrices->forCard($card->id, array_values(array_map('strval', $links->keys()->all()))) as $variant => $entry) {
+        foreach ($store->forCard($card->id, array_values(array_map('strval', $links->keys()->all()))) as $variant => $entry) {
             $link = $links->get($variant);
             if ($link === null || $entry['productId'] !== (int) $link->product_id || $entry['subType'] !== $link->sub_type) {
                 continue;
@@ -225,7 +228,7 @@ final class CatalogSyncService
                 && ($price->marketMinor ?? 0) > 0
                 && ($price->sourceUpdatedAt === null || ! $price->sourceUpdatedAt->lt($staleBefore));
             if (! $current) {
-                $use[$variant] = $this->fallbackPrices->snapshotAttributes($entry);
+                $use[$variant] = $store->snapshotAttributes($entry);
             }
         }
 
