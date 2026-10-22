@@ -9,6 +9,7 @@ use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
+use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
@@ -433,6 +434,91 @@ test('a last tcgdex TCGplayer price TCGplayer updated long ago no longer holds a
     runTcgcsvSync();
 
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('origin', 'tcgcsv')->value('market_minor'))->toBe(1500);
+});
+
+function fallbackKept(Card $card): array
+{
+    return app(TcgcsvFallbackPrices::class)->forCard($card->id, ['holofoil:cosmos']);
+}
+
+test('a run keeps the price it fills for the next tcgdex sync', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(fallbackKept($card)['holofoil:cosmos']['market'] ?? null)->toBe(129);
+});
+
+test('a run also keeps tcgcsv\'s price for a print tcgdex still prices, without writing a row for it', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDay()]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(fallbackKept($card)['holofoil:cosmos']['market'] ?? null)->toBe(129);
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('origin', 'tcgcsv')->count())->toBe(0);
+});
+
+test('a price that fails its checks is not kept', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(5)]);
+    gapFake([['productId' => 659941, 'lowPrice' => 9.00, 'marketPrice' => 15.00, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(fallbackKept($card))->toBe([]);
+});
+
+test('shadow mode keeps nothing', function () {
+    config(['tcgcsv.mode' => 'shadow']);
+    $card = gapFixture();
+    gapFake();
+
+    runTcgcsvSync();
+
+    config(['tcgcsv.mode' => 'fill']);
+    expect(fallbackKept($card))->toBe([]);
+});
+
+test('a build too old to fill keeps nothing', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $this->travelTo(CarbonImmutable::parse('2026-10-09 20:30', 'UTC'));
+    $card = gapFixture();
+    gapFake(); // build 2026-10-07T20:05
+
+    runTcgcsvSync();
+
+    expect(fallbackKept($card))->toBe([]);
+});
+
+test('a print tcgdex already wrote for today is not held back or reported when its tcgcsv price looks wrong', function () {
+    config(['tcgcsv.mode' => 'fill', 'services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(5)]);
+    Http::fake(['discord.com/*' => Http::response('', 204)]);
+    gapFake([['productId' => 659941, 'lowPrice' => 9.00, 'marketPrice' => 15.00, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(Cache::has('tcgcsv:held:'.$card->id.'|holofoil:cosmos'))->toBeFalse();
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'discord.com'));
+});
+
+test('a print tcgdex already wrote for today keeps its row, and tcgcsv\'s price is kept for the next sync', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    $tcgdex = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(5)]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect($tcgdex->fresh()->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgdex', 'market_minor' => 120]);
+    expect(fallbackKept($card)['holofoil:cosmos']['market'] ?? null)->toBe(129);
 });
 
 test('shadow mode still writes no price at all', function () {
