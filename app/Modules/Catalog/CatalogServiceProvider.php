@@ -6,11 +6,13 @@ namespace App\Modules\Catalog;
 
 use App\Modules\Catalog\Contracts\CardCatalogProvider;
 use App\Modules\Catalog\Contracts\CardImageFallback;
+use App\Modules\Catalog\Contracts\LinkedCardImage;
 use App\Modules\Catalog\Listeners\BumpPriceDataVersion;
 use App\Modules\Catalog\Providers\TcgdexCardCatalogProvider;
 use App\Modules\Catalog\Services\TcgdexImageFallback;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceParser;
+use App\Modules\Catalog\Tcgcsv\TcgplayerProductImage;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
@@ -26,6 +28,8 @@ final class CatalogServiceProvider extends ServiceProvider
             CardImageFallback::class,
             fn () => new TcgdexImageFallback((string) config('tcgdex.base_url')),
         );
+
+        $this->app->singleton(LinkedCardImage::class, TcgplayerProductImage::class);
 
         $this->app->singleton(
             CardCatalogProvider::class,

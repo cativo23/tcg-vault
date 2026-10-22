@@ -6,6 +6,18 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Cards of the 30th Classic Collection, MEE and part of MEP had no image: tcgdex
+  sends none and its asset server has none. `catalog:backfill-images` now falls
+  back to the image of the card's TCGplayer product, when the card's plain-print
+  links agree on one product and TCGplayer's CDN serves it. Run it once after
+  deploying (add `--dry-run` to list the pictures first); up to 77 of the 87
+  cards get one, the ones that have a link. The privacy page now names
+  TCGplayer's image host.
+
+No migrations.
+
 ## [1.6.10] - 2026-10-22
 
 ### Fixed
