@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.8] - 2026-10-22
+
 ### Fixed
 
 - Linked prints no longer fall back to cardmarket's EUR when tcgdex stops updating
