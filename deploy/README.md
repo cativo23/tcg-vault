@@ -233,6 +233,31 @@ are deleted (`card_tcgplayer_links.group_id = 1840`). The resolver prefers a
 `normal` TCGplayer price to a `holofoil` one, so a copy saved without a
 variant on such a card shows the non-holo's price.
 
+**Stamped prints (30th Celebration).** tcgdex lists every 30th Celebration print
+with a 30th-anniversary stamp, mostly as `normal`, while TCGplayer sells each as
+a Holofoil-only product. Two rules let such a card price from tcgcsv:
+
+- *Subtype.* A card whose only standard `variants_detailed` entry is stamped or
+  foil, on the card's own cardmarket product, as a `normal` or `holofoil` print,
+  links to the only subtype its product has (instead of demanding `Normal` and
+  being counted in `skipped_no_matching_subtype`). Cards with several entries,
+  plain prints and reverse prints are unchanged.
+- *Reference.* tcgdex files the cardmarket price of a card with one base
+  product under `default`, so a third-party link for a `normal` or `holofoil`
+  print found no cardmarket price under its own variant and stayed
+  `unverified` (counted in `gaps_unverified`). It now uses the `default` one
+  when every entry carrying the link's TCGplayer product is on the card's
+  top-level cardmarket product. The usual bounds still apply.
+
+Known limits: once tcgdex prices these sets itself, it files the price under
+TCGplayer's subtype label, which can differ from the link's variant key (a
+`normal` link on a Holofoil product), so the print can get two links and two
+rows; when tcgdex flips a card between its `normal` and stamped-`holo` shapes,
+the old link stays. Neither gives a wrong price. A cheap print's `default`
+reference is within the 200-minor floor of almost any price, so it is a weak
+check there; it only matters for a link's first write, since later prices are
+bounded by its own last tcgcsv price.
+
 In `shadow` mode the comparison now sets a print whose tcgdex TCGplayer price
 was last updated over 3 days ago among `linked_without_tcgdex_price`, not
 `compared`, so the kept `tcgcsv:shadow:<day>` stats shift when tcgdex freezes.

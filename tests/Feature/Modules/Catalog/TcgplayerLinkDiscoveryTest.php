@@ -417,3 +417,111 @@ test('a link an admin confirmed keeps its verification when discovery finds the 
     $link = CardTcgplayerLink::where('card_id', $card->id)->first();
     expect($link->method)->toBe('admin')->and($link->verified_at->equalTo($verified))->toBeTrue();
 });
+
+/**
+ * A 30th Celebration print: tcgdex's only entry is stamped, on the card's own
+ * cardmarket product, and TCGplayer sells it as a Holofoil-only product.
+ *
+ * @param  array<string, mixed>  $entry  overrides for the entry
+ * @param  list<array<string, mixed>>  $more  further entries of the card
+ */
+function stampedCard(array $entry = [], array $more = [], string $tcgdexId = '30th-018', string $set = '30th', array $groups = [24722]): Card
+{
+    return linkCard($tcgdexId, ['pricing' => ['cardmarket' => ['unit' => 'EUR', 'idProduct' => 907624]], 'variants_detailed' => [
+        [...['type' => 'normal', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 907624, 'tcgplayer' => 716451]], ...$entry],
+        ...$more,
+    ]], $set, $groups, 'Articuno');
+}
+
+test('a lone stamped print takes the only subtype its product has', function () {
+    $card = stampedCard();
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Holofoil']]));
+
+    expect(linksOf($card))->toBe([['normal', 716451, 'Holofoil', 'tcgdex-thirdparty', 24722]]);
+});
+
+test('a lone stamped holo print still links to its Holofoil product', function () {
+    $card = stampedCard(['type' => 'holo']);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Holofoil']]));
+
+    expect(linksOf($card))->toBe([['holofoil', 716451, 'Holofoil', 'tcgdex-thirdparty', 24722]]);
+});
+
+test('a lone stamped holo print takes the only subtype its product has when that is Normal', function () {
+    // mep-028's shape: a single stamped holo whose TCGplayer product is sold as Normal only.
+    $card = stampedCard(['type' => 'holo']);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Normal']]));
+
+    expect(linksOf($card))->toBe([['holofoil', 716451, 'Normal', 'tcgdex-thirdparty', 24722]]);
+});
+
+test('a lone stamped print whose product has several subtypes still needs the one for its key', function () {
+    $card = stampedCard();
+
+    // Holofoil is listed first, so taking "the first subtype" would pick it.
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Holofoil', 'Normal']]));
+
+    expect(linksOf($card))->toBe([['normal', 716451, 'Normal', 'tcgdex-thirdparty', 24722]]);
+});
+
+test('a lone stamped print with no cardmarket product to tie it to the card is not given the only subtype', function () {
+    $card = stampedCard(['thirdParty' => ['tcgplayer' => 716451]]);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Holofoil']]));
+
+    expect(linksOf($card))->toBe([]);
+});
+
+test('a lone stamped reverse print is not given the only subtype of its product', function () {
+    $card = stampedCard(['type' => 'reverse']);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Holofoil']]));
+
+    expect(linksOf($card))->toBe([]);
+});
+
+test('a plain print is not given the only subtype of its product', function () {
+    $card = stampedCard(['stamp' => null]);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Holofoil']]));
+
+    expect(linksOf($card))->toBe([]);
+});
+
+test('a stamped print on a cardmarket product of its own stays a special print, not the base', function () {
+    $card = stampedCard(['thirdParty' => ['cardmarket' => 999999, 'tcgplayer' => 716451]]);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Holofoil']]));
+
+    expect(linksOf($card))->toBe([['normal+30th-anniversary', 716451, 'Holofoil', 'tcgdex-thirdparty', 24722]]);
+});
+
+test('a stamped print on a card with another standard entry is not given the only subtype', function () {
+    // mep-064's shape: a plain holo with no product ids beside a stamped one.
+    $card = stampedCard(['type' => 'holo', 'stamp' => ['set-logo']], [['type' => 'holo', 'size' => 'standard']]);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Normal']]));
+
+    expect(linksOf($card))->toBe([]);
+});
+
+test('an admin link on the same print is not replaced by a stamped-print link', function () {
+    $card = stampedCard();
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 111, 'sub_type' => 'Holofoil', 'group_id' => 24722, 'method' => 'admin']);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Holofoil']]));
+
+    expect(linksOf($card))->toBe([['normal', 111, 'Holofoil', 'admin', 24722]]);
+});
+
+test('a tcgdex-priced candidate for a stamped print never gets the only-subtype exception', function () {
+    $card = stampedCard();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 22, 'raw' => ['productId' => 716451]]);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(24722, [716451 => ['Holofoil']]));
+
+    expect(linksOf($card))->toBe([]);
+});

@@ -945,6 +945,177 @@ test('a verified link\'s price is judged against the print\'s own average at the
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(196);
 });
 
+/**
+ * A 30th Celebration holo print (Pikachu 030): tcgdex files its cardmarket
+ * price under `default`, and the print's own cardmarket product is the card's
+ * top-level one.
+ *
+ * @param  list<array<string, mixed>>  $entries  variants_detailed
+ */
+function stampedPrintFixture(string $variant = 'holofoil', ?array $entries = null, int $defaultMinor = 101): Card
+{
+    $set = Set::create(['tcgdex_id' => '30th', 'name' => '30th Celebration']);
+    DB::table('set_tcgplayer_groups')->insert(['set_id' => $set->id, 'group_id' => 24722]);
+    $card = Card::create(['tcgdex_id' => '30th-030', 'set_id' => $set->id, 'local_id' => '030', 'name' => 'Pikachu', 'raw' => [
+        'pricing' => ['cardmarket' => ['unit' => 'EUR', 'idProduct' => 907637]],
+        'variants_detailed' => $entries ?? [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 712938]]],
+    ]]);
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => $variant, 'product_id' => 712938, 'sub_type' => 'Holofoil', 'group_id' => 24722, 'method' => 'tcgdex-thirdparty']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => $defaultMinor]);
+
+    return $card;
+}
+
+function stampedPrintFake(float $market = 0.56): void
+{
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::response('2026-10-08T20:05:57+0000', 200),
+        'tcgcsv.com/tcgplayer/3/24722/prices' => Http::response(tcgcsvPricesResponse([['productId' => 712938, 'lowPrice' => 0.4, 'marketPrice' => $market, 'subTypeName' => 'Holofoil']]), 200),
+    ]);
+}
+
+function tcgplayerRows(Card $card): int
+{
+    return CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count();
+}
+
+test('a third-party link whose cardmarket price is filed under default is checked against it and written', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture();
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(56);
+});
+
+test('a default cardmarket price far from the gap price still holds it back', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture(defaultMinor: 5000);
+    stampedPrintFake();
+    $log = tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(tcgplayerRows($card))->toBe(0);
+    $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_implausible_count'] === 1 && $c['gaps_unverified'] === 0);
+});
+
+test('a default cardmarket price is no reference when the print\'s cardmarket product is not the card\'s own', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture(entries: [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 111, 'tcgplayer' => 712938]]]);
+    stampedPrintFake();
+    $log = tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(tcgplayerRows($card))->toBe(0);
+    // The print's own cardmarket product also makes it a special print with a link of its own, unverified too.
+    $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_unverified'] >= 1);
+});
+
+test('a default cardmarket price is no reference when another entry shares the print\'s product on a different cardmarket product', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture(entries: [
+        ['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 712938]],
+        ['type' => 'reverse', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 222, 'tcgplayer' => 712938]],
+    ]);
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(tcgplayerRows($card))->toBe(0);
+});
+
+test('a default cardmarket price is no reference for a reverse holofoil link', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture(variant: 'reverse-holofoil', entries: [['type' => 'reverse', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 712938]]]);
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(tcgplayerRows($card))->toBe(0);
+});
+
+test('a default cardmarket price is no reference for a link tcgdex priced', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    // Far from the gap price: it would hold the price back if it were a reference.
+    $card = stampedPrintFixture(defaultMinor: 5000);
+    // An old tcgdex price on the product makes discovery keep the link as tcgdex-price.
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil', 'captured_on' => today()->subDays(10), 'currency' => 'USD', 'market_minor' => 55, 'raw' => ['productId' => 712938]]);
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->where('origin', 'tcgcsv')->value('market_minor'))->toBe(56);
+});
+
+test('a default cardmarket price is no reference when the link\'s product is no longer on the card', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture(entries: [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 999]]]);
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(tcgplayerRows($card))->toBe(0);
+});
+
+test('a default cardmarket price is no reference when the card has no main cardmarket product', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture(entries: [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['tcgplayer' => 712938]]]);
+    $card->update(['raw' => [...$card->raw, 'pricing' => ['cardmarket' => ['unit' => 'EUR']]]]);
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(tcgplayerRows($card))->toBe(0);
+});
+
+test('a third-party link with no cardmarket price at all is still unverified', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture();
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
+    stampedPrintFake();
+    $log = tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(tcgplayerRows($card))->toBe(0);
+    $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_unverified'] === 1);
+});
+
+test('a third-party link keeps using its own variant\'s cardmarket price when there is one', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture();
+    // The print's own row is far off the gap price, the default one is in line: only the former counts.
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 5000]);
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(tcgplayerRows($card))->toBe(0);
+});
+
+test('a lone stamped normal print is written against its own normal cardmarket price', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = stampedPrintFixture(variant: 'normal', entries: [['type' => 'normal', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 712938]]]);
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 60]);
+    stampedPrintFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->where('variant', 'normal')->value('market_minor'))->toBe(56);
+});
+
 test('an admin link into an extra group keeps its cardmarket bound on the card\'s price on file', function () {
     // The admin vouches for the link, not the own-average check: a 93x price against what is on file stays held.
     config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);

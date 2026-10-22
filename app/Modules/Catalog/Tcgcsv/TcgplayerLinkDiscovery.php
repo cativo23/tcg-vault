@@ -36,7 +36,7 @@ final class TcgplayerLinkDiscovery
         $products = $this->productsInGroupsOf($card, $prices);
         $skipped = 0;
 
-        foreach ($this->candidates($card) as $variant => [$productId, $method, $ownProduct]) {
+        foreach ($this->candidates($card) as $variant => [$productId, $method, $ownProduct, $loneStamped]) {
             // Checked on every run, not only when the link is made: once it
             // points at an extra group the product also turns up among the
             // card's own groups' products, and must not lose its verification.
@@ -48,7 +48,7 @@ final class TcgplayerLinkDiscovery
                 continue;
             }
 
-            $subType = $this->subTypeFor($variant, $subTypes);
+            $subType = $this->subTypeFor($variant, $subTypes, $loneStamped);
 
             if ($subType === null) {
                 $skipped++;
@@ -152,9 +152,13 @@ final class TcgplayerLinkDiscovery
      *
      * The third element is whether the print is the card's plain `normal`
      * print on a product of its own (its cardmarket product differs from the
-     * card's top-level one) — the only kind an extra group may link.
+     * card's top-level one) — the only kind an extra group may link. The
+     * fourth is whether it is the card's lone stamped print: its only
+     * standard entry, stamped or foil, standing as the base `normal` or
+     * `holofoil` print on the card's own cardmarket product, which may take
+     * the only subtype its product has.
      *
-     * @return array<string, array{int, string, bool}>
+     * @return array<string, array{int, string, bool, bool}>
      */
     private function candidates(Card $card): array
     {
@@ -165,8 +169,10 @@ final class TcgplayerLinkDiscovery
         // Matched by position, not by key: two entries can share a key.
         $specialPrints = CardVariants::specialPrints($raw);
         $specialEntries = array_column($specialPrints, 'entry');
+        $entries = is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [];
+        $standardEntries = count(array_filter($entries, fn ($e) => is_array($e) && ($e['size'] ?? 'standard') === 'standard'));
 
-        foreach (is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [] as $entry) {
+        foreach ($entries as $entry) {
             $productId = is_array($entry) ? ($entry['thirdParty']['tcgplayer'] ?? null) : null;
             if (! is_int($productId) || ($entry['size'] ?? 'standard') !== 'standard') {
                 continue;
@@ -189,10 +195,14 @@ final class TcgplayerLinkDiscovery
                 $ownProduct = $position === false && $plain && $key === 'normal'
                     && is_int($cardmarketProduct) && is_int($mainProduct) && $cardmarketProduct !== $mainProduct;
 
+                $loneStamped = $standardEntries === 1 && $position === false && ! $plain
+                    && in_array($key, ['normal', 'holofoil'], true)
+                    && is_int($cardmarketProduct) && is_int($mainProduct) && $cardmarketProduct === $mainProduct;
+
                 if ($ownProduct) {
                     $ownProducts[$productId] = true;
                 }
-                $candidates[$key] ??= [$productId, 'tcgdex-thirdparty', $ownProduct];
+                $candidates[$key] ??= [$productId, 'tcgdex-thirdparty', $ownProduct, $loneStamped];
             }
         }
 
@@ -207,7 +217,7 @@ final class TcgplayerLinkDiscovery
 
         foreach ($priced as $row) {
             if (is_numeric($row->product_id) && (int) $row->product_id > 0) {
-                $candidates[(string) $row->variant] = [(int) $row->product_id, 'tcgdex-price', $row->variant === 'normal' && isset($ownProducts[(int) $row->product_id])];
+                $candidates[(string) $row->variant] = [(int) $row->product_id, 'tcgdex-price', $row->variant === 'normal' && isset($ownProducts[(int) $row->product_id]), false];
             }
         }
 
@@ -217,14 +227,16 @@ final class TcgplayerLinkDiscovery
     /**
      * The product's subtype that prices this print. A base print needs its
      * own subtype (Normal / Holofoil / Reverse Holofoil); a special print is
-     * a product of its own, so its only subtype is it. Null otherwise —
+     * a product of its own, so its only subtype is it, and so is a lone
+     * stamped print's (the product is that print, so its only subtype prices
+     * it, whatever tcgdex calls the print). Null otherwise —
      * e.g. an old set's "1st Edition Holofoil", which this app has no key for.
      *
      * @param  array<string, TcgcsvPriceRow>  $subTypes
      */
-    private function subTypeFor(string $variant, array $subTypes): ?string
+    private function subTypeFor(string $variant, array $subTypes, bool $loneStamped = false): ?string
     {
-        if (CardVariants::isSpecial($variant) && count($subTypes) === 1) {
+        if ((CardVariants::isSpecial($variant) || $loneStamped) && count($subTypes) === 1) {
             return (string) array_key_first($subTypes);
         }
 
