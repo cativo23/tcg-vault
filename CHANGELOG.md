@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.10] - 2026-10-22
+
 ### Fixed
 
 - 30th Celebration cards are priced from tcgcsv. tcgdex lists them mostly as
