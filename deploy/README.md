@@ -224,8 +224,10 @@ price on file, which is the main product's. A print with no own average has
 nothing to bound its first price; every later price is also bounded by its
 last tcgcsv price. A group whose products can't be read counts as failed, so
 the build is retried. Removing a group from the config does not roll anything
-back: a link keeps its group fetched, so delete the links
-(`card_tcgplayer_links.group_id = 1840`) to undo. The resolver prefers a
+back: its links keep their group fetched, but they stop counting as verified
+(the next run clears `verified_at`), so their prices are held against the main
+product's cardmarket price again, with a daily Discord alert, until the links
+are deleted (`card_tcgplayer_links.group_id = 1840`). The resolver prefers a
 `normal` TCGplayer price to a `holofoil` one, so a copy saved without a
 variant on such a card shows the non-holo's price.
 

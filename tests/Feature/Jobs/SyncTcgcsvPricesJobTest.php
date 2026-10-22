@@ -888,7 +888,7 @@ test('a price tcgcsv fills is the one the next gallery render shows', function (
  * The cardmarket price on file (0.05) is the main product's; the print's own
  * cardmarket average, in its variants_detailed entry, is 3.44.
  */
-function deckExclusiveFixture(bool $ownAverage = true): Card
+function deckExclusiveFixture(bool $ownAverage = true, float $average = 3.44): Card
 {
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     DB::table('set_tcgplayer_groups')->insert(['set_id' => $set->id, 'group_id' => 24688]);
@@ -896,7 +896,7 @@ function deckExclusiveFixture(bool $ownAverage = true): Card
         'pricing' => ['cardmarket' => ['unit' => 'EUR', 'idProduct' => 895847]],
         'variants_detailed' => [[
             'type' => 'normal', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 897297, 'tcgplayer' => 707025],
-            ...($ownAverage ? ['pricing' => ['cardmarket' => ['unit' => 'EUR', 'avg' => 3.44]]] : []),
+            ...($ownAverage ? ['pricing' => ['cardmarket' => ['unit' => 'EUR', 'avg' => $average]]] : []),
         ]],
     ]]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 5]);
@@ -931,16 +931,29 @@ test('an extra group is fetched with its products, and a deck exclusive print li
     $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['groups_fetched'] === [1840, 24688]);
 });
 
-test('a price far from the main product\'s cardmarket price is still written for an identity-verified link', function () {
-    // The cardmarket price on file (0.05) is the main product's, not this print's, so it is no reference.
+test('a verified link\'s price is judged against the print\'s own average at the wider bound, not the 4x one', function () {
+    // 1.96 USD against an own average of 16.88 EUR is 8.6x: held at 4x, within the admin bound of 15x.
     config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
-    $card = deckExclusiveFixture();
-    deckExclusiveFake();
+    $card = deckExclusiveFixture(average: 16.88);
+    deckExclusiveFake(market: 1.96);
     tcgcsvLog();
 
     runTcgcsvSync();
 
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(467);
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(196);
+});
+
+test('a verified link keeps its verification when its group\'s products cannot be read on one run', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
+    $card = deckExclusiveFixture();
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 707025, 'sub_type' => 'Normal', 'group_id' => 1840, 'method' => 'tcgdex-thirdparty', 'verified_at' => now()]);
+    deckExclusiveFake(productsStatus: 503);
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(CardTcgplayerLink::where('card_id', $card->id)->sole()->verified_at)->not->toBeNull();
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->exists())->toBeFalse();
 });
 
 test('a verified link stays written on later runs, when the link already points at the extra group', function () {
