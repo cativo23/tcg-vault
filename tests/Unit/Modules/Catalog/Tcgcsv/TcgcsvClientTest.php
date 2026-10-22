@@ -94,3 +94,28 @@ test('a body that stalls past the read deadline is a connection failure', functi
 
     expect(fn () => $client->prices(24688))->toThrow(ConnectionException::class);
 });
+
+test('reads a group\'s products as name and printed number by product id', function () {
+    Http::fake(['tcgcsv.com/tcgplayer/3/1840/products' => Http::response([
+        'success' => true, 'errors' => [],
+        'results' => [
+            ['productId' => 707025, 'name' => 'Bastiodon - 062/084 (Non-Holo)', 'extendedData' => [
+                ['name' => 'Rarity', 'value' => 'Rare'],
+                ['name' => 'Number', 'value' => '062/084'],
+            ]],
+            // Sealed product: no card number, so it can never identify a card.
+            ['productId' => 700001, 'name' => 'Some Booster Box', 'extendedData' => []],
+        ],
+    ], 200)]);
+
+    expect(app(TcgcsvClient::class)->products(1840))->toBe([
+        707025 => ['name' => 'Bastiodon - 062/084 (Non-Holo)', 'number' => '062/084'],
+        700001 => ['name' => 'Some Booster Box', 'number' => null],
+    ]);
+});
+
+test('a malformed products response surfaces instead of reading as an empty group', function () {
+    Http::fake(['tcgcsv.com/tcgplayer/3/1840/products' => Http::response(['success' => false, 'results' => []], 200)]);
+
+    expect(fn () => app(TcgcsvClient::class)->products(1840))->toThrow(UnexpectedValueException::class);
+});
