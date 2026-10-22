@@ -169,9 +169,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $mode = $this->mode();
         [$comparison, $gaps, $priced] = $this->compare($prices);
         $buildTooOld = CarbonImmutable::parse($build)->lt(now()->subHours(TcgcsvFallbackPrices::MAX_BUILD_AGE_HOURS));
-        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $kept] = $mode === 'fill' && ! $buildTooOld
+        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $kept, $rejected] = $mode === 'fill' && ! $buildTooOld
             ? $this->fillGaps($gaps, $priced, $build)
-            : [0, [], 0, [], [], 0];
+            : [0, [], 0, [], [], 0, []];
 
         $summary = [
             'mode' => $mode,
@@ -187,6 +187,8 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'build_too_old_to_fill' => $buildTooOld,
             'gaps_filled' => $filled,
             'fallback_kept' => $kept,
+            'fallback_rejected_count' => count($rejected),
+            'fallback_rejected_prints' => $this->outlierLabels(array_slice($rejected, 0, 10)),
             'gaps_implausible_count' => $implausibleCount,
             'gaps_implausible' => $this->outlierLabels($implausible),
             'gaps_unverified' => count($unverified),
@@ -378,7 +380,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      *
      * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $gaps
      * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $priced  linked prints tcgdex does price
-     * @return array{int, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string}>, int} filled, the first implausible [card_id, variant], how many were implausible, the unverified, the accepted after a hold, how many prices were kept
+     * @return array{int, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string}>, int, list<array{int, string}>} filled, the first implausible [card_id, variant], how many were implausible, the unverified, the accepted after a hold, how many prices were kept, the prices rejected for a print tcgdex already wrote today
      */
     private function fillGaps(array $gaps, array $priced, string $build): array
     {
@@ -403,6 +405,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $unverified = [];
         $acceptedAfterHold = [];
         $keep = [];
+        $rejected = [];
 
         foreach ($gaps as [$link, $row]) {
             $key = "{$link->card_id}|{$link->variant}";
@@ -415,6 +418,8 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             if (isset($writtenToday[$key])) {
                 if ($verdict === 'accept') {
                     $keep[] = [(int) $link->card_id, (string) $link->variant, $row];
+                } else {
+                    $rejected[] = [(int) $link->card_id, (string) $link->variant];
                 }
 
                 continue;
@@ -456,7 +461,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             $filled++;
             // Reported only when nothing was left to check it against — a
             // price that came back in line passed its check.
-            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null && ($lastTcgcsv[$key] ?? null) === null && ($cardmarket[$key] ?? null) === null) {
+            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null && ($lastTcgcsv[$key] ?? null) === null && ($lastTcgdex[$key] ?? null) === null && ($cardmarket[$key] ?? null) === null) {
                 $acceptedAfterHold[] = [(int) $link->card_id, (string) $link->variant];
             }
         }
@@ -468,7 +473,10 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             }
         }
 
-        return [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $fallback->putMany($keep, $build)];
+        // A print tcgdex already wrote today can't be held back or written,
+        // but a price rejected for it is counted, so a frozen tcgdex row
+        // that keeps being written doesn't go unnoticed.
+        return [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $fallback->putMany($keep, $build), $rejected];
     }
 
     /**

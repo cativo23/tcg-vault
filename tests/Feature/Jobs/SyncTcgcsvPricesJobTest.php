@@ -521,6 +521,52 @@ test('a print tcgdex already wrote for today keeps its row, and tcgcsv\'s price 
     expect(fallbackKept($card)['holofoil:cosmos']['market'] ?? null)->toBe(129);
 });
 
+/** The day's last run summary, as the job keeps it for review. */
+function lastTcgcsvSummary(): array
+{
+    $day = Cache::get('tcgcsv:shadow:'.now()->toDateString(), []);
+
+    return $day === [] ? [] : end($day);
+}
+
+test('a tcgcsv price that fails its checks for a print tcgdex already wrote for today is counted and named in the run summary', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(5)]);
+    gapFake([['productId' => 659941, 'lowPrice' => 9.00, 'marketPrice' => 15.00, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary())->toMatchArray(['fallback_rejected_count' => 1, 'fallback_rejected_prints' => ['sv10-096 holofoil:cosmos']]);
+});
+
+test('a price that passed the check against tcgdex\'s last price is not reported as accepted with nothing to check it against', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(5)]);
+    Cache::put('tcgcsv:held:'.$card->id.'|holofoil:cosmos', true, now()->addDays(7));
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('origin', 'tcgcsv')->value('market_minor'))->toBe(129);
+    expect(lastTcgcsvSummary()['gaps_accepted_after_hold'])->toBe([]);
+});
+
+test('a print only a third-party link vouches for is not kept without a price to check it against', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDay()]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(fallbackKept($card))->toBe([]);
+});
+
 test('shadow mode still writes no price at all', function () {
     config(['tcgcsv.mode' => 'shadow']);
     $card = gapFixture();
