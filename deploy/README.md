@@ -212,15 +212,17 @@ card's `normal` print from the main product's cardmarket figure. The groups in
 `config/tcgcsv.php` `extra_groups` are fetched with their products' names and
 numbers on each build, and a card links to one of their products only when it
 is that card's plain `normal` print on a product of its own (its cardmarket
-product differs from the card's top-level one) and the product's printed number
-and name (as whole words) are the card's. The check is repeated on every run
+product differs from the card's top-level one) and the product's printed number,
+total (when the card says what the set's printed total is) and name (as whole
+words, accents and punctuation ignored) are the card's. The check is repeated on every run
 that fetches the group; a link that passes is marked verified (`verified_at`),
 and one whose product stops matching loses it.
 
 A verified link is vouched for like an admin's: it is never `unverified`, and
 its cardmarket reference is the print's own average (its `variants_detailed`
 entry's `pricing.cardmarket.avg`) at the 15x bound, not the card's cardmarket
-price on file, which is the main product's. A print with no own average has
+price on file, which is the main product's (an admin link into such a group
+keeps the cardmarket price on file as its reference). A print with no own average has
 nothing to bound its first price; every later price is also bounded by its
 last tcgcsv price. A group whose products can't be read counts as failed, so
 the build is retried. Removing a group from the config does not roll anything

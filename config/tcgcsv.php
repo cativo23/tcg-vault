@@ -18,7 +18,7 @@ return [
     // them (1840 is "Deck Exclusives": a deck's non-holo print is a product
     // of its own there). A card links to one of their products only when it
     // is that card's plain `normal` print on a product of its own and the
-    // product's name and number match the card; removing a group here does
-    // not undo links it already made.
+    // product's number, total and name match the card; removing a group here
+    // does not undo links it already made.
     'extra_groups' => [1840],
 ];
