@@ -3,12 +3,14 @@
 namespace Tests;
 
 use App\Modules\Catalog\Contracts\CardImageFallback;
+use App\Modules\Catalog\Contracts\LinkedCardImage;
 use App\Modules\Collection\Contracts\PhotoMetadataStripper;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Queue\Connectors\ConnectorInterface;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\FakePhotoMetadataStripper;
 use Tests\Support\NullCardImageFallback;
+use Tests\Support\NullLinkedCardImage;
 use Tests\Support\RecordingQueue;
 
 abstract class TestCase extends BaseTestCase
@@ -23,6 +25,7 @@ abstract class TestCase extends BaseTestCase
         Http::preventStrayRequests();
 
         $this->app->instance(CardImageFallback::class, new NullCardImageFallback);
+        $this->app->instance(LinkedCardImage::class, new NullLinkedCardImage);
 
         $this->photoStripper = new FakePhotoMetadataStripper;
         $this->app->instance(PhotoMetadataStripper::class, $this->photoStripper);
