@@ -391,6 +391,28 @@ test('a tcgdex TCGplayer price older than the staleness window leaves a gap to f
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('origin', 'tcgcsv')->value('market_minor'))->toBe(129);
 });
 
+test('a tcgdex TCGplayer price captured recently but last updated by TCGplayer over three days ago leaves a gap to fill', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(5)]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('origin', 'tcgcsv')->value('market_minor'))->toBe(129);
+});
+
+test('a tcgdex TCGplayer price TCGplayer updated within three days is not a gap', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(2)]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('origin', 'tcgcsv')->count())->toBe(0);
+});
+
 test('shadow mode still writes no price at all', function () {
     config(['tcgcsv.mode' => 'shadow']);
     $card = gapFixture();

@@ -280,19 +280,24 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
     /**
      * How tcgcsv's price for each linked print compares with the latest
-     * tcgdex-synced TCGplayer price for it (within the resolver's staleness
-     * window), and how many linked prints tcgdex doesn't price at all —
-     * the gaps tcgcsv fills, returned alongside the stats. Covers only the
-     * groups this run fetched.
+     * tcgdex-synced TCGplayer price for it (captured within the resolver's
+     * staleness window, and last updated by TCGplayer within it too — a
+     * frozen price tcgdex keeps re-sending is not a current one), and how
+     * many linked prints tcgdex doesn't price at all — the gaps tcgcsv
+     * fills, returned alongside the stats. A row with no TCGplayer date is
+     * judged by its capture day alone. Covers only the groups this run
+     * fetched.
      *
      * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices
      * @return array{array<string, mixed>, list<array{CardTcgplayerLink, TcgcsvPriceRow}>}
      */
     private function compare(array $prices): array
     {
+        $current = CarbonImmutable::today()->subDays(CardPriceResolver::STALE_AFTER_DAYS);
         $tcgdex = DB::table('card_price_snapshots')
             ->where('source', 'tcgplayer')->where('origin', 'tcgdex')
-            ->where('captured_on', '>=', CarbonImmutable::today()->subDays(CardPriceResolver::STALE_AFTER_DAYS)->toDateString())
+            ->where('captured_on', '>=', $current->toDateString())
+            ->where(fn ($q) => $q->whereNull('source_updated_at')->orWhere('source_updated_at', '>=', $current))
             ->whereNotNull('market_minor')
             ->selectRaw('DISTINCT ON (card_id, variant) card_id, variant, market_minor')
             ->orderBy('card_id')->orderBy('variant')->orderByDesc('captured_on')
