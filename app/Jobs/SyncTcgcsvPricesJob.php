@@ -71,8 +71,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
     /**
      * A gap price this many times above or below the print's recent tcgcsv
-     * price, or its cardmarket price (a coarser bound: EUR, another
-     * market), is held back as a likely wrong link or upstream glitch —
+     * price, or tcgdex's last TCGplayer price for it (see
+     * TCGDEX_REFERENCE_DAYS), or its cardmarket price (a coarser bound:
+     * EUR, another market), is held back as a likely wrong link or upstream glitch —
      * unless the move is under PLAUSIBLE_MOVE_MINOR, which a cheap print
      * can make without either. Only prices within the resolver's
      * staleness window count, so a real jump is held back for days at
@@ -81,6 +82,15 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     private const MAX_RATIO_TO_LAST = 3.0;
 
     private const MAX_RATIO_TO_CARDMARKET = 4.0;
+
+    /**
+     * How long tcgdex's last TCGplayer price, dated by TCGplayer's own
+     * update, still serves as a reference for a gap price. A frozen price
+     * tcgdex keeps re-sending is judged by when TCGplayer last updated it,
+     * not when we stored it, so it stops holding back real moves after
+     * this many days.
+     */
+    private const TCGDEX_REFERENCE_DAYS = 14;
 
     /**
      * An admin-confirmed link gets a wider cardmarket bound: cardmarket
@@ -367,6 +377,8 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $lastTcgcsv = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')
             ->where('captured_on', '>=', $since)->where('captured_on', '<', $today->toDateString()));
         $cardmarket = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'cardmarket')->where('captured_on', '>=', $since));
+        $lastTcgdex = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgdex')
+            ->where('source_updated_at', '>=', $today->subDays(self::TCGDEX_REFERENCE_DAYS)));
         $updatedAt = CarbonImmutable::parse($build)->utc();
 
         $filled = 0;
@@ -386,6 +398,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             }
             $cardmarketRatio = $link->method === 'admin' ? self::MAX_RATIO_TO_CARDMARKET_ADMIN : self::MAX_RATIO_TO_CARDMARKET;
             if ($this->farFrom($market, $lastTcgcsv[$key] ?? null, self::MAX_RATIO_TO_LAST)
+                || $this->farFrom($market, $lastTcgdex[$key] ?? null, self::MAX_RATIO_TO_LAST)
                 || $this->farFrom($market, $cardmarket[$key] ?? null, $cardmarketRatio)) {
                 $implausibleCount++;
                 Cache::put(self::HELD_CACHE_PREFIX.$key, true, now()->addDays(7));

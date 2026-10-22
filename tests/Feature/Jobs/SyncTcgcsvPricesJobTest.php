@@ -413,6 +413,28 @@ test('a tcgdex TCGplayer price TCGplayer updated within three days is not a gap'
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('origin', 'tcgcsv')->count())->toBe(0);
 });
 
+test('a gap price far from the print\'s last tcgdex TCGplayer price is held back', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(5)]);
+    gapFake([['productId' => 659941, 'lowPrice' => 9.00, 'marketPrice' => 15.00, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('origin', 'tcgcsv')->count())->toBe(0);
+});
+
+test('a last tcgdex TCGplayer price TCGplayer updated long ago no longer holds a new one back', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(20)]);
+    gapFake([['productId' => 659941, 'lowPrice' => 9.00, 'marketPrice' => 15.00, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('origin', 'tcgcsv')->value('market_minor'))->toBe(1500);
+});
+
 test('shadow mode still writes no price at all', function () {
     config(['tcgcsv.mode' => 'shadow']);
     $card = gapFixture();
