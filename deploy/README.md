@@ -154,8 +154,10 @@ about 3 h; the lock ceiling is 4 h) and reports them as
 (connection `redis-long`, queue `tcgcsv`). It links prints to TCGplayer
 products and compares tcgcsv's price with tcgdex's. With `TCGCSV_MODE=fill`
 (the default) it also writes tcgcsv's price as the day's TCGplayer price for
-linked prints tcgdex has no TCGplayer price for in the last 3 days (rows with
-`origin = tcgcsv`); it never touches a tcgdex price or one entered by hand.
+linked prints tcgdex has no TCGplayer price for in the last 3 days, or whose
+TCGplayer price was last updated over 3 days ago (tcgdex keeps re-sending a
+frozen price; rows with `origin = tcgcsv`); it never touches a tcgdex price
+that is current or one entered by hand.
 A gap price more than 3x off the print's tcgcsv price from the last 3 days,
 or 4x off its cardmarket price (moves under $2 excepted), is held back, named
 in the day's log (`gaps_implausible`) and sent to Discord — check that
@@ -176,6 +178,17 @@ third-party ids vouch for is not filled until a price exists to check it
 against (`gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
 filled when the build is over 36h old. Any `TCGCSV_MODE` other than exactly
 `fill` runs as `shadow`.
+
+The evening run also keeps every price that passes its checks, for the tcgdex
+sync (`fallback_kept` in the day's log counts them): the cache holds one entry
+per print (`tcgcsv:fallback:<card id>|<variant>`) for 36h after tcgcsv's build.
+The tcgdex sync at midnight writes that price as the day's TCGplayer row
+(`origin = tcgcsv`, USD) instead of tcgdex's when, for a linked print, tcgdex
+sent no TCGplayer price, a zero one, or one TCGplayer last updated over 3 days
+ago. A price with no update date counts as current, a kept price whose product
+or subtype no longer matches the print's link is ignored, and `shadow` mode
+leaves the sync as it was. tcgdex's price for a print tcgcsv has nothing kept
+for is still written as before.
 
 To roll back, set `TCGCSV_MODE=shadow` in `.env` and recreate the containers
 that read it (a plain `restart` keeps the old environment):
