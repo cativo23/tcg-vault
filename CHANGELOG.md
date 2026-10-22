@@ -16,8 +16,11 @@ All notable changes to this project are documented here. Format follows
   its product has. Separately, a linked holo print stayed unverified and
   unpriced because tcgdex files its cardmarket price under `default`, which the
   check did not look at; it now does, when the print's cardmarket product is
-  the card's own. About 80 cards link and about 170 prints get a TCGplayer
-  price on the next run. Existing prices and history are not changed. See
+  the card's own. That second fix also reaches about 76 mep promos and two
+  other cards (sv09-178, sv07-174), not only the 30th sets. About 80 cards
+  link and about 250 prints in all get a TCGplayer price on the next run (the
+  new links plus about 170 prints that were held back). Existing prices and
+  history are not changed. See
   "Stamped prints" in `deploy/README.md`.
 
 No migrations.
