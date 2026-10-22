@@ -154,10 +154,13 @@ about 3 h; the lock ceiling is 4 h) and reports them as
 (connection `redis-long`, queue `tcgcsv`). It links prints to TCGplayer
 products and compares tcgcsv's price with tcgdex's. With `TCGCSV_MODE=fill`
 (the default) it also writes tcgcsv's price as the day's TCGplayer price for
-linked prints tcgdex has no TCGplayer price for in the last 3 days (rows with
-`origin = tcgcsv`); it never touches a tcgdex price or one entered by hand.
+linked prints tcgdex has no TCGplayer price for in the last 3 days, or whose
+TCGplayer price was last updated over 3 days ago (tcgdex keeps re-sending a
+frozen price; rows with `origin = tcgcsv`); it never touches a tcgdex price
+that is current or one entered by hand.
 A gap price more than 3x off the print's tcgcsv price from the last 3 days,
-or 4x off its cardmarket price (moves under $2 excepted), is held back, named
+or 3x off tcgdex's last TCGplayer price updated within 14 days, or 4x off its
+cardmarket price (moves under $2 excepted), is held back, named
 in the day's log (`gaps_implausible`) and sent to Discord — check that
 print's link. If the link is right (cardmarket often prices a stamped print
 like a staff or Pokémon Center promo as its plain one), confirm it as an admin
@@ -172,10 +175,40 @@ A hold is not permanent: once the old tcgcsv price is over 3
 days old, the new price is written unless cardmarket disagrees (by 4x, or
 15x for an admin link), and Discord
 gets a note naming it (`gaps_accepted_after_hold`). A link only tcgdex's
-third-party ids vouch for is not filled until a price exists to check it
-against (`gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
+third-party ids vouch for is not filled until a tcgcsv or cardmarket price
+exists to check it against (tcgdex's own price doesn't count for this one;
+`gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
 filled when the build is over 36h old. Any `TCGCSV_MODE` other than exactly
 `fill` runs as `shadow`.
+
+The evening run also keeps every price that passes its checks, for the tcgdex
+sync (`fallback_kept` in the day's log counts them): the cache holds one entry
+per print (`tcgcsv:fallback:<card id>|<variant>`) for 36h after tcgcsv's build.
+Any tcgdex sync (the midnight one above all, but also adding a card or
+importing a set) writes that price as the day's TCGplayer row
+(`origin = tcgcsv`, USD) instead of tcgdex's when, for a linked print, tcgdex
+sent no TCGplayer price, a zero one, or one TCGplayer last updated over 3 days
+ago. A price with no update date counts as current, a kept price whose product
+or subtype no longer matches the print's link is ignored, and `shadow` mode
+leaves the sync as it was. tcgdex's price for a print tcgcsv has nothing kept
+for is still written as before.
+
+Two things to know when reading the day's log:
+
+- A print tcgdex already wrote for today can't be held back or written by the
+  evening run, so it is skipped before any check: it adds to neither
+  `gaps_unverified` nor `gaps_implausible_count`. If its tcgcsv price fails
+  the checks, the price is not kept and the print is counted in
+  `fallback_rejected_count` (the first ten named in `fallback_rejected_prints`).
+  A rising count means tcgdex's frozen price keeps being written; check those
+  prints' links.
+- A kept price lives its 36h even when the next evening's price for that print
+  fails its checks, so the midnight sync can still write the earlier one
+  (under 36h old when written).
+
+In `shadow` mode the comparison now sets a print whose tcgdex TCGplayer price
+was last updated over 3 days ago among `linked_without_tcgdex_price`, not
+`compared`, so the kept `tcgcsv:shadow:<day>` stats shift when tcgdex freezes.
 
 To roll back, set `TCGCSV_MODE=shadow` in `.env` and recreate the containers
 that read it (a plain `restart` keeps the old environment):

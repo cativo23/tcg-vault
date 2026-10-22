@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
+use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceRow;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
 use App\Support\DiscordAlerter;
@@ -37,8 +38,10 @@ use UnexpectedValueException;
  * price for each linked print and logs the result. In fill mode (the
  * default, config tcgcsv.mode) it also writes tcgcsv's price for the
  * linked prints tcgdex has no recent TCGplayer price for — the gaps —
- * and never touches a price tcgdex has or one entered by hand. Shadow
- * mode writes nothing; it is the rollback.
+ * and never touches a price tcgdex has or one entered by hand. It also
+ * keeps each price that passes its checks (TcgcsvFallbackPrices) for the
+ * next tcgdex sync, which falls back on it when tcgdex's price is missing
+ * or stale. Shadow mode writes and keeps nothing; it is the rollback.
  *
  * Retries are deliberately slow: tcgcsv throttles or bans clients that
  * hammer it, so a failure or an unpublished build waits an hour, and a
@@ -66,13 +69,11 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     /** When the last run that fetched every group finished; CheckPricingFreshness watches it. */
     public const LAST_RUN_CACHE_KEY = 'tcgcsv:last_run';
 
-    /** A build older than this is not stamped as today's price. */
-    private const MAX_FILL_BUILD_AGE_HOURS = 36;
-
     /**
      * A gap price this many times above or below the print's recent tcgcsv
-     * price, or its cardmarket price (a coarser bound: EUR, another
-     * market), is held back as a likely wrong link or upstream glitch —
+     * price, or tcgdex's last TCGplayer price for it (see
+     * TCGDEX_REFERENCE_DAYS), or its cardmarket price (a coarser bound:
+     * EUR, another market), is held back as a likely wrong link or upstream glitch —
      * unless the move is under PLAUSIBLE_MOVE_MINOR, which a cheap print
      * can make without either. Only prices within the resolver's
      * staleness window count, so a real jump is held back for days at
@@ -81,6 +82,15 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     private const MAX_RATIO_TO_LAST = 3.0;
 
     private const MAX_RATIO_TO_CARDMARKET = 4.0;
+
+    /**
+     * How long tcgdex's last TCGplayer price, dated by TCGplayer's own
+     * update, still serves as a reference for a gap price. A frozen price
+     * tcgdex keeps re-sending is judged by when TCGplayer last updated it,
+     * not when we stored it, so it stops holding back real moves after
+     * this many days.
+     */
+    private const TCGDEX_REFERENCE_DAYS = 14;
 
     /**
      * An admin-confirmed link gets a wider cardmarket bound: cardmarket
@@ -157,11 +167,11 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         });
 
         $mode = $this->mode();
-        [$comparison, $gaps] = $this->compare($prices);
-        $buildTooOld = CarbonImmutable::parse($build)->lt(now()->subHours(self::MAX_FILL_BUILD_AGE_HOURS));
-        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold] = $mode === 'fill' && ! $buildTooOld
-            ? $this->fillGaps($gaps, $build)
-            : [0, [], 0, [], []];
+        [$comparison, $gaps, $priced] = $this->compare($prices);
+        $buildTooOld = CarbonImmutable::parse($build)->lt(now()->subHours(TcgcsvFallbackPrices::MAX_BUILD_AGE_HOURS));
+        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $kept, $rejected] = $mode === 'fill' && ! $buildTooOld
+            ? $this->fillGaps($gaps, $priced, $build)
+            : [0, [], 0, [], [], 0, []];
 
         $summary = [
             'mode' => $mode,
@@ -176,6 +186,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             ...$comparison,
             'build_too_old_to_fill' => $buildTooOld,
             'gaps_filled' => $filled,
+            'fallback_kept' => $kept,
+            'fallback_rejected_count' => count($rejected),
+            'fallback_rejected_prints' => $this->outlierLabels(array_slice($rejected, 0, 10)),
             'gaps_implausible_count' => $implausibleCount,
             'gaps_implausible' => $this->outlierLabels($implausible),
             'gaps_unverified' => count($unverified),
@@ -280,19 +293,24 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
     /**
      * How tcgcsv's price for each linked print compares with the latest
-     * tcgdex-synced TCGplayer price for it (within the resolver's staleness
-     * window), and how many linked prints tcgdex doesn't price at all —
-     * the gaps tcgcsv fills, returned alongside the stats. Covers only the
-     * groups this run fetched.
+     * tcgdex-synced TCGplayer price for it (captured within the resolver's
+     * staleness window, and last updated by TCGplayer within it too — a
+     * frozen price tcgdex keeps re-sending is not a current one), and how
+     * many linked prints tcgdex doesn't price at all — the gaps tcgcsv
+     * fills, returned alongside the stats and the linked prints tcgdex does
+     * price. A row with no TCGplayer date is judged by its capture day
+     * alone. Covers only the groups this run fetched.
      *
      * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices
-     * @return array{array<string, mixed>, list<array{CardTcgplayerLink, TcgcsvPriceRow}>}
+     * @return array{array<string, mixed>, list<array{CardTcgplayerLink, TcgcsvPriceRow}>, list<array{CardTcgplayerLink, TcgcsvPriceRow}>}
      */
     private function compare(array $prices): array
     {
+        $current = CarbonImmutable::today()->subDays(CardPriceResolver::STALE_AFTER_DAYS);
         $tcgdex = DB::table('card_price_snapshots')
             ->where('source', 'tcgplayer')->where('origin', 'tcgdex')
-            ->where('captured_on', '>=', CarbonImmutable::today()->subDays(CardPriceResolver::STALE_AFTER_DAYS)->toDateString())
+            ->where('captured_on', '>=', $current->toDateString())
+            ->where(fn ($q) => $q->whereNull('source_updated_at')->orWhere('source_updated_at', '>=', $current))
             ->whereNotNull('market_minor')
             ->selectRaw('DISTINCT ON (card_id, variant) card_id, variant, market_minor')
             ->orderBy('card_id')->orderBy('variant')->orderByDesc('captured_on')
@@ -303,6 +321,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $outliers = [];
         $outlierCount = 0;
         $gaps = [];
+        $priced = [];
 
         $links = CardTcgplayerLink::query()->whereNotNull('group_id')->get(['card_id', 'variant', 'product_id', 'sub_type', 'group_id', 'method']);
         foreach ($links as $link) {
@@ -318,6 +337,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 continue;
             }
 
+            $priced[] = [$link, $row];
             $diff = abs($row->marketMinor - $theirs) / $theirs;
             $diffs[] = $diff;
             if ($diff > 0.25) {
@@ -335,7 +355,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'over_25_percent_count' => $outlierCount,
             'over_25_percent' => $this->outlierLabels($outliers),
             'linked_without_tcgdex_price' => count($gaps),
-        ], $gaps];
+        ], $gaps, $priced];
     }
 
     /**
@@ -351,37 +371,65 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * between the comparison and this write — so only a missing row or
      * tcgcsv's own earlier one for today is set.
      *
+     * A gap whose row for today tcgdex or a person already wrote is left
+     * alone before any check, so it is neither held back nor reported for a
+     * price that would not be written anyway. Every price that passes its
+     * checks, a gap's or that of a print tcgdex does price, is also kept
+     * for the next tcgdex sync to fall back on (TcgcsvFallbackPrices); only
+     * a gap's check is held back and reported.
+     *
      * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $gaps
-     * @return array{int, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string}>} filled, the first implausible [card_id, variant], how many were implausible, the unverified, the accepted after a hold
+     * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $priced  linked prints tcgdex does price
+     * @return array{int, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string}>, int, list<array{int, string}>} filled, the first implausible [card_id, variant], how many were implausible, the unverified, the accepted after a hold, how many prices were kept, the prices rejected for a print tcgdex already wrote today
      */
-    private function fillGaps(array $gaps, string $build): array
+    private function fillGaps(array $gaps, array $priced, string $build): array
     {
         $today = CarbonImmutable::today();
-        $cardIds = array_values(array_unique(array_map(fn (array $gap) => $gap[0]->card_id, $gaps)));
+        $fallback = app(TcgcsvFallbackPrices::class);
+        $cardIds = array_values(array_unique(array_map(fn (array $pair) => $pair[0]->card_id, [...$gaps, ...$priced])));
         $since = $today->subDays(CardPriceResolver::STALE_AFTER_DAYS)->toDateString();
         $lastTcgcsv = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')
             ->where('captured_on', '>=', $since)->where('captured_on', '<', $today->toDateString()));
         $cardmarket = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'cardmarket')->where('captured_on', '>=', $since));
-        $updatedAt = CarbonImmutable::parse($build)->utc();
+        $lastTcgdex = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgdex')
+            ->where('source_updated_at', '>=', $today->subDays(self::TCGDEX_REFERENCE_DAYS)));
+        $writtenToday = DB::table('card_price_snapshots')
+            ->whereIn('card_id', $cardIds)->where('source', 'tcgplayer')
+            ->where('captured_on', $today->toDateString())->where('origin', '<>', 'tcgcsv')
+            ->get(['card_id', 'variant'])
+            ->mapWithKeys(fn ($s) => ["{$s->card_id}|{$s->variant}" => true]);
 
         $filled = 0;
         $implausible = [];
         $implausibleCount = 0;
         $unverified = [];
         $acceptedAfterHold = [];
+        $keep = [];
+        $rejected = [];
 
         foreach ($gaps as [$link, $row]) {
             $key = "{$link->card_id}|{$link->variant}";
             $market = (int) $row->marketMinor;
-            $references = [$lastTcgcsv[$key] ?? null, $cardmarket[$key] ?? null];
-            if ($references === [null, null] && (CardTcgplayerLink::TRUST[$link->method] ?? 0) < CardTcgplayerLink::TRUST['tcgdex-price']) {
+            $entry = $fallback->entryFor($row, $build);
+            if ($entry === null) {
+                continue;
+            }
+            $verdict = $this->verdict($link, $market, $lastTcgcsv[$key] ?? null, $lastTcgdex[$key] ?? null, $cardmarket[$key] ?? null);
+            if (isset($writtenToday[$key])) {
+                if ($verdict === 'accept') {
+                    $keep[] = [(int) $link->card_id, (string) $link->variant, $row];
+                } else {
+                    $rejected[] = [(int) $link->card_id, (string) $link->variant];
+                }
+
+                continue;
+            }
+            if ($verdict === 'unverified') {
                 $unverified[] = [(int) $link->card_id, (string) $link->variant];
 
                 continue;
             }
-            $cardmarketRatio = $link->method === 'admin' ? self::MAX_RATIO_TO_CARDMARKET_ADMIN : self::MAX_RATIO_TO_CARDMARKET;
-            if ($this->farFrom($market, $lastTcgcsv[$key] ?? null, self::MAX_RATIO_TO_LAST)
-                || $this->farFrom($market, $cardmarket[$key] ?? null, $cardmarketRatio)) {
+            if ($verdict === 'implausible') {
                 $implausibleCount++;
                 Cache::put(self::HELD_CACHE_PREFIX.$key, true, now()->addDays(7));
                 if (count($implausible) < 10) {
@@ -390,6 +438,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
                 continue;
             }
+            $keep[] = [(int) $link->card_id, (string) $link->variant, $row];
 
             $snapshot = CardPriceSnapshot::firstOrNew([
                 'card_id' => $link->card_id,
@@ -401,15 +450,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 continue;
             }
 
-            $snapshot->fill([
-                'origin' => 'tcgcsv',
-                'currency' => 'USD',
-                'market_minor' => $market,
-                'low_minor' => $row->lowMinor,
-                'trend_minor' => null,
-                'source_updated_at' => $updatedAt,
-                'raw' => ['productId' => $row->productId, 'groupId' => $row->groupId, 'subType' => $row->subType, 'build' => $build],
-            ]);
+            $snapshot->fill($fallback->snapshotAttributes($entry));
 
             try {
                 $snapshot->save();
@@ -420,12 +461,46 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             $filled++;
             // Reported only when nothing was left to check it against — a
             // price that came back in line passed its check.
-            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null && ($lastTcgcsv[$key] ?? null) === null && ($cardmarket[$key] ?? null) === null) {
+            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null && ($lastTcgcsv[$key] ?? null) === null && ($lastTcgdex[$key] ?? null) === null && ($cardmarket[$key] ?? null) === null) {
                 $acceptedAfterHold[] = [(int) $link->card_id, (string) $link->variant];
             }
         }
 
-        return [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold];
+        foreach ($priced as [$link, $row]) {
+            $key = "{$link->card_id}|{$link->variant}";
+            if ($this->verdict($link, (int) $row->marketMinor, $lastTcgcsv[$key] ?? null, $lastTcgdex[$key] ?? null, $cardmarket[$key] ?? null) === 'accept') {
+                $keep[] = [(int) $link->card_id, (string) $link->variant, $row];
+            }
+        }
+
+        // A print tcgdex already wrote today can't be held back or written,
+        // but a price rejected for it is counted, so a frozen tcgdex row
+        // that keeps being written doesn't go unnoticed.
+        return [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $fallback->putMany($keep, $build), $rejected];
+    }
+
+    /**
+     * Whether a tcgcsv price may be used: 'unverified' when its link only
+     * tcgdex's third-party ids vouch for has no recent tcgcsv or cardmarket
+     * price to check it against, 'implausible' when it is far from any
+     * reference (see MAX_RATIO_TO_LAST), otherwise 'accept'.
+     *
+     * @return 'accept'|'implausible'|'unverified'
+     */
+    private function verdict(CardTcgplayerLink $link, int $market, ?int $lastTcgcsv, ?int $lastTcgdex, ?int $cardmarket): string
+    {
+        if ($lastTcgcsv === null && $cardmarket === null && (CardTcgplayerLink::TRUST[$link->method] ?? 0) < CardTcgplayerLink::TRUST['tcgdex-price']) {
+            return 'unverified';
+        }
+
+        $cardmarketRatio = $link->method === 'admin' ? self::MAX_RATIO_TO_CARDMARKET_ADMIN : self::MAX_RATIO_TO_CARDMARKET;
+        if ($this->farFrom($market, $lastTcgcsv, self::MAX_RATIO_TO_LAST)
+            || $this->farFrom($market, $lastTcgdex, self::MAX_RATIO_TO_LAST)
+            || $this->farFrom($market, $cardmarket, $cardmarketRatio)) {
+            return 'implausible';
+        }
+
+        return 'accept';
     }
 
     /**
