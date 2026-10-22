@@ -406,7 +406,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $since = $today->subDays(CardPriceResolver::STALE_AFTER_DAYS)->toDateString();
         $lastTcgcsv = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')
             ->where('captured_on', '>=', $since)->where('captured_on', '<', $today->toDateString()));
-        $cardmarket = $this->withOwnCardmarket(
+        $cardmarket = $this->withCardmarketReferences(
             $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'cardmarket')->where('captured_on', '>=', $since)),
             [...$gaps, ...$priced],
         );
@@ -507,7 +507,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * A link to an extra group's product whose identity was verified (name
      * and number match the card's) is vouched for like an admin's: it is
      * never 'unverified', and gets the wider cardmarket bound. Its
-     * cardmarket reference is the print's own average (withOwnCardmarket),
+     * cardmarket reference is the print's own average (withCardmarketReferences),
      * the one on file for the card being the main product's.
      *
      * @return 'accept'|'implausible'|'unverified'
@@ -542,33 +542,51 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     }
 
     /**
-     * For each identity-verified link, the cardmarket reference becomes the
-     * print's own average from the card's `variants_detailed` entry for that
-     * product (EUR, in minor units), not the card's cardmarket price on file,
-     * which is the main product's; a print with no average has no reference.
+     * Adjusts the cardmarket reference of two kinds of link, loading the
+     * cards' `raw` once for both:
+     *
+     * - An identity-verified link's reference becomes the print's own average
+     *   from the card's `variants_detailed` entry for that product (EUR, in
+     *   minor units), not the card's cardmarket price on file, which is the
+     *   main product's; a print with no average has no reference.
+     * - A third-party link for a `normal` or `holofoil` print that has no
+     *   cardmarket price under its own variant takes the card's `default` one:
+     *   tcgdex files the price of a card with a single base product there, as
+     *   with every 30th Celebration holo. It only counts when every entry
+     *   carrying the link's TCGplayer product is on the card's top-level
+     *   cardmarket product, so the price is that print's and not another's.
      *
      * @param  array<string, int>  $cardmarket  "card_id|variant" → the cardmarket price on file
      * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $pairs
      * @return array<string, int>
      */
-    private function withOwnCardmarket(array $cardmarket, array $pairs): array
+    private function withCardmarketReferences(array $cardmarket, array $pairs): array
     {
-        $verified = array_filter(array_map(fn (array $pair) => $this->identityVerified($pair[0]) ? $pair[0] : null, $pairs));
-        if ($verified === []) {
+        $verified = [];
+        $defaulted = [];
+
+        foreach ($pairs as [$link]) {
+            $key = "{$link->card_id}|{$link->variant}";
+
+            if ($this->identityVerified($link)) {
+                $verified[$key] = $link;
+            } elseif ($link->method === 'tcgdex-thirdparty' && in_array($link->variant, ['normal', 'holofoil'], true)
+                && ! isset($cardmarket[$key]) && isset($cardmarket["{$link->card_id}|default"])) {
+                $defaulted[$key] = $link;
+            }
+        }
+
+        if ($verified === [] && $defaulted === []) {
             return $cardmarket;
         }
 
-        $raws = Card::whereIn('id', array_unique(array_map(fn (CardTcgplayerLink $l) => $l->card_id, $verified)))->pluck('raw', 'id');
+        $raws = Card::whereIn('id', array_unique(array_map(fn (CardTcgplayerLink $l) => $l->card_id, [...$verified, ...$defaulted])))->pluck('raw', 'id');
 
-        foreach ($verified as $link) {
-            $key = "{$link->card_id}|{$link->variant}";
+        foreach ($verified as $key => $link) {
             unset($cardmarket[$key]);
 
-            $raw = $raws[$link->card_id] ?? null;
-            foreach (is_array($raw) && is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [] as $entry) {
-                $average = is_array($entry) && ($entry['thirdParty']['tcgplayer'] ?? null) === $link->product_id
-                    ? ($entry['pricing']['cardmarket']['avg'] ?? null)
-                    : null;
+            foreach ($this->entriesOf($raws[$link->card_id] ?? null, $link->product_id) as $entry) {
+                $average = $entry['pricing']['cardmarket']['avg'] ?? null;
 
                 if (is_numeric($average) && $average > 0) {
                     $cardmarket[$key] = (int) round((float) $average * 100);
@@ -578,7 +596,29 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             }
         }
 
+        foreach ($defaulted as $key => $link) {
+            $raw = $raws[$link->card_id] ?? null;
+            $main = is_array($raw) ? ($raw['pricing']['cardmarket']['idProduct'] ?? null) : null;
+            $entries = $this->entriesOf($raw, $link->product_id);
+
+            if ($entries !== [] && is_int($main) && array_filter($entries, fn (array $e) => ($e['thirdParty']['cardmarket'] ?? null) !== $main) === []) {
+                $cardmarket[$key] = $cardmarket["{$link->card_id}|default"];
+            }
+        }
+
         return $cardmarket;
+    }
+
+    /**
+     * The card's `variants_detailed` entries that carry the TCGplayer product.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function entriesOf(mixed $raw, int $productId): array
+    {
+        $entries = is_array($raw) && is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [];
+
+        return array_values(array_filter($entries, fn ($e) => is_array($e) && ($e['thirdParty']['tcgplayer'] ?? null) === $productId));
     }
 
     /**
