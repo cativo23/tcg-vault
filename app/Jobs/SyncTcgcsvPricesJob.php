@@ -530,10 +530,15 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         return 'accept';
     }
 
-    /** Whether the link is to an extra group's product whose name and number were checked against the card's. */
+    /**
+     * Whether the link is to an extra group's product whose name and number
+     * were checked against the card's. An admin link is vouched for by the
+     * admin and keeps the cardmarket reference on file, whatever its group.
+     */
     private function identityVerified(CardTcgplayerLink $link): bool
     {
-        return $link->verified_at !== null && in_array((int) $link->group_id, TcgcsvExtraGroups::ids(), true);
+        return $link->method !== 'admin' && $link->verified_at !== null
+            && in_array((int) $link->group_id, TcgcsvExtraGroups::ids(), true);
     }
 
     /**

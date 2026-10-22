@@ -884,9 +884,11 @@ test('a price tcgcsv fills is the one the next gallery render shows', function (
 });
 
 /**
- * Bastiodon me05-062: its `normal` print is the Deck Exclusives product 707025.
- * The cardmarket price on file (0.05) is the main product's; the print's own
- * cardmarket average, in its variants_detailed entry, is 3.44.
+ * A card whose `normal` print is the Deck Exclusives product 707025 (Bastiodon
+ * me05-062). The cardmarket price on file (0.05) is the main product's; the
+ * print's own cardmarket average, in its variants_detailed entry, is
+ * $average (3.44 unless a test sets it), and the fake group prices it at 4.67
+ * unless a test sets that.
  */
 function deckExclusiveFixture(bool $ownAverage = true, float $average = 3.44): Card
 {
@@ -941,6 +943,20 @@ test('a verified link\'s price is judged against the print\'s own average at the
     runTcgcsvSync();
 
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(196);
+});
+
+test('an admin link into an extra group keeps its cardmarket bound on the card\'s price on file', function () {
+    // The admin vouches for the link, not the own-average check: a 93x price against what is on file stays held.
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
+    $card = deckExclusiveFixture();
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 707025, 'sub_type' => 'Normal', 'group_id' => 1840, 'method' => 'admin', 'verified_at' => now()]);
+    deckExclusiveFake();
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->exists())->toBeFalse();
+    expect(CardTcgplayerLink::where('card_id', $card->id)->sole()->method)->toBe('admin');
 });
 
 test('a verified link keeps its verification when its group\'s products cannot be read on one run', function () {
@@ -1046,7 +1062,7 @@ test('a link to an extra group\'s product that no longer matches the card loses 
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->exists())->toBeFalse();
 });
 
-test('an extra group whose products cannot be read counts as failed, so nothing is linked and the build is retried', function () {
+test('an extra group whose products cannot be read counts as failed, and the build is retried', function () {
     config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
     $card = deckExclusiveFixture();
     deckExclusiveFake(productsStatus: 503);
