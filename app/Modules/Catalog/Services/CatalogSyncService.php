@@ -10,7 +10,9 @@ use App\Modules\Catalog\Data\CardDetailData;
 use App\Modules\Catalog\Exceptions\CatalogIdentityMismatchException;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
+use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -22,6 +24,7 @@ final class CatalogSyncService
     public function __construct(
         private readonly CardCatalogProvider $provider,
         private readonly ?CardImageFallback $imageFallback = null,
+        private readonly ?TcgcsvFallbackPrices $fallbackPrices = null,
     ) {}
 
     public function syncCard(string $tcgdexCardId): Card
@@ -144,8 +147,20 @@ final class CatalogSyncService
     private function storePriceSnapshots(Card $card, CardDetailData $cardDetail): void
     {
         $today = CarbonImmutable::today()->toDateString();
+        $fallbacks = $this->fallbacksFor($card, $cardDetail);
+
+        foreach ($fallbacks as $variant => $attributes) {
+            CardPriceSnapshot::updateOrCreate(
+                ['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => $variant, 'captured_on' => $today],
+                $attributes,
+            );
+        }
 
         foreach ($cardDetail->prices as $price) {
+            if ($price->source === 'tcgplayer' && isset($fallbacks[$price->variant])) {
+                continue;
+            }
+
             CardPriceSnapshot::updateOrCreate(
                 [
                     'card_id' => $card->id,
@@ -167,5 +182,53 @@ final class CatalogSyncService
                 ],
             );
         }
+    }
+
+    /**
+     * The kept tcgcsv prices that stand in for tcgdex's TCGplayer price on
+     * this sync, keyed by variant: for each linked variant, when tcgdex
+     * sent no price for it (or a zero one), or one TCGplayer last updated
+     * over STALE_AFTER_DAYS ago — a frozen price tcgdex keeps re-sending. A
+     * price with no update date counts as current, and a kept price whose
+     * product or subtype no longer matches the link is ignored.
+     *
+     * @return array<string, array<string, mixed>> the snapshot columns to write, by variant
+     */
+    private function fallbacksFor(Card $card, CardDetailData $cardDetail): array
+    {
+        if ($this->fallbackPrices === null || ! $this->fallbackPrices->enabled()) {
+            return [];
+        }
+
+        $links = CardTcgplayerLink::where('card_id', $card->id)->get(['variant', 'product_id', 'sub_type'])->keyBy('variant');
+        if ($links->isEmpty()) {
+            return [];
+        }
+
+        $theirs = [];
+        foreach ($cardDetail->prices as $price) {
+            if ($price->source === 'tcgplayer') {
+                $theirs[$price->variant] = $price;
+            }
+        }
+
+        $staleBefore = CarbonImmutable::today()->subDays(CardPriceResolver::STALE_AFTER_DAYS);
+        $use = [];
+        foreach ($this->fallbackPrices->forCard($card->id, array_values(array_map('strval', $links->keys()->all()))) as $variant => $entry) {
+            $link = $links->get($variant);
+            if ($link === null || $entry['productId'] !== (int) $link->product_id || $entry['subType'] !== $link->sub_type) {
+                continue;
+            }
+
+            $price = $theirs[$variant] ?? null;
+            $current = $price !== null
+                && ($price->marketMinor ?? 0) > 0
+                && ($price->sourceUpdatedAt === null || ! $price->sourceUpdatedAt->lt($staleBefore));
+            if (! $current) {
+                $use[$variant] = $this->fallbackPrices->snapshotAttributes($entry);
+            }
+        }
+
+        return $use;
     }
 }

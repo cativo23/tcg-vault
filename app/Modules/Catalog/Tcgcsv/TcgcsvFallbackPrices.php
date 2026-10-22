@@ -126,7 +126,8 @@ final class TcgcsvFallbackPrices
         ];
     }
 
-    private function enabled(): bool
+    /** Whether stored prices are used at all: only in fill mode. */
+    public function enabled(): bool
     {
         return config('tcgcsv.mode') === 'fill';
     }
