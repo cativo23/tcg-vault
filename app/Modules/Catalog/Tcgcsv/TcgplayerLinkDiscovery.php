@@ -88,8 +88,9 @@ final class TcgplayerLinkDiscovery
 
     /**
      * Whether a product's printed number and name are the card's: the number
-     * before the slash equals the card's local id, and the product's name
-     * starts with the card's name as whole words ("Mew" is not "Mewtwo").
+     * before the slash equals the card's local id, the total after it is the
+     * set's printed total when the card says what that is, and the product's
+     * name starts with the card's name as whole words ("Mew" is not "Mewtwo").
      *
      * @param  array{name: string, number: ?string}  $identity
      */
@@ -99,10 +100,14 @@ final class TcgplayerLinkDiscovery
             return false;
         }
 
-        $printed = ltrim(explode('/', $identity['number'])[0], '0');
+        [$number, $total] = [...explode('/', $identity['number'], 2), ''];
+        $printed = ltrim($number, '0');
         $name = $this->words($card->name);
 
-        return $printed !== '' && $printed === ltrim($card->local_id, '0')
+        $official = is_array($card->raw) ? ($card->raw['set']['cardCount']['official'] ?? null) : null;
+        $sameTotal = ! is_int($official) || $total === '' || ltrim($total, '0') === (string) $official;
+
+        return $printed !== '' && $printed === ltrim($card->local_id, '0') && $sameTotal
             && $name !== '' && str_starts_with($this->words($identity['name']).' ', $name.' ');
     }
 
@@ -149,6 +154,8 @@ final class TcgplayerLinkDiscovery
     private function candidates(Card $card): array
     {
         $candidates = [];
+        /** @var array<int, true> $ownProducts the plain normal entries' own products, whichever method names them */
+        $ownProducts = [];
         $raw = is_array($card->raw) ? $card->raw : [];
         // Matched by position, not by key: two entries can share a key.
         $specialPrints = CardVariants::specialPrints($raw);
@@ -177,6 +184,9 @@ final class TcgplayerLinkDiscovery
                 $ownProduct = $position === false && $plain && $key === 'normal'
                     && is_int($cardmarketProduct) && is_int($mainProduct) && $cardmarketProduct !== $mainProduct;
 
+                if ($ownProduct) {
+                    $ownProducts[$productId] = true;
+                }
                 $candidates[$key] ??= [$productId, 'tcgdex-thirdparty', $ownProduct];
             }
         }
@@ -192,7 +202,7 @@ final class TcgplayerLinkDiscovery
 
         foreach ($priced as $row) {
             if (is_numeric($row->product_id) && (int) $row->product_id > 0) {
-                $candidates[(string) $row->variant] = [(int) $row->product_id, 'tcgdex-price', false];
+                $candidates[(string) $row->variant] = [(int) $row->product_id, 'tcgdex-price', $row->variant === 'normal' && isset($ownProducts[(int) $row->product_id])];
             }
         }
 

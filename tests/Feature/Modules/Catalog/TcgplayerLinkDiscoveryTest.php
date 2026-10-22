@@ -308,6 +308,49 @@ test('a verified link stays verified on the next run, when discovery finds the p
     expect(CardTcgplayerLink::where('card_id', $card->id)->sole()->verified_at)->not->toBeNull();
 });
 
+test('a verified link stays verified once tcgdex prices the print itself on that product', function () {
+    config(['tcgcsv.extra_groups' => [1840]]);
+    $card = deckCard();
+    $prices = priceIndex(1840, [707025 => ['Normal']]);
+    app(TcgplayerLinkDiscovery::class)->discover($card, $prices, deckIdentity());
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 122, 'raw' => ['productId' => 707025]]);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, $prices, deckIdentity());
+
+    $link = CardTcgplayerLink::where('card_id', $card->id)->sole();
+    expect([$link->method, $link->verified_at !== null])->toBe(['tcgdex-price', true]);
+});
+
+test('a tcgdex-priced normal product that is the main product is not verified through an extra group', function () {
+    config(['tcgcsv.extra_groups' => [1840]]);
+    $card = deckCard();
+    // tcgdex priced `normal` on the card's holo product, not on the deck product.
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 122, 'raw' => ['productId' => 704819]]);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(1840, [704819 => ['Normal']]), [1840 => [704819 => ['name' => 'Bastiodon - 062/084', 'number' => '062/084']]]);
+
+    expect(CardTcgplayerLink::where('card_id', $card->id)->whereNotNull('verified_at')->exists())->toBeFalse();
+});
+
+test('an extra-group product printed for a bigger set than the card\'s is not linked', function () {
+    config(['tcgcsv.extra_groups' => [1840]]);
+    $card = deckCard();
+    $card->update(['raw' => [...$card->raw, 'set' => ['cardCount' => ['official' => 84]]]]);
+
+    app(TcgplayerLinkDiscovery::class)->discover($card->fresh(), priceIndex(1840, [707025 => ['Normal']]), deckIdentity('Bastiodon - 062/200 (Non-Holo)', '062/200'));
+
+    expect(linksOf($card))->toBe([]);
+});
+
+test('a card whose set total is unknown is matched on number and name alone', function () {
+    config(['tcgcsv.extra_groups' => [1840]]);
+    $card = deckCard();
+
+    app(TcgplayerLinkDiscovery::class)->discover($card, priceIndex(1840, [707025 => ['Normal']]), deckIdentity('Bastiodon - 062/200 (Non-Holo)', '062/200'));
+
+    expect(linksOf($card))->toBe([['normal', 707025, 'Normal', 'tcgdex-thirdparty', 1840]]);
+});
+
 test('a link whose product is no longer identified loses its verification', function () {
     config(['tcgcsv.extra_groups' => [1840]]);
     $card = deckCard();
