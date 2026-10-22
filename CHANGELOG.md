@@ -6,6 +6,22 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- 30th Celebration cards are priced from tcgcsv. tcgdex lists them mostly as
+  `normal` with a 30th-anniversary stamp, while TCGplayer sells each as a
+  Holofoil-only product, so the tcgcsv link was never made (these were counted
+  as skipped for lack of a matching subtype) and the app showed cardmarket's
+  EUR. A card whose only entry is a stamped print now links to the only subtype
+  its product has. Separately, a linked holo print stayed unverified and
+  unpriced because tcgdex files its cardmarket price under `default`, which the
+  check did not look at; it now does, when the print's cardmarket product is
+  the card's own. About 80 cards link and about 170 prints get a TCGplayer
+  price on the next run. Existing prices and history are not changed. See
+  "Stamped prints" in `deploy/README.md`.
+
+No migrations.
+
 ## [1.6.9] - 2026-10-22
 
 ### Fixed
