@@ -60,16 +60,16 @@ roadmap safe to attempt.
   limit raised 256M → 384M for `BGREWRITEAOF`'s fork/copy-on-write
   headroom on top of Horizon's own ~160M telemetry floor; confirmed
   against live polaris2 usage (3.7GB free host RAM) before sizing it.
-- **Persist `storage/logs`** — built, but not what production runs. The
-  `app-logs` named volume is mounted on `app`/`horizon`/`scheduler`, yet
-  production's `.env` sets `LOG_CHANNEL=stderr` (with `LOG_LEVEL=warning`), so
-  `storage/logs` is empty and the logs live in each container's Docker log:
-  10 MB × 5 files, and gone when the container is recreated, which every
-  deploy does. That is the original problem again (the evidence lost with
-  the container): the Redis name-resolution error seen at 18:08 UTC on
-  2026-10-22 was no longer readable after that evening's deploy. Open item
-  below: decide between `daily` on the volume and shipping the container logs
-  to Loki.
+- ~~**Persist `storage/logs`**~~ — done, and re-done on 2026-10-22. The
+  `app-logs` named volume is mounted on `app`/`horizon`/`scheduler` and
+  `LOG_CHANNEL=daily` keeps 14 days on it. Production's `.env` had drifted to
+  `LOG_CHANNEL=stderr`, which left `storage/logs` empty and the logs in each
+  container's Docker log (10 MB × 5 files, gone at every deploy): the Redis
+  name-resolution error seen at 18:08 UTC that day was unreadable after the
+  evening's deploy. The `.env` is back on `daily` (checked: the file is
+  written and `horizon` writes to the same one). The `tcgcsv` channel still
+  writes to stderr by design, so its nightly summary stays in the container
+  log and, for 30 days, in the cache (`tcgcsv:shadow:<date>`).
 - ~~**Error tracking**~~ — done. Self-hosted Bugsink (Sentry-protocol-
   compatible) on `space-server`, at `errors.cativo.dev` (VPN-gated
   dashboard). `app`/`horizon`/`scheduler` all reach it internally as
@@ -264,12 +264,6 @@ Everything here is live; `CHANGELOG.md` has the detail.
 Checked against the code and production on 2026-10-22. Ordered by how soon
 each one costs something.
 
-- **Decide where logs live.** Production runs `LOG_CHANNEL=stderr`, so logs
-  are capped at 10 MB × 5 per container and vanish at every deploy (see
-  v0.6.0, "Persist `storage/logs`"). Either set `LOG_CHANNEL=daily` on the
-  existing volume (14 days) or ship container logs to the host's Loki and
-  say so in `deploy/README.md`. Until then an incident that straddles a
-  deploy cannot be read afterwards.
 - **Map `swsh3` (Darkness Ablaze) to its TCGplayer group.** It is the only
   set without a group, so its 335 priced prints can never be linked or
   taken over from tcgdex's frozen price; no collection holds one yet. The

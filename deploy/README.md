@@ -305,7 +305,7 @@ docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(c
 ```
 
 ## Acceptance checklist (first deploy)
-- [ ] `.env` on the server has `APP_DEBUG=false` and `SESSION_SECURE_COOKIE=true`
+- [ ] `.env` on the server has `APP_DEBUG=false`, `SESSION_SECURE_COOKIE=true` and `LOG_CHANNEL=daily` (with `stderr`, `storage/logs` stays empty and the logs are lost when a container is recreated, i.e. at every deploy)
       — both are correct in `docker/prod/.env.production.example`, but that's a
       template, not what's actually loaded; confirm the real `.env`.
 - [ ] `https://tcgvault.cativo.dev` loads over HTTPS with a valid Let's Encrypt cert.
