@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
+use App\Modules\Catalog\Tcgcsv\TcgcsvExtraGroups;
 use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceRow;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
@@ -259,8 +260,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      */
     private function fetchPrices(TcgcsvClient $client, string $build): array
     {
-        $extraGroups = collect(is_array(config('tcgcsv.extra_groups')) ? config('tcgcsv.extra_groups') : [])
-            ->map(fn ($g) => (int) $g);
+        $extraGroups = collect(TcgcsvExtraGroups::ids());
         $all = DB::table('set_tcgplayer_groups')->distinct()->pluck('group_id')
             ->merge(CardTcgplayerLink::whereNotNull('group_id')->distinct()->pluck('group_id'))
             ->merge($extraGroups)
@@ -406,7 +406,10 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $since = $today->subDays(CardPriceResolver::STALE_AFTER_DAYS)->toDateString();
         $lastTcgcsv = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')
             ->where('captured_on', '>=', $since)->where('captured_on', '<', $today->toDateString()));
-        $cardmarket = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'cardmarket')->where('captured_on', '>=', $since));
+        $cardmarket = $this->withOwnCardmarket(
+            $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'cardmarket')->where('captured_on', '>=', $since)),
+            [...$gaps, ...$priced],
+        );
         $lastTcgdex = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgdex')
             ->where('source_updated_at', '>=', $today->subDays(self::TCGDEX_REFERENCE_DAYS)));
         $writtenToday = DB::table('card_price_snapshots')
@@ -501,24 +504,23 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * price to check it against, 'implausible' when it is far from any
      * reference (see MAX_RATIO_TO_LAST), otherwise 'accept'.
      *
-     * A link to an extra group's product whose identity was verified
-     * (name and number match the card's) is a print of its own, so the
-     * cardmarket price on file — the main product's — is no reference for it
-     * and its lack of one is no reason to hold it; its price is still
-     * checked against its own last prices.
+     * A link to an extra group's product whose identity was verified (name
+     * and number match the card's) is vouched for like an admin's: it is
+     * never 'unverified', and gets the wider cardmarket bound. Its
+     * cardmarket reference is the print's own average (withOwnCardmarket),
+     * the one on file for the card being the main product's.
      *
      * @return 'accept'|'implausible'|'unverified'
      */
     private function verdict(CardTcgplayerLink $link, int $market, ?int $lastTcgcsv, ?int $lastTcgdex, ?int $cardmarket): string
     {
-        $extraGroups = config('tcgcsv.extra_groups');
-        if ($link->verified_at !== null && in_array((int) $link->group_id, array_map('intval', is_array($extraGroups) ? $extraGroups : []), true)) {
-            $cardmarket = null;
-        } elseif ($lastTcgcsv === null && $cardmarket === null && (CardTcgplayerLink::TRUST[$link->method] ?? 0) < CardTcgplayerLink::TRUST['tcgdex-price']) {
+        $vouched = $link->method === 'admin' || $this->identityVerified($link);
+
+        if (! $vouched && $lastTcgcsv === null && $cardmarket === null && (CardTcgplayerLink::TRUST[$link->method] ?? 0) < CardTcgplayerLink::TRUST['tcgdex-price']) {
             return 'unverified';
         }
 
-        $cardmarketRatio = $link->method === 'admin' ? self::MAX_RATIO_TO_CARDMARKET_ADMIN : self::MAX_RATIO_TO_CARDMARKET;
+        $cardmarketRatio = $vouched ? self::MAX_RATIO_TO_CARDMARKET_ADMIN : self::MAX_RATIO_TO_CARDMARKET;
         if ($this->farFrom($market, $lastTcgcsv, self::MAX_RATIO_TO_LAST)
             || $this->farFrom($market, $lastTcgdex, self::MAX_RATIO_TO_LAST)
             || $this->farFrom($market, $cardmarket, $cardmarketRatio)) {
@@ -526,6 +528,52 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         }
 
         return 'accept';
+    }
+
+    /** Whether the link is to an extra group's product whose name and number were checked against the card's. */
+    private function identityVerified(CardTcgplayerLink $link): bool
+    {
+        return $link->verified_at !== null && in_array((int) $link->group_id, TcgcsvExtraGroups::ids(), true);
+    }
+
+    /**
+     * For each identity-verified link, the cardmarket reference becomes the
+     * print's own average from the card's `variants_detailed` entry for that
+     * product (EUR, in minor units), not the card's cardmarket price on file,
+     * which is the main product's; a print with no average has no reference.
+     *
+     * @param  array<string, int>  $cardmarket  "card_id|variant" → the cardmarket price on file
+     * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $pairs
+     * @return array<string, int>
+     */
+    private function withOwnCardmarket(array $cardmarket, array $pairs): array
+    {
+        $verified = array_filter(array_map(fn (array $pair) => $this->identityVerified($pair[0]) ? $pair[0] : null, $pairs));
+        if ($verified === []) {
+            return $cardmarket;
+        }
+
+        $raws = Card::whereIn('id', array_unique(array_map(fn (CardTcgplayerLink $l) => $l->card_id, $verified)))->pluck('raw', 'id');
+
+        foreach ($verified as $link) {
+            $key = "{$link->card_id}|{$link->variant}";
+            unset($cardmarket[$key]);
+
+            $raw = $raws[$link->card_id] ?? null;
+            foreach (is_array($raw) && is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [] as $entry) {
+                $average = is_array($entry) && ($entry['thirdParty']['tcgplayer'] ?? null) === $link->product_id
+                    ? ($entry['pricing']['cardmarket']['avg'] ?? null)
+                    : null;
+
+                if (is_numeric($average) && $average > 0) {
+                    $cardmarket[$key] = (int) round((float) $average * 100);
+
+                    break;
+                }
+            }
+        }
+
+        return $cardmarket;
     }
 
     /**

@@ -883,28 +883,35 @@ test('a price tcgcsv fills is the one the next gallery render shows', function (
         ->and(ShownPrices::totals($username))->toBe(['USD' => 135]);
 });
 
-/** Bastiodon me05-062: its `normal` print is the Deck Exclusives product 707025, cardmarket still on the main product's 0.05. */
-function deckExclusiveFixture(): Card
+/**
+ * Bastiodon me05-062: its `normal` print is the Deck Exclusives product 707025.
+ * The cardmarket price on file (0.05) is the main product's; the print's own
+ * cardmarket average, in its variants_detailed entry, is 3.44.
+ */
+function deckExclusiveFixture(bool $ownAverage = true): Card
 {
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     DB::table('set_tcgplayer_groups')->insert(['set_id' => $set->id, 'group_id' => 24688]);
     $card = Card::create(['tcgdex_id' => 'me05-062', 'set_id' => $set->id, 'local_id' => '062', 'name' => 'Bastiodon', 'raw' => [
         'pricing' => ['cardmarket' => ['unit' => 'EUR', 'idProduct' => 895847]],
-        'variants_detailed' => [['type' => 'normal', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 897297, 'tcgplayer' => 707025]]],
+        'variants_detailed' => [[
+            'type' => 'normal', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 897297, 'tcgplayer' => 707025],
+            ...($ownAverage ? ['pricing' => ['cardmarket' => ['unit' => 'EUR', 'avg' => 3.44]]] : []),
+        ]],
     ]]);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 5]);
 
     return $card;
 }
 
-function deckExclusiveFake(float $market = 4.67, int $productsStatus = 200): void
+function deckExclusiveFake(float $market = 4.67, int $productsStatus = 200, string $productName = 'Bastiodon - 062/084 (Non-Holo)'): void
 {
     Http::fake([
         'tcgcsv.com/last-updated.txt' => Http::response('2026-10-08T20:05:57+0000', 200),
         'tcgcsv.com/tcgplayer/3/24688/prices' => Http::response(tcgcsvPricesResponse([]), 200),
         'tcgcsv.com/tcgplayer/3/1840/prices' => Http::response(tcgcsvPricesResponse([['productId' => 707025, 'lowPrice' => 3.9, 'marketPrice' => $market, 'subTypeName' => 'Normal']]), 200),
         'tcgcsv.com/tcgplayer/3/1840/products' => $productsStatus === 200
-            ? Http::response(tcgcsvPricesResponse([['productId' => 707025, 'name' => 'Bastiodon - 062/084 (Non-Holo)', 'extendedData' => [['name' => 'Number', 'value' => '062/084']]]]), 200)
+            ? Http::response(tcgcsvPricesResponse([['productId' => 707025, 'name' => $productName, 'extendedData' => [['name' => 'Number', 'value' => '062/084']]]]), 200)
             : Http::response('down', $productsStatus),
     ]);
 }
@@ -936,7 +943,31 @@ test('a price far from the main product\'s cardmarket price is still written for
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(467);
 });
 
-test('an identity-verified link is still held back by a jump from its own last tcgcsv price', function () {
+test('a verified link stays written on later runs, when the link already points at the extra group', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
+    $card = deckExclusiveFixture();
+    // Two evenings' builds: the print's price moves a little between them.
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::sequence()->push('2026-10-08T20:05:57+0000')->push('2026-10-09T20:05:57+0000'),
+        'tcgcsv.com/tcgplayer/3/24688/prices' => Http::response(tcgcsvPricesResponse([]), 200),
+        'tcgcsv.com/tcgplayer/3/1840/prices' => Http::sequence()
+            ->push(tcgcsvPricesResponse([['productId' => 707025, 'lowPrice' => 3.9, 'marketPrice' => 4.67, 'subTypeName' => 'Normal']]))
+            ->push(tcgcsvPricesResponse([['productId' => 707025, 'lowPrice' => 3.9, 'marketPrice' => 4.80, 'subTypeName' => 'Normal']])),
+        'tcgcsv.com/tcgplayer/3/1840/products' => Http::response(tcgcsvPricesResponse([['productId' => 707025, 'name' => 'Bastiodon - 062/084 (Non-Holo)', 'extendedData' => [['name' => 'Number', 'value' => '062/084']]]]), 200),
+    ]);
+    tcgcsvLog();
+    runTcgcsvSync();
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-09 20:30', 'UTC'));
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 5]);
+    runTcgcsvSync();
+
+    expect(CardTcgplayerLink::where('card_id', $card->id)->sole()->verified_at)->not->toBeNull();
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->value('market_minor'))->toBe(480);
+});
+
+test('an identity-verified link is held back by a jump from its own last tcgcsv price', function () {
+    // Cardmarket's own average (3.44) allows 25.00, so only the last tcgcsv price (1.22) can hold it.
     config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
     $card = deckExclusiveFixture();
     CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 707025, 'sub_type' => 'Normal', 'group_id' => 1840, 'method' => 'tcgdex-thirdparty', 'verified_at' => now()]);
@@ -947,17 +978,58 @@ test('an identity-verified link is still held back by a jump from its own last t
     runTcgcsvSync();
 
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->exists())->toBeFalse();
+    expect(CardTcgplayerLink::where('card_id', $card->id)->sole()->verified_at)->not->toBeNull();
 });
 
-test('a link from an extra group that no identity verified is still checked against cardmarket', function () {
+test('a verified link\'s first price is bounded by the print\'s own cardmarket average', function (float $market, bool $written) {
     config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
     $card = deckExclusiveFixture();
-    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 707025, 'sub_type' => 'Normal', 'group_id' => 1840, 'method' => 'tcgdex-thirdparty']);
-    deckExclusiveFake();
+    deckExclusiveFake(market: $market);
     tcgcsvLog();
 
     runTcgcsvSync();
 
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->exists())->toBe($written);
+})->with([
+    'in line with the average' => [4.67, true],
+    'a glitch far above it' => [400.00, false],
+]);
+
+test('a verified link with no own cardmarket average has nothing to bound its first price, and is written', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
+    $card = deckExclusiveFixture(ownAverage: false);
+    deckExclusiveFake(market: 4.67);
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(467);
+});
+
+test('a verified link\'s price accepted once its hold expires is reported to Discord', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840], 'services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
+    $card = deckExclusiveFixture(ownAverage: false);
+    Cache::put('tcgcsv:held:'.$card->id.'|normal', true, now()->addDays(7));
+    Http::fake(['discord.com/*' => Http::response('', 204)]);
+    deckExclusiveFake();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(1);
+    Http::assertSent(fn ($request) => str_contains($request->url(), 'discord.com') && str_contains($request['content'], 'after a hold') && str_contains($request['content'], 'me05-062 normal'));
+});
+
+test('a link to an extra group\'s product that no longer matches the card loses its verification and is checked against cardmarket again', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
+    $card = deckExclusiveFixture();
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 707025, 'sub_type' => 'Normal', 'group_id' => 1840, 'method' => 'tcgdex-thirdparty', 'verified_at' => now()]);
+    deckExclusiveFake(productName: 'Rampardos - 062/084 (Non-Holo)');
+    tcgcsvLog();
+
+    runTcgcsvSync();
+
+    expect(CardTcgplayerLink::where('card_id', $card->id)->sole()->verified_at)->toBeNull();
+    // 4.67 against the main product's 0.05 on file.
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->exists())->toBeFalse();
 });
 
