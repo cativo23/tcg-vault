@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.9] - 2026-10-22
+
 ### Fixed
 
 - A deck exclusive's non-holo print is priced from its own TCGplayer product.
