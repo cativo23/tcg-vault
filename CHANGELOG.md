@@ -12,8 +12,9 @@ All notable changes to this project are documented here. Format follows
   sends none and its asset server has none. `catalog:backfill-images` now falls
   back to the image of the card's TCGplayer product, when the card's plain-print
   links agree on one product and TCGplayer's CDN serves it. Run it once after
-  deploying (add `--dry-run` to list the pictures first); about 77 of the 87
-  cards get one. The privacy page now names TCGplayer's image host.
+  deploying (add `--dry-run` to list the pictures first); up to 77 of the 87
+  cards get one, the ones that have a link. The privacy page now names
+  TCGplayer's image host.
 
 No migrations.
 

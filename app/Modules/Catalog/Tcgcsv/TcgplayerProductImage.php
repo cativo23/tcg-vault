@@ -17,7 +17,10 @@ use Illuminate\Support\Facades\Http;
  * for. The product is the one the card's links agree on: only the plain
  * prints' links count (a stamped print's product shows a different card
  * face), the most trusted method decides, and a card whose remaining links
- * name more than one product gets none rather than a guess.
+ * name more than one product gets none rather than a guess. A link only
+ * tcgdex's third-party ids vouch for is enough: unlike a price, a picture
+ * is not held against another source, so those cards' names should be
+ * compared with their products' before the backfill is written.
  *
  * The address is built from the integer product id alone and is only
  * returned after a HEAD request confirms the CDN serves an image there (a

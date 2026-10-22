@@ -105,6 +105,21 @@ test('products that still differ at the same trust leave the card without an ima
     Http::assertNothingSent();
 });
 
+test('a link to product 0 is not an image', function () {
+    $card = imageCard([['holofoil', 0, 'admin']]);
+    Http::fake();
+
+    expect(app(TcgplayerProductImage::class)->resolve($card))->toBeNull();
+    Http::assertNothingSent();
+});
+
+test('a link of an unknown method only counts when no known method links the card', function () {
+    $card = imageCard([['normal', 111, 'something-else'], ['holofoil', 222, 'tcgdex-thirdparty']]);
+    fakeImage(222);
+
+    expect(app(TcgplayerProductImage::class)->resolve($card))->toBe(imageUrl(222));
+});
+
 test('two variants of one product make one request', function () {
     $card = imageCard([['normal', 656263, 'tcgdex-thirdparty'], ['reverse-holofoil', 656263, 'tcgdex-thirdparty']]);
     fakeImage(656263);
