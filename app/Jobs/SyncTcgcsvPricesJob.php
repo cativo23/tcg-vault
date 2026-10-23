@@ -9,10 +9,12 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Tcgcsv\IdentityOutcome;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgcsvExtraGroups;
 use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceRow;
+use App\Modules\Catalog\Tcgcsv\TcgplayerIdentityMatcher;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
 use App\Support\DiscordAlerter;
 use Carbon\CarbonImmutable;
@@ -130,8 +132,10 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         return now()->lt($cutoff) ? $cutoff : now()->addHour();
     }
 
-    public function handle(TcgcsvClient $client, TcgplayerLinkDiscovery $discovery): void
+    public function handle(TcgcsvClient $client, TcgplayerLinkDiscovery $discovery, ?TcgplayerIdentityMatcher $matcher = null): void
     {
+        $matcher ??= app(TcgplayerIdentityMatcher::class);
+        $identityMode = $this->identityMode();
         try {
             $build = $client->lastUpdated()->toIso8601String();
         } catch (ConnectionException|RequestException|UnexpectedValueException $e) {
@@ -148,7 +152,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             return;
         }
 
-        [$prices, $fetched, $failedGroups, $partialRetry, $identities] = $this->fetchPrices($client, $build);
+        [$prices, $fetched, $failedGroups, $partialRetry, $identities] = $this->fetchPrices($client, $build, $identityMode === 'log');
 
         if ($failedGroups === []) {
             // Every group has this build; recorded before linking, so a
@@ -160,10 +164,17 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         }
 
         $skipped = 0;
+        $identityOutcomes = [];
         $setIds = DB::table('set_tcgplayer_groups')->distinct()->pluck('set_id');
-        Card::whereIn('set_id', $setIds)->chunkById(200, function ($cards) use ($discovery, $prices, $identities, &$skipped) {
+        Card::whereIn('set_id', $setIds)->chunkById(200, function ($cards) use ($discovery, $matcher, $identityMode, $prices, $identities, &$skipped, &$identityOutcomes) {
             foreach ($cards as $card) {
                 $skipped += $discovery->discover($card, $prices, $identities);
+
+                // After discovery, so a print's existing link is the one just
+                // confirmed. Judges only; nothing it finds is stored.
+                if ($identityMode === 'log') {
+                    array_push($identityOutcomes, ...$matcher->evaluate($card, $prices, $identities));
+                }
             }
         });
 
@@ -195,6 +206,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'gaps_unverified' => count($unverified),
             'gaps_unverified_prints' => $this->outlierLabels(array_slice($unverified, 0, 10)),
             'gaps_accepted_after_hold' => $this->outlierLabels(array_slice($acceptedAfterHold, 0, 10)),
+            ...($identityMode === 'log' ? ['identity' => $this->identitySummary($identityOutcomes)] : []),
         ];
 
         Log::channel('tcgcsv')->info('tcgcsv sync', $summary);
@@ -233,6 +245,51 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         return $mode === 'fill' ? 'fill' : 'shadow';
     }
 
+    /**
+     * 'log' only when set to exactly that: the identity matcher judges every
+     * base print and reports what it would link, and writes nothing. Anything
+     * else leaves it off, so a typo in the switch fails safe.
+     */
+    private function identityMode(): string
+    {
+        return config('tcgcsv.identity_links') === 'log' ? 'log' : 'off';
+    }
+
+    /**
+     * What the identity matcher concluded over the run: how many prints agree
+     * with their link, would get a different product, or would get a new link,
+     * and every refusal by reason, with the first few of each named.
+     *
+     * @param  list<IdentityOutcome>  $outcomes
+     * @return array<string, mixed>
+     */
+    private function identitySummary(array $outcomes): array
+    {
+        $named = fn (string $status) => array_values(array_filter($outcomes, fn (IdentityOutcome $o) => $o->status === $status));
+        $labels = fn (array $list) => array_map(fn (IdentityOutcome $o) => $o->label(), array_slice($list, 0, 10));
+        $new = $named(IdentityOutcome::NEW);
+        $different = $named(IdentityOutcome::DIFFERENT);
+        $refused = $named(IdentityOutcome::REFUSED);
+
+        $reasons = [];
+        foreach ($refused as $o) {
+            $reasons[(string) $o->reason] = ($reasons[(string) $o->reason] ?? 0) + 1;
+        }
+        ksort($reasons);
+
+        return [
+            'mode' => 'log',
+            'agree' => count($named(IdentityOutcome::AGREE)),
+            'different' => count($different),
+            'new' => count($new),
+            'refused' => count($refused),
+            'refused_reasons' => $reasons,
+            'new_prints' => array_map(fn (IdentityOutcome $o) => "{$o->cardId} {$o->variant}", array_slice($new, 0, 10)),
+            'different_prints' => array_map(fn (IdentityOutcome $o) => "{$o->cardId} {$o->variant} → {$o->productId}", array_slice($different, 0, 10)),
+            'refused_prints' => $labels($refused),
+        ];
+    }
+
     /** Release for an hour, or end quietly when the day's window is over. */
     private function retryLaterOrStop(): void
     {
@@ -258,7 +315,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      *
      * @return array{array<int, array<int, array<string, TcgcsvPriceRow>>>, list<int>, list<int>, bool, array<int, array<int, array{name: string, number: ?string}>>}
      */
-    private function fetchPrices(TcgcsvClient $client, string $build): array
+    private function fetchPrices(TcgcsvClient $client, string $build, bool $identityLog = false): array
     {
         $extraGroups = collect(TcgcsvExtraGroups::ids());
         $all = DB::table('set_tcgplayer_groups')->distinct()->pluck('group_id')
@@ -284,6 +341,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 if ($extraGroups->contains($groupId)) {
                     usleep(self::PAUSE_MICROSECONDS);
                     $identities[$groupId] = $client->products($groupId);
+                } elseif ($identityLog) {
+                    usleep(self::PAUSE_MICROSECONDS);
+                    $identities = $this->setIdentities($client, $groupId, $identities);
                 }
                 Cache::put("tcgcsv:group:{$groupId}", $build, now()->addDays(2));
                 $fetched[] = $groupId;
@@ -305,6 +365,31 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         }
 
         return [$prices, $fetched, $failed, $groups->count() < $all->count(), $identities];
+    }
+
+    /**
+     * A mapped group's products, for the identity matcher. Unlike an extra
+     * group's, a failure here costs only the matcher that group's cards (it
+     * refuses them): the group's prices are used as before. A throttle or a
+     * lost connection still propagates, to stop the loop as for prices.
+     *
+     * @param  array<int, array<int, array{name: string, number: ?string}>>  $identities
+     * @return array<int, array<int, array{name: string, number: ?string}>>
+     */
+    private function setIdentities(TcgcsvClient $client, int $groupId, array $identities): array
+    {
+        try {
+            $identities[$groupId] = $client->products($groupId);
+        } catch (RequestException $e) {
+            if ($e->response->status() === 429) {
+                throw $e;
+            }
+            Log::channel('tcgcsv')->warning('tcgcsv products failed; identity matcher skips the group', ['group' => $groupId, 'error' => class_basename($e)]);
+        } catch (UnexpectedValueException|MalformedCatalogResponseException $e) {
+            Log::channel('tcgcsv')->warning('tcgcsv products failed; identity matcher skips the group', ['group' => $groupId, 'error' => class_basename($e)]);
+        }
+
+        return $identities;
     }
 
     /**
