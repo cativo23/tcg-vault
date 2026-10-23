@@ -219,3 +219,84 @@ test('the evidence records how the match was made', function () {
 
     expect($outcome->evidence)->toMatchArray(['rule' => 'same-print', 'number' => '055/091', 'candidates' => 1]);
 });
+
+test('an unpriced product with the same name and number still makes the match ambiguous', function () {
+    $card = identityCard('mep-055', 'Treecko', ['holo' => true]);
+    [$prices, $identities] = identityFeed(24451, [
+        1 => ['name' => 'Treecko - 055', 'number' => '055', 'subTypes' => ['Holofoil']],
+        2 => ['name' => 'Treecko - 055', 'number' => '055', 'subTypes' => []],
+    ]);
+
+    $outcomes = identityOutcomes($card, [$prices, $identities]);
+
+    expect($outcomes['holofoil'])->toMatchArray(['status' => 'refused', 'reason' => 'ambiguous']);
+});
+
+test('an unpriced product sharing the number refuses a lone stamped print', function () {
+    $card = identityCard('30th-047', 'Pikachu', ['holo' => true], [
+        'pricing' => ['cardmarket' => ['idProduct' => 5]],
+        'variants_detailed' => [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 5]]],
+    ], groups: [24722], set: '30th');
+    [$prices, $identities] = identityFeed(24722, [
+        696682 => ['name' => 'Pikachu - 047', 'number' => '047', 'subTypes' => ['Special']],
+        696683 => ['name' => 'Pikachu (Stamped) - 047', 'number' => '047', 'subTypes' => []],
+    ]);
+
+    expect(identityOutcomes($card, [$prices, $identities])['holofoil'])->toMatchArray(['status' => 'refused', 'reason' => 'number-not-unique']);
+});
+
+test('a product with the card\'s name and no readable number counts as a possible second match', function () {
+    $card = identityCard('mep-055', 'Treecko', ['holo' => true]);
+    [$prices, $identities] = identityFeed(24451, [
+        1 => ['name' => 'Treecko - 055', 'number' => '055', 'subTypes' => ['Holofoil']],
+        2 => ['name' => 'Treecko', 'number' => null, 'subTypes' => ['Holofoil']],
+    ]);
+
+    expect(identityOutcomes($card, [$prices, $identities])['holofoil'])->toMatchArray(['status' => 'refused', 'reason' => 'ambiguous']);
+});
+
+test('the only matching product having no price is refused as unpriced', function () {
+    $card = identityCard('mep-055', 'Treecko', ['holo' => true]);
+    [$prices, $identities] = identityFeed(24451, [1 => ['name' => 'Treecko - 055', 'number' => '055', 'subTypes' => []]]);
+
+    expect(identityOutcomes($card, [$prices, $identities])['holofoil'])->toMatchArray(['status' => 'refused', 'reason' => 'no-price']);
+});
+
+test('a group with products and no price rows is read, not treated as unreadable', function () {
+    $card = identityCard('mep-055', 'Treecko', ['holo' => true]);
+    [, $identities] = identityFeed(24451, [1 => ['name' => 'Treecko - 055', 'number' => '055', 'subTypes' => []]]);
+
+    expect(identityOutcomes($card, [[], $identities])['holofoil']['reason'])->toBe('no-price');
+});
+
+test('a product name with an unpadded number matches its padded printed number', function () {
+    $card = identityCard('sv01-058', 'Pikachu', ['normal' => true], groups: [22873], set: 'sv01', official: 102);
+
+    $outcomes = identityOutcomes($card, identityFeed(22873, [1 => ['name' => 'Pikachu - 58/102', 'number' => '058/102', 'subTypes' => ['Normal']]]));
+
+    expect($outcomes['normal']['status'])->toBe('new');
+});
+
+test('a lettered printed total does not fail the set count check', function () {
+    $card = identityCard('swsh9-TG01', 'Pikachu', ['normal' => true], groups: [1], set: 'swsh9', official: 186);
+
+    $outcomes = identityOutcomes($card, identityFeed(1, [1 => ['name' => 'Pikachu - TG01/TG30', 'number' => 'TG01/TG30', 'subTypes' => ['Normal']]]));
+
+    expect($outcomes['normal']['status'])->toBe('new');
+});
+
+test('a lone product with no readable number is never linked, even with the card\'s exact name', function () {
+    $card = identityCard('mep-055', 'Treecko', ['holo' => true]);
+
+    $outcomes = identityOutcomes($card, identityFeed(24451, [1 => ['name' => 'Treecko', 'number' => null, 'subTypes' => ['Holofoil']]]));
+
+    expect($outcomes['holofoil'])->toMatchArray(['status' => 'refused', 'reason' => 'no-candidate']);
+});
+
+test('a name that gives only the number still matches a product whose number has a total', function () {
+    $card = identityCard('sv01-100', 'Pikachu', ['normal' => true], groups: [22873], set: 'sv01');
+
+    $outcomes = identityOutcomes($card, identityFeed(22873, [1 => ['name' => 'Pikachu - 100', 'number' => '100/198', 'subTypes' => ['Normal']]]));
+
+    expect($outcomes['normal']['status'])->toBe('new');
+});

@@ -25,13 +25,16 @@ use Illuminate\Support\Str;
  * each outcome says what a link would be, and how it compares with the link
  * the print already has.
  */
-final class TcgplayerIdentityMatcher
+class TcgplayerIdentityMatcher
 {
     /** Bumped when the rules change, so stored evidence says which rules made a link. */
     public const VERSION = 1;
 
     /** @var array<int, array<int, int>> set id → its groups, looked up once per set */
     private array $setGroups = [];
+
+    /** @var array<int, array{products: array<int, array{string, string, ?PrintedNumber}>, byNumber: array<string, list<int>>, unreadable: list<int>}> group id → its products indexed by number */
+    private array $indexes = [];
 
     /**
      * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices  groupId → productId → subType → row
@@ -58,55 +61,73 @@ final class TcgplayerIdentityMatcher
 
         $groups = $this->groupsOf($card);
         foreach ($groups as $group) {
-            // A group that failed this run has no products to judge by, and a
-            // product in it could be the second match the rule must see.
-            if (! isset($prices[$group], $identities[$group])) {
+            // A group whose products could not be read this run has nothing to
+            // judge by, and a product in it could be the second match the rule
+            // must see. A group with products and no prices is read as usual.
+            if (! isset($identities[$group])) {
                 return $refuse('group-without-identities');
             }
         }
 
-        $printed = [];
+        // Every product of the groups takes part, priced or not: an unpriced
+        // twin is still a second match. A product with no readable number is a
+        // possible match when its name is the card's.
+        $sameNumber = [];
+        $candidates = [];
+        $name = $this->words($card->name);
+        $wanted = strtolower((string) PrintedNumber::parse($card->local_id)?->number);
         foreach ($groups as $group) {
-            foreach ($prices[$group] as $productId => $subTypes) {
-                $number = PrintedNumber::parse($identities[$group][$productId]['number'] ?? null);
-                if ($number !== null) {
-                    $printed[] = [$group, $productId, $subTypes, $identities[$group][$productId]['name'], (string) $identities[$group][$productId]['number'], $number];
+            $index = $this->indexOf($group, $identities[$group]);
+            foreach ($index['byNumber'][$wanted] ?? [] as $productId) {
+                $sameNumber[] = $productId;
+                [$productName, , $number] = $index['products'][$productId];
+                if ($number !== null && $this->isSamePrint($card, $productName, $number)) {
+                    $candidates[] = ['group' => $group, 'product' => $productId, 'readable' => true];
+                }
+            }
+            foreach ($index['unreadable'] as $productId) {
+                if ($this->words($index['products'][$productId][0]) === $name) {
+                    $candidates[] = ['group' => $group, 'product' => $productId, 'readable' => false];
                 }
             }
         }
 
-        $sameNumber = array_filter($printed, fn (array $p) => $p[5]->isNumber($card->local_id));
-        $candidates = array_values(array_filter($sameNumber, fn (array $p) => $this->isSamePrint($card, $p[3], $p[4], $p[5])));
-
         $outcomes = [];
         foreach ($prints as $variant => $loneStamped) {
-            $outcomes[] = $this->outcome($card, $variant, $loneStamped, $candidates, count($sameNumber));
+            $outcomes[] = $this->outcome($card, $variant, $loneStamped, $candidates, count($sameNumber), $prices, $identities);
         }
 
         return $outcomes;
     }
 
     /**
-     * @param  list<array{int, int, array<string, TcgcsvPriceRow>, string, string, PrintedNumber}>  $candidates
+     * @param  list<array{group: int, product: int, readable: bool}>  $candidates
+     * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices
+     * @param  array<int, array<int, array{name: string, number: ?string}>>  $identities
      */
-    private function outcome(Card $card, string $variant, bool $loneStamped, array $candidates, int $sharingNumber): IdentityOutcome
+    private function outcome(Card $card, string $variant, bool $loneStamped, array $candidates, int $sharingNumber, array $prices, array $identities): IdentityOutcome
     {
         $refused = fn (string $reason) => new IdentityOutcome($card->tcgdex_id, $variant, IdentityOutcome::REFUSED, $reason);
 
-        if (count($candidates) === 0) {
-            return $refused('no-candidate');
-        }
         if (count($candidates) > 1) {
             return $refused('ambiguous');
         }
+        if (count($candidates) === 0 || ! $candidates[0]['readable']) {
+            return $refused('no-candidate');
+        }
 
-        [$group, $productId, $subTypes, , $rawNumber, $number] = $candidates[0];
+        ['group' => $group, 'product' => $productId] = $candidates[0];
 
         // A lone stamped print can be told from a plain one only by its
-        // product: when another priced product shares the number, the one
-        // that matched may be the plain print's.
+        // product: when another product shares the number, the one that
+        // matched may be the plain print's.
         if ($loneStamped && $sharingNumber !== 1) {
             return $refused('number-not-unique');
+        }
+
+        $subTypes = $prices[$group][$productId] ?? [];
+        if ($subTypes === []) {
+            return $refused('no-price');
         }
 
         $subType = $this->subTypeFor($variant, $subTypes, $loneStamped);
@@ -122,9 +143,37 @@ final class TcgplayerIdentityMatcher
         };
 
         return new IdentityOutcome($card->tcgdex_id, $variant, $status, null, $productId, $subType, $group, [
-            'path' => 'identity', 'rule' => 'same-print', 'number' => $rawNumber, 'total' => $number->total,
-            'candidates' => count($candidates), 'lone_stamped' => $loneStamped, 'matcher' => self::VERSION,
+            'path' => 'identity', 'rule' => 'same-print', 'number' => $identities[$group][$productId]['number'],
+            'total' => PrintedNumber::parse($identities[$group][$productId]['number'])?->total,
+            'candidates' => 1, 'lone_stamped' => $loneStamped, 'matcher' => self::VERSION,
         ]);
+    }
+
+    /**
+     * A group's products by printed number, parsed once per run however many
+     * cards are judged against it.
+     *
+     * @param  array<int, array{name: string, number: ?string}>  $products
+     * @return array{products: array<int, array{string, string, ?PrintedNumber}>, byNumber: array<string, list<int>>, unreadable: list<int>}
+     */
+    private function indexOf(int $group, array $products): array
+    {
+        if (isset($this->indexes[$group])) {
+            return $this->indexes[$group];
+        }
+
+        $index = ['products' => [], 'byNumber' => [], 'unreadable' => []];
+        foreach ($products as $productId => $product) {
+            $number = PrintedNumber::parse($product['number']);
+            $index['products'][$productId] = [$product['name'], (string) $product['number'], $number];
+            if ($number === null) {
+                $index['unreadable'][] = $productId;
+            } else {
+                $index['byNumber'][strtolower($number->number)][] = $productId;
+            }
+        }
+
+        return $this->indexes[$group] = $index;
     }
 
     /**
@@ -202,20 +251,37 @@ final class TcgplayerIdentityMatcher
      * after the slash is the set's official count when both are known, and
      * the product's name, without its printed number, is the card's name.
      */
-    private function isSamePrint(Card $card, string $name, string $rawNumber, PrintedNumber $number): bool
+    private function isSamePrint(Card $card, string $name, PrintedNumber $number): bool
     {
         $official = is_array($card->raw) ? ($card->raw['set']['cardCount']['official'] ?? null) : null;
         if (is_int($official) && $number->total !== null && ! $number->isTotal($official)) {
             return false;
         }
 
-        $words = $this->words($name);
-        $suffix = $this->words($rawNumber);
-        if ($suffix !== '' && ($words === $suffix || str_ends_with($words, ' '.$suffix))) {
-            $words = trim(substr($words, 0, -strlen($suffix)));
-        }
+        $words = $this->withoutNumber($this->words($name), $number);
 
         return $words !== '' && $words === $this->words($card->name);
+    }
+
+    /**
+     * The words of a product name without its trailing printed number, in
+     * whatever padding TCGplayer wrote it ("Pikachu - 58/102" for 058/102).
+     */
+    private function withoutNumber(string $words, PrintedNumber $number): string
+    {
+        $tokens = $words === '' ? [] : explode(' ', $words);
+
+        foreach ([2, 1] as $count) {
+            if (count($tokens) < $count) {
+                continue;
+            }
+            $tail = PrintedNumber::parse(implode('/', array_slice($tokens, -$count)));
+            if ($tail !== null && strtolower($tail->number) === strtolower($number->number) && ($tail->total === null || strtolower($tail->total) === strtolower((string) $number->total))) {
+                return implode(' ', array_slice($tokens, 0, -$count));
+            }
+        }
+
+        return $words;
     }
 
     /**

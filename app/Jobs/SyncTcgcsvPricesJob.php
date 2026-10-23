@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Throwable;
 use UnexpectedValueException;
 
 /**
@@ -132,9 +133,8 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         return now()->lt($cutoff) ? $cutoff : now()->addHour();
     }
 
-    public function handle(TcgcsvClient $client, TcgplayerLinkDiscovery $discovery, ?TcgplayerIdentityMatcher $matcher = null): void
+    public function handle(TcgcsvClient $client, TcgplayerLinkDiscovery $discovery, TcgplayerIdentityMatcher $matcher): void
     {
-        $matcher ??= app(TcgplayerIdentityMatcher::class);
         $identityMode = $this->identityMode();
         try {
             $build = $client->lastUpdated()->toIso8601String();
@@ -173,7 +173,13 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 // After discovery, so a print's existing link is the one just
                 // confirmed. Judges only; nothing it finds is stored.
                 if ($identityMode === 'log') {
-                    array_push($identityOutcomes, ...$matcher->evaluate($card, $prices, $identities));
+                    try {
+                        array_push($identityOutcomes, ...$matcher->evaluate($card, $prices, $identities));
+                    } catch (Throwable $e) {
+                        // A report that fails must not cost the day's price fill.
+                        Log::channel('tcgcsv')->warning('identity matcher failed', ['card' => $card->tcgdex_id, 'error' => class_basename($e)]);
+                        $identityOutcomes[] = new IdentityOutcome($card->tcgdex_id, '*', IdentityOutcome::REFUSED, 'matcher-error');
+                    }
                 }
             }
         });
@@ -206,7 +212,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'gaps_unverified' => count($unverified),
             'gaps_unverified_prints' => $this->outlierLabels(array_slice($unverified, 0, 10)),
             'gaps_accepted_after_hold' => $this->outlierLabels(array_slice($acceptedAfterHold, 0, 10)),
-            ...($identityMode === 'log' ? ['identity' => $this->identitySummary($identityOutcomes)] : []),
+            ...($identityMode === 'log' ? ['identity' => $this->identitySummary($identityOutcomes, $partialRetry)] : []),
         ];
 
         Log::channel('tcgcsv')->info('tcgcsv sync', $summary);
@@ -260,13 +266,17 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * with their link, would get a different product, or would get a new link,
      * and every refusal by reason, with the first few of each named.
      *
+     * A retry that re-fetched only some groups refuses the cards of the rest,
+     * so its block is not comparable with a full run's.
+     *
      * @param  list<IdentityOutcome>  $outcomes
      * @return array<string, mixed>
      */
-    private function identitySummary(array $outcomes): array
+    private function identitySummary(array $outcomes, bool $partialRetry): array
     {
         $named = fn (string $status) => array_values(array_filter($outcomes, fn (IdentityOutcome $o) => $o->status === $status));
         $labels = fn (array $list) => array_map(fn (IdentityOutcome $o) => $o->label(), array_slice($list, 0, 10));
+        $found = fn (IdentityOutcome $o) => "{$o->cardId} {$o->variant} → {$o->productId} {$o->subType}";
         $new = $named(IdentityOutcome::NEW);
         $different = $named(IdentityOutcome::DIFFERENT);
         $refused = $named(IdentityOutcome::REFUSED);
@@ -279,13 +289,14 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         return [
             'mode' => 'log',
+            'partial_retry' => $partialRetry,
             'agree' => count($named(IdentityOutcome::AGREE)),
             'different' => count($different),
             'new' => count($new),
             'refused' => count($refused),
             'refused_reasons' => $reasons,
-            'new_prints' => array_map(fn (IdentityOutcome $o) => "{$o->cardId} {$o->variant}", array_slice($new, 0, 10)),
-            'different_prints' => array_map(fn (IdentityOutcome $o) => "{$o->cardId} {$o->variant} → {$o->productId}", array_slice($different, 0, 10)),
+            'new_prints' => array_map($found, array_slice($new, 0, 10)),
+            'different_prints' => array_map($found, array_slice($different, 0, 10)),
             'refused_prints' => $labels($refused),
         ];
     }

@@ -35,3 +35,10 @@ test('junk and empty values are not a printed number', function (?string $value)
 test('a zero number stays a zero', function () {
     expect(PrintedNumber::parse('000')?->number)->toBe('0');
 });
+
+test('a plain total must be the set count, a lettered or missing one is not compared', function () {
+    expect(PrintedNumber::parse('1/091')?->isTotal(91))->toBeTrue()
+        ->and(PrintedNumber::parse('1/091')?->isTotal(92))->toBeFalse()
+        ->and(PrintedNumber::parse('TG01/TG30')?->isTotal(186))->toBeTrue()
+        ->and(PrintedNumber::parse('1')?->isTotal(186))->toBeTrue();
+});

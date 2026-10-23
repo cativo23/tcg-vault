@@ -32,10 +32,11 @@ final readonly class PrintedNumber
         return strtolower($this->number) === strtolower(self::normalise(trim($localId)));
     }
 
-    /** Whether the total after the slash is a set's printed card count. */
+    /** Whether the total after the slash, when it is a plain number, is a set's printed card count. */
     public function isTotal(int $official): bool
     {
-        return $this->total === (string) $official;
+        // A lettered total ("TG30") is a gallery's own count, not the set's.
+        return $this->total === null || ! ctype_digit($this->total) || $this->total === (string) $official;
     }
 
     private static function normalise(string $part): string
