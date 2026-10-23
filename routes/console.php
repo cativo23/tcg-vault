@@ -32,6 +32,11 @@ Schedule::command('catalog:check-pricing-freshness')->dailyAt('04:00');
 // tcgdex's and, in fill mode, written for the prints tcgdex doesn't price.
 Schedule::job(new SyncTcgcsvPricesJob)->dailyAt('20:30');
 
+// After the tcgcsv run above has linked and priced what it could: names what
+// is still unlinked or priced from a stale feed, so it is not found by a
+// collector seeing the wrong currency. See ReportPriceCoverage.
+Schedule::command('catalog:report-price-coverage')->dailyAt('21:45');
+
 // The Activity value chart's cache is keyed on the day and on what each public
 // collection holds, so price writes don't rebuild it; the day's key changes at
 // midnight UTC, and a holdings change queues a warm of its own. This hourly run

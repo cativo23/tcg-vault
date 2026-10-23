@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- `catalog:report-price-coverage`, scheduled nightly at 21:45 UTC, tells Discord
+  which cards have no TCGplayer link, which sets have no mapped group, which
+  prints carry a stale TCGplayer price (owned ones marked) and which price
+  feeds stopped updating. Until now a gap showed up only as a price in the
+  wrong currency. Each finding is announced once a week while it stays open.
+
 ## [1.6.11] - 2026-10-22
 
 ### Fixed
