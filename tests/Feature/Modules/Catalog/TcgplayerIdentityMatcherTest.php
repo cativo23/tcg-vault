@@ -300,3 +300,11 @@ test('a name that gives only the number still matches a product whose number has
 
     expect($outcomes['normal']['status'])->toBe('new');
 });
+
+test('a name that gives a total the product\'s number does not carry still matches', function () {
+    $card = identityCard('mep-055', 'Treecko', ['holo' => true]);
+
+    $outcomes = identityOutcomes($card, identityFeed(24451, [1 => ['name' => 'Treecko - 055/091', 'number' => '055', 'subTypes' => ['Holofoil']]]));
+
+    expect($outcomes['holofoil']['status'])->toBe('new');
+});

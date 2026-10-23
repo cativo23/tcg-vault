@@ -276,7 +276,7 @@ class TcgplayerIdentityMatcher
                 continue;
             }
             $tail = PrintedNumber::parse(implode('/', array_slice($tokens, -$count)));
-            if ($tail !== null && strtolower($tail->number) === strtolower($number->number) && ($tail->total === null || strtolower($tail->total) === strtolower((string) $number->total))) {
+            if ($tail !== null && strtolower($tail->number) === strtolower($number->number) && ($number->total === null || $tail->total === null || strtolower($tail->total) === strtolower((string) $number->total))) {
                 return implode(' ', array_slice($tokens, 0, -$count));
             }
         }
