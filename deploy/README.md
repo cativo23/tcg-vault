@@ -315,6 +315,23 @@ channel (stderr of the `horizon` container) and kept in the cache under
 docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(cache('tcgcsv:shadow:'.now()->toDateString()));"
 ```
 
+### Identity matcher (log only)
+
+`TCGCSV_IDENTITY_LINKS=log` makes the run judge every base print of a card in
+a mapped set by its TCGplayer product's own printed number and name, and
+report what it would link; any other value leaves it off. It writes nothing:
+no link, no price. It asks tcgcsv for each mapped group's products as well
+(one more request per group per build). The run summary's `identity` block
+counts the prints that `agree` with their link, would get a `different`
+product, or would get a `new` link, plus every refusal by reason (the first
+ten of each are named). A print is refused unless exactly one product in the
+set's own groups has the card's number, the set's total and exactly its name.
+Turn it on in `.env` and recreate the containers that read it:
+
+```bash
+docker compose -f compose.prod.yml up -d --force-recreate horizon scheduler
+```
+
 ## Acceptance checklist (first deploy)
 - [ ] `.env` on the server has `APP_DEBUG=false`, `SESSION_SECURE_COOKIE=true` and `LOG_CHANNEL=daily` (with `stderr`, `storage/logs` stays empty and the logs are lost when a container is recreated, i.e. at every deploy)
       — both are correct in `docker/prod/.env.production.example`, but that's a
