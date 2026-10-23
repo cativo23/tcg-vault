@@ -321,11 +321,17 @@ docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(c
 a mapped set by its TCGplayer product's own printed number and name, and
 report what it would link; any other value leaves it off. It writes nothing:
 no link, no price. It asks tcgcsv for each mapped group's products as well
-(one more request per group per build). The run summary's `identity` block
+(one more request per group per build), which is not free: a throttle (429) or
+a lost connection on a products file fails that group's prices for the run, as
+for a price file, and the retry re-reads both. Any other failure there costs
+only the matcher that group's cards, and a matcher error is logged and counted
+as `matcher-error` without touching the price fill. The run summary's `identity` block
 counts the prints that `agree` with their link, would get a `different`
 product, or would get a `new` link, plus every refusal by reason (the first
-ten of each are named). A print is refused unless exactly one product in the
-set's own groups has the card's number, the set's total and exactly its name.
+ten of each are named; a retry that re-fetched only some groups says
+`partial_retry` there and refuses the cards of the rest, so compare full runs).
+A print is refused unless exactly one product in the set's own groups, priced
+or not, has the card's number, the set's total and exactly its name.
 Turn it on in `.env` and recreate the containers that read it:
 
 ```bash
