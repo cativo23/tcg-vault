@@ -267,10 +267,14 @@ was last updated over 3 days ago among `linked_without_tcgdex_price`, not
 `compared`, so the kept `tcgcsv:shadow:<day>` stats shift when tcgdex freezes.
 
 To roll back, set `TCGCSV_MODE=shadow` in `.env` and recreate the containers
-that read it (a plain `restart` keeps the old environment):
+that read it (a plain `restart` keeps the old environment). Name the release
+that is running as `IMAGE_TAG`: without it compose falls back to the local
+`:latest`, which can be an older release, and the recreated containers run old
+code. Check afterwards that `docker compose -f compose.prod.yml ps` shows the
+same tag on `app`, `horizon` and `scheduler`:
 
 ```bash
-docker compose -f compose.prod.yml up -d --force-recreate horizon scheduler
+IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml up -d --force-recreate horizon scheduler
 # Optional: drop the prices tcgcsv already wrote (they otherwise stay current
 # for up to 3 days, and in the price history):
 docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(App\Modules\Catalog\Models\CardPriceSnapshot::where('origin', 'tcgcsv')->delete());"
@@ -335,7 +339,7 @@ or not, has the card's number, the set's total and exactly its name.
 Turn it on in `.env` and recreate the containers that read it:
 
 ```bash
-docker compose -f compose.prod.yml up -d --force-recreate horizon scheduler
+IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml up -d --force-recreate horizon scheduler
 ```
 
 ## Acceptance checklist (first deploy)
