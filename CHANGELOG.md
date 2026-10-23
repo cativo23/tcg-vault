@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.12] - 2026-10-22
+
 ### Added
 
 - `catalog:report-price-coverage`, scheduled nightly at 21:45 UTC, tells Discord
