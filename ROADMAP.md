@@ -22,8 +22,10 @@ Checked against the code and production on 2026-10-22 (v1.6.11 live).
 - Prices: TCGplayer prices arrive from tcgdex and from tcgcsv. tcgdex froze
   its TCGplayer prices on 2026-10-14, so since v1.6.8 tcgcsv's price takes
   over for every linked print the same night (3,661 tcgcsv rows against
-  3,750 tcgdex rows on the day checked). Only `swsh3` has no TCGplayer
-  group, so none of its prints are linked.
+  3,750 tcgdex rows on the day checked; the night after, 7,213 tcgcsv rows
+  and none from tcgdex). Every set has a TCGplayer group; the SWSH sets
+  needed a hand mapping because tcgdex's abbreviations (`SIT`, `EVS`, `DAA`)
+  do not match tcgcsv's (`SWSH12`, `SWSH07`, `SWSH03`).
 - Static analysis runs at Larastan level 8; CI runs Pint, Larastan, Pest and
   `npm run build` plus a dependency audit and a production image build.
 
@@ -264,13 +266,19 @@ Everything here is live; `CHANGELOG.md` has the detail.
 Checked against the code and production on 2026-10-22. Ordered by how soon
 each one costs something.
 
-- **Map `swsh3` (Darkness Ablaze) to its TCGplayer group.** It is the only
-  set without a group, so its 335 priced prints can never be linked or
-  taken over from tcgdex's frozen price; no collection holds one yet. The
-  group is 2675 ("SWSH03: Darkness Ablaze"); `catalog:propose-tcgplayer-groups`
-  cannot find it by abbreviation (tcgdex says `DAA`, tcgcsv `SWSH03`), so it
-  needs `--set=swsh3 --group=2675` once the cards match. Any other SWSH set
-  added later needs the same hand mapping.
+- **Any set added to the catalog later needs its TCGplayer group checked.**
+  `catalog:propose-tcgplayer-groups` matches by abbreviation and finds
+  nothing for the SWSH sets, so each needs `--set=<id> --group=<id>` by hand
+  after confirming the group's product numbers match the set. Until then
+  its prints are never linked and show tcgdex's price, which goes stale.
+  (`swsh3`, the last one, was mapped to group 2675 on 2026-10-23: 201 cards
+  linked, 353 prices written.)
+- **Four prices are held back as implausible** (`swsh3-54` normal,
+  `swsh3-66` holofoil, `swsh3-83` reverse holofoil, `swsh12-156` holofoil),
+  on top of the long-standing `dp2-1`, `dp2-17` and `sv03.5-136`. None is
+  in a collection. Each holds for 3 days and is then written unless
+  cardmarket disagrees; confirm the link of each, or accept it as an admin
+  link, if it matters.
 - **The tcgdex release that carries the merged data fixes.** The four
   upstream pull requests (MEP and SVP group ids, 30th Celebration, 30th
   Classic Collection) are all merged, but tcgdex's latest release is still
