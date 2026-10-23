@@ -281,6 +281,16 @@ run is over 30h old, or none is on record. If that record is lost, the last
 pulled build, then the newest tcgcsv price, stands in. This applies in either
 mode, once a TCGplayer group is mapped.
 
+`catalog:report-price-coverage` runs daily at 21:45 UTC, after the tcgcsv run,
+and sends one Discord message naming what it finds: cards of a mapped set that
+no TCGplayer link points at, sets with cards and no mapped group, prints whose
+newest TCGplayer price is over 3 days old by TCGplayer's own date (owned ones
+marked), and price feeds that stopped updating (Cardmarket and tcgdex's
+TCGplayer feed by their own dates, tcgcsv by its write time). It writes
+nothing but a cache key per finding it announced, so the same finding is
+repeated once a week, not nightly. A feed with no rows at all is not reported.
+Run it by hand to see the counts: `php artisan catalog:report-price-coverage`.
+
 With no set mapped to a TCGplayer group it compares nothing, without error — so
 map the groups after deploying:
 
