@@ -14,6 +14,12 @@ return [
     // fall back on; 'shadow' only compares and writes nothing (rollback).
     'mode' => env('TCGCSV_MODE', 'fill'),
 
+    // 'log' makes the run judge every base print by its product's printed
+    // number and name and report what it would link (the run summary's
+    // `identity` block), asking tcgcsv for each mapped group's products too.
+    // It writes nothing; any other value leaves it off.
+    'identity_links' => env('TCGCSV_IDENTITY_LINKS'),
+
     // TCGplayer groups whose products belong to many sets, so no set maps
     // them (1840 is "Deck Exclusives": a deck's non-holo print is a product
     // of its own there). A card links to one of their products only when it

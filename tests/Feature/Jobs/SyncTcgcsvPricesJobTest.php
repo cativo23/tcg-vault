@@ -10,10 +10,12 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
+use App\Modules\Catalog\Tcgcsv\TcgplayerIdentityMatcher;
 use App\Modules\Catalog\Tcgcsv\TcgplayerLinkDiscovery;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Queue\Job;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -62,9 +64,9 @@ function tcgcsvLog(): MockInterface
     return $logger;
 }
 
-function runTcgcsvSync(): void
+function runTcgcsvSync(?TcgplayerIdentityMatcher $matcher = null): void
 {
-    (new SyncTcgcsvPricesJob)->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class));
+    (new SyncTcgcsvPricesJob)->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class), $matcher ?? app(TcgplayerIdentityMatcher::class));
 }
 
 test('in shadow mode it links prints and compares prices, writing no price at all', function () {
@@ -159,14 +161,14 @@ test('an unpublished build waits an hour, and late in the day the job ends quiet
     $queued->shouldReceive('release')->once()->with(3600);
     $job = new SyncTcgcsvPricesJob;
     $job->setJob($queued);
-    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class));
+    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class), app(TcgplayerIdentityMatcher::class));
 
     $this->travelTo(today()->setTime(22, 45));
     $late = Mockery::mock(Job::class);
     $late->shouldNotReceive('release');
     $job = new SyncTcgcsvPricesJob;
     $job->setJob($late);
-    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class));
+    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class), app(TcgplayerIdentityMatcher::class));
 });
 
 test('a failed build check is retried later instead of failing the job', function () {
@@ -178,7 +180,7 @@ test('a failed build check is retried later instead of failing the job', functio
     $queued->shouldReceive('release')->once()->with(3600);
     $job = new SyncTcgcsvPricesJob;
     $job->setJob($queued);
-    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class));
+    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class), app(TcgplayerIdentityMatcher::class));
 
     Http::assertSentCount(1);
 });
@@ -296,7 +298,7 @@ test('a partly failed build is released for its retry', function () {
     $queued->shouldReceive('release')->once()->with(3600);
     $job = new SyncTcgcsvPricesJob;
     $job->setJob($queued);
-    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class));
+    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class), app(TcgplayerIdentityMatcher::class));
 });
 
 /** The Tyranitar shape: a linked print tcgdex prices on cardmarket only. */
@@ -1269,4 +1271,177 @@ test('once a link points at an extra group it is fetched even if the group is no
     runTcgcsvSync();
 
     $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['groups_fetched'] === [1840, 24688]);
+});
+
+/** A Treecko tcgdex lists but links to nothing (the unlinked MEP shape), in a group the set maps. */
+function identityFixture(): Card
+{
+    $set = Set::create(['tcgdex_id' => 'mep', 'name' => 'MEP']);
+    DB::table('set_tcgplayer_groups')->insert(['set_id' => $set->id, 'group_id' => 24451]);
+
+    return Card::create(['tcgdex_id' => 'mep-055', 'set_id' => $set->id, 'local_id' => '055', 'name' => 'Treecko', 'variants' => ['holo' => true]]);
+}
+
+function identityFake(int $productsStatus = 200): void
+{
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::response('2026-10-08T20:05:57+0000', 200),
+        'tcgcsv.com/tcgplayer/3/24451/prices' => Http::response(tcgcsvPricesResponse([['productId' => 709969, 'lowPrice' => 2.0, 'marketPrice' => 2.43, 'subTypeName' => 'Holofoil']]), 200),
+        'tcgcsv.com/tcgplayer/3/24451/products' => $productsStatus === 200
+            ? Http::response(tcgcsvPricesResponse([['productId' => 709969, 'name' => 'Treecko -  055', 'extendedData' => [['name' => 'Number', 'value' => '055']]]]), 200)
+            : Http::response('down', $productsStatus),
+    ]);
+}
+
+test('with the identity switch on log, an unlinked print is reported as one the matcher would link, and nothing is written', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => 'log']);
+    $card = identityFixture();
+    identityFake();
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary()['identity'])->toMatchArray(['mode' => 'log', 'new' => 1, 'agree' => 0, 'different' => 0, 'refused' => 0, 'new_prints' => ['mep-055 holofoil → 709969 Holofoil']])
+        ->and(CardTcgplayerLink::where('card_id', $card->id)->count())->toBe(0)
+        ->and(CardPriceSnapshot::where('card_id', $card->id)->count())->toBe(0);
+});
+
+test('with the identity switch off, the set\'s products are not requested and the summary has no identity block', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => null]);
+    identityFixture();
+    identityFake();
+
+    runTcgcsvSync();
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/24451/products'));
+    expect(lastTcgcsvSummary())->not->toHaveKey('identity');
+});
+
+test('any value other than log leaves the identity matcher off', function (mixed $value) {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => $value]);
+    identityFixture();
+    identityFake();
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary())->not->toHaveKey('identity');
+})->with(['on', 'true', true, '', 'LOG ']);
+
+test('refusals are counted by reason and the first ones named', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => 'log']);
+    identityFixture();
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::response('2026-10-08T20:05:57+0000', 200),
+        'tcgcsv.com/tcgplayer/3/24451/prices' => Http::response(tcgcsvPricesResponse([['productId' => 709969, 'lowPrice' => 2.0, 'marketPrice' => 2.43, 'subTypeName' => 'Holofoil']]), 200),
+        'tcgcsv.com/tcgplayer/3/24451/products' => Http::response(tcgcsvPricesResponse([['productId' => 709969, 'name' => 'Treecko (Cosmos Holo) - 055', 'extendedData' => [['name' => 'Number', 'value' => '055']]]]), 200),
+    ]);
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary()['identity'])->toMatchArray(['new' => 0, 'refused' => 1, 'refused_reasons' => ['no-candidate' => 1], 'refused_prints' => ['mep-055 holofoil (no-candidate)']]);
+});
+
+test('a group whose products cannot be read still has its prices used, and its cards are refused', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => 'log']);
+    $card = identityFixture();
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'holofoil', 'product_id' => 709969, 'sub_type' => 'Holofoil', 'group_id' => 24451, 'method' => 'admin']);
+    identityFake(productsStatus: 503);
+
+    runTcgcsvSync();
+
+    $summary = lastTcgcsvSummary();
+    expect($summary['groups_failed'])->toBe(0)
+        ->and($summary['identity']['refused_reasons'])->toBe(['group-without-identities' => 1])
+        ->and(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(1);
+});
+
+test('a print whose link already points at the product the matcher found agrees', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => 'log']);
+    $card = identityFixture();
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'holofoil', 'product_id' => 709969, 'sub_type' => 'Holofoil', 'group_id' => 24451, 'method' => 'tcgdex-price']);
+    identityFake();
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary()['identity'])->toMatchArray(['agree' => 1, 'new' => 0, 'different' => 0]);
+});
+
+test('a throttle on a mapped group\'s products stops the loop like a throttled price file', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => 'log']);
+    $card = identityFixture();
+    identityFake(productsStatus: 429);
+
+    runTcgcsvSync();
+
+    // The group counts as failed, so none of its prices are used this run and the retry re-reads both.
+    expect(lastTcgcsvSummary()['groups_failed'])->toBe(1)
+        ->and(CardPriceSnapshot::where('card_id', $card->id)->count())->toBe(0);
+});
+
+test('a matcher that throws costs the identity report, not the day\'s price fill', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => 'log']);
+    $card = gapFixture();
+    gapFake();
+    Http::fake(['tcgcsv.com/tcgplayer/3/*/products' => Http::response(tcgcsvPricesResponse([]), 200)]);
+    $matcher = Mockery::mock(TcgplayerIdentityMatcher::class);
+    $matcher->shouldReceive('evaluate')->andThrow(new RuntimeException('boom'));
+
+    runTcgcsvSync($matcher);
+
+    expect(lastTcgcsvSummary()['identity']['refused_reasons'])->toBe(['matcher-error' => 1])
+        ->and(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->where('origin', 'tcgcsv')->count())->toBe(1);
+});
+
+test('a lost connection on a mapped group\'s products fails the group and stops the loop', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => 'log']);
+    $card = identityFixture();
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::response('2026-10-08T20:05:57+0000', 200),
+        'tcgcsv.com/tcgplayer/3/24451/prices' => Http::response(tcgcsvPricesResponse([['productId' => 709969, 'lowPrice' => 2.0, 'marketPrice' => 2.43, 'subTypeName' => 'Holofoil']]), 200),
+        'tcgcsv.com/tcgplayer/3/24451/products' => fn () => throw new ConnectionException('reset'),
+    ]);
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary()['groups_failed'])->toBe(1)
+        ->and(CardPriceSnapshot::where('card_id', $card->id)->count())->toBe(0);
+});
+
+test('a retry that re-fetches only some groups says so inside the identity block', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => 'log']);
+    identityFixture();
+    Cache::put('tcgcsv:group:24451', '2026-10-08T20:05:57+00:00', now()->addDay());
+    Cache::put('tcgcsv:group:99999', 'old', now()->addDay());
+    identityFake();
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary()['identity'])->toHaveKey('partial_retry');
+});
+
+test('a link that differs only by subtype is named with its product and subtype', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => 'log']);
+    $card = identityFixture();
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'holofoil', 'product_id' => 709969, 'sub_type' => 'Normal', 'group_id' => 24451, 'method' => 'admin']);
+    identityFake();
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary()['identity'])->toMatchArray(['different' => 1, 'different_prints' => ['mep-055 holofoil → 709969 Holofoil']]);
+});
+
+test('turning the identity log on changes no link and no price for a linked print', function () {
+    config(['tcgcsv.mode' => 'fill', 'tcgcsv.identity_links' => 'log']);
+    $card = identityFixture();
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'holofoil', 'product_id' => 709969, 'sub_type' => 'Holofoil', 'group_id' => 24451, 'method' => 'tcgdex-price']);
+    identityFake();
+    runTcgcsvSync();
+    $withLog = [CardTcgplayerLink::all()->toArray(), CardPriceSnapshot::all()->map(fn ($r) => [$r->variant, $r->market_minor, $r->origin])->all()];
+
+    DB::table('card_price_snapshots')->delete();
+    Cache::flush();
+    config(['tcgcsv.identity_links' => null]);
+    identityFake();
+    runTcgcsvSync();
+
+    expect([CardTcgplayerLink::all()->toArray(), CardPriceSnapshot::all()->map(fn ($r) => [$r->variant, $r->market_minor, $r->origin])->all()])->toEqual($withLog);
 });

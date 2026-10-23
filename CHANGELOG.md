@@ -13,6 +13,10 @@ All notable changes to this project are documented here. Format follows
   prints carry a stale TCGplayer price (owned ones marked) and which price
   feeds stopped updating. Until now a gap showed up only as a price in the
   wrong currency. Each finding is announced once a week while it stays open.
+- With `TCGCSV_IDENTITY_LINKS=log` the nightly tcgcsv run judges each base print
+  by its TCGplayer product's printed number and exact name and reports, in its
+  summary, which prints it would link, which already agree with their link and
+  which it refuses and why. It writes nothing; off by default.
 
 ## [1.6.11] - 2026-10-22
 
