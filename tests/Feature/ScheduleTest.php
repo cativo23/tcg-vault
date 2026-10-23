@@ -39,6 +39,11 @@ test('the Activity value series is queued hourly, with a lock that expires withi
         ->and($event?->expiresAt)->toBe(50);
 });
 
+test('price coverage is reported nightly after the tcgcsv run has finished', function () {
+    // The tcgcsv job starts at 20:30 UTC and takes a few minutes; the report must read its result.
+    expect(scheduledEvent('catalog:report-price-coverage')?->expression)->toBe('45 21 * * *');
+});
+
 test('a failing warm-up dispatch alerts Discord', function () {
     config(['services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
     Http::fake();
