@@ -191,3 +191,58 @@ test('nothing is sent when every print is linked and every source is fresh', fun
 
     expect(coverageAlerts())->toBe(0);
 });
+
+test('findings past the listed ten are named on the next run instead of being silenced', function () {
+    coverageFreshSources(coverageCard('mep-001'));
+    foreach (range(100, 111) as $n) {
+        coverageCard("mep-{$n}", linked: false);
+    }
+
+    $this->artisan('catalog:report-price-coverage')->assertSuccessful();
+    $this->artisan('catalog:report-price-coverage')->assertSuccessful();
+
+    expect(coverageAlerts())->toBe(2);
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'mep-110') && str_contains($request['content'], 'mep-111') && ! str_contains($request['content'], 'mep-100'));
+});
+
+test('a print is judged by its newest TCGplayer price across origins', function () {
+    coverageFreshSources(coverageCard('mep-001'));
+    $card = coverageCard('mep-002');
+    // tcgdex re-stamps a frozen price with today's capture day; yesterday's tcgcsv row is the live one.
+    coverageRow($card, 'tcgplayer', 'tcgdex', updatedAt: now()->subDays(8)->toDateTimeString());
+    CardPriceSnapshot::create([
+        'card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil',
+        'captured_on' => now()->subDay()->toDateString(), 'currency' => 'USD', 'market_minor' => 100,
+        'source_updated_at' => now()->subDay()->toDateTimeString(),
+    ]);
+
+    $this->artisan('catalog:report-price-coverage')->assertSuccessful();
+
+    Http::assertNotSent(fn ($request) => str_contains($request['content'], 'mep-002'));
+});
+
+test('a stale print without a TCGplayer date falls back to its capture day', function () {
+    coverageFreshSources(coverageCard('mep-001'));
+    $card = coverageCard('mep-002');
+    CardPriceSnapshot::create([
+        'card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil',
+        'captured_on' => now()->subDays(8)->toDateString(), 'currency' => 'USD', 'market_minor' => 100,
+    ]);
+
+    $this->artisan('catalog:report-price-coverage')->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'mep-002'));
+});
+
+test('a finding is repeated once its quiet week is over', function () {
+    coverageFreshSources(coverageCard('mep-001'));
+    coverageCard('mep-055', linked: false);
+    $this->artisan('catalog:report-price-coverage')->assertSuccessful();
+
+    $this->travel(8)->days();
+    // Everything else must still look fresh a week on.
+    DB::table('card_price_snapshots')->update(['created_at' => now(), 'source_updated_at' => now()]);
+    $this->artisan('catalog:report-price-coverage')->assertSuccessful();
+
+    expect(coverageAlerts())->toBe(2);
+});

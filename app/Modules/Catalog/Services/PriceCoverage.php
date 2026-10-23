@@ -14,7 +14,9 @@ use Illuminate\Support\Facades\DB;
  * mapped for, prints whose newest TCGplayer price is old by TCGplayer's own
  * date, and price feeds (a marketplace and the origin it arrives through)
  * that stopped updating. Each is judged on its own: a fresh Cardmarket feed
- * says nothing about TCGplayer's.
+ * says nothing about TCGplayer's. tcgcsv is not listed: it writes a row only
+ * for the prints tcgdex does not price, so a quiet day is normal, and its run
+ * is watched by catalog:check-pricing-freshness.
  */
 final class PriceCoverage
 {
@@ -29,8 +31,6 @@ final class PriceCoverage
     private const FEEDS = [
         ['source' => 'cardmarket', 'origin' => 'tcgdex', 'column' => 'created_at', 'hours' => 26],
         ['source' => 'tcgplayer', 'origin' => 'tcgdex', 'column' => 'source_updated_at', 'hours' => CardPriceResolver::STALE_AFTER_DAYS * 24],
-        // tcgcsv's build lands around 20:00 UTC and may slip by hours.
-        ['source' => 'tcgplayer', 'origin' => 'tcgcsv', 'column' => 'created_at', 'hours' => 30],
     ];
 
     /**
@@ -84,7 +84,7 @@ final class PriceCoverage
             ->where('s.source', 'tcgplayer')
             ->where('s.captured_on', '>=', now()->subDays(CardPriceSnapshot::RECENT_DAYS)->toDateString())
             ->selectRaw('DISTINCT ON (s.card_id, s.variant) s.card_id, c.tcgdex_id, s.variant, COALESCE(s.source_updated_at, s.captured_on::timestamp) AS dated')
-            ->orderBy('s.card_id')->orderBy('s.variant')->orderByDesc('s.captured_on')
+            ->orderBy('s.card_id')->orderBy('s.variant')->orderByRaw('COALESCE(s.source_updated_at, s.captured_on::timestamp) DESC')
             ->get()
             ->filter(fn ($row) => CarbonImmutable::parse($row->dated)->lt($cutoff))
             ->map(fn ($row) => ['card' => (string) $row->tcgdex_id, 'variant' => (string) $row->variant, 'owned' => $owned->has($row->card_id)])
