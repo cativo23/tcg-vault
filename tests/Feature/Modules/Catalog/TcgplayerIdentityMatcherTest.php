@@ -308,3 +308,23 @@ test('a name that gives a total the product\'s number does not carry still match
 
     expect($outcomes['holofoil']['status'])->toBe('new');
 });
+
+test('a product whose name carries a suffix after the number is another print, not the base one', function () {
+    // mep-017 Toxtricity: "Toxtricity - 017 [Staff]" is the staff-stamped product, "(Prerelease)" the set-logo one.
+    $card = identityCard('mep-017', 'Toxtricity', ['holo' => true]);
+
+    $outcomes = identityOutcomes($card, identityFeed(24451, [
+        663193 => ['name' => 'Toxtricity (Prerelease)', 'number' => '017', 'subTypes' => ['Holofoil']],
+        663194 => ['name' => 'Toxtricity - 017 [Staff]', 'number' => '017', 'subTypes' => ['Holofoil']],
+    ]));
+
+    expect($outcomes['holofoil'])->toMatchArray(['status' => 'refused', 'reason' => 'no-candidate']);
+});
+
+test('a trailing number and a plain-number total in the name still match a product number without a total', function () {
+    $card = identityCard('mep-055', 'Treecko', ['holo' => true]);
+
+    $outcomes = identityOutcomes($card, identityFeed(24451, [1 => ['name' => 'Treecko - 055/091', 'number' => '055', 'subTypes' => ['Holofoil']]]));
+
+    expect($outcomes['holofoil']['status'])->toBe('new');
+});

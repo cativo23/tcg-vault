@@ -276,12 +276,26 @@ class TcgplayerIdentityMatcher
                 continue;
             }
             $tail = PrintedNumber::parse(implode('/', array_slice($tokens, -$count)));
-            if ($tail !== null && strtolower($tail->number) === strtolower($number->number) && ($number->total === null || $tail->total === null || strtolower($tail->total) === strtolower((string) $number->total))) {
+            if ($tail !== null && strtolower($tail->number) === strtolower($number->number) && $this->sameTotal($tail->total, $number->total)) {
                 return implode(' ', array_slice($tokens, 0, -$count));
             }
         }
 
         return $words;
+    }
+
+    /**
+     * Whether the total a name gives is the product's own. A name may give a
+     * plain-number total the product's number lacks ("055/091" for "055"), but
+     * any other word after the number ("017 [Staff]") marks another print.
+     */
+    private function sameTotal(?string $inName, ?string $own): bool
+    {
+        if ($inName === null) {
+            return true;
+        }
+
+        return $own === null ? ctype_digit($inName) : strtolower($inName) === strtolower($own);
     }
 
     /**
