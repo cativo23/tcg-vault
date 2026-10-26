@@ -6,6 +6,13 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Link discovery no longer gives a card the same TCGplayer product and subtype on
+  two prints (tcgdex flipping a stamped card between `normal` and `holo` did):
+  the second link is refused, logged and named in the tcgcsv run summary
+  (`link_conflicts`, `link_conflicts_prints`).
+
 ## [1.6.13] - 2026-10-26
 
 ### Fixed
