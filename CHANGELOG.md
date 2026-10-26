@@ -6,6 +6,15 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.13] - 2026-10-26
+
+### Fixed
+
+- The identity matcher's log (`TCGCSV_IDENTITY_LINKS=log`) proposed the staff-stamped
+  product for a card whose base print is another product (mep-017): a word after the
+  printed number in a product's name, such as "[Staff]", was read as part of the
+  number. A name now loses only its own number, so such a product is refused.
+
 ## [1.6.12] - 2026-10-22
 
 ### Added
