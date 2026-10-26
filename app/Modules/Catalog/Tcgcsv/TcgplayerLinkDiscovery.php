@@ -26,6 +26,9 @@ final class TcgplayerLinkDiscovery
     /** @var array<int, array<int, int>> set id → its groups, looked up once per set per run */
     private array $setGroups = [];
 
+    /** @var list<string> links refused because the card already has the product and subtype on another print */
+    private array $conflicts = [];
+
     /**
      * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices  groupId → productId → subType → row
      * @param  array<int, array<int, array{name: string, number: ?string}>>  $identities  groupId → productId → name and printed number, for the extra groups
@@ -60,6 +63,12 @@ final class TcgplayerLinkDiscovery
         }
 
         return $skipped;
+    }
+
+    /** @return list<string> the links refused so far, as "card variant → product subtype (held by variant)" */
+    public function conflicts(): array
+    {
+        return $this->conflicts;
     }
 
     /**
@@ -251,6 +260,20 @@ final class TcgplayerLinkDiscovery
         $existing = CardTcgplayerLink::where('card_id', $card->id)->where('variant', $variant)->first();
 
         if ($existing !== null && (CardTcgplayerLink::TRUST[$existing->method] ?? 0) > CardTcgplayerLink::TRUST[$method]) {
+            return;
+        }
+
+        // One product and subtype prices one print: a second print on it
+        // would be a second claim on the same price.
+        $holder = CardTcgplayerLink::where('card_id', $card->id)->where('variant', '!=', $variant)
+            ->where('product_id', $productId)->where('sub_type', $subType)->value('variant');
+
+        if ($holder !== null) {
+            Log::channel('tcgcsv')->warning('TCGplayer link refused: product and subtype already linked to another print', [
+                'card' => $card->tcgdex_id, 'variant' => $variant, 'to' => [$productId, $subType], 'held_by' => $holder,
+            ]);
+            $this->conflicts[] = "{$card->tcgdex_id} {$variant} → {$productId} {$subType} (held by {$holder})";
+
             return;
         }
 

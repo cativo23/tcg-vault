@@ -525,3 +525,38 @@ test('a tcgdex-priced candidate for a stamped print never gets the only-subtype 
 
     expect(linksOf($card))->toBe([]);
 });
+
+test('a product and subtype already linked to another print of the card is not linked to a second one', function () {
+    $card = linkCard('30th-c-007', [], '30th', [24722]);
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'holofoil', 'product_id' => 715000, 'sub_type' => 'Holofoil', 'group_id' => 24722, 'method' => 'admin']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil+staff', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 22, 'raw' => ['productId' => 715000]]);
+
+    $discovery = app(TcgplayerLinkDiscovery::class);
+    $discovery->discover($card, priceIndex(24722, [715000 => ['Holofoil']]));
+
+    expect(linksOf($card))->toBe([['holofoil', 715000, 'Holofoil', 'admin', 24722]])
+        ->and($discovery->conflicts())->toBe(['30th-c-007 holofoil+staff → 715000 Holofoil (held by holofoil)']);
+});
+
+test('the same product with another subtype is not a conflict', function () {
+    $card = linkCard('me05-116');
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'holofoil', 'product_id' => 704873, 'sub_type' => 'Holofoil', 'group_id' => 24688, 'method' => 'admin']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 22, 'raw' => ['productId' => 704873]]);
+
+    $discovery = app(TcgplayerLinkDiscovery::class);
+    $discovery->discover($card, priceIndex(24688, [704873 => ['Holofoil', 'Reverse Holofoil']]));
+
+    expect(linksOf($card))->toBe([['holofoil', 704873, 'Holofoil', 'admin', 24688], ['reverse-holofoil', 704873, 'Reverse Holofoil', 'tcgdex-price', 24688]])
+        ->and($discovery->conflicts())->toBe([]);
+});
+
+test('re-confirming a print\'s own link is not a conflict', function () {
+    $card = linkCard('me05-116');
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 22, 'raw' => ['productId' => 704873]]);
+
+    $discovery = app(TcgplayerLinkDiscovery::class);
+    $discovery->discover($card, priceIndex(24688, [704873 => ['Holofoil']]));
+    $discovery->discover($card, priceIndex(24688, [704873 => ['Holofoil']]));
+
+    expect($discovery->conflicts())->toBe([]);
+});
