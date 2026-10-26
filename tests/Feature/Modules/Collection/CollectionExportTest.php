@@ -73,8 +73,8 @@ test('each item exports every field it has, priced for its own variant', functio
         'variant' => 'holofoil', 'condition' => 'NM', 'grade_company' => 'PSA', 'grade_value' => '10',
         'quantity' => 2, 'notes' => 'Pulled at launch',
     ]);
-    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => '2026-09-24', 'currency' => 'USD', 'market_minor' => 100]);
-    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => '2026-09-24', 'currency' => 'USD', 'market_minor' => 4250]);
+    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->toDateString(), 'currency' => 'USD', 'market_minor' => 100]);
+    CardPriceSnapshot::create(['card_id' => $this->card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today()->toDateString(), 'currency' => 'USD', 'market_minor' => 4250]);
 
     $rows = exportRows($this->actingAs($user)->get(route('admin.collection.export'))->streamedContent());
 
@@ -83,7 +83,7 @@ test('each item exports every field it has, priced for its own variant', functio
         'grade_company', 'grade_value', 'quantity', 'notes', 'market_price', 'currency', 'price_date',
     ])->and($rows[1])->toBe([
         'Mega Darkrai ex', 'Pitch Black', 'me05', '116', 'me05-116', 'holofoil', 'NM',
-        'PSA', '10', '2', 'Pulled at launch', '42.50', 'USD', '2026-09-24',
+        'PSA', '10', '2', 'Pulled at launch', '42.50', 'USD', today()->toDateString(),
     ]);
 });
 
