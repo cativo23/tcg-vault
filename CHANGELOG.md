@@ -13,8 +13,11 @@ All notable changes to this project are documented here. Format follows
   every card showed the same price (and Activity the same total) as the day before
   until the evening run replaced it. The sync now writes no TCGplayer row for a
   linked print whose price tcgcsv covers; the row appears when that day's build is
-  read, and the previous day's row and movement show until then. A tcgcsv build
-  from an earlier UTC day is no longer written or kept as today's price.
+  read, and the previous day's row and movement show until then. A print tcgdex
+  sent no TCGplayer price for today is a gap the evening run fills, even when
+  yesterday's tcgdex row is recent. In fill mode a tcgcsv build from an earlier
+  UTC day is no longer written or kept as today's price, and is left unrecorded so
+  today's build is still pulled when it appears.
 
 ## [1.6.13] - 2026-10-26
 
