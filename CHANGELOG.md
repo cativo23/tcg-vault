@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.14] - 2026-10-27
+
 ### Fixed
 
 - Link discovery no longer gives a card the same TCGplayer product and subtype on
