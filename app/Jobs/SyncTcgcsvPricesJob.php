@@ -214,6 +214,8 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'groups_fetched' => $fetched,
             'groups_failed' => count($failedGroups),
             'skipped_no_matching_subtype' => $skipped,
+            'link_conflicts' => count($discovery->conflicts()),
+            'link_conflicts_prints' => array_slice($discovery->conflicts(), 0, 10),
             ...$comparison,
             'gaps_filled' => $filled,
             'fallback_kept' => $kept,

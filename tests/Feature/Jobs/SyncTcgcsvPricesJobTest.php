@@ -1496,3 +1496,26 @@ test('turning the identity log on changes no link and no price for a linked prin
 
     expect([CardTcgplayerLink::all()->toArray(), CardPriceSnapshot::all()->map(fn ($r) => [$r->variant, $r->market_minor, $r->origin])->all()])->toEqual($withLog);
 });
+
+test('a link refused because the card already has that product and subtype on another print is named in the summary', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = identityFixture();
+    CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'holofoil', 'product_id' => 709969, 'sub_type' => 'Holofoil', 'group_id' => 24451, 'method' => 'admin']);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil+staff', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 243, 'raw' => ['productId' => 709969]]);
+    identityFake();
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary())->toMatchArray(['link_conflicts' => 1, 'link_conflicts_prints' => ['mep-055 holofoil+staff → 709969 Holofoil (held by holofoil)']])
+        ->and(CardTcgplayerLink::where('card_id', $card->id)->pluck('variant')->all())->toBe(['holofoil']);
+});
+
+test('a run with no refused links reports none', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    identityFixture();
+    identityFake();
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary())->toMatchArray(['link_conflicts' => 0, 'link_conflicts_prints' => []]);
+});

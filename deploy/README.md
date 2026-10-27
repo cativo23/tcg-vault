@@ -268,9 +268,11 @@ a Holofoil-only product. Two rules let such a card price from tcgcsv:
 
 Known limits: once tcgdex prices these sets itself, it files the price under
 TCGplayer's subtype label, which can differ from the link's variant key (a
-`normal` link on a Holofoil product), so the print can get two links and two
-rows; when tcgdex flips a card between its `normal` and stamped-`holo` shapes,
-the old link stays. Neither gives a wrong price. A cheap print's `default`
+`normal` link on a Holofoil product). A card never holds the same product and
+subtype on two prints: discovery refuses the second link, logs it, and names it
+in the run summary's `link_conflicts_prints` (count in `link_conflicts`). When
+tcgdex flips a card between its `normal` and stamped-`holo` shapes, the old link
+stays. Neither gives a wrong price. A cheap print's `default`
 reference is within the 200-minor floor of almost any price, so it is a weak
 check there; it only matters for a link's first write, since later prices are
 bounded by its own last tcgcsv price.

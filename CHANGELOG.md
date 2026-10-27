@@ -8,6 +8,10 @@ All notable changes to this project are documented here. Format follows
 
 ### Fixed
 
+- Link discovery no longer gives a card the same TCGplayer product and subtype on
+  two prints (tcgdex flipping a stamped card between `normal` and `holo` did):
+  the second link is refused, logged and named in the tcgcsv run summary
+  (`link_conflicts`, `link_conflicts_prints`).
 - A new day no longer opens with yesterday's TCGplayer price dated today. The
   midnight tcgdex sync wrote last evening's tcgcsv price as the new day's row, so
   every card showed the same price (and Activity the same total) as the day before
