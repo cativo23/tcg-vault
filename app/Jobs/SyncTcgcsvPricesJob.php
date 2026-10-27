@@ -186,7 +186,10 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         $mode = $this->mode();
         [$comparison, $gaps, $priced] = $this->compare($prices);
-        $buildTooOld = CarbonImmutable::parse($build)->lt(now()->subHours(TcgcsvFallbackPrices::MAX_BUILD_AGE_HOURS));
+        // A price row is dated with the UTC day it was read, so a build from an
+        // earlier day (a retry that crosses midnight) would show that day's
+        // prices as today's.
+        $buildTooOld = CarbonImmutable::parse($build)->utc()->lt(CarbonImmutable::today('UTC'));
         [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $kept, $rejected] = $mode === 'fill' && ! $buildTooOld
             ? $this->fillGaps($gaps, $priced, $build)
             : [0, [], 0, [], [], 0, []];
