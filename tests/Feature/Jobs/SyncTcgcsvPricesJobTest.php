@@ -24,13 +24,14 @@ use Mockery\MockInterface;
 use Psr\Log\LoggerInterface;
 use Tests\Support\ShownPrices;
 
-// The faked tcgcsv builds are dated; a gap price is only written for a
-// build from today's UTC day, so every test runs the evening of theirs.
+// The faked tcgcsv builds are dated; fill mode only works a build from
+// today's UTC day, so a test that fills sets the mode and a build dated the
+// day of the clock below, and the rest run in shadow mode.
 // The extra groups are off unless a test turns them on, so the faked
 // responses of the others never need a group they don't mention.
 beforeEach(function () {
     $this->travelTo(CarbonImmutable::parse('2026-10-08 20:30', 'UTC'));
-    config(['tcgcsv.extra_groups' => []]);
+    config(['tcgcsv.extra_groups' => [], 'tcgcsv.mode' => 'shadow']);
 });
 
 /** Pitch Black (group 24688) and 30th Celebration (24722), one owned print each. */
@@ -340,7 +341,7 @@ test('in fill mode a linked print tcgdex has no TCGplayer price for gets tcgcsv\
 test('fill mode never writes over a print tcgdex still prices on TCGplayer', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
-    $tcgdex = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 150]);
+    $tcgdex = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 150]);
     gapFake();
 
     runTcgcsvSync();
@@ -410,10 +411,10 @@ test('a tcgdex TCGplayer price captured recently but last updated by TCGplayer o
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('origin', 'tcgcsv')->value('market_minor'))->toBe(129);
 });
 
-test('a tcgdex TCGplayer price TCGplayer updated within three days is not a gap', function () {
+test('a tcgdex TCGplayer price for today that TCGplayer updated within three days is not a gap', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(2)]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(2)]);
     gapFake();
 
     runTcgcsvSync();
@@ -461,7 +462,7 @@ test('a run keeps the price it fills for the next tcgdex sync', function () {
 test('a run also keeps tcgcsv\'s price for a print tcgdex still prices, without writing a row for it', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDay()]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDay()]);
     gapFake();
 
     runTcgcsvSync();
@@ -492,7 +493,7 @@ test('shadow mode keeps nothing', function () {
     expect(fallbackKept($card))->toBe([]);
 });
 
-test('a build too old to fill keeps nothing', function () {
+test('a build from an earlier UTC day keeps nothing', function () {
     config(['tcgcsv.mode' => 'fill']);
     $this->travelTo(CarbonImmutable::parse('2026-10-09 20:30', 'UTC'));
     $card = gapFixture();
@@ -662,7 +663,7 @@ test('a zero market price is not written as a price', function () {
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(0);
 });
 
-test('a build from the previous UTC day is not stamped as today\'s price, nor kept for the next sync', function () {
+test('a build from the previous UTC day is not used, and is left unrecorded so today\'s is still pulled', function () {
     config(['tcgcsv.mode' => 'fill']);
     $this->travelTo(CarbonImmutable::parse('2026-10-08 00:10', 'UTC'));
     $card = gapFixture();
@@ -671,15 +672,48 @@ test('a build from the previous UTC day is not stamped as today\'s price, nor ke
         'tcgcsv.com/tcgplayer/3/2374/prices' => Http::response(tcgcsvPricesResponse([['productId' => 659941, 'lowPrice' => 0.53, 'marketPrice' => 1.29, 'subTypeName' => 'Holofoil']]), 200),
         'tcgcsv.com/tcgplayer/3/24269/prices' => Http::response(tcgcsvPricesResponse([]), 200),
     ]);
+    $queued = Mockery::mock(Job::class);
+    $queued->shouldReceive('release')->once()->with(3600);
+    $job = new SyncTcgcsvPricesJob;
+    $job->setJob($queued);
 
-    runTcgcsvSync();
+    $job->handle(app(TcgcsvClient::class), app(TcgplayerLinkDiscovery::class), app(TcgplayerIdentityMatcher::class));
 
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(0)
         ->and(fallbackKept($card))->toBe([])
-        ->and(lastTcgcsvSummary())->toMatchArray(['build_too_old_to_fill' => true, 'gaps_filled' => 0]);
+        ->and(Cache::get('tcgcsv:last_build'))->toBeNull()
+        ->and(Cache::get('tcgcsv:last_run'))->toBeNull();
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/prices'));
 });
 
-test('a build more than a day and a half old is not stamped as today\'s price', function () {
+test('in shadow mode a build from the previous UTC day is still compared', function () {
+    config(['tcgcsv.mode' => 'shadow']);
+    $this->travelTo(CarbonImmutable::parse('2026-10-08 00:10', 'UTC'));
+    gapFixture();
+    Http::fake([
+        'tcgcsv.com/last-updated.txt' => Http::response('2026-10-07T20:05:57+0000', 200),
+        'tcgcsv.com/tcgplayer/3/2374/prices' => Http::response(tcgcsvPricesResponse([['productId' => 659941, 'lowPrice' => 0.53, 'marketPrice' => 1.29, 'subTypeName' => 'Holofoil']]), 200),
+        'tcgcsv.com/tcgplayer/3/24269/prices' => Http::response(tcgcsvPricesResponse([]), 200),
+    ]);
+
+    runTcgcsvSync();
+
+    expect(Cache::get('tcgcsv:last_build'))->not->toBeNull();
+});
+
+test('a print tcgdex priced yesterday but sent nothing for today is a gap tcgcsv fills', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDay()]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    $row = CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->sole();
+    expect([$row->origin, $row->market_minor])->toBe(['tcgcsv', 129]);
+});
+
+test('a build from an earlier UTC day is not stamped as today\'s price', function () {
     config(['tcgcsv.mode' => 'fill']);
     $this->travelTo(CarbonImmutable::parse('2026-10-09 20:30', 'UTC'));
     $card = gapFixture();

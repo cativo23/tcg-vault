@@ -41,11 +41,12 @@ use UnexpectedValueException;
  * Every run compares tcgcsv's price with the tcgdex-synced TCGplayer
  * price for each linked print and logs the result. In fill mode (the
  * default, config tcgcsv.mode) it also writes tcgcsv's price for the
- * linked prints tcgdex has no recent TCGplayer price for — the gaps —
- * and never touches a price tcgdex has or one entered by hand. It also
- * keeps each price that passes its checks (TcgcsvFallbackPrices) for the
- * next tcgdex sync, which falls back on it when tcgdex's price is missing
- * or stale. Shadow mode writes and keeps nothing; it is the rollback.
+ * linked prints tcgdex sent no current TCGplayer price for today — the
+ * gaps — and never touches a price tcgdex has or one entered by hand. It
+ * also keeps each price that passes its checks (TcgcsvFallbackPrices) so the
+ * next tcgdex sync leaves that print's row to this run when tcgdex's price is
+ * missing or stale. Only a build from today's UTC day is worked in fill
+ * mode. Shadow mode writes and keeps nothing; it is the rollback.
  *
  * Retries are deliberately slow: tcgcsv throttles or bans clients that
  * hammer it, so a failure or an unpublished build waits an hour, and a
@@ -122,9 +123,10 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     }
 
     /**
-     * An unpublished build is retried until late evening; after that the
-     * day is left to tcgdex's midnight sync. A run started later still
-     * gets one hour.
+     * An unpublished build (or one from an earlier day, in fill mode) is
+     * retried until late evening; after that the day gets no tcgcsv row and
+     * the print keeps its previous one. A run started later still gets one
+     * hour.
      */
     public function retryUntil(): DateTimeInterface
     {
@@ -147,6 +149,18 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         if (Cache::get(self::BUILD_CACHE_KEY) === $build) {
             // Never re-pull a build already fetched (tcgcsv's guidance).
+            $this->retryLaterOrStop();
+
+            return;
+        }
+
+        // A row is dated with the UTC day it was read, so a build from an
+        // earlier day (published after the last retry, or a retry that crosses
+        // midnight) would show that day's prices as today's. It is left
+        // unrecorded, so today's build is still pulled when it appears.
+        // Shadow mode writes nothing, so an old build is compared as usual.
+        if ($this->mode() === 'fill' && CarbonImmutable::parse($build)->utc()->lt(CarbonImmutable::today('UTC'))) {
+            Log::channel('tcgcsv')->warning('tcgcsv build is from an earlier day; waiting for today\'s', ['build' => $build]);
             $this->retryLaterOrStop();
 
             return;
@@ -186,11 +200,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         $mode = $this->mode();
         [$comparison, $gaps, $priced] = $this->compare($prices);
-        // A price row is dated with the UTC day it was read, so a build from an
-        // earlier day (a retry that crosses midnight) would show that day's
-        // prices as today's.
-        $buildTooOld = CarbonImmutable::parse($build)->utc()->lt(CarbonImmutable::today('UTC'));
-        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $kept, $rejected] = $mode === 'fill' && ! $buildTooOld
+        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $kept, $rejected] = $mode === 'fill'
             ? $this->fillGaps($gaps, $priced, $build)
             : [0, [], 0, [], [], 0, []];
 
@@ -205,7 +215,6 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'groups_failed' => count($failedGroups),
             'skipped_no_matching_subtype' => $skipped,
             ...$comparison,
-            'build_too_old_to_fill' => $buildTooOld,
             'gaps_filled' => $filled,
             'fallback_kept' => $kept,
             'fallback_rejected_count' => count($rejected),
@@ -407,14 +416,16 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     }
 
     /**
-     * How tcgcsv's price for each linked print compares with the latest
-     * tcgdex-synced TCGplayer price for it (captured within the resolver's
-     * staleness window, and last updated by TCGplayer within it too — a
-     * frozen price tcgdex keeps re-sending is not a current one), and how
-     * many linked prints tcgdex doesn't price at all — the gaps tcgcsv
-     * fills, returned alongside the stats and the linked prints tcgdex does
-     * price. A row with no TCGplayer date is judged by its capture day
-     * alone. Covers only the groups this run fetched.
+     * How tcgcsv's price for each linked print compares with the TCGplayer
+     * price tcgdex synced for it today (last updated by TCGplayer within the
+     * resolver's staleness window — a frozen price tcgdex keeps re-sending is
+     * not a current one), and how many linked prints tcgdex sent no price for
+     * today — the gaps tcgcsv fills, returned alongside the stats and the
+     * linked prints tcgdex does price. Yesterday's tcgdex row doesn't count:
+     * the midnight sync writes nothing for a print tcgdex stopped pricing, so
+     * the evening run is what keeps it current. A row with no TCGplayer date
+     * is judged by its capture day alone. Covers only the groups this run
+     * fetched.
      *
      * @param  array<int, array<int, array<string, TcgcsvPriceRow>>>  $prices
      * @return array{array<string, mixed>, list<array{CardTcgplayerLink, TcgcsvPriceRow}>, list<array{CardTcgplayerLink, TcgcsvPriceRow}>}
@@ -424,7 +435,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $current = CarbonImmutable::today()->subDays(CardPriceResolver::STALE_AFTER_DAYS);
         $tcgdex = DB::table('card_price_snapshots')
             ->where('source', 'tcgplayer')->where('origin', 'tcgdex')
-            ->where('captured_on', '>=', $current->toDateString())
+            ->where('captured_on', '>=', CarbonImmutable::today()->toDateString())
             ->where(fn ($q) => $q->whereNull('source_updated_at')->orWhere('source_updated_at', '>=', $current))
             ->whereNotNull('market_minor')
             ->selectRaw('DISTINCT ON (card_id, variant) card_id, variant, market_minor')
