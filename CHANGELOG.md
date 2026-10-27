@@ -6,6 +6,16 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A new day no longer opens with yesterday's TCGplayer price dated today. The
+  midnight tcgdex sync wrote last evening's tcgcsv price as the new day's row, so
+  every card showed the same price (and Activity the same total) as the day before
+  until the evening run replaced it. The sync now writes no TCGplayer row for a
+  linked print whose price tcgcsv covers; the row appears when that day's build is
+  read, and the previous day's row and movement show until then. A tcgcsv build
+  from an earlier UTC day is no longer written or kept as today's price.
+
 ## [1.6.13] - 2026-10-26
 
 ### Fixed

@@ -182,20 +182,24 @@ gets a note naming it (`gaps_accepted_after_hold`). A link only tcgdex's
 third-party ids vouch for is not filled until a tcgcsv or cardmarket price
 exists to check it against (tcgdex's own price doesn't count for this one;
 `gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
-filled when the build is over 36h old. Any `TCGCSV_MODE` other than exactly
+filled when the build is from an earlier UTC day than the run (a retry that
+crosses midnight): a row is dated with the day it was read, so that build would
+show yesterday's prices as today's (`build_too_old_to_fill`). Any `TCGCSV_MODE` other than exactly
 `fill` runs as `shadow`.
 
 The evening run also keeps every price that passes its checks, for the tcgdex
 sync (`fallback_kept` in the day's log counts them): the cache holds one entry
 per print (`tcgcsv:fallback:<card id>|<variant>`) for 36h after tcgcsv's build.
 Any tcgdex sync (the midnight one above all, but also adding a card or
-importing a set) writes that price as the day's TCGplayer row
-(`origin = tcgcsv`, USD) instead of tcgdex's when, for a linked print, tcgdex
-sent no TCGplayer price, a zero one, or one TCGplayer last updated over 3 days
-ago. A price with no update date counts as current, a kept price whose product
-or subtype no longer matches the print's link is ignored, and `shadow` mode
-leaves the sync as it was. tcgdex's price for a print tcgcsv has nothing kept
-for is still written as before.
+importing a set) writes no TCGplayer row for a linked print when tcgdex sent
+no TCGplayer price for it, a zero one, or one TCGplayer last updated over 3
+days ago, and a price is kept for it. The day's row appears when the evening
+run reads that day's build, so a new day never opens with yesterday's price
+dated today; until then the app keeps showing the previous day's row and its
+movement. A price with no update date counts as current, a kept price whose
+product or subtype no longer matches the print's link is ignored, and `shadow`
+mode leaves the sync as it was. tcgdex's price for a print tcgcsv has nothing
+kept for is still written as before.
 
 Two things to know when reading the day's log:
 
@@ -207,8 +211,8 @@ Two things to know when reading the day's log:
   A rising count means tcgdex's frozen price keeps being written; check those
   prints' links.
 - A kept price lives its 36h even when the next evening's price for that print
-  fails its checks, so the midnight sync can still write the earlier one
-  (under 36h old when written).
+  fails its checks, so the midnight sync still leaves that print's row to the
+  evening run (the previous day's row keeps standing until it is written).
 
 **Extra groups.** A deck's non-holo print is a TCGplayer product of its own in
 the "Deck Exclusives" group (1840), which no set maps, while tcgdex prices the
