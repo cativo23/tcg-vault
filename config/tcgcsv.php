@@ -10,8 +10,9 @@ return [
     'user_agent' => env('TCGCSV_USER_AGENT', 'tcg-vault/1 (+https://tcgvault.cativo.dev)'),
 
     // 'fill' writes tcgcsv's TCGplayer price for linked prints tcgdex
-    // doesn't price, and keeps each checked price for the tcgdex sync to
-    // fall back on; 'shadow' only compares and writes nothing (rollback).
+    // doesn't price, and keeps each checked price so the tcgdex sync leaves
+    // that print's row to the evening run; 'shadow' only compares and writes
+    // nothing (rollback).
     'mode' => env('TCGCSV_MODE', 'fill'),
 
     // 'log' makes the run judge every base print by its product's printed

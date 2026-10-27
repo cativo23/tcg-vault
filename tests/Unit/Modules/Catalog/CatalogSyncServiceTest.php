@@ -12,6 +12,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Services\CatalogSyncService;
 use App\Modules\Catalog\Services\TcgdexImageFallback;
 use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
@@ -417,49 +418,59 @@ function cardmarketEntry(int $market): PriceEntryData
     return new PriceEntryData(source: 'cardmarket', variant: 'default', currency: 'EUR', marketMinor: $market, lowMinor: null, trendMinor: null, sourceUpdatedAt: CarbonImmutable::parse('2026-10-21T13:13:25Z'), raw: []);
 }
 
+/** The row the previous evening's run left for the print. */
+function yesterdaysTcgcsvRow(Card $card, string $variant, int $market): void
+{
+    CardPriceSnapshot::create([
+        'card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => $variant, 'currency' => 'USD',
+        'captured_on' => CarbonImmutable::today()->subDay()->toDateString(), 'market_minor' => $market,
+        'source_updated_at' => CarbonImmutable::parse(SYNC_FALLBACK_BUILD),
+    ]);
+}
+
 function todaysTcgplayer(Card $card): ?CardPriceSnapshot
 {
     return CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->where('variant', 'holofoil')
         ->where('captured_on', CarbonImmutable::today()->toDateString())->first();
 }
 
-test('a TCGplayer price tcgdex last updated over three days ago is replaced by tcgcsv\'s in the same sync', function () {
+test('a TCGplayer price tcgdex last updated over three days ago is not written when tcgcsv\'s is kept for the evening run', function () {
     $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
     $card = linkedDarkrai();
 
     syncDarkrai([tcgplayerEntry(636, '2026-10-15T15:01:26Z')], keptFor($card));
 
-    $row = todaysTcgplayer($card);
-    expect([$row->origin, $row->currency, $row->market_minor, $row->low_minor])->toBe(['tcgcsv', 'USD', 14207, 13649]);
-    expect($row->source_updated_at->toIso8601String())->toBe(SYNC_FALLBACK_BUILD);
+    // Neither tcgdex's frozen price nor a copy of last evening's build is
+    // dated today: the day's row appears when that day's build is read.
+    expect(todaysTcgplayer($card))->toBeNull();
 });
 
-test('a linked print tcgdex sends no TCGplayer price for gets tcgcsv\'s in the same sync, and cardmarket\'s row is still written', function () {
+test('a linked print tcgdex sends no TCGplayer price for gets no TCGplayer row, and cardmarket\'s row is still written', function () {
     $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
     $card = linkedDarkrai();
 
     syncDarkrai([cardmarketEntry(21322)], keptFor($card));
 
-    expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgcsv', 'market_minor' => 14207]);
+    expect(todaysTcgplayer($card))->toBeNull();
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->sole()->origin)->toBe('tcgdex');
 });
 
-test('a TCGplayer price with a zero market price counts as missing and is replaced', function () {
+test('a TCGplayer price with a zero market price counts as missing', function () {
     $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
     $card = linkedDarkrai();
 
     syncDarkrai([tcgplayerEntry(0, '2026-10-21T22:00:00Z')], keptFor($card));
 
-    expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgcsv', 'market_minor' => 14207]);
+    expect(todaysTcgplayer($card))->toBeNull();
 });
 
-test('a TCGplayer price with no market price counts as missing and is replaced', function () {
+test('a TCGplayer price with no market price counts as missing', function () {
     $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
     $card = linkedDarkrai();
 
     syncDarkrai([tcgplayerEntry(null, '2026-10-21T22:00:00Z')], keptFor($card));
 
-    expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgcsv', 'market_minor' => 14207]);
+    expect(todaysTcgplayer($card))->toBeNull();
 });
 
 test('a stored tcgcsv price for another subtype than the link now points at is ignored', function () {
@@ -518,7 +529,7 @@ test('in shadow mode a stale TCGplayer price is written as before', function () 
     expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgdex', 'market_minor' => 636]);
 });
 
-test('the service the container builds falls back too, since every caller resolves it that way', function () {
+test('the service the container builds holds the day back too, since every caller resolves it that way', function () {
     $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
     $card = linkedDarkrai();
     keptFor($card);
@@ -532,22 +543,24 @@ test('the service the container builds falls back too, since every caller resolv
 
     app(CatalogSyncService::class)->syncCard('me05-116');
 
-    expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgcsv', 'market_minor' => 14207]);
+    expect(todaysTcgplayer($card))->toBeNull();
 });
 
-test('after a sync that falls back, the collection shows tcgcsv\'s USD price instead of cardmarket\'s EUR', function () {
+test('after a sync that holds the TCGplayer row back, the collection still shows yesterday\'s tcgcsv USD price instead of cardmarket\'s EUR', function () {
     $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
     $card = linkedDarkrai();
+    yesterdaysTcgcsvRow($card, 'holofoil', 14207);
     $synced = syncDarkrai([cardmarketEntry(21322)], keptFor($card));
     $username = ShownPrices::ownPublicly($synced, 'holofoil');
 
     expect(ShownPrices::totals($username))->toBe(['USD' => 14207]);
 });
 
-test('a deck exclusive normal print tcgdex never prices on TCGplayer gets tcgcsv\'s price in the same sync, and the collection shows it', function () {
+test('a deck exclusive normal print tcgdex never prices on TCGplayer gets no row of its own, and the collection shows last evening\'s tcgcsv price', function () {
     $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     $card = Card::create(['tcgdex_id' => 'me05-062', 'set_id' => $set->id, 'local_id' => '062', 'name' => 'Bastiodon']);
+    yesterdaysTcgcsvRow($card, 'normal', 122);
     CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 707025, 'sub_type' => 'Normal', 'group_id' => 1840, 'method' => 'tcgdex-thirdparty', 'verified_at' => now()]);
     config(['tcgcsv.mode' => 'fill']);
     $store = new TcgcsvFallbackPrices;
@@ -564,8 +577,32 @@ test('a deck exclusive normal print tcgdex never prices on TCGplayer gets tcgcsv
 
     $synced = (new CatalogSyncService($provider, null, $store))->syncCard('me05-062');
 
-    $rows = CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->get();
-    expect($rows)->toHaveCount(1);
-    expect($rows->first()->only(['origin', 'variant', 'currency', 'market_minor']))->toBe(['origin' => 'tcgcsv', 'variant' => 'normal', 'currency' => 'USD', 'market_minor' => 122]);
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->where('captured_on', CarbonImmutable::today()->toDateString())->count())->toBe(0);
     expect(ShownPrices::totals(ShownPrices::ownPublicly($synced, 'normal')))->toBe(['USD' => 122]);
+});
+
+test('before the evening run the print\'s movement is yesterday\'s real one, not zero', function () {
+    $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
+    $card = linkedDarkrai();
+    foreach ([2 => 14000, 1 => 14207] as $daysAgo => $market) {
+        CardPriceSnapshot::create([
+            'card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil', 'currency' => 'USD',
+            'captured_on' => CarbonImmutable::today()->subDays($daysAgo)->toDateString(), 'market_minor' => $market,
+        ]);
+    }
+
+    $synced = syncDarkrai([cardmarketEntry(21322)], keptFor($card));
+    $delta = app(CardPriceResolver::class)->resolveDelta($synced->fresh());
+
+    expect($delta->latest->market_minor)->toBe(14207)
+        ->and($delta->deltaMinor)->toBe(207);
+});
+
+test('a current tcgdex TCGplayer price is still written by the midnight sync, with a tcgcsv price kept', function () {
+    $this->travelTo(CarbonImmutable::parse(SYNC_FALLBACK_NOW, 'UTC'));
+    $card = linkedDarkrai();
+
+    syncDarkrai([tcgplayerEntry(14300, '2026-10-21T22:00:00Z')], keptFor($card));
+
+    expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgdex', 'market_minor' => 14300]);
 });
