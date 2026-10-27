@@ -8,17 +8,18 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * tcgcsv's checked TCGplayer price for each linked print, held until the
- * tcgdex sync can fall back on it. tcgcsv publishes once a day and its build
- * is pulled once, while tcgdex syncs at another hour, so the price is kept
- * for MAX_BUILD_AGE_HOURS after its build and read by the sync that decides
- * whether a print needs it. It only exists in fill mode.
+ * tcgcsv's checked TCGplayer price for each linked print, held so the
+ * tcgdex sync knows the evening run covers it. tcgcsv publishes once a day
+ * and its build is pulled once, while tcgdex syncs at another hour, so the
+ * price is kept for MAX_BUILD_AGE_HOURS after its build and read by the sync
+ * that decides whether a print is left to that run. It only exists in fill
+ * mode.
  *
  * @phpstan-type Entry array{market: int, low: int|null, productId: int, groupId: int, subType: string, build: string}
  */
 final class TcgcsvFallbackPrices
 {
-    /** A build older than this is not stamped as today's price. */
+    /** How long a kept price lives after its build. */
     public const MAX_BUILD_AGE_HOURS = 36;
 
     private const KEY_PREFIX = 'tcgcsv:fallback:';

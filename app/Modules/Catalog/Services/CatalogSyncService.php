@@ -147,17 +147,10 @@ final class CatalogSyncService
     private function storePriceSnapshots(Card $card, CardDetailData $cardDetail): void
     {
         $today = CarbonImmutable::today()->toDateString();
-        $fallbacks = $this->fallbacksFor($card, $cardDetail);
-
-        foreach ($fallbacks as $variant => $attributes) {
-            CardPriceSnapshot::updateOrCreate(
-                ['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => $variant, 'captured_on' => $today],
-                $attributes,
-            );
-        }
+        $heldBack = $this->heldBackTcgplayerVariants($card, $cardDetail);
 
         foreach ($cardDetail->prices as $price) {
-            if ($price->source === 'tcgplayer' && isset($fallbacks[$price->variant])) {
+            if ($price->source === 'tcgplayer' && isset($heldBack[$price->variant])) {
                 continue;
             }
 
@@ -185,16 +178,24 @@ final class CatalogSyncService
     }
 
     /**
-     * The kept tcgcsv prices that stand in for tcgdex's TCGplayer price on
-     * this sync, keyed by variant: for each linked variant, when tcgdex
-     * sent no price for it (or a zero one), or one TCGplayer last updated
-     * over STALE_AFTER_DAYS ago — a frozen price tcgdex keeps re-sending. A
-     * price with no update date counts as current, and a kept price whose
-     * product or subtype no longer matches the link is ignored.
+     * The linked variants whose TCGplayer row this sync leaves unwritten,
+     * keyed by variant: those with a kept tcgcsv price (the previous
+     * evening's checked build) while tcgdex sent no price for them (or a
+     * zero one), or one TCGplayer last updated over STALE_AFTER_DAYS ago — a
+     * frozen price tcgdex keeps re-sending. A price with no update date
+     * counts as current, and a kept price whose product or subtype no longer
+     * matches the link is ignored.
      *
-     * @return array<string, array<string, mixed>> the snapshot columns to write, by variant
+     * The day's row is written by the evening tcgcsv run, when that day's
+     * build is read. Writing tcgdex's frozen price now would block that run
+     * (it never overwrites a row tcgdex wrote today), and copying last
+     * evening's build would date it today, so it would show yesterday's
+     * price as today's until the run replaced it. Until then the resolver
+     * keeps using the previous day's row.
+     *
+     * @return array<string, true>
      */
-    private function fallbacksFor(Card $card, CardDetailData $cardDetail): array
+    private function heldBackTcgplayerVariants(Card $card, CardDetailData $cardDetail): array
     {
         // The container leaves an optional, unbound class parameter at its
         // default, so the store is resolved here like the image fallback.
@@ -216,7 +217,7 @@ final class CatalogSyncService
         }
 
         $staleBefore = CarbonImmutable::today()->subDays(CardPriceResolver::STALE_AFTER_DAYS);
-        $use = [];
+        $heldBack = [];
         foreach ($store->forCard($card->id, array_values(array_map('strval', $links->keys()->all()))) as $variant => $entry) {
             $link = $links->get($variant);
             if ($link === null || $entry['productId'] !== (int) $link->product_id || $entry['subType'] !== $link->sub_type) {
@@ -228,10 +229,10 @@ final class CatalogSyncService
                 && ($price->marketMinor ?? 0) > 0
                 && ($price->sourceUpdatedAt === null || ! $price->sourceUpdatedAt->lt($staleBefore));
             if (! $current) {
-                $use[$variant] = $store->snapshotAttributes($entry);
+                $heldBack[$variant] = true;
             }
         }
 
-        return $use;
+        return $heldBack;
     }
 }
