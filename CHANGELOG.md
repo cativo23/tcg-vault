@@ -6,6 +6,18 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The tcgcsv price checks no longer use Cardmarket as a reference. Its figure is in
+  EUR and often another print's, so prices that matched their last tcgcsv price
+  (dp2-* and sv08 prints) were held back every night, their TCGplayer price frozen
+  for days, with a Discord alert each evening. A price is now judged against the
+  print's last tcgcsv price (3x while it is within 3 days, 15x up to 90 days) and
+  tcgdex's last TCGplayer price (3x). A link only tcgdex's ids vouch for is filled
+  once the print has a tcgcsv or tcgdex price to check against; an identity-verified
+  link's first price has nothing to be bounded by. The `verdict_shadow_*` summary
+  keys are gone with the comparison.
+
 ## [1.6.15] - 2026-10-28
 
 ### Changed
