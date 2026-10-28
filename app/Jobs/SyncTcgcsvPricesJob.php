@@ -81,7 +81,8 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * glitch — unless the move is under PLAUSIBLE_MOVE_MINOR, which a cheap
      * print can make without either. Only prices within the resolver's
      * staleness window count, so a real jump is held back for days at
-     * most, never pinned to a price that is no longer shown.
+     * most, never pinned to a price that is no longer shown. Older tcgcsv
+     * prices are bounded by MAX_RATIO_TO_OLD_TCGCSV instead.
      */
     private const MAX_RATIO_TO_LAST = 3.0;
 
@@ -489,10 +490,10 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * Writes tcgcsv's price as today's TCGplayer price for each gap,
      * except an implausible one (see MAX_RATIO_TO_LAST), or one whose link
      * only tcgdex's third-party ids vouch for (TRUST 1, served
-     * inconsistently) while no recent price exists to check it against —
+     * inconsistently) while no tcgcsv price from the last OLD_TCGCSV_REFERENCE_DAYS or tcgdex price exists to check it against —
      * those are counted as unverified. A held-back print is remembered for
      * a week (HELD_CACHE_PREFIX), so a price written once its hold has
-     * expired, with nothing left to check it against, is reported rather
+     * expired, with no recent price left to check it against, is reported rather
      * than going live unnoticed. A row tcgdex or a
      * person wrote for today is never overwritten — tcgdex's sync may land
      * between the comparison and this write — so only a missing row or
@@ -590,7 +591,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             $filled++;
             // Reported only when nothing was left to check it against — a
             // price that came back in line passed its check.
-            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null && ($lastTcgcsvAny[$key] ?? null) === null && ($lastTcgdex[$key] ?? null) === null) {
+            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null && ($lastTcgcsv[$key] ?? null) === null && ($lastTcgdex[$key] ?? null) === null) {
                 $acceptedAfterHold[] = [(int) $link->card_id, (string) $link->variant];
             }
         }
@@ -613,7 +614,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * tcgdex's third-party ids vouch for has no price of the print to check
      * it against — a tcgcsv one from the last OLD_TCGCSV_REFERENCE_DAYS or a
      * tcgdex one (see TCGDEX_REFERENCE_DAYS) —, 'implausible' when it is far
-     * from a reference, otherwise 'accept'. The bound against tcgcsv's last
+     * from a reference, otherwise 'accept'. A vouched link (admin, or
+     * identity-verified) skips the wide bound against an old tcgcsv price: a
+     * confirmed link's real jump is not held. The bound against tcgcsv's last
      * price is MAX_RATIO_TO_LAST while that price is recent and
      * MAX_RATIO_TO_OLD_TCGCSV once it is not, so a held jump is accepted after
      * a few days.
@@ -634,7 +637,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         if ($this->farFrom($market, $lastTcgcsv, self::MAX_RATIO_TO_LAST)
             || $this->farFrom($market, $lastTcgdex, self::MAX_RATIO_TO_LAST)
-            || ($lastTcgcsv === null && $this->farFrom($market, $lastTcgcsvAny, self::MAX_RATIO_TO_OLD_TCGCSV))) {
+            || ($lastTcgcsv === null && ! $vouched && $this->farFrom($market, $lastTcgcsvAny, self::MAX_RATIO_TO_OLD_TCGCSV))) {
             return 'implausible';
         }
 
