@@ -22,15 +22,14 @@ final class PriceCoverage
 {
     /**
      * Each feed, the timestamp that says when it last moved, and how old that
-     * may get. tcgdex's TCGplayer feed is judged by TCGplayer's own date
-     * (`source_updated_at`), because tcgdex keeps re-sending a frozen price
-     * and stamps it with today's capture day.
+     * may get. tcgcsv's daily build lands around 20:00 UTC and may slip by
+     * hours, hence 30. tcgdex's own TCGplayer prices are no longer watched:
+     * they froze upstream and tcgcsv replaces them.
      *
      * @var list<array{source: string, origin: string, column: string, hours: int}>
      */
     private const FEEDS = [
-        ['source' => 'cardmarket', 'origin' => 'tcgdex', 'column' => 'created_at', 'hours' => 26],
-        ['source' => 'tcgplayer', 'origin' => 'tcgdex', 'column' => 'source_updated_at', 'hours' => CardPriceResolver::STALE_AFTER_DAYS * 24],
+        ['source' => 'tcgplayer', 'origin' => 'tcgcsv', 'column' => 'created_at', 'hours' => 30],
     ];
 
     /**
