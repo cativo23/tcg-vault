@@ -77,16 +77,13 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     /**
      * A gap price this many times above or below the print's recent tcgcsv
      * price, or tcgdex's last TCGplayer price for it (see
-     * TCGDEX_REFERENCE_DAYS), or its cardmarket price (a coarser bound:
-     * EUR, another market), is held back as a likely wrong link or upstream glitch —
-     * unless the move is under PLAUSIBLE_MOVE_MINOR, which a cheap print
-     * can make without either. Only prices within the resolver's
+     * TCGDEX_REFERENCE_DAYS), is held back as a likely wrong link or upstream
+     * glitch — unless the move is under PLAUSIBLE_MOVE_MINOR, which a cheap
+     * print can make without either. Only prices within the resolver's
      * staleness window count, so a real jump is held back for days at
      * most, never pinned to a price that is no longer shown.
      */
     private const MAX_RATIO_TO_LAST = 3.0;
-
-    private const MAX_RATIO_TO_CARDMARKET = 4.0;
 
     /**
      * How long tcgdex's last TCGplayer price, dated by TCGplayer's own
@@ -96,14 +93,6 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      * this many days.
      */
     private const TCGDEX_REFERENCE_DAYS = 14;
-
-    /**
-     * An admin-confirmed link gets a wider cardmarket bound: cardmarket
-     * often files a stamped print (staff, Pokémon Center) under its plain
-     * one, so a few times off is real there, but an upstream glitch of
-     * an order of magnitude or more is still held back.
-     */
-    private const MAX_RATIO_TO_CARDMARKET_ADMIN = 15.0;
 
     /**
      * The bound against the print's last tcgcsv price once it is older than
@@ -210,9 +199,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         $mode = $this->mode();
         [$comparison, $gaps, $priced] = $this->compare($prices);
-        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $kept, $rejected, $verdictShadow] = $mode === 'fill'
+        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $kept, $rejected] = $mode === 'fill'
             ? $this->fillGaps($gaps, $priced, $build)
-            : [0, [], 0, [], [], 0, [], []];
+            : [0, [], 0, [], [], 0, []];
 
         $summary = [
             'mode' => $mode,
@@ -236,8 +225,6 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'gaps_unverified' => count($unverified),
             'gaps_unverified_prints' => $this->outlierLabels(array_slice($unverified, 0, 10)),
             'gaps_accepted_after_hold' => $this->outlierLabels(array_slice($acceptedAfterHold, 0, 10)),
-            'verdict_shadow_count' => count($verdictShadow),
-            'verdict_shadow_prints' => $this->verdictShadowLabels(array_slice($verdictShadow, 0, 10)),
             ...($identityMode === 'log' ? ['identity' => $this->identitySummary($identityOutcomes, $partialRetry)] : []),
         ];
 
@@ -520,7 +507,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      *
      * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $gaps
      * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $priced  linked prints tcgdex does price
-     * @return array{int, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string, string, string}>} filled, the first implausible [card_id, variant], how many were implausible, the unverified, the accepted after a hold, how many prices were kept, the prices rejected for a print tcgdex already wrote today, the prints whose verdict differs between the checks and the ones without cardmarket [card_id, variant, verdict, verdict without cardmarket]
+     * @return array{int, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string}>, int, list<array{int, string}>} filled, the first implausible [card_id, variant], how many were implausible, the unverified, the accepted after a hold, how many prices were kept, the prices rejected for a print tcgdex already wrote today
      */
     private function fillGaps(array $gaps, array $priced, string $build): array
     {
@@ -530,10 +517,6 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $since = $today->subDays(CardPriceResolver::STALE_AFTER_DAYS)->toDateString();
         $lastTcgcsv = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')
             ->where('captured_on', '>=', $since)->where('captured_on', '<', $today->toDateString()));
-        $cardmarket = $this->withCardmarketReferences(
-            $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'cardmarket')->where('captured_on', '>=', $since)),
-            [...$gaps, ...$priced],
-        );
         $lastTcgdex = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgdex')
             ->where('source_updated_at', '>=', $today->subDays(self::TCGDEX_REFERENCE_DAYS)));
         $lastTcgcsvAny = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')
@@ -552,14 +535,6 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $acceptedAfterHold = [];
         $keep = [];
         $rejected = [];
-        $verdictShadow = [];
-        $shadow = function (CardTcgplayerLink $link, int $market, string $verdict) use (&$verdictShadow, $lastTcgcsv, $lastTcgcsvAny, $lastTcgdex): void {
-            $key = "{$link->card_id}|{$link->variant}";
-            $without = $this->verdictWithoutCardmarket($link, $market, $lastTcgcsv[$key] ?? null, $lastTcgcsvAny[$key] ?? null, $lastTcgdex[$key] ?? null);
-            if ($without !== $verdict) {
-                $verdictShadow[] = [(int) $link->card_id, (string) $link->variant, $verdict, $without];
-            }
-        };
 
         foreach ($gaps as [$link, $row]) {
             $key = "{$link->card_id}|{$link->variant}";
@@ -568,8 +543,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             if ($entry === null) {
                 continue;
             }
-            $verdict = $this->verdict($link, $market, $lastTcgcsv[$key] ?? null, $lastTcgdex[$key] ?? null, $cardmarket[$key] ?? null);
-            $shadow($link, $market, $verdict);
+            $verdict = $this->verdict($link, $market, $lastTcgcsv[$key] ?? null, $lastTcgcsvAny[$key] ?? null, $lastTcgdex[$key] ?? null);
             if (isset($writtenToday[$key])) {
                 if ($verdict === 'accept') {
                     $keep[] = [(int) $link->card_id, (string) $link->variant, $row];
@@ -616,16 +590,14 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             $filled++;
             // Reported only when nothing was left to check it against — a
             // price that came back in line passed its check.
-            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null && ($lastTcgcsv[$key] ?? null) === null && ($lastTcgdex[$key] ?? null) === null && ($cardmarket[$key] ?? null) === null) {
+            if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null && ($lastTcgcsvAny[$key] ?? null) === null && ($lastTcgdex[$key] ?? null) === null) {
                 $acceptedAfterHold[] = [(int) $link->card_id, (string) $link->variant];
             }
         }
 
         foreach ($priced as [$link, $row]) {
             $key = "{$link->card_id}|{$link->variant}";
-            $verdict = $this->verdict($link, (int) $row->marketMinor, $lastTcgcsv[$key] ?? null, $lastTcgdex[$key] ?? null, $cardmarket[$key] ?? null);
-            $shadow($link, (int) $row->marketMinor, $verdict);
-            if ($verdict === 'accept') {
+            if ($this->verdict($link, (int) $row->marketMinor, $lastTcgcsv[$key] ?? null, $lastTcgcsvAny[$key] ?? null, $lastTcgdex[$key] ?? null) === 'accept') {
                 $keep[] = [(int) $link->card_id, (string) $link->variant, $row];
             }
         }
@@ -633,22 +605,26 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         // A print tcgdex already wrote today can't be held back or written,
         // but a price rejected for it is counted, so a frozen tcgdex row
         // that keeps being written doesn't go unnoticed.
-        return [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $fallback->putMany($keep, $build), $rejected, $verdictShadow];
+        return [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $fallback->putMany($keep, $build), $rejected];
     }
 
     /**
-     * The verdict without the cardmarket reference (EUR, usually another
-     * print's price): a link only tcgdex's third-party ids vouch for needs a
-     * tcgcsv or tcgdex price of the print, of any age within the last
-     * OLD_TCGCSV_REFERENCE_DAYS for tcgcsv, to check against; the
-     * bound against tcgcsv's last price is 3x while that price is recent and
-     * wider once it is not, so a held jump is accepted after a few days.
-     * Run beside the verdict so the two can be compared before one replaces
-     * the other.
+     * Whether a tcgcsv price may be used: 'unverified' when its link only
+     * tcgdex's third-party ids vouch for has no price of the print to check
+     * it against — a tcgcsv one from the last OLD_TCGCSV_REFERENCE_DAYS or a
+     * tcgdex one (see TCGDEX_REFERENCE_DAYS) —, 'implausible' when it is far
+     * from a reference, otherwise 'accept'. The bound against tcgcsv's last
+     * price is MAX_RATIO_TO_LAST while that price is recent and
+     * MAX_RATIO_TO_OLD_TCGCSV once it is not, so a held jump is accepted after
+     * a few days.
+     *
+     * A link to an extra group's product whose identity was verified (name
+     * and number match the card's) is vouched for like an admin's: it is
+     * never 'unverified'.
      *
      * @return 'accept'|'implausible'|'unverified'
      */
-    private function verdictWithoutCardmarket(CardTcgplayerLink $link, int $market, ?int $lastTcgcsv, ?int $lastTcgcsvAny, ?int $lastTcgdex): string
+    private function verdict(CardTcgplayerLink $link, int $market, ?int $lastTcgcsv, ?int $lastTcgcsvAny, ?int $lastTcgdex): string
     {
         $vouched = $link->method === 'admin' || $this->identityVerified($link);
 
@@ -666,135 +642,14 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     }
 
     /**
-     * @param  list<array{int, string, string, string}>  $differences
-     * @return list<string>
-     */
-    private function verdictShadowLabels(array $differences): array
-    {
-        return array_map(fn (array $d) => $this->outlierLabels([[$d[0], $d[1]]])[0]." {$d[2]}→{$d[3]}", $differences);
-    }
-
-    /**
-     * Whether a tcgcsv price may be used: 'unverified' when its link only
-     * tcgdex's third-party ids vouch for has no recent tcgcsv or cardmarket
-     * price to check it against, 'implausible' when it is far from any
-     * reference (see MAX_RATIO_TO_LAST), otherwise 'accept'.
-     *
-     * A link to an extra group's product whose identity was verified (name
-     * and number match the card's) is vouched for like an admin's: it is
-     * never 'unverified', and gets the wider cardmarket bound. Its
-     * cardmarket reference is the print's own average (withCardmarketReferences),
-     * the one on file for the card being the main product's.
-     *
-     * @return 'accept'|'implausible'|'unverified'
-     */
-    private function verdict(CardTcgplayerLink $link, int $market, ?int $lastTcgcsv, ?int $lastTcgdex, ?int $cardmarket): string
-    {
-        $vouched = $link->method === 'admin' || $this->identityVerified($link);
-
-        if (! $vouched && $lastTcgcsv === null && $cardmarket === null && (CardTcgplayerLink::TRUST[$link->method] ?? 0) < CardTcgplayerLink::TRUST['tcgdex-price']) {
-            return 'unverified';
-        }
-
-        $cardmarketRatio = $vouched ? self::MAX_RATIO_TO_CARDMARKET_ADMIN : self::MAX_RATIO_TO_CARDMARKET;
-        if ($this->farFrom($market, $lastTcgcsv, self::MAX_RATIO_TO_LAST)
-            || $this->farFrom($market, $lastTcgdex, self::MAX_RATIO_TO_LAST)
-            || $this->farFrom($market, $cardmarket, $cardmarketRatio)) {
-            return 'implausible';
-        }
-
-        return 'accept';
-    }
-
-    /**
      * Whether the link is to an extra group's product whose name and number
      * were checked against the card's. An admin link is vouched for by the
-     * admin and keeps the cardmarket reference on file, whatever its group.
+     * admin, whatever its group.
      */
     private function identityVerified(CardTcgplayerLink $link): bool
     {
         return $link->method !== 'admin' && $link->verified_at !== null
             && in_array((int) $link->group_id, TcgcsvExtraGroups::ids(), true);
-    }
-
-    /**
-     * Adjusts the cardmarket reference of two kinds of link, loading the
-     * cards' `raw` once for both:
-     *
-     * - An identity-verified link's reference becomes the print's own average
-     *   from the card's `variants_detailed` entry for that product (EUR, in
-     *   minor units), not the card's cardmarket price on file, which is the
-     *   main product's; a print with no average has no reference.
-     * - A third-party link for a `normal` or `holofoil` print that has no
-     *   cardmarket price under its own variant takes the card's `default` one:
-     *   tcgdex files the price of a card with a single base product there, as
-     *   with every 30th Celebration holo. It only counts when every entry
-     *   carrying the link's TCGplayer product is on the card's top-level
-     *   cardmarket product, so the price is that print's and not another's.
-     *
-     * @param  array<string, int>  $cardmarket  "card_id|variant" → the cardmarket price on file
-     * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $pairs
-     * @return array<string, int>
-     */
-    private function withCardmarketReferences(array $cardmarket, array $pairs): array
-    {
-        $verified = [];
-        $defaulted = [];
-
-        foreach ($pairs as [$link]) {
-            $key = "{$link->card_id}|{$link->variant}";
-
-            if ($this->identityVerified($link)) {
-                $verified[$key] = $link;
-            } elseif ($link->method === 'tcgdex-thirdparty' && in_array($link->variant, ['normal', 'holofoil'], true)
-                && ! isset($cardmarket[$key]) && isset($cardmarket["{$link->card_id}|default"])) {
-                $defaulted[$key] = $link;
-            }
-        }
-
-        if ($verified === [] && $defaulted === []) {
-            return $cardmarket;
-        }
-
-        $raws = Card::whereIn('id', array_unique(array_map(fn (CardTcgplayerLink $l) => $l->card_id, [...$verified, ...$defaulted])))->pluck('raw', 'id');
-
-        foreach ($verified as $key => $link) {
-            unset($cardmarket[$key]);
-
-            foreach ($this->entriesOf($raws[$link->card_id] ?? null, $link->product_id) as $entry) {
-                $average = $entry['pricing']['cardmarket']['avg'] ?? null;
-
-                if (is_numeric($average) && $average > 0) {
-                    $cardmarket[$key] = (int) round((float) $average * 100);
-
-                    break;
-                }
-            }
-        }
-
-        foreach ($defaulted as $key => $link) {
-            $raw = $raws[$link->card_id] ?? null;
-            $main = is_array($raw) ? ($raw['pricing']['cardmarket']['idProduct'] ?? null) : null;
-            $entries = $this->entriesOf($raw, $link->product_id);
-
-            if ($entries !== [] && is_int($main) && array_filter($entries, fn (array $e) => ($e['thirdParty']['cardmarket'] ?? null) !== $main) === []) {
-                $cardmarket[$key] = $cardmarket["{$link->card_id}|default"];
-            }
-        }
-
-        return $cardmarket;
-    }
-
-    /**
-     * The card's `variants_detailed` entries that carry the TCGplayer product.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function entriesOf(mixed $raw, int $productId): array
-    {
-        $entries = is_array($raw) && is_array($raw['variants_detailed'] ?? null) ? $raw['variants_detailed'] : [];
-
-        return array_values(array_filter($entries, fn ($e) => is_array($e) && ($e['thirdParty']['tcgplayer'] ?? null) === $productId));
     }
 
     /**
