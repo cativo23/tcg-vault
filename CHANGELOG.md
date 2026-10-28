@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.15] - 2026-10-28
+
 ### Changed
 
 - The pricing-freshness alert watches how many cards were synced in the last 26h
