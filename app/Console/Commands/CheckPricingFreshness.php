@@ -18,10 +18,10 @@ use Illuminate\Support\Facades\DB;
  * Catches a stalled catalog:refresh-prices run — the daily sync
  * dispatching successfully but never actually completing (or never even
  * dispatching, if the scheduler process itself died) stays silent
- * otherwise. Confirmed live: a 30-hour stall on 2026-09-24/25 went
- * unnoticed until someone asked, because nothing was watching the one
- * signal that would have caught it — how old the newest card sync
- * actually is.
+ * otherwise. The signal that catches it is how many cards the sync
+ * reached in the last STALE_AFTER_HOURS: the nightly run touches every card,
+ * so a stall leaves nearly all of them behind, while a user adding one card
+ * mid-day touches only that one.
  *
  * Scheduled well after catalog:refresh-prices's own daily dispatch (see
  * routes/console.php), so a normal day's run has hours of buffer before
@@ -36,6 +36,9 @@ final class CheckPricingFreshness extends Command
 {
     private const STALE_AFTER_HOURS = 26;
 
+    /** Below this share of cards synced within STALE_AFTER_HOURS the sync counts as stalled. */
+    private const MIN_SYNCED_SHARE = 0.5;
+
     /** tcgcsv's build lands around 20:00 UTC and may slip by hours. */
     private const TCGCSV_STALE_AFTER_HOURS = 30;
 
@@ -47,7 +50,7 @@ final class CheckPricingFreshness extends Command
     {
         $this->checkTcgcsv($alerter);
 
-        // When the catalog sync last touched a card, not when a price row was
+        // When the catalog sync last touched cards, not when a price row was
         // written: the sync stamps every card it processes, so a run that wrote
         // no price rows (tcgdex's frozen prices are skipped) is still a run.
         $newest = Card::query()->max('synced_at');
@@ -65,14 +68,17 @@ final class CheckPricingFreshness extends Command
         // hours until".
         $hoursSinceNewest = (int) floor(now()->diffInHours($newest, absolute: true));
 
-        if ($hoursSinceNewest >= self::STALE_AFTER_HOURS) {
-            $alerter->send("⚠️ tcg-vault: the newest card sync is {$hoursSinceNewest}h old — the daily pricing sync looks stuck.");
-            $this->warn("Newest card sync is {$hoursSinceNewest}h old.");
+        $total = Card::query()->count();
+        $recent = Card::query()->where('synced_at', '>=', now()->subHours(self::STALE_AFTER_HOURS))->count();
+
+        if ($hoursSinceNewest >= self::STALE_AFTER_HOURS || $recent < $total * self::MIN_SYNCED_SHARE) {
+            $alerter->send("⚠️ tcg-vault: {$recent} of {$total} cards were synced in the last ".self::STALE_AFTER_HOURS."h (newest {$hoursSinceNewest}h ago) — the daily pricing sync looks stuck.");
+            $this->warn("{$recent} of {$total} cards synced in the last ".self::STALE_AFTER_HOURS.'h.');
 
             return self::SUCCESS;
         }
 
-        $this->info("Newest card sync is {$hoursSinceNewest}h old — within the ".self::STALE_AFTER_HOURS.'h threshold.');
+        $this->info("{$recent} of {$total} cards synced in the last ".self::STALE_AFTER_HOURS."h, newest {$hoursSinceNewest}h ago — within the threshold.");
 
         return self::SUCCESS;
     }

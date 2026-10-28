@@ -141,7 +141,7 @@ test('alert messages give whole hours', function () {
 
     $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
 
-    Http::assertSent(fn ($request) => str_contains($request['content'], ' 30h old'));
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'newest 30h ago'));
 });
 
 test('a lost run record is not an alert while tcgcsv wrote a price within 30h', function () {
@@ -183,6 +183,30 @@ test('a catalog that synced but wrote no tcgdex price rows is not an alert', fun
     makeSnapshotAt(now()->subHours(4)->toDateTimeString());
     $old = CardPriceSnapshot::create(['card_id' => Card::first()->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil', 'captured_on' => now()->subDays(8)->toDateString(), 'currency' => 'USD', 'market_minor' => 100]);
     $old->forceFill(['created_at' => now()->subDays(8)])->save();
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertNothingSent();
+});
+
+test('one card synced recently does not hide a stalled sync of the rest', function () {
+    Http::fake();
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    foreach (range(1, 10) as $i) {
+        Card::create(['tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card {$i}", 'synced_at' => $i === 1 ? now()->subHour() : now()->subHours(40)]);
+    }
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'looks stuck') && str_contains($request['content'], '1 of 10'));
+});
+
+test('a sync that reached most cards but not all is not an alert', function () {
+    Http::fake();
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    foreach (range(1, 10) as $i) {
+        Card::create(['tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card {$i}", 'synced_at' => $i <= 8 ? now()->subHours(5) : now()->subHours(40)]);
+    }
 
     $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
 
