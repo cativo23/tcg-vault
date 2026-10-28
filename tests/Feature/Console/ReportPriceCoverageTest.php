@@ -55,7 +55,6 @@ function coverageRow(Card $card, string $source, string $origin, ?string $update
 /** Every source up to date, so only the finding a test is about can alert. */
 function coverageFreshSources(Card $card): void
 {
-    coverageRow($card, 'cardmarket', 'tcgdex', variant: 'normal');
     coverageRow($card, 'tcgplayer', 'tcgcsv');
 }
 
@@ -132,34 +131,14 @@ test('a print with no TCGplayer price in the recent window is unpriced, not stal
     Http::assertNotSent(fn ($request) => str_contains($request['content'], 'mep-002'));
 });
 
-test('fresh Cardmarket rows do not hide a TCGplayer source that stopped updating', function () {
+test('the age of the newest price rows is not a finding, the sync alerts watch that', function () {
     $card = coverageCard('mep-001');
-    coverageRow($card, 'cardmarket', 'tcgdex', variant: 'normal');
-    coverageRow($card, 'tcgplayer', 'tcgcsv');
-    coverageRow(coverageCard('mep-002'), 'tcgplayer', 'tcgdex', updatedAt: now()->subDays(8)->toDateTimeString());
-
-    $this->artisan('catalog:report-price-coverage')->assertSuccessful();
-
-    Http::assertSent(fn ($request) => str_contains($request['content'], 'tcgplayer/tcgdex'));
-});
-
-test('a source with no rows at all is not reported', function () {
-    $card = coverageCard('mep-001');
-    coverageRow($card, 'cardmarket', 'tcgdex', variant: 'normal');
+    coverageRow($card, 'tcgplayer', 'tcgcsv', createdAt: now()->subHours(40)->toDateTimeString());
+    coverageRow($card, 'cardmarket', 'tcgdex', createdAt: now()->subHours(40)->toDateTimeString(), variant: 'normal');
 
     $this->artisan('catalog:report-price-coverage')->assertSuccessful();
 
     expect(coverageAlerts())->toBe(0);
-});
-
-test('a source whose newest row was written long ago is reported', function () {
-    $card = coverageCard('mep-001');
-    coverageRow($card, 'cardmarket', 'tcgdex', createdAt: now()->subHours(40)->toDateTimeString(), variant: 'normal');
-    coverageRow($card, 'tcgplayer', 'tcgcsv');
-
-    $this->artisan('catalog:report-price-coverage')->assertSuccessful();
-
-    Http::assertSent(fn ($request) => str_contains($request['content'], 'cardmarket/tcgdex'));
 });
 
 test('a finding is sent once and not again on the next run', function () {

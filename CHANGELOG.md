@@ -6,6 +6,19 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The pricing-freshness alert watches how many cards were synced in the last 26h
+  (half of them or more) instead of the newest tcgdex price row, so a sync that
+  wrote no price rows is still a sync and one card added mid-day cannot hide a
+  stalled run.
+- The price-coverage report no longer lists stopped price feeds (Cardmarket and
+  tcgdex's TCGplayer); the catalog and tcgcsv syncs stay watched by the
+  freshness alert.
+- The tcgcsv run summary compares each price's verdict with the one it would get
+  without the cardmarket reference (`verdict_shadow_count`, `verdict_shadow_prints`),
+  to measure the change before making it. Verdicts are unchanged.
+
 ## [1.6.14] - 2026-10-27
 
 ### Fixed

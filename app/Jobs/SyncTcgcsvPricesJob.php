@@ -105,6 +105,16 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      */
     private const MAX_RATIO_TO_CARDMARKET_ADMIN = 15.0;
 
+    /**
+     * The bound against the print's last tcgcsv price once it is older than
+     * the resolver's staleness window: a real jump is accepted after a few
+     * days, an upstream glitch of an order of magnitude or more is not.
+     */
+    private const MAX_RATIO_TO_OLD_TCGCSV = 15.0;
+
+    /** How far back the print's last tcgcsv price still serves as a reference. */
+    private const OLD_TCGCSV_REFERENCE_DAYS = 90;
+
     private const PLAUSIBLE_MOVE_MINOR = 200;
 
     /** Marks a print whose gap price was held back, keyed by "card_id|variant". */
@@ -200,9 +210,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         $mode = $this->mode();
         [$comparison, $gaps, $priced] = $this->compare($prices);
-        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $kept, $rejected] = $mode === 'fill'
+        [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $kept, $rejected, $verdictShadow] = $mode === 'fill'
             ? $this->fillGaps($gaps, $priced, $build)
-            : [0, [], 0, [], [], 0, []];
+            : [0, [], 0, [], [], 0, [], []];
 
         $summary = [
             'mode' => $mode,
@@ -226,6 +236,8 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
             'gaps_unverified' => count($unverified),
             'gaps_unverified_prints' => $this->outlierLabels(array_slice($unverified, 0, 10)),
             'gaps_accepted_after_hold' => $this->outlierLabels(array_slice($acceptedAfterHold, 0, 10)),
+            'verdict_shadow_count' => count($verdictShadow),
+            'verdict_shadow_prints' => $this->verdictShadowLabels(array_slice($verdictShadow, 0, 10)),
             ...($identityMode === 'log' ? ['identity' => $this->identitySummary($identityOutcomes, $partialRetry)] : []),
         ];
 
@@ -508,7 +520,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      *
      * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $gaps
      * @param  list<array{CardTcgplayerLink, TcgcsvPriceRow}>  $priced  linked prints tcgdex does price
-     * @return array{int, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string}>, int, list<array{int, string}>} filled, the first implausible [card_id, variant], how many were implausible, the unverified, the accepted after a hold, how many prices were kept, the prices rejected for a print tcgdex already wrote today
+     * @return array{int, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string}>, int, list<array{int, string}>, list<array{int, string, string, string}>} filled, the first implausible [card_id, variant], how many were implausible, the unverified, the accepted after a hold, how many prices were kept, the prices rejected for a print tcgdex already wrote today, the prints whose verdict differs between the checks and the ones without cardmarket [card_id, variant, verdict, verdict without cardmarket]
      */
     private function fillGaps(array $gaps, array $priced, string $build): array
     {
@@ -524,6 +536,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         );
         $lastTcgdex = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgdex')
             ->where('source_updated_at', '>=', $today->subDays(self::TCGDEX_REFERENCE_DAYS)));
+        $lastTcgcsvAny = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')
+            ->where('captured_on', '>=', $today->subDays(self::OLD_TCGCSV_REFERENCE_DAYS)->toDateString())
+            ->where('captured_on', '<', $today->toDateString()));
         $writtenToday = DB::table('card_price_snapshots')
             ->whereIn('card_id', $cardIds)->where('source', 'tcgplayer')
             ->where('captured_on', $today->toDateString())->where('origin', '<>', 'tcgcsv')
@@ -537,6 +552,14 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $acceptedAfterHold = [];
         $keep = [];
         $rejected = [];
+        $verdictShadow = [];
+        $shadow = function (CardTcgplayerLink $link, int $market, string $verdict) use (&$verdictShadow, $lastTcgcsv, $lastTcgcsvAny, $lastTcgdex): void {
+            $key = "{$link->card_id}|{$link->variant}";
+            $without = $this->verdictWithoutCardmarket($link, $market, $lastTcgcsv[$key] ?? null, $lastTcgcsvAny[$key] ?? null, $lastTcgdex[$key] ?? null);
+            if ($without !== $verdict) {
+                $verdictShadow[] = [(int) $link->card_id, (string) $link->variant, $verdict, $without];
+            }
+        };
 
         foreach ($gaps as [$link, $row]) {
             $key = "{$link->card_id}|{$link->variant}";
@@ -546,6 +569,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 continue;
             }
             $verdict = $this->verdict($link, $market, $lastTcgcsv[$key] ?? null, $lastTcgdex[$key] ?? null, $cardmarket[$key] ?? null);
+            $shadow($link, $market, $verdict);
             if (isset($writtenToday[$key])) {
                 if ($verdict === 'accept') {
                     $keep[] = [(int) $link->card_id, (string) $link->variant, $row];
@@ -599,7 +623,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
 
         foreach ($priced as [$link, $row]) {
             $key = "{$link->card_id}|{$link->variant}";
-            if ($this->verdict($link, (int) $row->marketMinor, $lastTcgcsv[$key] ?? null, $lastTcgdex[$key] ?? null, $cardmarket[$key] ?? null) === 'accept') {
+            $verdict = $this->verdict($link, (int) $row->marketMinor, $lastTcgcsv[$key] ?? null, $lastTcgdex[$key] ?? null, $cardmarket[$key] ?? null);
+            $shadow($link, (int) $row->marketMinor, $verdict);
+            if ($verdict === 'accept') {
                 $keep[] = [(int) $link->card_id, (string) $link->variant, $row];
             }
         }
@@ -607,7 +633,45 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         // A print tcgdex already wrote today can't be held back or written,
         // but a price rejected for it is counted, so a frozen tcgdex row
         // that keeps being written doesn't go unnoticed.
-        return [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $fallback->putMany($keep, $build), $rejected];
+        return [$filled, $implausible, $implausibleCount, $unverified, $acceptedAfterHold, $fallback->putMany($keep, $build), $rejected, $verdictShadow];
+    }
+
+    /**
+     * The verdict without the cardmarket reference (EUR, usually another
+     * print's price): a link only tcgdex's third-party ids vouch for needs a
+     * tcgcsv or tcgdex price of the print, of any age within the last
+     * OLD_TCGCSV_REFERENCE_DAYS for tcgcsv, to check against; the
+     * bound against tcgcsv's last price is 3x while that price is recent and
+     * wider once it is not, so a held jump is accepted after a few days.
+     * Run beside the verdict so the two can be compared before one replaces
+     * the other.
+     *
+     * @return 'accept'|'implausible'|'unverified'
+     */
+    private function verdictWithoutCardmarket(CardTcgplayerLink $link, int $market, ?int $lastTcgcsv, ?int $lastTcgcsvAny, ?int $lastTcgdex): string
+    {
+        $vouched = $link->method === 'admin' || $this->identityVerified($link);
+
+        if (! $vouched && $lastTcgcsvAny === null && $lastTcgdex === null && (CardTcgplayerLink::TRUST[$link->method] ?? 0) < CardTcgplayerLink::TRUST['tcgdex-price']) {
+            return 'unverified';
+        }
+
+        if ($this->farFrom($market, $lastTcgcsv, self::MAX_RATIO_TO_LAST)
+            || $this->farFrom($market, $lastTcgdex, self::MAX_RATIO_TO_LAST)
+            || ($lastTcgcsv === null && $this->farFrom($market, $lastTcgcsvAny, self::MAX_RATIO_TO_OLD_TCGCSV))) {
+            return 'implausible';
+        }
+
+        return 'accept';
+    }
+
+    /**
+     * @param  list<array{int, string, string, string}>  $differences
+     * @return list<string>
+     */
+    private function verdictShadowLabels(array $differences): array
+    {
+        return array_map(fn (array $d) => $this->outlierLabels([[$d[0], $d[1]]])[0]." {$d[2]}→{$d[3]}", $differences);
     }
 
     /**

@@ -9,28 +9,18 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
-function makeSnapshotAt(string $createdAt): void
+/** A card the catalog sync last touched at $syncedAt, with no price rows of its own. */
+function makeSnapshotAt(string $syncedAt): void
 {
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
-    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
-
-    $snapshot = CardPriceSnapshot::create([
-        'card_id' => $card->id,
-        'source' => 'tcgplayer',
-        'variant' => 'default',
-        'captured_on' => now()->toDateString(),
-        'currency' => 'USD',
-        'market_minor' => 100,
-    ]);
-
-    $snapshot->forceFill(['created_at' => $createdAt])->save();
+    Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex', 'synced_at' => $syncedAt]);
 }
 
 beforeEach(function () {
     config(['services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
 });
 
-test('alerts when the newest price snapshot is older than the staleness threshold', function () {
+test('alerts when no card was synced within the staleness threshold', function () {
     Http::fake();
     makeSnapshotAt(now()->subHours(30)->toDateTimeString());
 
@@ -39,7 +29,7 @@ test('alerts when the newest price snapshot is older than the staleness threshol
     Http::assertSent(fn ($request) => str_contains($request['content'], 'looks stuck'));
 });
 
-test('does not alert when the newest price snapshot is within the threshold', function () {
+test('does not alert when a card was synced within the threshold, whatever price rows exist', function () {
     Http::fake();
     makeSnapshotAt(now()->subHours(4)->toDateTimeString());
 
@@ -48,12 +38,12 @@ test('does not alert when the newest price snapshot is within the threshold', fu
     Http::assertNothingSent();
 });
 
-test('alerts when there are no price snapshots at all, since that also means pricing is stale', function () {
+test('alerts when no card has ever been synced, since that also means pricing is stale', function () {
     Http::fake();
 
     $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
 
-    Http::assertSent(fn ($request) => str_contains($request['content'], 'no tcgdex price snapshot'));
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'no card has been synced'));
 });
 
 test('a fresh manual price does not hide a stalled sync', function () {
@@ -151,7 +141,7 @@ test('alert messages give whole hours', function () {
 
     $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
 
-    Http::assertSent(fn ($request) => str_contains($request['content'], ' 30h old'));
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'newest 30h ago'));
 });
 
 test('a lost run record is not an alert while tcgcsv wrote a price within 30h', function () {
@@ -186,4 +176,39 @@ test('a fresh build does not hide a run that keeps failing after the fetch', fun
     $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
 
     Http::assertSent(fn ($request) => str_contains($request['content'], 'tcgcsv'));
+});
+
+test('a catalog that synced but wrote no tcgdex price rows is not an alert', function () {
+    Http::fake();
+    makeSnapshotAt(now()->subHours(4)->toDateTimeString());
+    $old = CardPriceSnapshot::create(['card_id' => Card::first()->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil', 'captured_on' => now()->subDays(8)->toDateString(), 'currency' => 'USD', 'market_minor' => 100]);
+    $old->forceFill(['created_at' => now()->subDays(8)])->save();
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertNothingSent();
+});
+
+test('one card synced recently does not hide a stalled sync of the rest', function () {
+    Http::fake();
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    foreach (range(1, 10) as $i) {
+        Card::create(['tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card {$i}", 'synced_at' => $i === 1 ? now()->subHour() : now()->subHours(40)]);
+    }
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'looks stuck') && str_contains($request['content'], '1 of 10'));
+});
+
+test('a sync that reached most cards but not all is not an alert', function () {
+    Http::fake();
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    foreach (range(1, 10) as $i) {
+        Card::create(['tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card {$i}", 'synced_at' => $i <= 8 ? now()->subHours(5) : now()->subHours(40)]);
+    }
+
+    $this->artisan('catalog:check-pricing-freshness')->assertSuccessful();
+
+    Http::assertNothingSent();
 });

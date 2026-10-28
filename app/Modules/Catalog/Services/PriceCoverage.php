@@ -11,28 +11,13 @@ use Illuminate\Support\Facades\DB;
 /**
  * Where the catalog's TCGplayer pricing has a hole, read from the database
  * alone: cards that nothing links to a TCGplayer product, sets no group is
- * mapped for, prints whose newest TCGplayer price is old by TCGplayer's own
- * date, and price feeds (a marketplace and the origin it arrives through)
- * that stopped updating. Each is judged on its own: a fresh Cardmarket feed
- * says nothing about TCGplayer's. tcgcsv is not listed: it writes a row only
- * for the prints tcgdex does not price, so a quiet day is normal, and its run
- * is watched by catalog:check-pricing-freshness.
+ * mapped for, and prints whose newest TCGplayer price is old by TCGplayer's
+ * own date. How old the newest price rows are is not judged here: tcgcsv
+ * writes a row only for the prints tcgdex does not price, so a quiet day is
+ * normal, and both syncs are watched by catalog:check-pricing-freshness.
  */
 final class PriceCoverage
 {
-    /**
-     * Each feed, the timestamp that says when it last moved, and how old that
-     * may get. tcgdex's TCGplayer feed is judged by TCGplayer's own date
-     * (`source_updated_at`), because tcgdex keeps re-sending a frozen price
-     * and stamps it with today's capture day.
-     *
-     * @var list<array{source: string, origin: string, column: string, hours: int}>
-     */
-    private const FEEDS = [
-        ['source' => 'cardmarket', 'origin' => 'tcgdex', 'column' => 'created_at', 'hours' => 26],
-        ['source' => 'tcgplayer', 'origin' => 'tcgdex', 'column' => 'source_updated_at', 'hours' => CardPriceResolver::STALE_AFTER_DAYS * 24],
-    ];
-
     /**
      * Cards of a set with a mapped TCGplayer group that no link points at.
      *
@@ -90,28 +75,5 @@ final class PriceCoverage
             ->map(fn ($row) => ['card' => (string) $row->tcgdex_id, 'variant' => (string) $row->variant, 'owned' => $owned->has($row->card_id)])
             ->sortBy(fn (array $print) => $print['card'].' '.$print['variant'])
             ->all());
-    }
-
-    /**
-     * Feeds whose newest row is older than they may be. A feed with no rows at
-     * all is not listed: that is a feed this install never had.
-     *
-     * @return list<array{feed: string, newest: string}>
-     */
-    public function staleFeeds(): array
-    {
-        $stale = [];
-
-        foreach (self::FEEDS as $feed) {
-            $newest = DB::table('card_price_snapshots')
-                ->where('source', $feed['source'])->where('origin', $feed['origin'])
-                ->max($feed['column']);
-
-            if ($newest !== null && CarbonImmutable::parse($newest)->lt(CarbonImmutable::now()->subHours($feed['hours']))) {
-                $stale[] = ['feed' => "{$feed['source']}/{$feed['origin']}", 'newest' => CarbonImmutable::parse($newest)->toDateString()];
-            }
-        }
-
-        return $stale;
     }
 }
