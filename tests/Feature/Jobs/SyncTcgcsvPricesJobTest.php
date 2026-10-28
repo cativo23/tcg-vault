@@ -1519,3 +1519,55 @@ test('a run with no refused links reports none', function () {
 
     expect(lastTcgcsvSummary())->toMatchArray(['link_conflicts' => 0, 'link_conflicts_prints' => []]);
 });
+
+/** The print's tcgcsv row from an earlier day, as an earlier evening run left it. */
+function earlierTcgcsvRow(Card $card, int $market, int $daysAgo = 1): void
+{
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays($daysAgo), 'currency' => 'USD', 'market_minor' => $market]);
+}
+
+test('the summary names a price the old checks hold back that the checks without cardmarket would accept', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture(); // cardmarket 1.44 EUR
+    earlierTcgcsvRow($card, 2400);
+    gapFake([['productId' => 659941, 'lowPrice' => 20.00, 'marketPrice' => 25.00, 'subTypeName' => 'Holofoil']]); // admin link: 15x cardmarket is 21.60
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary())->toMatchArray(['gaps_implausible_count' => 1, 'verdict_shadow_count' => 1, 'verdict_shadow_prints' => ['sv10-096 holofoil:cosmos implausible→accept']])
+        ->and(CardPriceSnapshot::where('card_id', $card->id)->where('captured_on', today())->where('source', 'tcgplayer')->count())->toBe(0);
+});
+
+test('the summary names a link only cardmarket vouched for that has no reference left without it', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary())->toMatchArray(['gaps_filled' => 1, 'verdict_shadow_count' => 1, 'verdict_shadow_prints' => ['sv10-096 holofoil:cosmos accept→unverified']]);
+});
+
+test('the summary reports no disagreement when both sets of checks agree', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    earlierTcgcsvRow($card, 125);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary())->toMatchArray(['gaps_filled' => 1, 'verdict_shadow_count' => 0, 'verdict_shadow_prints' => []]);
+});
+
+test('a price far from the last tcgcsv price of any age is held back by both sets of checks', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    earlierTcgcsvRow($card, 100, 9); // older than the three-day window
+    gapFake([['productId' => 659941, 'lowPrice' => 20.00, 'marketPrice' => 25.00, 'subTypeName' => 'Holofoil']]); // 25x, cardmarket 1.44 → old: implausible too
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary()['verdict_shadow_count'])->toBe(0)
+        ->and(lastTcgcsvSummary()['gaps_implausible_count'])->toBe(1);
+});
