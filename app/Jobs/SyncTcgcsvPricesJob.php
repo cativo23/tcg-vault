@@ -112,6 +112,9 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      */
     private const MAX_RATIO_TO_OLD_TCGCSV = 15.0;
 
+    /** How far back the print's last tcgcsv price still serves as a reference. */
+    private const OLD_TCGCSV_REFERENCE_DAYS = 90;
+
     private const PLAUSIBLE_MOVE_MINOR = 200;
 
     /** Marks a print whose gap price was held back, keyed by "card_id|variant". */
@@ -534,6 +537,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $lastTcgdex = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgdex')
             ->where('source_updated_at', '>=', $today->subDays(self::TCGDEX_REFERENCE_DAYS)));
         $lastTcgcsvAny = $this->latestMarket($cardIds, fn ($q) => $q->where('source', 'tcgplayer')->where('origin', 'tcgcsv')
+            ->where('captured_on', '>=', $today->subDays(self::OLD_TCGCSV_REFERENCE_DAYS)->toDateString())
             ->where('captured_on', '<', $today->toDateString()));
         $writtenToday = DB::table('card_price_snapshots')
             ->whereIn('card_id', $cardIds)->where('source', 'tcgplayer')
@@ -635,7 +639,8 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
     /**
      * The verdict without the cardmarket reference (EUR, usually another
      * print's price): a link only tcgdex's third-party ids vouch for needs a
-     * tcgcsv or tcgdex price of the print, of any age, to check against; the
+     * tcgcsv or tcgdex price of the print, of any age within the last
+     * OLD_TCGCSV_REFERENCE_DAYS for tcgcsv, to check against; the
      * bound against tcgcsv's last price is 3x while that price is recent and
      * wider once it is not, so a held jump is accepted after a few days.
      * Run beside the verdict so the two can be compared before one replaces
@@ -666,9 +671,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
      */
     private function verdictShadowLabels(array $differences): array
     {
-        $labels = $this->outlierLabels(array_map(fn (array $d) => [$d[0], $d[1]], $differences));
-
-        return array_map(fn (string $label, array $d) => "{$label} {$d[2]}→{$d[3]}", $labels, $differences);
+        return array_map(fn (array $d) => $this->outlierLabels([[$d[0], $d[1]]])[0]." {$d[2]}→{$d[3]}", $differences);
     }
 
     /**
