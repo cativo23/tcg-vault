@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Jobs\SyncTcgcsvPricesJob;
+use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Support\DiscordAlerter;
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\DB;
  * dispatching, if the scheduler process itself died) stays silent
  * otherwise. Confirmed live: a 30-hour stall on 2026-09-24/25 went
  * unnoticed until someone asked, because nothing was watching the one
- * signal that would have caught it — how old the newest price snapshot
+ * signal that would have caught it — how old the newest card sync
  * actually is.
  *
  * Scheduled well after catalog:refresh-prices's own daily dispatch (see
@@ -40,20 +41,20 @@ final class CheckPricingFreshness extends Command
 
     protected $signature = 'catalog:check-pricing-freshness';
 
-    protected $description = 'Alert Discord if the newest card price snapshot is older than expected.';
+    protected $description = 'Alert Discord if the newest card sync is older than expected.';
 
     public function handle(DiscordAlerter $alerter): int
     {
         $this->checkTcgcsv($alerter);
 
-        // Only tcgdex's own rows: a hand-entered price or a tcgcsv fill
-        // would otherwise mask a tcgdex sync that stopped. Manual rows are
-        // excluded by source too, since origin is not enforced on them.
-        $newest = CardPriceSnapshot::query()->where('source', '!=', 'manual')->where('origin', 'tcgdex')->max('created_at');
+        // When the catalog sync last touched a card, not when a price row was
+        // written: the sync stamps every card it processes, so a run that wrote
+        // no price rows (tcgdex's frozen prices are skipped) is still a run.
+        $newest = Card::query()->max('synced_at');
 
         if ($newest === null) {
-            $alerter->send('⚠️ tcg-vault: no tcgdex price snapshot exists at all — the daily pricing sync may have never run.');
-            $this->warn('No tcgdex price snapshot found.');
+            $alerter->send('⚠️ tcg-vault: no card has been synced yet — the daily pricing sync may have never run.');
+            $this->warn('No card has been synced.');
 
             return self::SUCCESS;
         }
@@ -65,13 +66,13 @@ final class CheckPricingFreshness extends Command
         $hoursSinceNewest = (int) floor(now()->diffInHours($newest, absolute: true));
 
         if ($hoursSinceNewest >= self::STALE_AFTER_HOURS) {
-            $alerter->send("⚠️ tcg-vault: the newest price snapshot is {$hoursSinceNewest}h old — the daily pricing sync looks stuck.");
-            $this->warn("Newest snapshot is {$hoursSinceNewest}h old.");
+            $alerter->send("⚠️ tcg-vault: the newest card sync is {$hoursSinceNewest}h old — the daily pricing sync looks stuck.");
+            $this->warn("Newest card sync is {$hoursSinceNewest}h old.");
 
             return self::SUCCESS;
         }
 
-        $this->info("Newest snapshot is {$hoursSinceNewest}h old — within the ".self::STALE_AFTER_HOURS.'h threshold.');
+        $this->info("Newest card sync is {$hoursSinceNewest}h old — within the ".self::STALE_AFTER_HOURS.'h threshold.');
 
         return self::SUCCESS;
     }
