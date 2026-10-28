@@ -82,8 +82,8 @@ roadmap safe to attempt.
   milestone, prompted by the incident that motivated this roadmap in
   the first place: a Discord alert (`App\Support\DiscordAlerter`, no
   Slack workspace to route to) now fires if `catalog:refresh-prices`
-  itself errors, or if `catalog:check-pricing-freshness` finds the
-  newest price snapshot older than 26h. `DISCORD_ALERT_WEBHOOK_URL` is
+  itself errors, or if `catalog:check-pricing-freshness` finds
+  fewer than half of the cards synced in the last 26h. `DISCORD_ALERT_WEBHOOK_URL` is
   already set on polaris2 (reusing the same webhook `alertmanager-discord`
   posts host-level infra alerts to) and confirmed delivering.
 - ~~**Clear the `failed_jobs` backlog**~~ — done. 3,098 rows, all

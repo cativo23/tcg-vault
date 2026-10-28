@@ -185,9 +185,12 @@ gets a note naming it (`gaps_accepted_after_hold`). `verdict_shadow_count` and
 cardmarket stopped being a reference (`old→new`): a price held back for being far
 from cardmarket's figure that is near its last tcgcsv price, and a link that only
 cardmarket vouched for. The checks without cardmarket are only compared, not
-applied. A link only tcgdex's
+applied: they take the print's last tcgcsv price of the last 90 days (3x while it
+is within 3 days, 15x after) and tcgdex's last TCGplayer price (3x) as
+references, and count either as evidence for a link. A link only tcgdex's
 third-party ids vouch for is not filled until a tcgcsv or cardmarket price
-exists to check it against (tcgdex's own price doesn't count for this one;
+exists to check it against (tcgdex's own price doesn't count for this one in
+the checks that decide today;
 `gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
 filled or kept when the build is from an earlier UTC day than the run (one
 published after the last retry, or a retry that crosses midnight): a row is
@@ -310,9 +313,9 @@ mode, once a TCGplayer group is mapped.
 and sends one Discord message naming what it finds: cards of a mapped set that
 no TCGplayer link points at, sets with cards and no mapped group, prints whose
 newest TCGplayer price is over 3 days old by TCGplayer's own date (owned ones
-marked), and the tcgcsv price feed when its newest row is over 30h old (the
-catalog sync itself is watched by `catalog:check-pricing-freshness`, through
-the date the newest card was synced). It writes nothing but a cache key per finding it named, so the
+marked), (how old the newest price rows are is not judged here: the catalog sync is
+watched by `catalog:check-pricing-freshness`, through the share of cards synced
+in the last 26h, and the tcgcsv sync by its run record). It writes nothing but a cache key per finding it named, so the
 same finding is repeated once a week, not nightly; a list longer than ten is
 named ten at a time over the following nights. A feed with no rows at all is not reported.
 Run it by hand to see the counts: `php artisan catalog:report-price-coverage`.
