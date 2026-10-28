@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.16] - 2026-10-28
+
 ### Fixed
 
 - The tcgcsv price checks no longer use Cardmarket as a reference. Its figure is in
