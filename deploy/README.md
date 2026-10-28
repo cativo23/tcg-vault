@@ -164,13 +164,14 @@ frozen price; rows with `origin = tcgcsv`); it never touches a tcgdex price
 that is current or one entered by hand. Yesterday's tcgdex row doesn't make a
 print current: the midnight sync leaves a print tcgdex stopped pricing to this
 run, which keeps it from aging into cardmarket's EUR.
-A gap price more than 3x off the print's tcgcsv price from the last 3 days,
-or 3x off tcgdex's last TCGplayer price updated within 14 days, or 4x off its
-cardmarket price (moves under $2 excepted), is held back, named
-in the day's log (`gaps_implausible`) and sent to Discord — check that
-print's link. If the link is right (cardmarket often prices a stamped print
-like a staff or Pokémon Center promo as its plain one), confirm it as an admin
-link; those get a 15x cardmarket bound instead of 4x, and the same tcgcsv one.
+A gap price more than 3x off the print's tcgcsv price from the last 3 days
+(15x off its last one from the last 90 days when none is that recent), or 3x
+off tcgdex's last TCGplayer price updated within 14 days (moves under $2
+excepted), is held back, named in the day's log (`gaps_implausible`) and sent
+to Discord — check that print's link. Cardmarket plays no part in these checks.
+If the link is right, confirm it as an admin link: it is never `unverified` and a
+real jump from an old tcgcsv price is written, not held (the 3x bound against
+a recent tcgcsv or tcgdex price still applies).
 It prints the rows updated — expect `1`:
 
 ```bash
@@ -178,20 +179,15 @@ docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(A
 ```
 
 A hold is not permanent: once the old tcgcsv price is over 3
-days old, the new price is written unless cardmarket disagrees (by 4x, or
-15x for an admin link), and Discord
-gets a note naming it (`gaps_accepted_after_hold`). `verdict_shadow_count` and
-`verdict_shadow_prints` (first ten) name the prints whose verdict would differ if
-cardmarket stopped being a reference (`old→new`): a price held back for being far
-from cardmarket's figure that is near its last tcgcsv price, and a link that only
-cardmarket vouched for. The checks without cardmarket are only compared, not
-applied: they take the print's last tcgcsv price of the last 90 days (3x while it
-is within 3 days, 15x after) and tcgdex's last TCGplayer price (3x) as
-references, and count either as evidence for a link. A link only tcgdex's
-third-party ids vouch for is not filled until a tcgcsv or cardmarket price
-exists to check it against (tcgdex's own price doesn't count for this one in
-the checks that decide today;
-`gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
+days old, the bound against it widens to 15x (an admin or verified link has no
+bound against an old price), so a real jump is written, and Discord gets a note
+naming it when no recent price was left to check it against
+(`gaps_accepted_after_hold`). A link only tcgdex's
+third-party ids vouch for (`tcgdex-thirdparty`) is not filled
+until the print has a price to check it against: a tcgcsv one from the last 90
+days or a tcgdex one from the last 14 (`gaps_unverified`, the first ten named in
+`gaps_unverified_prints`). An admin link, or a verified link into an extra group,
+is never `unverified`. Nothing is
 filled or kept when the build is from an earlier UTC day than the run (one
 published after the last retry, or a retry that crosses midnight): a row is
 dated with the day it was read, so that build would show yesterday's prices as
@@ -243,17 +239,14 @@ words, accents and punctuation ignored) are the card's. The check is repeated on
 that fetches the group; a link that passes is marked verified (`verified_at`),
 and one whose product stops matching loses it.
 
-A verified link is vouched for like an admin's: it is never `unverified`, and
-its cardmarket reference is the print's own average (its `variants_detailed`
-entry's `pricing.cardmarket.avg`) at the 15x bound, not the card's cardmarket
-price on file, which is the main product's (an admin link into such a group
-keeps the cardmarket price on file as its reference). A print with no own average has
-nothing to bound its first price; every later price is also bounded by its
+A verified link is vouched for like an admin's: it is never `unverified`. Its
+first price has nothing to be bounded by; every later price is bounded by its
 last tcgcsv price. A group whose products can't be read counts as failed, so
 the build is retried. Removing a group from the config does not roll anything
 back: its links keep their group fetched, but they stop counting as verified
-(the next run clears `verified_at`), so their prices are held against the main
-product's cardmarket price again, with a daily Discord alert, until the links
+(the next run clears `verified_at`), so they are judged like any third-party
+link (named in the run's log as `gaps_unverified` while they have no price to
+check against, but not alerted), until the links
 are deleted (`card_tcgplayer_links.group_id = 1840`). The resolver prefers a
 `normal` TCGplayer price to a `holofoil` one, so a copy saved without a
 variant on such a card shows the non-holo's price.
@@ -267,12 +260,9 @@ a Holofoil-only product. Two rules let such a card price from tcgcsv:
   links to the only subtype its product has (instead of demanding `Normal` and
   being counted in `skipped_no_matching_subtype`). Cards with several entries,
   plain prints and reverse prints are unchanged.
-- *Reference.* tcgdex files the cardmarket price of a card with one base
-  product under `default`, so a third-party link for a `normal` or `holofoil`
-  print found no cardmarket price under its own variant and stayed
-  `unverified` (counted in `gaps_unverified`). It now uses the `default` one
-  when every entry carrying the link's TCGplayer product is on the card's
-  top-level cardmarket product. The usual bounds still apply.
+- *First price.* Such a link is `tcgdex-thirdparty`, so it stays `unverified`
+  (counted in `gaps_unverified`) until it has a tcgcsv or tcgdex price of the
+  print to check against; confirming it as an admin link fills it.
 
 Known limits: once tcgdex prices these sets itself, it files the price under
 TCGplayer's subtype label, which can differ from the link's variant key (a
@@ -280,10 +270,7 @@ TCGplayer's subtype label, which can differ from the link's variant key (a
 subtype on two prints: discovery refuses the second link, logs it, and names it
 in the run summary's `link_conflicts_prints` (count in `link_conflicts`). When
 tcgdex flips a card between its `normal` and stamped-`holo` shapes, the old link
-stays. Neither gives a wrong price. A cheap print's `default`
-reference is within the 200-minor floor of almost any price, so it is a weak
-check there; it only matters for a link's first write, since later prices are
-bounded by its own last tcgcsv price.
+stays. Neither gives a wrong price.
 
 In `shadow` mode the comparison sets a print tcgdex sent no TCGplayer price for
 today, or whose price was last updated over 3 days ago, among

@@ -567,7 +567,6 @@ test('a print only a third-party link vouches for is not kept without a price to
     $card = gapFixture();
     CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
     CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDay()]);
     gapFake();
 
     runTcgcsvSync();
@@ -629,17 +628,6 @@ test('a gap price far from the print\'s last tcgcsv price is not written', funct
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->count())->toBe(0);
     $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_filled'] === 0
         && $c['gaps_implausible_count'] === 1 && $c['gaps_implausible'] === ['sv10-096 holofoil:cosmos']);
-});
-
-test('a gap price far from the print\'s cardmarket price is not written for a link not confirmed by an admin', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = gapFixture(); // cardmarket 1.44 EUR
-    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-price']);
-    gapFake([['productId' => 659941, 'lowPrice' => 9.0, 'marketPrice' => 12.90, 'subTypeName' => 'Holofoil']]);
-
-    runTcgcsvSync();
-
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(0);
 });
 
 test('a cheap print\'s large ratio but small absolute move is still written', function () {
@@ -768,17 +756,6 @@ test('a link only tcgdex\'s third-party ids vouch for is not filled without a pr
     $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_unverified'] === 1);
 });
 
-test('a third-party link with a cardmarket price to check against is filled', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = gapFixture();
-    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
-    gapFake();
-
-    runTcgcsvSync();
-
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(129);
-});
-
 test('an unknown mode is warned about once a day, not on every retry', function () {
     config(['tcgcsv.mode' => 'off']);
     gapFixture();
@@ -819,6 +796,7 @@ test('held-back gap prices are sent to Discord, not only logged', function () {
     config(['tcgcsv.mode' => 'fill', 'services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
     $card = gapFixture();
     CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-price']);
+    earlierTcgcsvRow($card, 100);
     Http::fake(['discord.com/*' => Http::response('', 204)]);
     gapFake([['productId' => 659941, 'lowPrice' => 9.0, 'marketPrice' => 12.90, 'subTypeName' => 'Holofoil']]);
 
@@ -845,6 +823,7 @@ test('a held-back price is remembered so its later acceptance can be reported', 
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
     CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-price']);
+    earlierTcgcsvRow($card, 100);
     gapFake([['productId' => 659941, 'lowPrice' => 9.0, 'marketPrice' => 12.90, 'subTypeName' => 'Holofoil']]);
 
     runTcgcsvSync();
@@ -880,17 +859,6 @@ test('a normal price after a held glitch passes its check and is not reported as
     Http::assertNotSent(fn ($request) => str_contains($request->url(), 'discord.com'));
 });
 
-test('an admin-confirmed link gets a wider cardmarket bound, since cardmarket lumps stamped prints together', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = gapFixture(); // admin link
-    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->update(['market_minor' => 1313]); // ~4.9x below
-    gapFake([['productId' => 659941, 'lowPrice' => 62.24, 'marketPrice' => 64.16, 'subTypeName' => 'Holofoil']]);
-
-    runTcgcsvSync();
-
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(6416);
-});
-
 test('an admin-confirmed link is still held back by a jump from its own recent tcgcsv price', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
@@ -903,14 +871,15 @@ test('an admin-confirmed link is still held back by a jump from its own recent t
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->count())->toBe(0);
 });
 
-test('an admin-confirmed link is still held back by an upstream glitch far beyond any stamp premium', function () {
+test('an admin link is held back by an upstream glitch far from its last tcgcsv price', function () {
     config(['tcgcsv.mode' => 'fill']);
-    $card = gapFixture(); // admin link, cardmarket 1.44 EUR
+    $card = gapFixture();
+    earlierTcgcsvRow($card, 129);
     gapFake([['productId' => 659941, 'lowPrice' => 140.0, 'marketPrice' => 144.00, 'subTypeName' => 'Holofoil']]);
 
     runTcgcsvSync();
 
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(0);
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->count())->toBe(0);
 });
 
 test('a price tcgcsv fills is the one the next gallery render shows', function () {
@@ -938,12 +907,9 @@ test('a price tcgcsv fills is the one the next gallery render shows', function (
 
 /**
  * A card whose `normal` print is the Deck Exclusives product 707025 (Bastiodon
- * me05-062). The cardmarket price on file (0.05) is the main product's; the
- * print's own cardmarket average, in its variants_detailed entry, is
- * $average (3.44 unless a test sets it), and the fake group prices it at 4.67
- * unless a test sets that.
+ * me05-062), which the fake group prices at 4.67 unless a test sets it.
  */
-function deckExclusiveFixture(bool $ownAverage = true, float $average = 3.44): Card
+function deckExclusiveFixture(): Card
 {
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
     DB::table('set_tcgplayer_groups')->insert(['set_id' => $set->id, 'group_id' => 24688]);
@@ -951,10 +917,8 @@ function deckExclusiveFixture(bool $ownAverage = true, float $average = 3.44): C
         'pricing' => ['cardmarket' => ['unit' => 'EUR', 'idProduct' => 895847]],
         'variants_detailed' => [[
             'type' => 'normal', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 897297, 'tcgplayer' => 707025],
-            ...($ownAverage ? ['pricing' => ['cardmarket' => ['unit' => 'EUR', 'avg' => $average]]] : []),
         ]],
     ]]);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 5]);
 
     return $card;
 }
@@ -986,26 +950,13 @@ test('an extra group is fetched with its products, and a deck exclusive print li
     $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['groups_fetched'] === [1840, 24688]);
 });
 
-test('a verified link\'s price is judged against the print\'s own average at the wider bound, not the 4x one', function () {
-    // 1.96 USD against an own average of 16.88 EUR is 8.6x: held at 4x, within the admin bound of 15x.
-    config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
-    $card = deckExclusiveFixture(average: 16.88);
-    deckExclusiveFake(market: 1.96);
-    tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(196);
-});
-
 /**
- * A 30th Celebration holo print (Pikachu 030): tcgdex files its cardmarket
- * price under `default`, and the print's own cardmarket product is the card's
- * top-level one.
+ * A 30th Celebration holo print (Pikachu 030) linked by tcgdex's third-party
+ * ids, with no price of any source.
  *
  * @param  list<array<string, mixed>>  $entries  variants_detailed
  */
-function stampedPrintFixture(string $variant = 'holofoil', ?array $entries = null, int $defaultMinor = 101): Card
+function stampedPrintFixture(string $variant = 'holofoil', ?array $entries = null): Card
 {
     $set = Set::create(['tcgdex_id' => '30th', 'name' => '30th Celebration']);
     DB::table('set_tcgplayer_groups')->insert(['set_id' => $set->id, 'group_id' => 24722]);
@@ -1014,7 +965,6 @@ function stampedPrintFixture(string $variant = 'holofoil', ?array $entries = nul
         'variants_detailed' => $entries ?? [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 712938]]],
     ]]);
     CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => $variant, 'product_id' => 712938, 'sub_type' => 'Holofoil', 'group_id' => 24722, 'method' => 'tcgdex-thirdparty']);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => $defaultMinor]);
 
     return $card;
 }
@@ -1032,108 +982,9 @@ function tcgplayerRows(Card $card): int
     return CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count();
 }
 
-test('a third-party link whose cardmarket price is filed under default is checked against it and written', function () {
+test('a third-party link with no price of the print to check against is unverified', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = stampedPrintFixture();
-    stampedPrintFake();
-    tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(56);
-});
-
-test('a default cardmarket price far from the gap price still holds it back', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = stampedPrintFixture(defaultMinor: 5000);
-    stampedPrintFake();
-    $log = tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(tcgplayerRows($card))->toBe(0);
-    $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_implausible_count'] === 1 && $c['gaps_unverified'] === 0);
-});
-
-test('a default cardmarket price is no reference when the print\'s cardmarket product is not the card\'s own', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = stampedPrintFixture(entries: [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 111, 'tcgplayer' => 712938]]]);
-    stampedPrintFake();
-    $log = tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(tcgplayerRows($card))->toBe(0);
-    // The print's own cardmarket product also makes it a special print with a link of its own, unverified too.
-    $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_unverified'] >= 1);
-});
-
-test('a default cardmarket price is no reference when another entry shares the print\'s product on a different cardmarket product', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = stampedPrintFixture(entries: [
-        ['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 712938]],
-        ['type' => 'reverse', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 222, 'tcgplayer' => 712938]],
-    ]);
-    stampedPrintFake();
-    tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(tcgplayerRows($card))->toBe(0);
-});
-
-test('a default cardmarket price is no reference for a reverse holofoil link', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = stampedPrintFixture(variant: 'reverse-holofoil', entries: [['type' => 'reverse', 'size' => 'standard', 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 712938]]]);
-    stampedPrintFake();
-    tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(tcgplayerRows($card))->toBe(0);
-});
-
-test('a default cardmarket price is no reference for a link tcgdex priced', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    // Far from the gap price: it would hold the price back if it were a reference.
-    $card = stampedPrintFixture(defaultMinor: 5000);
-    // An old tcgdex price on the product makes discovery keep the link as tcgdex-price.
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil', 'captured_on' => today()->subDays(10), 'currency' => 'USD', 'market_minor' => 55, 'raw' => ['productId' => 712938]]);
-    stampedPrintFake();
-    tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->where('origin', 'tcgcsv')->value('market_minor'))->toBe(56);
-});
-
-test('a default cardmarket price is no reference when the link\'s product is no longer on the card', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = stampedPrintFixture(entries: [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 999]]]);
-    stampedPrintFake();
-    tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(tcgplayerRows($card))->toBe(0);
-});
-
-test('a default cardmarket price is no reference when the card has no main cardmarket product', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = stampedPrintFixture(entries: [['type' => 'holo', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['tcgplayer' => 712938]]]);
-    $card->update(['raw' => [...$card->raw, 'pricing' => ['cardmarket' => ['unit' => 'EUR']]]]);
-    stampedPrintFake();
-    tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(tcgplayerRows($card))->toBe(0);
-});
-
-test('a third-party link with no cardmarket price at all is still unverified', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = stampedPrintFixture();
-    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
     stampedPrintFake();
     $log = tcgcsvLog();
 
@@ -1143,43 +994,30 @@ test('a third-party link with no cardmarket price at all is still unverified', f
     $log->shouldHaveReceived('info')->withArgs(fn (string $m, array $c) => $m === 'tcgcsv sync' && $c['gaps_unverified'] === 1);
 });
 
-test('a third-party link keeps using its own variant\'s cardmarket price when there is one', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = stampedPrintFixture();
-    // The print's own row is far off the gap price, the default one is in line: only the former counts.
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 5000]);
-    stampedPrintFake();
-    tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(tcgplayerRows($card))->toBe(0);
-});
-
-test('a lone stamped normal print is written against its own normal cardmarket price', function () {
+test('a lone stamped normal print is written against its last tcgcsv price', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = stampedPrintFixture(variant: 'normal', entries: [['type' => 'normal', 'size' => 'standard', 'stamp' => ['30th-anniversary'], 'thirdParty' => ['cardmarket' => 907637, 'tcgplayer' => 712938]]]);
-    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 60]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 60]);
     stampedPrintFake();
     tcgcsvLog();
 
     runTcgcsvSync();
 
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->where('variant', 'normal')->value('market_minor'))->toBe(56);
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->where('variant', 'normal')->whereDate('captured_on', today())->value('market_minor'))->toBe(56);
 });
 
-test('an admin link into an extra group keeps its cardmarket bound on the card\'s price on file', function () {
-    // The admin vouches for the link, not the own-average check: a 93x price against what is on file stays held.
+test('an admin link into an extra group is held back by a price far from its last tcgcsv price', function () {
+    // The admin vouches for the link, not for any price: a 93x price against its last tcgcsv one stays held.
     config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
     $card = deckExclusiveFixture();
     CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 707025, 'sub_type' => 'Normal', 'group_id' => 1840, 'method' => 'admin', 'verified_at' => now()]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 122]);
     deckExclusiveFake();
     tcgcsvLog();
 
     runTcgcsvSync();
 
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->exists())->toBeFalse();
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->exists())->toBeFalse();
     expect(CardTcgplayerLink::where('card_id', $card->id)->sole()->method)->toBe('admin');
 });
 
@@ -1212,7 +1050,6 @@ test('a verified link stays written on later runs, when the link already points 
     runTcgcsvSync();
 
     $this->travelTo(CarbonImmutable::parse('2026-10-09 20:30', 'UTC'));
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 5]);
     runTcgcsvSync();
 
     expect(CardTcgplayerLink::where('card_id', $card->id)->sole()->verified_at)->not->toBeNull();
@@ -1220,7 +1057,7 @@ test('a verified link stays written on later runs, when the link already points 
 });
 
 test('an identity-verified link is held back by a jump from its own last tcgcsv price', function () {
-    // Cardmarket's own average (3.44) allows 25.00, so only the last tcgcsv price (1.22) can hold it.
+    // The last tcgcsv price (1.22) holds back a jump to 25.00.
     config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
     $card = deckExclusiveFixture();
     CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 707025, 'sub_type' => 'Normal', 'group_id' => 1840, 'method' => 'tcgdex-thirdparty', 'verified_at' => now()]);
@@ -1234,34 +1071,19 @@ test('an identity-verified link is held back by a jump from its own last tcgcsv 
     expect(CardTcgplayerLink::where('card_id', $card->id)->sole()->verified_at)->not->toBeNull();
 });
 
-test('a verified link\'s first price is bounded by the print\'s own cardmarket average', function (float $market, bool $written) {
+test('a verified link\'s first price has nothing to be bounded by and is written', function () {
     config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
     $card = deckExclusiveFixture();
-    deckExclusiveFake(market: $market);
-    tcgcsvLog();
-
-    runTcgcsvSync();
-
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->exists())->toBe($written);
-})->with([
-    'in line with the average' => [4.67, true],
-    'a glitch far above it' => [400.00, false],
-]);
-
-test('a verified link with no own cardmarket average has nothing to bound its first price, and is written', function () {
-    config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
-    $card = deckExclusiveFixture(ownAverage: false);
     deckExclusiveFake(market: 4.67);
     tcgcsvLog();
 
     runTcgcsvSync();
 
-    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->value('market_minor'))->toBe(467);
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->exists())->toBeTrue();
 });
-
 test('a verified link\'s price accepted once its hold expires is reported to Discord', function () {
     config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840], 'services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
-    $card = deckExclusiveFixture(ownAverage: false);
+    $card = deckExclusiveFixture();
     Cache::put('tcgcsv:held:'.$card->id.'|normal', true, now()->addDays(7));
     Http::fake(['discord.com/*' => Http::response('', 204)]);
     deckExclusiveFake();
@@ -1272,7 +1094,7 @@ test('a verified link\'s price accepted once its hold expires is reported to Dis
     Http::assertSent(fn ($request) => str_contains($request->url(), 'discord.com') && str_contains($request['content'], 'after a hold') && str_contains($request['content'], 'me05-062 normal'));
 });
 
-test('a link to an extra group\'s product that no longer matches the card loses its verification and is checked against cardmarket again', function () {
+test('a link to an extra group\'s product that no longer matches the card loses its verification and is judged as an unverified link', function () {
     config(['tcgcsv.mode' => 'fill', 'tcgcsv.extra_groups' => [1840]]);
     $card = deckExclusiveFixture();
     CardTcgplayerLink::create(['card_id' => $card->id, 'variant' => 'normal', 'product_id' => 707025, 'sub_type' => 'Normal', 'group_id' => 1840, 'method' => 'tcgdex-thirdparty', 'verified_at' => now()]);
@@ -1282,7 +1104,7 @@ test('a link to an extra group\'s product that no longer matches the card loses 
     runTcgcsvSync();
 
     expect(CardTcgplayerLink::where('card_id', $card->id)->sole()->verified_at)->toBeNull();
-    // 4.67 against the main product's 0.05 on file.
+    // No tcgcsv or tcgdex price to check it against.
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->exists())->toBeFalse();
 });
 
@@ -1526,19 +1348,19 @@ function earlierTcgcsvRow(Card $card, int $market, int $daysAgo = 1): void
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays($daysAgo), 'currency' => 'USD', 'market_minor' => $market]);
 }
 
-test('the summary names a price the old checks hold back that the checks without cardmarket would accept', function () {
+test('a price far from cardmarket\'s figure but near its last tcgcsv price is written', function () {
     config(['tcgcsv.mode' => 'fill']);
-    $card = gapFixture(); // cardmarket 1.44 EUR
+    $card = gapFixture(); // cardmarket 1.44 EUR, another print's price
     earlierTcgcsvRow($card, 2400);
-    gapFake([['productId' => 659941, 'lowPrice' => 20.00, 'marketPrice' => 25.00, 'subTypeName' => 'Holofoil']]); // admin link: 15x cardmarket is 21.60
+    gapFake([['productId' => 659941, 'lowPrice' => 20.00, 'marketPrice' => 25.00, 'subTypeName' => 'Holofoil']]);
 
     runTcgcsvSync();
 
-    expect(lastTcgcsvSummary())->toMatchArray(['gaps_implausible_count' => 1, 'verdict_shadow_count' => 1, 'verdict_shadow_prints' => ['sv10-096 holofoil:cosmos implausible→accept']])
-        ->and(CardPriceSnapshot::where('card_id', $card->id)->where('captured_on', today())->where('source', 'tcgplayer')->count())->toBe(0);
+    expect(lastTcgcsvSummary())->toMatchArray(['gaps_implausible_count' => 0, 'gaps_filled' => 1])
+        ->and(CardPriceSnapshot::where('card_id', $card->id)->where('captured_on', today())->where('source', 'tcgplayer')->value('market_minor'))->toBe(2500);
 });
 
-test('the summary names a link only cardmarket vouched for that has no reference left without it', function () {
+test('a link only tcgdex\'s ids vouch for is not filled when only cardmarket has a price for it', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
     CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
@@ -1546,44 +1368,35 @@ test('the summary names a link only cardmarket vouched for that has no reference
 
     runTcgcsvSync();
 
-    expect(lastTcgcsvSummary())->toMatchArray(['gaps_filled' => 1, 'verdict_shadow_count' => 1, 'verdict_shadow_prints' => ['sv10-096 holofoil:cosmos accept→unverified']]);
+    expect(lastTcgcsvSummary())->toMatchArray(['gaps_unverified' => 1, 'gaps_unverified_prints' => ['sv10-096 holofoil:cosmos'], 'gaps_filled' => 0])
+        ->and(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->count())->toBe(0);
 });
 
-test('the summary reports no disagreement when both sets of checks agree', function () {
+test('a price far from the last tcgcsv price of many days ago is held back', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
-    earlierTcgcsvRow($card, 125);
-    gapFake();
-
-    runTcgcsvSync();
-
-    expect(lastTcgcsvSummary())->toMatchArray(['gaps_filled' => 1, 'verdict_shadow_count' => 0, 'verdict_shadow_prints' => []]);
-});
-
-test('a price far from the last tcgcsv price of any age is held back by both sets of checks', function () {
-    config(['tcgcsv.mode' => 'fill']);
-    $card = gapFixture();
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']); // a vouched link skips the wide bound
     earlierTcgcsvRow($card, 100, 9); // older than the three-day window
-    gapFake([['productId' => 659941, 'lowPrice' => 20.00, 'marketPrice' => 25.00, 'subTypeName' => 'Holofoil']]); // 25x, cardmarket 1.44 → old: implausible too
+    gapFake([['productId' => 659941, 'lowPrice' => 20.00, 'marketPrice' => 25.00, 'subTypeName' => 'Holofoil']]);
 
     runTcgcsvSync();
 
-    expect(lastTcgcsvSummary()['verdict_shadow_count'])->toBe(0)
-        ->and(lastTcgcsvSummary()['gaps_implausible_count'])->toBe(1);
+    expect(lastTcgcsvSummary())->toMatchArray(['gaps_implausible_count' => 1, 'gaps_filled' => 0]);
 });
 
-test('a price 16x its last tcgcsv price of a few days ago is held back without cardmarket, though the 15x admin bound on cardmarket let it through', function () {
+test('a price 16x its last tcgcsv price of a few days ago is held back', function () {
     config(['tcgcsv.mode' => 'fill']);
-    $card = gapFixture(); // admin link, cardmarket 1.44 EUR
+    $card = gapFixture();
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']); // a vouched link skips the wide bound
     earlierTcgcsvRow($card, 100, 5);
     gapFake([['productId' => 659941, 'lowPrice' => 15.00, 'marketPrice' => 16.00, 'subTypeName' => 'Holofoil']]);
 
     runTcgcsvSync();
 
-    expect(lastTcgcsvSummary())->toMatchArray(['gaps_filled' => 1, 'verdict_shadow_prints' => ['sv10-096 holofoil:cosmos accept→implausible']]);
+    expect(lastTcgcsvSummary())->toMatchArray(['gaps_implausible_count' => 1, 'gaps_filled' => 0]);
 });
 
-test('a price 10x its last tcgcsv price of a few days ago is accepted by both sets of checks', function () {
+test('a price 10x its last tcgcsv price of a few days ago is written', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
     earlierTcgcsvRow($card, 100, 5);
@@ -1591,45 +1404,106 @@ test('a price 10x its last tcgcsv price of a few days ago is accepted by both se
 
     runTcgcsvSync();
 
-    expect(lastTcgcsvSummary())->toMatchArray(['gaps_filled' => 1, 'verdict_shadow_count' => 0]);
+    expect(lastTcgcsvSummary())->toMatchArray(['gaps_implausible_count' => 0, 'gaps_filled' => 1]);
 });
 
-test('the summary compares the verdicts of prints tcgdex prices too', function () {
+test('a price tcgcsv checks out for a print tcgdex prices is kept even when cardmarket\'s figure is far from it', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
     CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1450, 'source_updated_at' => today()->subDay()]);
-    gapFake([['productId' => 659941, 'lowPrice' => 14.00, 'marketPrice' => 15.00, 'subTypeName' => 'Holofoil']]); // cardmarket 1.44 EUR: 4x bound trips
+    gapFake([['productId' => 659941, 'lowPrice' => 14.00, 'marketPrice' => 15.00, 'subTypeName' => 'Holofoil']]);
 
     runTcgcsvSync();
 
-    expect(lastTcgcsvSummary())->toMatchArray(['verdict_shadow_prints' => ['sv10-096 holofoil:cosmos implausible→accept']]);
+    expect(fallbackKept($card)['holofoil:cosmos']['market'] ?? null)->toBe(1500);
 });
 
-test('a tcgdex price of the print counts as a reference when there is no cardmarket or tcgcsv one', function () {
+test('a tcgdex price of the print counts as a reference when there is no tcgcsv one', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
     CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
-    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->delete();
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays(10), 'currency' => 'USD', 'market_minor' => 120, 'source_updated_at' => today()->subDays(10)]);
     gapFake();
 
     runTcgcsvSync();
 
-    expect(lastTcgcsvSummary())->toMatchArray(['gaps_unverified' => 1, 'verdict_shadow_prints' => ['sv10-096 holofoil:cosmos unverified→accept']]);
+    expect(lastTcgcsvSummary())->toMatchArray(['gaps_unverified' => 0, 'gaps_filled' => 1]);
 });
 
-test('every disagreement is labelled with its own card and variant', function () {
+test('a cardmarket price never decides a verdict, however absurd', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    earlierTcgcsvRow($card, 125);
+    CardPriceSnapshot::where('card_id', $card->id)->where('source', 'cardmarket')->update(['market_minor' => 99999999]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(lastTcgcsvSummary())->toMatchArray(['gaps_implausible_count' => 0, 'gaps_filled' => 1]);
+});
+
+test('every link left unverified is named', function () {
     config(['tcgcsv.mode' => 'fill']);
     $card = gapFixture();
     $other = Card::create(['tcgdex_id' => 'sv10-097', 'set_id' => $card->set_id, 'local_id' => '097', 'name' => 'Other']);
     foreach ([$card, $other] as $c) {
         CardTcgplayerLink::updateOrCreate(['card_id' => $c->id, 'variant' => 'holofoil:cosmos'], ['product_id' => 659941, 'sub_type' => 'Holofoil', 'group_id' => 2374, 'method' => 'tcgdex-thirdparty']);
     }
-    CardPriceSnapshot::create(['card_id' => $other->id, 'source' => 'cardmarket', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 144]);
     gapFake();
 
     runTcgcsvSync();
 
-    expect(lastTcgcsvSummary()['verdict_shadow_prints'])->toEqualCanonicalizing(['sv10-096 holofoil:cosmos accept→unverified', 'sv10-097 holofoil:cosmos accept→unverified']);
+    expect(lastTcgcsvSummary()['gaps_unverified_prints'])->toEqualCanonicalizing(['sv10-096 holofoil:cosmos', 'sv10-097 holofoil:cosmos']);
+});
+
+test('an admin link\'s real jump from an old tcgcsv price is written, not held', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture(); // admin link
+    earlierTcgcsvRow($card, 129, 9);
+    gapFake([['productId' => 659941, 'lowPrice' => 20.0, 'marketPrice' => 25.80, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->value('market_minor'))->toBe(2580);
+});
+
+test('a third-party link\'s jump of 20x from an old tcgcsv price is held', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardTcgplayerLink::where('card_id', $card->id)->update(['method' => 'tcgdex-thirdparty']);
+    earlierTcgcsvRow($card, 129, 9);
+    gapFake([['productId' => 659941, 'lowPrice' => 20.0, 'marketPrice' => 25.80, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->exists())->toBeFalse();
+});
+
+test('a price accepted after a hold is reported even when an old tcgcsv price exists', function () {
+    config(['tcgcsv.mode' => 'fill', 'services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
+    $card = gapFixture();
+    earlierTcgcsvRow($card, 129, 9);
+    Cache::put('tcgcsv:held:'.$card->id.'|holofoil:cosmos', true, now()->addDays(7));
+    Http::fake(['discord.com/*' => Http::response('', 204)]);
+    gapFake([['productId' => 659941, 'lowPrice' => 9.0, 'marketPrice' => 12.90, 'subTypeName' => 'Holofoil']]);
+
+    runTcgcsvSync();
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), 'discord.com') && str_contains($request['content'], 'after a hold'));
+});
+
+test('a tcgcsv price older than 90 days is no reference: a third-party link is unverified, an admin link is written', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    $other = Card::create(['tcgdex_id' => 'sv10-097', 'set_id' => $card->set_id, 'local_id' => '097', 'name' => 'Other']);
+    CardTcgplayerLink::create(['card_id' => $other->id, 'variant' => 'holofoil:cosmos', 'product_id' => 659941, 'sub_type' => 'Holofoil', 'group_id' => 2374, 'method' => 'tcgdex-thirdparty']);
+    earlierTcgcsvRow($card, 129, 91);
+    CardPriceSnapshot::create(['card_id' => $other->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays(91), 'currency' => 'USD', 'market_minor' => 129]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->exists())->toBeTrue()
+        ->and(CardPriceSnapshot::where('card_id', $other->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->exists())->toBeFalse();
 });
