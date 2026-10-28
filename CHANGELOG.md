@@ -14,8 +14,10 @@ All notable changes to this project are documented here. Format follows
   for days, with a Discord alert each evening. A price is now judged against the
   print's last tcgcsv price (3x while it is within 3 days, 15x up to 90 days) and
   tcgdex's last TCGplayer price (3x). A link only tcgdex's ids vouch for is filled
-  once the print has a tcgcsv or tcgdex price to check against; an identity-verified
-  link's first price has nothing to be bounded by. The `verdict_shadow_*` summary
+  once the print has a tcgcsv or tcgdex price to check against; the first price of
+  an admin, `tcgdex-price` or identity-verified link has nothing to be bounded by,
+  and a vouched (admin or identity-verified) link's real jump from an old tcgcsv
+  price is written instead of held. The `verdict_shadow_*` summary
   keys are gone with the comparison.
 
 ## [1.6.15] - 2026-10-28

@@ -169,7 +169,9 @@ A gap price more than 3x off the print's tcgcsv price from the last 3 days
 off tcgdex's last TCGplayer price updated within 14 days (moves under $2
 excepted), is held back, named in the day's log (`gaps_implausible`) and sent
 to Discord — check that print's link. Cardmarket plays no part in these checks.
-If the link is right, confirm it as an admin link, which is never `unverified`.
+If the link is right, confirm it as an admin link: it is never `unverified` and a
+real jump from an old tcgcsv price is written, not held (the 3x bound against
+a recent tcgcsv or tcgdex price still applies).
 It prints the rows updated — expect `1`:
 
 ```bash
@@ -177,9 +179,11 @@ docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(A
 ```
 
 A hold is not permanent: once the old tcgcsv price is over 3
-days old, the bound against it widens to 15x, so a real jump is written, and
-Discord gets a note naming it (`gaps_accepted_after_hold`). A link only tcgdex's
-third-party ids vouch for (`tcgdex-thirdparty`, and the matcher's) is not filled
+days old, the bound against it widens to 15x (an admin or verified link has no
+bound against an old price), so a real jump is written, and Discord gets a note
+naming it when no recent price was left to check it against
+(`gaps_accepted_after_hold`). A link only tcgdex's
+third-party ids vouch for (`tcgdex-thirdparty`) is not filled
 until the print has a price to check it against: a tcgcsv one from the last 90
 days or a tcgdex one from the last 14 (`gaps_unverified`, the first ten named in
 `gaps_unverified_prints`). An admin link, or a verified link into an extra group,
@@ -241,7 +245,8 @@ last tcgcsv price. A group whose products can't be read counts as failed, so
 the build is retried. Removing a group from the config does not roll anything
 back: its links keep their group fetched, but they stop counting as verified
 (the next run clears `verified_at`), so they are judged like any third-party
-link, with a daily Discord alert while they stay `unverified`, until the links
+link (named in the run's log as `gaps_unverified` while they have no price to
+check against, but not alerted), until the links
 are deleted (`card_tcgplayer_links.group_id = 1840`). The resolver prefers a
 `normal` TCGplayer price to a `holofoil` one, so a copy saved without a
 variant on such a card shows the non-holo's price.
