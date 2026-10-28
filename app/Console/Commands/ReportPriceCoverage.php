@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\Cache;
 /**
  * Names the holes in TCGplayer pricing before a collector meets them as a
  * price in the wrong currency: cards no link points at, sets with no mapped
- * group, prints whose TCGplayer price is old, and price feeds that stopped
- * updating (see PriceCoverage). Read-only; the only thing it writes is the
+ * group and prints whose TCGplayer price is old (see PriceCoverage).
+ * Read-only; the only thing it writes is the
  * record of what it already told Discord, so a finding that stays open is
  * announced once a week, not every night (a long list is named ten at a time).
  *
@@ -30,21 +30,19 @@ final class ReportPriceCoverage extends Command
 
     protected $signature = 'catalog:report-price-coverage';
 
-    protected $description = 'Report unlinked cards, unmapped sets, stale TCGplayer prices and stale price feeds to Discord.';
+    protected $description = 'Report unlinked cards, unmapped sets, and stale TCGplayer prices to Discord.';
 
     public function handle(PriceCoverage $coverage, DiscordAlerter $alerter): int
     {
         $unlinked = $coverage->unlinkedCards();
         $unmapped = $coverage->unmappedSets();
         $stale = $coverage->stalePrints();
-        $feeds = $coverage->staleFeeds();
 
-        $this->line(sprintf('Unlinked cards in mapped sets: %d; sets without a group: %d; stale prints: %d; stale feeds: %d.', count($unlinked), count($unmapped), count($stale), count($feeds)));
+        $this->line(sprintf('Unlinked cards in mapped sets: %d; sets without a group: %d; stale prints: %d.', count($unlinked), count($unmapped), count($stale)));
 
         $newUnlinked = $this->unsent('unlinked', $unlinked, fn (string $id) => $id);
         $newUnmapped = $this->unsent('unmapped', $unmapped, fn (string $id) => $id);
         $newStale = $this->unsent('stale', $stale, fn (array $p) => "{$p['card']}|{$p['variant']}");
-        $newFeeds = $this->unsent('feed', $feeds, fn (array $f) => $f['feed']);
 
         // What a message names is what counts as announced: the rest of a long
         // list is named on the following nights, not silenced for a week.
@@ -63,10 +61,6 @@ final class ReportPriceCoverage extends Command
             $names = array_map(fn (array $p) => ($p['owned'] ? '*' : '')."{$p['card']} {$p['variant']}", $newStale);
             $lines[] = sprintf('- %d print(s) whose TCGplayer price is stale (owned: %d, marked *): %s', count($newStale), $owned, $this->list($names));
             $named = [...$named, ...$this->keys('stale', array_map(fn (array $p) => "{$p['card']}|{$p['variant']}", array_slice($newStale, 0, self::LISTED)))];
-        }
-        if ($newFeeds !== []) {
-            $lines[] = '- price feed(s) stopped updating: '.implode(', ', array_map(fn (array $f) => "{$f['feed']} (newest {$f['newest']})", $newFeeds));
-            $named = [...$named, ...$this->keys('feed', array_map(fn (array $f) => $f['feed'], $newFeeds))];
         }
 
         if ($lines !== []) {
