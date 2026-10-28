@@ -180,7 +180,12 @@ docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(A
 A hold is not permanent: once the old tcgcsv price is over 3
 days old, the new price is written unless cardmarket disagrees (by 4x, or
 15x for an admin link), and Discord
-gets a note naming it (`gaps_accepted_after_hold`). A link only tcgdex's
+gets a note naming it (`gaps_accepted_after_hold`). `verdict_shadow_count` and
+`verdict_shadow_prints` (first ten) name the prints whose verdict would differ if
+cardmarket stopped being a reference (`old→new`): a price held back for being far
+from cardmarket's figure that is near its last tcgcsv price, and a link that only
+cardmarket vouched for. The checks without cardmarket are only compared, not
+applied. A link only tcgdex's
 third-party ids vouch for is not filled until a tcgcsv or cardmarket price
 exists to check it against (tcgdex's own price doesn't count for this one;
 `gaps_unverified`, the first ten named in `gaps_unverified_prints`). Nothing is
@@ -305,9 +310,9 @@ mode, once a TCGplayer group is mapped.
 and sends one Discord message naming what it finds: cards of a mapped set that
 no TCGplayer link points at, sets with cards and no mapped group, prints whose
 newest TCGplayer price is over 3 days old by TCGplayer's own date (owned ones
-marked), and price feeds that stopped updating (Cardmarket by write time,
-tcgdex's TCGplayer feed by TCGplayer's own date; tcgcsv is watched by the
-check above). It writes nothing but a cache key per finding it named, so the
+marked), and the tcgcsv price feed when its newest row is over 30h old (the
+catalog sync itself is watched by `catalog:check-pricing-freshness`, through
+the date the newest card was synced). It writes nothing but a cache key per finding it named, so the
 same finding is repeated once a week, not nightly; a list longer than ten is
 named ten at a time over the following nights. A feed with no rows at all is not reported.
 Run it by hand to see the counts: `php artisan catalog:report-price-coverage`.
