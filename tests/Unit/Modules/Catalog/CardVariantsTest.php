@@ -261,3 +261,8 @@ test('stampLabels names only the stamps of a variant key', function (?string $ke
     ['', []],
     [null, []],
 ]);
+
+test('the Pokéween promo stamp can be picked for a hand-entered print', function () {
+    expect(CardVariants::stampOptions())->toHaveKey('pokeween-2026', 'Pokeween 2026')
+        ->and(CardVariants::label('reverse-holofoil+pokeween-2026'))->toBe('Reverse Holofoil · Pokeween 2026');
+});

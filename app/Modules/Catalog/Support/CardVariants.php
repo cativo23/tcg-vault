@@ -58,6 +58,10 @@ final class CardVariants
      * McDonald's 2024 Pikachu as MEW 025/165) has no key there. It uses
      * tcgdex's key shape (holo + foil), so it is the key tcgdex would give
      * that print if it adopts the name `confetti`.
+     *
+     * STAMPS has one app-only stamp too: `pokeween-2026`, the Halloween
+     * promo reprints of Zubat, Golbat and Crobat (Chaos Rising 049-051),
+     * which tcgdex does not list as a print.
      */
     private const FOILS = [
         'pokeball', 'greatball', 'ultraball', 'masterball', 'gold', 'cosmos', 'galaxy',
@@ -85,7 +89,7 @@ final class CardVariants
         'mychael-bryan', 'national-championships', 'nintendo-world', 'origins', 'origins-2008',
         'paul-atanassov', 'pikachu', 'pikachu-tail', 'platinum', 'player-rewards-program',
         'poke-ball-league', 'pokeball', 'pokemon-4-ever', 'pokemon-center', 'pokemon-center-ny',
-        'pokemon-day', 'pokemon-rocks-america', 'pokemon-together', 'poketour-99',
+        'pokemon-day', 'pokemon-rocks-america', 'pokemon-together', 'poketour-99', 'pokeween-2026',
         'pop-tournament', 'pre-release', 'professor-program', 'quarter-finalist', 'rain-city',
         'reed-weichler', 'regional-championships', 'ross-cawthorn', 'sakuya-ota', 'scrye',
         'semi-finalist', 'set-logo', 'shao-tong-yen', 'shuto-itagaki', 'snowflake', 'squirtle',
