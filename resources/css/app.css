@@ -719,7 +719,7 @@ body::before {
 .nw-tile .cset .truncate { min-width: 0; flex: 1 1 auto; }
 /* The stamp of an owned print (a Prize Pack's "Player Rewards Program"),
    so it reads differently from the plain print of the same card. */
-.nw-tile .nw-stamps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.nw-tile .nw-stamps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; min-width: 0; }
 .nw-tile .nw-stamp {
   padding: 1px 5px;
   border: 1px solid var(--ink);

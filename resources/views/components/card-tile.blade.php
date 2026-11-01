@@ -20,7 +20,7 @@
     $owned = $items->isNotEmpty();
     $quantity = (int) $items->sum('quantity');
     // What marks an owned print as not the plain one (a Prize Pack's stamp), once per stamp.
-    $stamps = $items->flatMap(fn ($i) => CardVariants::stampLabels($i->variant))->unique()->values();
+    $stamps = $items->flatMap(fn ($i) => CardVariants::stampLabels($i->variant))->unique()->sort()->values();
     $graded = $items->first(fn ($i) => $i->grade_company !== null && $i->grade_value !== null);
     $photo = $items->first(fn ($i) => $i->photo_path !== null);
     $imageUrl = $photo ? Storage::disk('collection-photos')->url($photo->photo_path) : $card->official_image_url;
@@ -63,9 +63,12 @@
             </div>
             @if ($stamps->isNotEmpty())
                 <div class="nw-stamps">
-                    @foreach ($stamps as $stamp)
+                    @foreach ($stamps->take(2) as $stamp)
                         <span class="nw-stamp" title="{{ $stamp }}">{{ $stamp }}</span>
                     @endforeach
+                    @if ($stamps->count() > 2)
+                        <span class="nw-stamp" title="{{ $stamps->slice(2)->implode(', ') }}">+{{ $stamps->count() - 2 }}</span>
+                    @endif
                 </div>
             @endif
             <div class="cset">
