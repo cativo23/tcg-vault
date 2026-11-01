@@ -250,3 +250,14 @@ test('product ids are only compared within one marketplace', function () {
         ],
     ]))->toBe(['holofoil']);
 });
+
+test('stampLabels names only the stamps of a variant key', function (?string $key, array $labels) {
+    expect(CardVariants::stampLabels($key))->toBe($labels);
+})->with([
+    ['holofoil:cosmos+player-rewards-program', ['Player Rewards Program']],
+    ['normal+staff+pre-release', ['Staff', 'Pre Release']],
+    ['normal', []],
+    ['reverse-holofoil:pokeball', []],
+    ['', []],
+    [null, []],
+]);

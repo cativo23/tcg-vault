@@ -376,8 +376,7 @@ final class CardVariants
 
     public static function label(string $key): string
     {
-        $stamps = explode('+', $key);
-        $head = explode(':', array_shift($stamps), 2);
+        $head = explode(':', explode('+', $key)[0], 2);
 
         $parts = [Str::headline($head[0])];
 
@@ -385,10 +384,21 @@ final class CardVariants
             $parts[] = self::FOIL_LABELS[$head[1]] ?? Str::headline($head[1]);
         }
 
-        foreach ($stamps as $stamp) {
-            $parts[] = Str::headline($stamp);
-        }
+        array_push($parts, ...self::stampLabels($key));
 
         return implode(' · ', $parts);
+    }
+
+    /**
+     * The stamps of a variant key, named as label() names them: what tells a
+     * print apart from the plain one of the same foil.
+     *
+     * @return list<string>
+     */
+    public static function stampLabels(?string $key): array
+    {
+        $stamps = array_filter(array_slice(explode('+', (string) $key), 1), fn (string $stamp): bool => $stamp !== '');
+
+        return array_values(array_map(fn (string $stamp): string => Str::headline($stamp), $stamps));
     }
 }

@@ -1,5 +1,6 @@
 @use('App\Modules\Catalog\Support\Rarity')
 @use('App\Modules\Catalog\Support\PokemonType')
+@use('App\Modules\Catalog\Support\CardVariants')
 @use('App\Support\Money')
 @use('Illuminate\Support\Facades\Storage')
 
@@ -18,6 +19,8 @@
     $items = collect($items ?? []);
     $owned = $items->isNotEmpty();
     $quantity = (int) $items->sum('quantity');
+    // What marks an owned print as not the plain one (a Prize Pack's stamp), once per stamp.
+    $stamps = $items->flatMap(fn ($i) => CardVariants::stampLabels($i->variant))->unique()->values();
     $graded = $items->first(fn ($i) => $i->grade_company !== null && $i->grade_value !== null);
     $photo = $items->first(fn ($i) => $i->photo_path !== null);
     $imageUrl = $photo ? Storage::disk('collection-photos')->url($photo->photo_path) : $card->official_image_url;
@@ -33,7 +36,7 @@
 
 <div class="nw-slot" style="--i: {{ $index }}">
     <a href="{{ $href }}" class="nw-tile {{ $owned ? '' : 'ghost' }} {{ $rarityTier !== 'standard' ? 'rarity-'.$rarityTier : '' }}" wire:navigate
-       aria-label="{{ $card->name }}, number {{ $card->local_id }}{{ $card->set ? ', '.$card->set->name : '' }}{{ $owned ? '' : ', not in the collection' }}">
+       aria-label="{{ $card->name }}, number {{ $card->local_id }}{{ $card->set ? ', '.$card->set->name : '' }}{{ $stamps->isNotEmpty() ? ', '.$stamps->implode(', ') : '' }}{{ $owned ? '' : ', not in the collection' }}">
         <div class="chead">
             {{-- The collector shorthand tcgdex prints per set (e.g. "PBL")
                  — without it, two same-named cards from different sets (a
@@ -58,6 +61,13 @@
                     <span class="nw-type-dot" style="--nw-type-color: {{ $typeColor }}" title="{{ $pokemonType }}"></span>
                 @endif
             </div>
+            @if ($stamps->isNotEmpty())
+                <div class="nw-stamps">
+                    @foreach ($stamps as $stamp)
+                        <span class="nw-stamp" title="{{ $stamp }}">{{ $stamp }}</span>
+                    @endforeach
+                </div>
+            @endif
             <div class="cset">
                 <span class="truncate">{{ $showSet && $card->set ? $card->set->name : Rarity::label($card->rarity) }}</span>
                 @if ($quantity > 1)
