@@ -250,3 +250,19 @@ test('product ids are only compared within one marketplace', function () {
         ],
     ]))->toBe(['holofoil']);
 });
+
+test('stampLabels names only the stamps of a variant key', function (?string $key, array $labels) {
+    expect(CardVariants::stampLabels($key))->toBe($labels);
+})->with([
+    ['holofoil:cosmos+player-rewards-program', ['Player Rewards Program']],
+    ['normal+staff+pre-release', ['Staff', 'Pre Release']],
+    ['normal', []],
+    ['reverse-holofoil:pokeball', []],
+    ['', []],
+    [null, []],
+]);
+
+test('the Pokéween promo stamp can be picked for a hand-entered print', function () {
+    expect(CardVariants::stampOptions())->toHaveKey('pokeween-2026', 'Pokeween 2026')
+        ->and(CardVariants::label('reverse-holofoil+pokeween-2026'))->toBe('Reverse Holofoil · Pokeween 2026');
+});

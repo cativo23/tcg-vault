@@ -66,6 +66,11 @@ final class CardVariants
         'duskball', 'rainbow', 'glitter', 'confetti',
     ];
 
+    /**
+     * tcgdex's stamps, plus one app-only: `pokeween-2026`, the Halloween promo
+     * reprints of Zubat, Golbat and Crobat (Chaos Rising 049-051), which
+     * tcgdex does not list as a print.
+     */
     private const STAMPS = [
         '10th-anniversary', '1st-edition', '1st-edition-error', '1st-edition-scratch-error',
         '1st-movie', '1st-movie-inverted', '25th-celebration', '30th-anniversary', '30th-pokeday',
@@ -84,7 +89,7 @@ final class CardVariants
         'master-ball-league', 'mcdonalds', 'michael-gonzalez', 'michael-pramawat', 'miska-saari',
         'mychael-bryan', 'national-championships', 'nintendo-world', 'origins', 'origins-2008',
         'paul-atanassov', 'pikachu', 'pikachu-tail', 'platinum', 'player-rewards-program',
-        'poke-ball-league', 'pokeball', 'pokemon-4-ever', 'pokemon-center', 'pokemon-center-ny',
+        'poke-ball-league', 'pokeball', 'pokeween-2026', 'pokemon-4-ever', 'pokemon-center', 'pokemon-center-ny',
         'pokemon-day', 'pokemon-rocks-america', 'pokemon-together', 'poketour-99',
         'pop-tournament', 'pre-release', 'professor-program', 'quarter-finalist', 'rain-city',
         'reed-weichler', 'regional-championships', 'ross-cawthorn', 'sakuya-ota', 'scrye',
@@ -376,8 +381,7 @@ final class CardVariants
 
     public static function label(string $key): string
     {
-        $stamps = explode('+', $key);
-        $head = explode(':', array_shift($stamps), 2);
+        $head = explode(':', explode('+', $key)[0], 2);
 
         $parts = [Str::headline($head[0])];
 
@@ -385,10 +389,21 @@ final class CardVariants
             $parts[] = self::FOIL_LABELS[$head[1]] ?? Str::headline($head[1]);
         }
 
-        foreach ($stamps as $stamp) {
-            $parts[] = Str::headline($stamp);
-        }
+        array_push($parts, ...self::stampLabels($key));
 
         return implode(' · ', $parts);
+    }
+
+    /**
+     * The stamps of a variant key, named as label() names them: what tells a
+     * print apart from the plain one of the same foil.
+     *
+     * @return list<string>
+     */
+    public static function stampLabels(?string $key): array
+    {
+        $stamps = array_filter(array_slice(explode('+', (string) $key), 1), fn (string $stamp): bool => $stamp !== '');
+
+        return array_values(array_map(fn (string $stamp): string => Str::headline($stamp), $stamps));
     }
 }

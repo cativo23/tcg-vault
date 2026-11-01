@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- A card tile in the gallery and the collection names the stamp of the copies you
+  own (for example "Player Rewards Program" on a Prize Pack print), so a stamped
+  print no longer looks like the plain one of the same card.
+- The Pokeween 2026 promo stamp (`pokeween-2026`, the Zubat, Golbat and Crobat
+  reverse holo reprints of Chaos Rising 049-051) can be picked for a hand-entered print.
+
 ## [1.6.16] - 2026-10-28
 
 ### Fixed

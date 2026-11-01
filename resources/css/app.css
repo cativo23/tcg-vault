@@ -717,6 +717,23 @@ body::before {
    grows the tile instead of ellipsizing. Index rarely hit this because
    its (short) set names happened to fit anyway. */
 .nw-tile .cset .truncate { min-width: 0; flex: 1 1 auto; }
+/* The stamp of an owned print (a Prize Pack's "Player Rewards Program"),
+   so it reads differently from the plain print of the same card. */
+.nw-tile .nw-stamps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; min-width: 0; }
+.nw-tile .nw-stamp {
+  padding: 1px 5px;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
 .nw-tile .ticker {
   background: var(--chrome-bg);
   color: var(--flat);

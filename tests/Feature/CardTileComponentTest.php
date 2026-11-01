@@ -77,3 +77,71 @@ test('a graded slab replaces the rarity chip entirely, so no rarity tier accent 
     $view->assertSee('PSA 10');
     $view->assertDontSee('rarity-chase', false);
 });
+
+function cardTileOwning(array $variants): Card
+{
+    $card = cardTileCard('Common');
+    $collection = Collection::factory()->create();
+    foreach ($variants as $variant) {
+        $card->collectionItems()->create([
+            'collection_id' => $collection->id, 'card_tcgdex_id' => $card->tcgdex_id,
+            'condition' => 'NM', 'quantity' => 1, 'variant' => $variant,
+        ]);
+    }
+
+    return $card->fresh();
+}
+
+test('an owned stamped copy shows its stamp, so it is not mistaken for the plain print', function () {
+    $card = cardTileOwning(['holofoil:cosmos+player-rewards-program']);
+
+    $view = $this->blade('<x-card-tile :card="$card" :items="$card->collectionItems" :href="\'#\'" />', ['card' => $card]);
+
+    $view->assertSee('>Player Rewards Program</span>', false);
+});
+
+test('a plain owned copy shows no stamp', function () {
+    $card = cardTileOwning(['holofoil:cosmos']);
+
+    $view = $this->blade('<x-card-tile :card="$card" :items="$card->collectionItems" :href="\'#\'" />', ['card' => $card]);
+
+    $view->assertDontSee('nw-stamp', false);
+});
+
+test('a card that is not owned shows no stamp', function () {
+    $card = cardTileCard('Common');
+
+    $view = $this->blade('<x-card-tile :card="$card" :href="\'#\'" />', ['card' => $card]);
+
+    $view->assertDontSee('nw-stamp', false);
+});
+
+test('two copies with the same stamp show it once, and different stamps each show', function () {
+    $card = cardTileOwning(['normal+player-rewards-program', 'holofoil+player-rewards-program', 'normal+staff']);
+
+    $html = $this->blade('<x-card-tile :card="$card" :items="$card->collectionItems" :href="\'#\'" />', ['card' => $card])->__toString();
+
+    expect(substr_count($html, 'class="nw-stamp"'))->toBe(2)
+        ->and(substr_count($html, '>Player Rewards Program</span>'))->toBe(1)
+        ->and(substr_count($html, '>Staff</span>'))->toBe(1);
+});
+
+test('copies with no variant or the default one show no stamp', function () {
+    $card = cardTileOwning([null, 'default']);
+
+    $view = $this->blade('<x-card-tile :card="$card" :items="$card->collectionItems" :href="\'#\'" />', ['card' => $card]);
+
+    $view->assertDontSee('nw-stamp', false);
+});
+
+test('stamps show in a stable order, and past two the rest are counted', function () {
+    $card = cardTileOwning(['normal+staff', 'normal+player-rewards-program', 'normal+pre-release', 'normal+gamestop']);
+
+    $html = $this->blade('<x-card-tile :card="$card" :items="$card->collectionItems" :href="\'#\'" />', ['card' => $card])->__toString();
+
+    expect(substr_count($html, 'class="nw-stamp"'))->toBe(3)
+        ->and($html)->toContain('>Gamestop</span>')
+        ->and($html)->toContain('>Player Rewards Program</span>')
+        ->and($html)->toContain('>+2</span>')
+        ->and($html)->not->toContain('>Staff</span>');
+});
