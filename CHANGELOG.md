@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.17] - 2026-11-01
+
 ### Added
 
 - A card tile in the gallery and the collection names the stamp of the copies you
