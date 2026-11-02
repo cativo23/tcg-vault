@@ -128,7 +128,9 @@ services:
         # job loop against the current catalog size got OOM-killed by the
         # kernel mid-run — same framework-boot-overhead reasoning as
         # horizon's own 128M→192M bump above, just discovered later.
-        limits: { cpus: '0.25', memory: 128M }
+        # cpus bumped 0.25 -> 0.5 2026-11-02: measured 25% throttled on the
+        # shared host's slow vCPU (see the server-hygiene memory).
+        limits: { cpus: '0.5', memory: 128M }
         reservations: { cpus: '0.05', memory: 64M }
 
   postgres:
@@ -221,7 +223,10 @@ services:
         # moment (the nightly catalog:refresh-prices fan-out) can need up
         # to ~2x used_memory in the worst case. 256M left no headroom for
         # that on top of the >160M telemetry floor above.
-        limits: { cpus: '0.5', memory: 384M }
+        # cpus bumped 0.5 -> 1.0 2026-11-02: measured stalls of 31-352s/h in
+        # the 00:00 UTC hour on the shared host's slow vCPU (see the
+        # server-hygiene memory).
+        limits: { cpus: '1.0', memory: 384M }
         reservations: { cpus: '0.05', memory: 96M }
 
 networks:
