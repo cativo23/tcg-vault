@@ -6,6 +6,15 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.19] - 2026-11-03
+
+### Changed
+
+- Updated dependencies across the stack, including a major upgrade from
+  Livewire 3 to 4 (dropping `livewire/volt`, now that Livewire's own
+  single-file components cover what it provided) and Pest 4 to 5
+  (PHPUnit 13 underneath). No user-facing behavior change.
+
 ## [1.6.18] - 2026-11-02
 
 ### Changed
