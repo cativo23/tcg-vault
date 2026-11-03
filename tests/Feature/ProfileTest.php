@@ -7,7 +7,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Invites\Models\Invite;
 use Illuminate\Support\Facades\Storage;
-use Livewire\Volt\Volt;
+use Livewire\Livewire;
 
 test('profile page is displayed', function () {
     $user = User::factory()->create();
@@ -18,9 +18,9 @@ test('profile page is displayed', function () {
 
     $response
         ->assertOk()
-        ->assertSeeVolt('profile.update-profile-information-form')
-        ->assertSeeVolt('profile.update-password-form')
-        ->assertSeeVolt('profile.delete-user-form');
+        ->assertSeeLivewire('profile.update-profile-information-form')
+        ->assertSeeLivewire('profile.update-password-form')
+        ->assertSeeLivewire('profile.delete-user-form');
 });
 
 test('the profile page uses the apps own display heading, not a generic Breeze one', function () {
@@ -42,7 +42,7 @@ test('profile information can be updated', function () {
 
     $this->actingAs($user);
 
-    $component = Volt::test('profile.update-profile-information-form')
+    $component = Livewire::test('profile.update-profile-information-form')
         ->set('name', 'Test User')
         ->set('email', 'test@example.com')
         ->call('updateProfileInformation');
@@ -63,7 +63,7 @@ test('email verification status is unchanged when the email address is unchanged
 
     $this->actingAs($user);
 
-    $component = Volt::test('profile.update-profile-information-form')
+    $component = Livewire::test('profile.update-profile-information-form')
         ->set('name', 'Test User')
         ->set('email', $user->email)
         ->call('updateProfileInformation');
@@ -79,7 +79,7 @@ test('username can be updated within length and character limits', function () {
     $user = User::factory()->create(['username' => 'oldname']);
     $this->actingAs($user);
 
-    Volt::test('profile.update-profile-information-form')
+    Livewire::test('profile.update-profile-information-form')
         ->set('username', 'new-handle')
         ->call('updateProfileInformation');
 
@@ -90,7 +90,7 @@ test('a username shorter than 3 characters is rejected', function () {
     $user = User::factory()->create(['username' => 'oldname']);
     $this->actingAs($user);
 
-    Volt::test('profile.update-profile-information-form')
+    Livewire::test('profile.update-profile-information-form')
         ->set('username', 'ab')
         ->call('updateProfileInformation')
         ->assertHasErrors('username');
@@ -102,7 +102,7 @@ test('a username with an illegal character is rejected', function () {
     $user = User::factory()->create(['username' => 'oldname']);
     $this->actingAs($user);
 
-    Volt::test('profile.update-profile-information-form')
+    Livewire::test('profile.update-profile-information-form')
         ->set('username', 'not_valid!')
         ->call('updateProfileInformation')
         ->assertHasErrors('username');
@@ -114,7 +114,7 @@ test('a username matching one of the apps own route segments is rejected', funct
     $user = User::factory()->create(['username' => 'oldname']);
     $this->actingAs($user);
 
-    Volt::test('profile.update-profile-information-form')
+    Livewire::test('profile.update-profile-information-form')
         ->set('username', 'admin')
         ->call('updateProfileInformation')
         ->assertHasErrors('username');
@@ -127,7 +127,7 @@ test('a username already taken by another user is rejected', function () {
     $user = User::factory()->create(['username' => 'oldname']);
     $this->actingAs($user);
 
-    Volt::test('profile.update-profile-information-form')
+    Livewire::test('profile.update-profile-information-form')
         ->set('username', 'taken')
         ->call('updateProfileInformation')
         ->assertHasErrors('username');
@@ -140,7 +140,7 @@ test('user can delete their account', function () {
 
     $this->actingAs($user);
 
-    $component = Volt::test('profile.delete-user-form')
+    $component = Livewire::test('profile.delete-user-form')
         ->set('password', 'password')
         ->call('deleteUser');
 
@@ -162,7 +162,7 @@ test('deleting an account that registered through an invite also deletes that in
 
     $this->actingAs($user);
 
-    Volt::test('profile.delete-user-form')
+    Livewire::test('profile.delete-user-form')
         ->set('password', 'password')
         ->call('deleteUser')
         ->assertHasNoErrors()
@@ -179,7 +179,7 @@ test('deleting an account that created or revoked invites keeps those invites', 
 
     $this->actingAs($admin);
 
-    Volt::test('profile.delete-user-form')
+    Livewire::test('profile.delete-user-form')
         ->set('password', 'password')
         ->call('deleteUser')
         ->assertHasNoErrors()
@@ -210,7 +210,7 @@ test('deleting an account removes its uploaded card photos but no one elses', fu
 
     $this->actingAs($user);
 
-    Volt::test('profile.delete-user-form')
+    Livewire::test('profile.delete-user-form')
         ->set('password', 'password')
         ->call('deleteUser')
         ->assertHasNoErrors();
@@ -222,7 +222,7 @@ test('deleting an account removes its uploaded card photos but no one elses', fu
 test('the delete account form says exactly what deletion removes', function () {
     $this->actingAs(User::factory()->create(['username' => 'ash']));
 
-    Volt::test('profile.delete-user-form')
+    Livewire::test('profile.delete-user-form')
         ->assertSee('your whole collection')
         ->assertSee('notes and photos')
         ->assertSee('/ash')
@@ -233,7 +233,7 @@ test('the delete account form says exactly what deletion removes', function () {
 test('the delete account form skips the gallery line for a user with no username', function () {
     $this->actingAs(User::factory()->create(['username' => null]));
 
-    Volt::test('profile.delete-user-form')
+    Livewire::test('profile.delete-user-form')
         ->assertSee('your whole collection')
         ->assertDontSee('goes offline');
 });
@@ -243,7 +243,7 @@ test('correct password must be provided to delete account', function () {
 
     $this->actingAs($user);
 
-    $component = Volt::test('profile.delete-user-form')
+    $component = Livewire::test('profile.delete-user-form')
         ->set('password', 'wrong-password')
         ->call('deleteUser');
 

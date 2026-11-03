@@ -2,20 +2,20 @@
 
 use App\Models\User;
 use Database\Seeders\PermissionSeeder;
-use Livewire\Volt\Volt;
+use Livewire\Livewire;
 
 test('login screen can be rendered', function () {
     $response = $this->get('/login');
 
     $response
         ->assertOk()
-        ->assertSeeVolt('pages.auth.login');
+        ->assertSeeLivewire('pages.auth.login');
 });
 
 test('users can authenticate using the login screen', function () {
     $user = User::factory()->create();
 
-    $component = Volt::test('pages.auth.login')
+    $component = Livewire::test('pages.auth.login')
         ->set('form.email', $user->email)
         ->set('form.password', 'password');
 
@@ -31,7 +31,7 @@ test('users can authenticate using the login screen', function () {
 test('users can authenticate using their username instead of email', function () {
     $user = User::factory()->create(['username' => 'testuser']);
 
-    $component = Volt::test('pages.auth.login')
+    $component = Livewire::test('pages.auth.login')
         ->set('form.email', 'testuser') // same field, no @ present
         ->set('form.password', 'password');
 
@@ -49,7 +49,7 @@ test('rate limiting a login by email also throttles the same account by username
 
     // 5 failed attempts using the EMAIL identifier trips the limiter.
     for ($i = 0; $i < 5; $i++) {
-        Volt::test('pages.auth.login')
+        Livewire::test('pages.auth.login')
             ->set('form.email', $user->email)
             ->set('form.password', 'wrong-password')
             ->call('login');
@@ -59,7 +59,7 @@ test('rate limiting a login by email also throttles the same account by username
     // still be throttled — a bypass here would let an attacker locked
     // out on one identifier immediately get a fresh attempt bucket by
     // switching to the other.
-    $component = Volt::test('pages.auth.login')
+    $component = Livewire::test('pages.auth.login')
         ->set('form.email', 'testuser')
         ->set('form.password', 'password'); // the account's real password — must still be rejected while throttled
 
@@ -73,7 +73,7 @@ test('rate limiting cannot be bypassed with a case variant of the username', fun
     $user = User::factory()->create(['username' => 'testuser']);
 
     for ($i = 0; $i < 5; $i++) {
-        Volt::test('pages.auth.login')
+        Livewire::test('pages.auth.login')
             ->set('form.email', $user->email)
             ->set('form.password', 'wrong-password')
             ->call('login');
@@ -82,7 +82,7 @@ test('rate limiting cannot be bypassed with a case variant of the username', fun
     // Postgres `=` is case-sensitive — submitting an UPPERCASE variant of
     // the stored username must still resolve to the same account/bucket,
     // not silently fail to match and fall back to a fresh throttle key.
-    $component = Volt::test('pages.auth.login')
+    $component = Livewire::test('pages.auth.login')
         ->set('form.email', 'TESTUSER')
         ->set('form.password', 'password');
 
@@ -95,7 +95,7 @@ test('rate limiting cannot be bypassed with a case variant of the username', fun
 test('users can not authenticate with invalid password', function () {
     $user = User::factory()->create();
 
-    $component = Volt::test('pages.auth.login')
+    $component = Livewire::test('pages.auth.login')
         ->set('form.email', $user->email)
         ->set('form.password', 'wrong-password');
 
@@ -120,7 +120,7 @@ test('navigation menu can be rendered', function () {
 
     $response
         ->assertOk()
-        ->assertSeeVolt('layout.navigation');
+        ->assertSeeLivewire('layout.navigation');
 });
 
 test('users can logout', function () {
@@ -128,7 +128,7 @@ test('users can logout', function () {
 
     $this->actingAs($user);
 
-    $component = Volt::test('layout.navigation');
+    $component = Livewire::test('layout.navigation');
 
     $component->call('logout');
 

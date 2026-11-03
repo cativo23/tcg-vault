@@ -3,7 +3,7 @@
 use App\Livewire\Actions\Logout;
 use App\Support\AccountDeleter;
 use Illuminate\Support\Facades\Auth;
-use Livewire\Volt\Component;
+use Livewire\Component;
 
 new class extends Component
 {

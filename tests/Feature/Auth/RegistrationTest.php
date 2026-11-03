@@ -5,7 +5,7 @@ namespace Tests\Feature\Auth;
 use App\Models\User;
 use App\Settings\RegistrationSettings;
 use Database\Seeders\PermissionSeeder;
-use Livewire\Volt\Volt;
+use Livewire\Livewire;
 
 // This is a single-admin personal vault: /register is gated behind
 // config('tcgvault.allow_registration'), off by default (see
@@ -21,13 +21,13 @@ test('registration screen can be rendered', function () {
 
     $response
         ->assertOk()
-        ->assertSeeVolt('pages.auth.register');
+        ->assertSeeLivewire('pages.auth.register');
 });
 
 test('new users can register', function () {
     $this->seed(PermissionSeeder::class);
 
-    $component = Volt::test('pages.auth.register')
+    $component = Livewire::test('pages.auth.register')
         ->set('name', 'Test User')
         ->set('username', 'testuser')
         ->set('email', 'test@example.com')
@@ -49,7 +49,7 @@ test('new users can register', function () {
 });
 
 test('registration requires a valid username', function () {
-    $component = Volt::test('pages.auth.register')
+    $component = Livewire::test('pages.auth.register')
         ->set('name', 'Test User')
         ->set('username', 'admin') // reserved word
         ->set('email', 'test@example.com')
@@ -101,7 +101,7 @@ test('tampering the client-side registrationOpen property cannot bypass a closed
     closeRegistration();
     $this->seed(PermissionSeeder::class);
 
-    $component = Volt::test('pages.auth.register')
+    $component = Livewire::test('pages.auth.register')
         // The real client-side attack: setting a public Livewire
         // property directly, exactly as the wire protocol allows for
         // ANY public property regardless of whether a wire:model binds
@@ -135,6 +135,6 @@ test('registration reflects whatever an admin last set it to, independent of the
 
     $this->get('/register')
         ->assertOk()
-        ->assertSeeVolt('pages.auth.register')
+        ->assertSeeLivewire('pages.auth.register')
         ->assertSee('wire:submit="register"', false);
 });
