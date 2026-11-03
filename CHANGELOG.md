@@ -6,6 +6,15 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.6.18] - 2026-11-02
+
+### Changed
+
+- Raised the production Redis and scheduler CPU caps (0.5 → 1.0, 0.25 → 0.5) after
+  measuring throttling on the shared host's slow vCPU: Redis stalled 31-352s/h
+  during the nightly 00:00 UTC catalog refresh, and the scheduler was throttled
+  25% of the time at its old cap.
+
 ## [1.6.17] - 2026-11-01
 
 ### Added
