@@ -3,7 +3,6 @@
 use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Livewire\Auth\InviteRegistration;
 use Illuminate\Support\Facades\Route;
-use Livewire\Volt\Volt;
 
 Route::middleware('guest')->group(function () {
     // Always registered — whether it shows the real form or an
@@ -12,7 +11,7 @@ Route::middleware('guest')->group(function () {
     // this route exists. Toggling registration must never make the
     // route disappear out from under someone mid-flow, and needs no
     // deploy.
-    Volt::route('register', 'pages.auth.register')
+    Route::livewire('register', 'pages.auth.register')
         ->name('register');
 
     // Deliberately ALWAYS registered, independent of allow_registration —
@@ -25,24 +24,24 @@ Route::middleware('guest')->group(function () {
         ->middleware(['signed', 'throttle:6,1'])
         ->name('invite.accept');
 
-    Volt::route('login', 'pages.auth.login')
+    Route::livewire('login', 'pages.auth.login')
         ->name('login');
 
-    Volt::route('forgot-password', 'pages.auth.forgot-password')
+    Route::livewire('forgot-password', 'pages.auth.forgot-password')
         ->name('password.request');
 
-    Volt::route('reset-password/{token}', 'pages.auth.reset-password')
+    Route::livewire('reset-password/{token}', 'pages.auth.reset-password')
         ->name('password.reset');
 });
 
 Route::middleware('auth')->group(function () {
-    Volt::route('verify-email', 'pages.auth.verify-email')
+    Route::livewire('verify-email', 'pages.auth.verify-email')
         ->name('verification.notice');
 
     Route::get('verify-email/{id}/{hash}', VerifyEmailController::class)
         ->middleware(['signed', 'throttle:6,1'])
         ->name('verification.verify');
 
-    Volt::route('confirm-password', 'pages.auth.confirm-password')
+    Route::livewire('confirm-password', 'pages.auth.confirm-password')
         ->name('password.confirm');
 });

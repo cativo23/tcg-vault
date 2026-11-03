@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
-use Livewire\Volt\Volt;
 use Spatie\Permission\Models\Role;
 
 const USER_EMAIL_MIGRATION = 'migrations/2026_09_29_200000_make_user_email_unique_case_insensitive.php';
@@ -44,7 +43,7 @@ test('a password reset link can be requested with the email in any case', functi
     Notification::fake();
     $user = User::factory()->create(['email' => 'ash@example.com']);
 
-    Volt::test('pages.auth.forgot-password')
+    Livewire::test('pages.auth.forgot-password')
         ->set('email', 'ASH@Example.com')
         ->call('sendPasswordResetLink')
         ->assertHasNoErrors();
@@ -56,10 +55,10 @@ test('the password can be reset with the email typed in any case', function () {
     Notification::fake();
     $user = User::factory()->create(['email' => 'ash@example.com']);
 
-    Volt::test('pages.auth.forgot-password')->set('email', 'ash@example.com')->call('sendPasswordResetLink');
+    Livewire::test('pages.auth.forgot-password')->set('email', 'ash@example.com')->call('sendPasswordResetLink');
 
     Notification::assertSentTo($user, ResetPassword::class, function ($notification) use ($user) {
-        Volt::test('pages.auth.reset-password', ['token' => $notification->token])
+        Livewire::test('pages.auth.reset-password', ['token' => $notification->token])
             ->set('email', 'Ash@EXAMPLE.com')
             ->set('password', 'new-password-123')
             ->set('password_confirmation', 'new-password-123')
@@ -96,7 +95,7 @@ test('the migration stops instead of choosing between two accounts for one inbox
 test('signing in works with the email typed in any case', function () {
     $user = User::factory()->create(['email' => 'ash@example.com']);
 
-    Volt::test('pages.auth.login')
+    Livewire::test('pages.auth.login')
         ->set('form.email', 'Ash@EXAMPLE.com')
         ->set('form.password', 'password')
         ->call('login')

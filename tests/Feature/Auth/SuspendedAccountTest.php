@@ -6,12 +6,13 @@ use App\Models\User;
 use App\Modules\Collection\Models\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
-use Livewire\Volt\Volt;
+use Livewire\Livewire;
+use Livewire\Mechanisms\HandleRequests\EndpointResolver;
 
 test('a suspended member cannot log in, even with the right password', function () {
     $user = User::factory()->create(['suspended_at' => now()]);
 
-    Volt::test('pages.auth.login')
+    Livewire::test('pages.auth.login')
         ->set('form.email', $user->email)
         ->set('form.password', 'password')
         ->call('login')
@@ -23,7 +24,7 @@ test('a suspended member cannot log in, even with the right password', function 
 test('a suspended member is told why they cannot log in', function () {
     $user = User::factory()->create(['suspended_at' => now()]);
 
-    Volt::test('pages.auth.login')
+    Livewire::test('pages.auth.login')
         ->set('form.email', $user->email)
         ->set('form.password', 'password')
         ->call('login')
@@ -33,7 +34,7 @@ test('a suspended member is told why they cannot log in', function () {
 test('a wrong password on a suspended account does not reveal the suspension', function () {
     $user = User::factory()->create(['suspended_at' => now()]);
 
-    Volt::test('pages.auth.login')
+    Livewire::test('pages.auth.login')
         ->set('form.email', $user->email)
         ->set('form.password', 'wrong-password')
         ->call('login')
@@ -73,7 +74,7 @@ test('the suspension notice survives a Livewire request, which follows the redir
     $this->actingAs($user);
     $user->forceFill(['suspended_at' => now()])->save();
 
-    $redirect = $this->withHeader('X-Livewire', 'true')->post('/livewire/update')->headers->get('Location');
+    $redirect = $this->withHeader('X-Livewire', 'true')->post(EndpointResolver::updatePath())->headers->get('Location');
 
     expect($redirect)->toBe(route('login', ['suspended' => 1]));
     $this->get($redirect)->assertSee('This account is suspended.');

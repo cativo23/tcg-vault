@@ -9,7 +9,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Support\Carbon;
-use Livewire\Volt\Volt;
+use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -185,7 +185,7 @@ test('the collection page links to the export', function () {
 test('the delete account form points to the export once, outside the confirm modal', function () {
     $this->actingAs(collector());
 
-    $html = Volt::test('profile.delete-user-form')->html();
+    $html = Livewire::test('profile.delete-user-form')->html();
     $modal = substr($html, strpos($html, 'confirm-user-deletion'));
 
     // The modal focuses its first link or input on open; a link there

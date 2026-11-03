@@ -147,6 +147,7 @@ final class CardShow extends Component
             ->filter(fn (CardPriceSnapshot $s) => $selected === null || $this->readBelongsTo($s, $selected['variant'], $card) || $this->isSameRead($s, $snapshot))
             ->groupBy(fn (CardPriceSnapshot $s) => $s->source.'|'.$s->variant)
             ->map(fn ($group) => $group->sortByDesc(fn (CardPriceSnapshot $s) => $s->capturedOnKey())->first())
+            ->filter()
             ->sortBy(fn (CardPriceSnapshot $s) => $snapshot && $s->is($snapshot) ? 0 : 1)
             ->values();
 

@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
-use Livewire\Volt\Volt;
 use Spatie\Permission\Models\Role;
 
 beforeEach(function () {
@@ -24,7 +23,7 @@ beforeEach(function () {
 
 function openSignup(int $month, int $year): Testable
 {
-    return Volt::test('pages.auth.register')
+    return Livewire::test('pages.auth.register')
         ->set('name', 'Test User')->set('username', 'testuser')->set('email', 'test@example.com')
         ->set('password', 'password')->set('password_confirmation', 'password')
         ->set('birth_month', $month)->set('birth_year', $year);

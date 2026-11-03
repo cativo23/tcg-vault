@@ -5,7 +5,6 @@ use App\Modules\Collection\CollectionServiceProvider;
 use App\Providers\AppServiceProvider;
 use App\Providers\HorizonServiceProvider;
 use App\Providers\TelescopeServiceProvider;
-use App\Providers\VoltServiceProvider;
 
 return [
     CatalogServiceProvider::class,
@@ -13,5 +12,4 @@ return [
     AppServiceProvider::class,
     HorizonServiceProvider::class,
     TelescopeServiceProvider::class,
-    VoltServiceProvider::class,
 ];

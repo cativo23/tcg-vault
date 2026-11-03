@@ -65,8 +65,8 @@ final class InviteManager extends Component
         $this->resetErrorBag(['email', 'resend']);
 
         // A Livewire action isn't reachable by the route's own
-        // `throttle` middleware at all (it runs through
-        // /livewire/update, not this component's GET route), so the
+        // `throttle` middleware at all (it runs through Livewire's own
+        // update endpoint, not this component's GET route), so the
         // limit has to live here — a compromised or careless admin
         // account should not be able to mass-issue invites unbounded.
         $limiterKey = 'create-invite:'.auth()->id();

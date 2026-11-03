@@ -6,7 +6,7 @@ use App\Models\User;
 use App\Modules\Invites\Models\Invite;
 use App\Settings\RegistrationSettings;
 use Illuminate\Support\Facades\URL;
-use Livewire\Volt\Volt;
+use Livewire\Livewire;
 
 test('the privacy policy is public', function () {
     $this->get('/privacy')
@@ -40,7 +40,7 @@ test('the login page links to both pages', function () {
 test('nobody can claim privacy or terms as a username', function (string $username) {
     $this->actingAs(User::factory()->create(['username' => 'oldname']));
 
-    Volt::test('profile.update-profile-information-form')
+    Livewire::test('profile.update-profile-information-form')
         ->set('username', $username)
         ->call('updateProfileInformation')
         ->assertHasErrors('username');
