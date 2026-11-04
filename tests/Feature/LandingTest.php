@@ -10,7 +10,11 @@ test('the landing uses the revamp shell with a theme toggle, login link and lega
         ->assertSee(route('terms'), escape: false)
         ->assertSee('tcgdex.dev')
         ->assertSee('Not affiliated with Nintendo, Creatures, GAME FREAK or The Pokémon Company.')
-        ->assertSee('class="bar"', escape: false);
+        ->assertSee('<header class="bar">', escape: false)
+        ->assertSee('<a class="skip" href="#main">', escape: false)
+        ->assertSee('class="theme-toggle" data-theme-toggle', escape: false)
+        ->assertSee('<footer class="foot">', escape: false)
+        ->assertDontSee('nw-topbar', escape: false);
 });
 
 test('the landing is indexable and describes itself', function () {

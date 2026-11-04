@@ -10,22 +10,6 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>{{ $pageTitle }}</title>
-        <meta name="description" content="{{ $pageDescription }}">
-        <link rel="canonical" href="{{ $canonical ?? url()->current() }}">
-
-        <meta property="og:type" content="website">
-        <meta property="og:site_name" content="{{ $siteName }}">
-        <meta property="og:title" content="{{ $pageTitle }}">
-        <meta property="og:description" content="{{ $pageDescription }}">
-        <meta property="og:url" content="{{ $canonical ?? url()->current() }}">
-        @isset($ogImage)
-            <meta property="og:image" content="{{ $ogImage }}">
-            <meta name="twitter:card" content="summary_large_image">
-        @else
-            <meta name="twitter:card" content="summary">
-        @endisset
-
         {{-- Runs before first paint: motion mode (js + moving/still), the
              ?progress= capture switch, and the stored theme (tcg-vault-theme).
              ?theme= overrides the stored choice for captures. --}}
@@ -41,6 +25,22 @@
                 if (t === 'dark' || t === 'light') h.setAttribute('data-theme', t);
             })();
         </script>
+
+        <title>{{ $pageTitle }}</title>
+        <meta name="description" content="{{ $pageDescription }}">
+        <link rel="canonical" href="{{ $canonical ?? url()->current() }}">
+
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="{{ $siteName }}">
+        <meta property="og:title" content="{{ $pageTitle }}">
+        <meta property="og:description" content="{{ $pageDescription }}">
+        <meta property="og:url" content="{{ $canonical ?? url()->current() }}">
+        @isset($ogImage)
+            <meta property="og:image" content="{{ $ogImage }}">
+            <meta name="twitter:card" content="summary_large_image">
+        @else
+            <meta name="twitter:card" content="summary">
+        @endisset
 
         <link rel="icon" href="data:image/svg+xml,{{ rawurlencode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="1" y="1" width="30" height="30" rx="7" fill="#141412"/><path d="M2 22 L14 24 L26 10" fill="none" stroke="#f2efe6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="26" cy="10" r="3" fill="#37d17f"/></svg>') }}">
 
