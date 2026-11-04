@@ -228,6 +228,25 @@ img { display: block; }
 :root[data-theme='dark'] .theme-toggle .i-sun { display: block; }
 :root[data-theme='dark'] .theme-toggle .i-moon { display: none; }
 
+/* ---------- shared utilities ---------- */
+[hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ---------- bar with the collector's nav: in the flow and sticky (the landing keeps the fixed bar) ---------- */
+.bar--nav { position: sticky; top: 0; height: auto; min-height: var(--bar-h); justify-content: flex-start; gap: var(--space-xl); }
+.bar-nav { display: flex; gap: var(--space-lg); margin-right: auto; }
+.bar-nav a, .bar--nav .bar-link { font-weight: 600; font-size: var(--text-sm); text-decoration: none; white-space: nowrap; padding: 17px 2px 15px; border-bottom: 2px solid transparent; transition: border-color var(--dur-base) var(--ease-out); }
+.bar-nav a { color: var(--color-muted); }
+.bar-nav a:hover, .bar--nav .bar-link:hover { border-bottom-color: var(--color-rule-2); color: var(--color-ink); }
+.bar-nav a[aria-current="page"] { color: var(--color-ink); border-bottom-color: var(--color-accent); }
+@media (max-width: 679px) {
+  .bar--nav { flex-wrap: wrap; gap: 0 var(--space-md); padding-top: 6px; }
+  .bar--nav .mark { margin-right: auto; }
+  .bar-nav { order: 3; flex-basis: 100%; gap: var(--space-lg); margin: 0; }
+  .bar-nav a { padding: 8px 2px 10px; }
+  .bar--nav .bar-link { padding: 10px 2px; }
+}
+
 /* ---------- type ---------- */
 .display, .h2, .closing-line { font-family: var(--font-display); font-style: normal; margin: 0; text-wrap: balance; overflow-wrap: anywhere; min-width: 0; }
 .display { font-size: var(--text-display); font-weight: 820; font-variation-settings: "wdth" 62; line-height: .88; letter-spacing: -.015em; }

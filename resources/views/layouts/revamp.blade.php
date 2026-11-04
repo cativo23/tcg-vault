@@ -2,6 +2,12 @@
     $siteName = 'tcg-vault'; // the brand, not APP_NAME — the spec names the product
     $pageTitle = isset($title) && $title !== '' ? "{$title} · {$siteName}" : $siteName;
     $pageDescription = $description ?? 'Every card you own, on one page.';
+    // A collector's pages carry the nav; the landing has no {username} and keeps the bare bar.
+    $username = $username ?? request()->route('username');
+    // Passed through layoutData by the screens that resolve a target user
+    // (ResolvesPublicCollection::isOwnerViewing()); never re-derived here.
+    $isOwner = $isOwner ?? false;
+    $isActive = fn (string ...$routes) => request()->routeIs(...$routes) ? 'page' : null;
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -47,18 +53,31 @@
         <link rel="preconnect" href="https://assets.tcgdex.net">
 
         @vite(['resources/css/revamp.css', 'resources/js/app.js'])
+        @stack('head')
     </head>
     <body>
         <a class="skip" href="#main">Skip to content</a>
 
-        <header class="bar">
-            <a class="mark" href="{{ url('/') }}">tcg-vault</a>
+        <header class="bar{{ $username ? ' bar--nav' : '' }}">
+            <a class="mark" href="{{ $username ? route('gallery.index', ['username' => $username]) : url('/') }}">tcg-vault</a>
+            @if ($username)
+                <nav class="bar-nav" aria-label="Gallery">
+                    <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif>Collection</a>
+                    <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif>Sets</a>
+                    <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif>Activity</a>
+                </nav>
+            @endif
             <div class="bar-end">
                 <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle dark mode">
                     <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
                     <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
                 </button>
-                <a class="bar-link" href="{{ route('login') }}">Log in</a>
+                @if ($isOwner)
+                    <a class="bar-link" href="{{ route('admin.collection.index') }}">Manage collection</a>
+                @endif
+                @guest
+                    <a class="bar-link" href="{{ route('login') }}">Log in</a>
+                @endguest
             </div>
         </header>
 
