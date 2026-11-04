@@ -30,10 +30,13 @@ use Illuminate\Support\Facades\DB;
  * - The newest priced marketplace row of every (card, source, variant,
  *   origin), so the set of origins a gallery header lists ("via tcgcsv ·
  *   tcgdex") is the same as over the whole window.
+ * - The newest priced marketplace row at or before seven days before the
+ *   newest priced row of every (card, source, variant, currency): the
+ *   comparison row of CardPriceResolver::weekDeltaFor().
  *
  * The relation then answers current-price questions only, exactly as the
  * whole window would: resolve(), resolveForVariant(), resolveCardWide(),
- * hasCurrentMarketPrice(), deltaFor() / resolveDelta(), Valuation's
+ * hasCurrentMarketPrice(), deltaFor() / weekDeltaFor() / resolveDelta(), Valuation's
  * totalsByCurrency(), cardTotal() and headlineSnapshot(), and the newest
  * priced marketplace day and its origins. It does NOT answer as-of or
  * history questions (resolveForVariantAsOf(), resolveAsOf(),
@@ -57,7 +60,7 @@ use Illuminate\Support\Facades\DB;
 class DecidingPriceRows
 {
     /** Bump when the query or the entry's shape changes, so a deploy never reads an entry the old code wrote. */
-    private const CACHE_VERSION = 1;
+    private const CACHE_VERSION = 2;
 
     private const TTL_SECONDS = 86400;
 
@@ -165,23 +168,35 @@ class DecidingPriceRows
     private function query(string $idList, string $from): array
     {
         $columns = implode(', ', CardPriceSnapshot::CHART_COLUMNS);
+        $week = CardPriceResolver::WEEK_DAYS;
         // Running counts over newest-first partitions: a priced row's count
-        // is its rank among the priced rows of its partition.
+        // is its rank among the priced rows of its partition. newest_priced
+        // is the newest priced day of the (card, source, variant, currency)
+        // group; week_rank counts, newest first, the marketplace rows priced
+        // on or before that day minus WEEK_DAYS, so rank 1 is the baseline.
         $rows = DB::select(<<<SQL
             select {$columns} from (
-                select {$columns},
-                    row_number() over (partition by card_id, source, variant order by captured_on desc) as newest,
-                    count(*) filter (where market_minor is not null)
-                        over (partition by card_id, source, variant, currency order by captured_on desc rows unbounded preceding) as priced_rank,
-                    count(*) filter (where market_minor is not null)
-                        over (partition by card_id, source, variant, origin order by captured_on desc rows unbounded preceding) as origin_rank
-                from "card_price_snapshots"
-                where card_id = any(?::bigint[])
-                  and (captured_on >= ?::date or source = 'manual')
+                select {$columns}, newest, priced_rank, origin_rank, newest_priced,
+                    count(*) filter (where market_minor is not null and source <> 'manual' and captured_on <= newest_priced - {$week})
+                        over (partition by card_id, source, variant, currency order by captured_on desc rows unbounded preceding) as week_rank
+                from (
+                    select {$columns},
+                        row_number() over (partition by card_id, source, variant order by captured_on desc) as newest,
+                        count(*) filter (where market_minor is not null)
+                            over (partition by card_id, source, variant, currency order by captured_on desc rows unbounded preceding) as priced_rank,
+                        count(*) filter (where market_minor is not null)
+                            over (partition by card_id, source, variant, origin order by captured_on desc rows unbounded preceding) as origin_rank,
+                        max(captured_on) filter (where market_minor is not null)
+                            over (partition by card_id, source, variant, currency) as newest_priced
+                    from "card_price_snapshots"
+                    where card_id = any(?::bigint[])
+                      and (captured_on >= ?::date or source = 'manual')
+                ) as ranked
             ) as windowed
             where newest = 1
                or (market_minor is not null and priced_rank <= 2)
                or (market_minor is not null and source <> 'manual' and origin_rank = 1)
+               or (market_minor is not null and source <> 'manual' and captured_on <= newest_priced - {$week} and week_rank = 1)
             order by id
             SQL, [
             '{'.$idList.'}',

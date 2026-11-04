@@ -62,6 +62,12 @@ final class CardPriceResolver
     /** How far behind the newest price a higher-priority one may be and still win. */
     public const STALE_AFTER_DAYS = 3;
 
+    /** The week move compares a price with the one this many days before it. */
+    public const WEEK_DAYS = 7;
+
+    /** How much older than WEEK_DAYS the comparison price may be before there is no honest "7-day" move. */
+    public const WEEK_SLACK_DAYS = 7;
+
     /** @var WeakMap<Collection<int, CardPriceSnapshot>, Index> */
     private WeakMap $indexes;
 
@@ -669,6 +675,62 @@ final class CardPriceResolver
         }
 
         return new PriceDelta($latest, $previous, $latest->market_minor - $previous->market_minor);
+    }
+
+    /**
+     * The movement of a SPECIFIC snapshot against the same print a week
+     * earlier: the newest priced row of its source, variant and currency
+     * captured WEEK_DAYS to WEEK_DAYS + WEEK_SLACK_DAYS before it. Null when
+     * there is nothing honest to compare: no priced baseline in that span
+     * (a card priced for under a week, a long gap), a pick its marketplace
+     * stopped updating (older than STALE_AFTER_DAYS behind the card's newest
+     * marketplace sync, so its last "week" says nothing about today), or a
+     * manual price (typed in, not a market movement).
+     *
+     * Reads only the loaded relation. DecidingPriceRows keeps the baseline
+     * row of every marketplace group, so the answer is the same from its
+     * trimmed rows as from the whole recent window.
+     */
+    public function weekDeltaFor(Card $card, ?CardPriceSnapshot $latest): ?PriceDelta
+    {
+        if ($latest === null || $latest->market_minor === null || $latest->source === 'manual') {
+            return null;
+        }
+
+        $index = $this->indexOf($card->priceSnapshots);
+        $latestKey = $latest->capturedOnKey();
+        $current = $this->currentFrom($index['synced']);
+
+        if ($current === null || $latestKey < $current) {
+            return null;
+        }
+
+        $day = Carbon::parse($latestKey);
+        $newest = $day->copy()->subDays(self::WEEK_DAYS)->toDateString();
+        $oldest = $day->copy()->subDays(self::WEEK_DAYS + self::WEEK_SLACK_DAYS)->toDateString();
+        $wanted = $latest->getAttributes();
+
+        // Newest first: the first row on or before the baseline day that matches wins.
+        foreach ($index['rows'] as $row) {
+            if ($row[self::DAY] > $newest) {
+                continue;
+            }
+
+            if ($row[self::DAY] < $oldest) {
+                break;
+            }
+
+            if ($row[self::SOURCE] === ($wanted['source'] ?? null)
+                && $row[self::VARIANT] === ($wanted['variant'] ?? null)
+                && $row[self::CURRENCY] === ($wanted['currency'] ?? null)
+                && $row[self::MINOR] !== null) {
+                $previous = $row[self::MODEL];
+
+                return new PriceDelta($latest, $previous, $latest->market_minor - $previous->market_minor);
+            }
+        }
+
+        return null;
     }
 
     /**

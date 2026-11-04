@@ -113,6 +113,12 @@ function decidingScenarios(): array
             ['tcgplayer', 'normal', 2, 'USD', 490, 'tcgcsv'], ['tcgplayer', 'normal', 3, 'USD', 485], ['tcgplayer', 'normal', 4, 'USD', 480],
             ['tcgplayer', 'holofoil', 6, 'USD', 900, 'tcgcsv'], ['tcgplayer', 'holofoil', 0, 'USD', 920], ['tcgplayer', 'holofoil', 1, 'USD', 910],
         ],
+        // A baseline behind a gap day and an unpriced day. Kept to five rows on purpose: every group with seven or
+        // more days of history now keeps one extra row, and a bigger scenario would eat into the strict-subset margin.
+        'a week baseline behind a gap and an unpriced day' => [
+            ['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 6, 'USD', 480],
+            ['tcgplayer', 'normal', 7, 'USD', null], ['tcgplayer', 'normal', 9, 'USD', 470], ['tcgplayer', 'normal', 12, 'USD', 460],
+        ],
         'no price rows at all' => [],
     ];
 }
@@ -255,6 +261,7 @@ function decidingAnswers(DecidingPriceRows $loader, array $ids, array $holdings)
                 $answers["{$tag} resolveForVariant {$v} #{$pass}"] = decidingKey($resolver->resolveForVariant($card, $variant));
             }
             $answers["{$tag} deltaFor pick {$v}"] = decidingKey($resolver->deltaFor($card, $resolver->resolveForVariant($card, $variant)));
+            $answers["{$tag} weekDeltaFor pick {$v}"] = decidingKey($resolver->weekDeltaFor($card, $resolver->resolveForVariant($card, $variant)));
 
             if ($variant !== null) {
                 $answers["{$tag} hasCurrentMarketPrice {$v}"] = $resolver->hasCurrentMarketPrice($card, $variant);
@@ -265,6 +272,8 @@ function decidingAnswers(DecidingPriceRows $loader, array $ids, array $holdings)
         $answers["{$tag} headlineSnapshot"] = decidingKey($headline);
         $answers["{$tag} headlineItem"] = $card->collectionItems->search($valuation->headlineItem($card), true);
         $answers["{$tag} deltaFor headline"] = decidingKey($resolver->deltaFor($card, $headline));
+        $answers["{$tag} weekDeltaFor headline"] = decidingKey($resolver->weekDeltaFor($card, $headline));
+        $answers["{$tag} weekDeltaFor resolve"] = decidingKey($resolver->weekDeltaFor($card, $resolver->resolve($card)));
         $answers["{$tag} cardTotal"] = $valuation->cardTotal($card);
         $answers["{$tag} origins"] = decidingOrigins(new EloquentCollection([$card]));
         $answers["{$tag} newest market day"] = decidingNewestMarketDay(new EloquentCollection([$card]));
