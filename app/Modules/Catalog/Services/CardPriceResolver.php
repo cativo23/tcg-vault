@@ -625,10 +625,7 @@ final class CardPriceResolver
             }
 
             if ($row[self::DAY] < $latestKey
-                && $row[self::SOURCE] === ($wanted['source'] ?? null)
-                && $row[self::VARIANT] === ($wanted['variant'] ?? null)
-                && $row[self::CURRENCY] === ($wanted['currency'] ?? null)
-                && $row[self::MINOR] !== null
+                && $this->isPricedLike($row, $wanted)
                 && ($found === null || $row[self::POS] < $found[self::POS])) {
                 $found = $row;
             }
@@ -678,6 +675,22 @@ final class CardPriceResolver
     }
 
     /**
+     * Whether an indexed row is a priced row of the same source, variant and
+     * currency as a snapshot's attributes: the only rows a move may be
+     * measured against.
+     *
+     * @param  array<int, mixed>  $row
+     * @param  array<string, mixed>  $wanted
+     */
+    private function isPricedLike(array $row, array $wanted): bool
+    {
+        return $row[self::SOURCE] === ($wanted['source'] ?? null)
+            && $row[self::VARIANT] === ($wanted['variant'] ?? null)
+            && $row[self::CURRENCY] === ($wanted['currency'] ?? null)
+            && $row[self::MINOR] !== null;
+    }
+
+    /**
      * The movement of a SPECIFIC snapshot against the same print a week
      * earlier: the newest priced row of its source, variant and currency
      * captured WEEK_DAYS to WEEK_DAYS + WEEK_SLACK_DAYS before it. Null when
@@ -720,10 +733,7 @@ final class CardPriceResolver
                 break;
             }
 
-            if ($row[self::SOURCE] === ($wanted['source'] ?? null)
-                && $row[self::VARIANT] === ($wanted['variant'] ?? null)
-                && $row[self::CURRENCY] === ($wanted['currency'] ?? null)
-                && $row[self::MINOR] !== null) {
+            if ($this->isPricedLike($row, $wanted)) {
                 $previous = $row[self::MODEL];
 
                 return new PriceDelta($latest, $previous, $latest->market_minor - $previous->market_minor);
