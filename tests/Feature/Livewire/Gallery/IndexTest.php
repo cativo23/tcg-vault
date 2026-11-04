@@ -795,3 +795,22 @@ test('the landing does not load the collection script', function () {
 
     expect($html)->not->toContain($manifest['resources/js/collection.js']['file']);
 });
+
+test('a set id with a quote reaches Livewire as an encoded JS literal, never a raw quoted string', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => "x'y", 'name' => 'Odd Set', 'card_count' => 5]);
+    $card = Card::create(['tcgdex_id' => "x'y-1", 'set_id' => $set->id, 'local_id' => '1', 'name' => 'Odd Card']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "x'y-1", 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = $this->get('/carlos')->assertOk()->getContent();
+
+    // @js escapes the apostrophe inside the literal (\u0027), so the expression the browser decodes holds no bare
+    // quote that could end the string; the old interpolation produced x&#039;y, which decodes to one.
+    $encoded = 'wire:click="selectSet('."'x".chr(92)."u0027y'".')"';
+
+    expect($html)->toContain($encoded)
+        ->and($html)->not->toContain('selectSet(&#039;x')
+        ->and($html)->not->toContain("selectSet('x'")
+        ->and($html)->not->toContain('x&#039;y&#039;)');
+});

@@ -52,7 +52,7 @@
                         <button type="button" role="tab" id="col-tab-{{ $set->tcgdex_id }}" class="col-tab" style="z-index: {{ $sets->count() - $loop->index }}"
                                 aria-selected="{{ $setFilter === $set->tcgdex_id ? 'true' : 'false' }}" tabindex="{{ $tabStop === $set->tcgdex_id ? 0 : -1 }}"
                                 aria-controls="col-sheet" aria-label="{{ $set->name }}, {{ $set->owned_card_count }} of {{ $total }} cards"
-                                wire:click="selectSet('{{ $set->tcgdex_id }}')" wire:key="tab-{{ $set->tcgdex_id }}"><span class="col-tab__nm">{{ $set->name }}</span> <b class="col-tab__n">{{ $set->owned_card_count }}/{{ $total }}</b></button>
+                                wire:click="selectSet(@js($set->tcgdex_id))" wire:key="tab-{{ $set->tcgdex_id }}"><span class="col-tab__nm">{{ $set->name }}</span> <b class="col-tab__n">{{ $set->owned_card_count }}/{{ $total }}</b></button>
                     @endforeach
                 </div>
             </div>
