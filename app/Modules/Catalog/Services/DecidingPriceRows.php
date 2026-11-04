@@ -30,9 +30,10 @@ use Illuminate\Support\Facades\DB;
  * - The newest priced marketplace row of every (card, source, variant,
  *   origin), so the set of origins a gallery header lists ("via tcgcsv ·
  *   tcgdex") is the same as over the whole window.
- * - The newest priced marketplace row at or before seven days before the
- *   newest priced row of every (card, source, variant, currency): the
- *   comparison row of CardPriceResolver::weekDeltaFor().
+ * - The newest priced marketplace row captured CardPriceResolver::WEEK_DAYS
+ *   to WEEK_DAYS + WEEK_SLACK_DAYS before the newest priced row of every
+ *   (card, source, variant, currency): the comparison row of
+ *   CardPriceResolver::weekDeltaFor(). An older row cannot decide a move.
  *
  * The relation then answers current-price questions only, exactly as the
  * whole window would: resolve(), resolveForVariant(), resolveCardWide(),
@@ -169,15 +170,17 @@ class DecidingPriceRows
     {
         $columns = implode(', ', CardPriceSnapshot::CHART_COLUMNS);
         $week = CardPriceResolver::WEEK_DAYS;
+        $reach = CardPriceResolver::WEEK_DAYS + CardPriceResolver::WEEK_SLACK_DAYS;
         // Running counts over newest-first partitions: a priced row's count
         // is its rank among the priced rows of its partition. newest_priced
         // is the newest priced day of the (card, source, variant, currency)
         // group; week_rank counts, newest first, the marketplace rows priced
-        // on or before that day minus WEEK_DAYS, so rank 1 is the baseline.
+        // on or before that day minus WEEK_DAYS and no older than that day minus
+        // WEEK_DAYS + WEEK_SLACK_DAYS, so rank 1 is the baseline.
         $rows = DB::select(<<<SQL
             select {$columns} from (
                 select {$columns}, newest, priced_rank, origin_rank, newest_priced,
-                    count(*) filter (where market_minor is not null and source <> 'manual' and captured_on <= newest_priced - {$week})
+                    count(*) filter (where market_minor is not null and source <> 'manual' and captured_on <= newest_priced - {$week} and captured_on >= newest_priced - {$reach})
                         over (partition by card_id, source, variant, currency order by captured_on desc rows unbounded preceding) as week_rank
                 from (
                     select {$columns},
@@ -196,7 +199,7 @@ class DecidingPriceRows
             where newest = 1
                or (market_minor is not null and priced_rank <= 2)
                or (market_minor is not null and source <> 'manual' and origin_rank = 1)
-               or (market_minor is not null and source <> 'manual' and captured_on <= newest_priced - {$week} and week_rank = 1)
+               or (market_minor is not null and source <> 'manual' and captured_on <= newest_priced - {$week} and captured_on >= newest_priced - {$reach} and week_rank = 1)
             order by id
             SQL, [
             '{'.$idList.'}',

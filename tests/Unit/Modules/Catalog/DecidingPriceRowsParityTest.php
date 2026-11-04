@@ -113,8 +113,8 @@ function decidingScenarios(): array
             ['tcgplayer', 'normal', 2, 'USD', 490, 'tcgcsv'], ['tcgplayer', 'normal', 3, 'USD', 485], ['tcgplayer', 'normal', 4, 'USD', 480],
             ['tcgplayer', 'holofoil', 6, 'USD', 900, 'tcgcsv'], ['tcgplayer', 'holofoil', 0, 'USD', 920], ['tcgplayer', 'holofoil', 1, 'USD', 910],
         ],
-        // A baseline behind a gap day and an unpriced day. Kept to five rows on purpose: every group with seven or
-        // more days of history now keeps one extra row, and a bigger scenario would eat into the strict-subset margin.
+        // The week baseline is the newest priced row 7 to 14 days before the latest: the unpriced day 7 and the
+        // gap at day 8 are skipped, so day 9 is the comparison row.
         'a week baseline behind a gap and an unpriced day' => [
             ['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 6, 'USD', 480],
             ['tcgplayer', 'normal', 7, 'USD', null], ['tcgplayer', 'normal', 9, 'USD', 470], ['tcgplayer', 'normal', 12, 'USD', 460],
@@ -549,4 +549,24 @@ test('a cached entry stores its rows compressed, to keep the cache small', funct
 
     expect($entry['rows'])->toBeString()
         ->and(strlen($entry['rows']))->toBeLessThan(intdiv(strlen(serialize($rows)), 4));
+});
+
+test('the week baseline kept is the one weekDeltaFor can use: 7 to 14 days before the newest priced day', function () {
+    $loaded = function (array $daysAgo): array {
+        Cache::flush();
+        $set = Set::firstOrCreate(['tcgdex_id' => 'me05'], ['name' => 'Pitch Black']);
+        $card = Card::create(['tcgdex_id' => 'me05-'.uniqid(), 'set_id' => $set->id, 'local_id' => '1', 'name' => 'Baseline probe']);
+        foreach ($daysAgo as $d) {
+            CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($d), 'currency' => 'USD', 'market_minor' => 1000 + $d]);
+        }
+        $card = (new DecidingPriceRows)->loadOnto(new EloquentCollection([$card]))->first();
+
+        return $card->priceSnapshots->map(fn (CardPriceSnapshot $s) => (int) today()->diffInDays($s->capturedOnKey(), true))->sort()->values()->all();
+    };
+    $max = CardPriceResolver::WEEK_DAYS + CardPriceResolver::WEEK_SLACK_DAYS;
+
+    expect($loaded([0, 5, 6, 20]))->toBe([0, 5])                                   // 20 days back cannot decide a week move
+        ->and($loaded([0, 5, 6, 9, 20]))->toBe([0, 5, 9])                          // the 7-to-14-day baseline is kept, the older row is not
+        ->and($loaded([0, 5, $max]))->toBe([0, 5, $max])                           // the oldest usable baseline
+        ->and($loaded([0, 5, $max + 1]))->toBe([0, 5]);                            // one day older is not
 });

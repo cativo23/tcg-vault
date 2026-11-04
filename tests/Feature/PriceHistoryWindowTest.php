@@ -49,13 +49,12 @@ function expectedRecentDays(): array
 
 /**
  * The rows of the recent window that can decide a current price (see
- * DecidingPriceRows): the newest and the previous priced one, plus the
- * newest priced row a week or more before the newest (the 7-day move's
- * comparison row; here the window's first day).
+ * DecidingPriceRows): the newest and the previous priced one. (The fixture's
+ * older rows are beyond the week move's reach, so none is kept as a baseline.)
  */
 function expectedDecidingDays(): array
 {
-    return collect([CardPriceSnapshot::RECENT_DAYS, 1, 0])->map(fn (int $d) => today()->subDays($d)->toDateString())->all();
+    return collect([1, 0])->map(fn (int $d) => today()->subDays($d)->toDateString())->all();
 }
 
 test('the recent scope keeps the window up to and including its first day', function () {
