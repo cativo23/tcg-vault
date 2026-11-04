@@ -70,3 +70,13 @@ test('a missing rarity tiers as standard, and so does tcgdex\'s literal "None"',
     expect(Rarity::tier(null))->toBe('standard')
         ->and(Rarity::tier('None'))->toBe('standard');
 });
+
+test('rank orders rarities from the commonest pull up to the secret, unknown wording after every known one', function () {
+    $sorted = collect(['Secret Rare', 'Zany Rare', 'Common', 'Special illustration rare', 'Rare Holo', 'Uncommon', 'Promo'])
+        ->sort(fn (string $a, string $b) => Rarity::rank($a) <=> Rarity::rank($b) ?: strcmp($a, $b))
+        ->values()->all();
+
+    expect($sorted)->toBe(['Common', 'Uncommon', 'Rare Holo', 'Promo', 'Special illustration rare', 'Secret Rare', 'Zany Rare'])
+        ->and(Rarity::rank('  COMMON '))->toBe(0)
+        ->and(Rarity::rank(null))->toBe(PHP_INT_MAX);
+});
