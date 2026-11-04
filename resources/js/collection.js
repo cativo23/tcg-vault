@@ -32,7 +32,10 @@ document.addEventListener('click', async (event) => {
     button.classList.toggle('is-done', ok);
     button.classList.toggle('is-failed', !ok);
     label.textContent = ok ? 'Link copied' : 'Copy from the address bar';
-    status.textContent = ok ? 'Link copied' : 'Could not copy the link';
+    // Clear first, then set on the next frame, so a repeat copy is announced again.
+    status.textContent = '';
+    const message = ok ? 'Link copied' : 'Could not copy the link';
+    requestAnimationFrame(() => { status.textContent = message; });
 
     clearTimeout(copyTimer);
     copyTimer = setTimeout(() => {
