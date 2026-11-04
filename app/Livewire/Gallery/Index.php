@@ -17,11 +17,10 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * The collection itself — every card the collector shows publicly, in
- * one grid, with the stat band the approved "Colección" mockup leads
- * with. This is the front door of a gallery; sets are a way to slice it.
+ * The collection itself — every card the collector shows publicly, in one binder sheet behind set divider tabs.
+ * This is the front door of a gallery; sets are a way to slice it.
  */
-#[Layout('layouts.public')]
+#[Layout('layouts.revamp')]
 final class Index extends Component
 {
     use ResolvesPublicCollection;
@@ -76,6 +75,13 @@ final class Index extends Component
         }
     }
 
+    /** A divider tab: '' is All. */
+    public function selectSet(string $set): void
+    {
+        $this->setFilter = $set;
+        $this->take = self::PER_PAGE;
+    }
+
     public function clearFilters(): void
     {
         $this->reset('search', 'setFilter', 'rarityFilter');
@@ -114,8 +120,11 @@ final class Index extends Component
         // DecidingPriceRows), which every figure on this page is.
         $prices = app(DecidingPriceRows::class);
         $allCards = $prices->loadOnto($public->cardsQuery()->take(self::MAX_CARDS)->get())->keyBy('id');
+        // Distinct cards, unfiltered. $allCards stops at MAX_CARDS, so a collection that fills it is counted.
+        $collectionTotal = $allCards->count() < self::MAX_CARDS ? $allCards->count() : $public->cardsQuery()->count();
         $headlines = $allCards->map(fn (Card $card) => $valuation->headlineSnapshot($card));
-        $sets = $public->setsQuery()->orderByDesc('released_on')->get();
+        // The biggest sets lead the divider tabs, the newest release among equals.
+        $sets = $public->setsQuery()->orderByDesc('released_on')->get()->sortByDesc('owned_card_count')->values();
 
         $totals = $valuation->totalsByCurrency($allCards);
         $copies = (int) $allCards->sum(fn (Card $card) => $card->collectionItems->sum('quantity'));
@@ -142,7 +151,7 @@ final class Index extends Component
         // rarity" definition Rarity::label() already encodes.
         $rarities = $allCards->pluck('rarity')->unique()
             ->filter(fn (?string $rarity) => Rarity::label($rarity) !== '')
-            ->sort()->values();
+            ->sort(fn (string $a, string $b) => Rarity::rank($a) <=> Rarity::rank($b) ?: strcmp($a, $b))->values();
 
         // The grid itself: filters and (for name/newest/number) the sort
         // order are pushed into SQL, which only picks card ids — the
@@ -165,6 +174,8 @@ final class Index extends Component
         }
 
         $totalEntries = (clone $gridQuery)->count();
+        // The two priciest cards take a double pocket, but only in the order that puts them first and not in a search.
+        $leadCount = $this->sort === 'value' && trim($this->search) === '' && $totalEntries > 2 ? 2 : 0;
 
         match ($this->sort) {
             'newest' => $gridQuery
@@ -217,6 +228,9 @@ final class Index extends Component
         return view('livewire.gallery.index', [
             'entries' => $entries,
             'totalEntries' => $totalEntries,
+            'collectionTotal' => $collectionTotal,
+            'leadCount' => $leadCount,
+            'perPage' => self::PER_PAGE,
             'hasMore' => $entries->count() < $totalEntries,
             'sets' => $sets,
             'totals' => $totals,
@@ -243,7 +257,7 @@ final class Index extends Component
             'title' => "{$name}'s collection",
             'description' => sprintf(
                 '%s Pokémon TCG cards across %s sets, catalogued with live market value.',
-                $allCards->count(),
+                $collectionTotal,
                 $sets->count(),
             ),
             'ogImage' => $topEntry['card']->official_image_url ?? null,
