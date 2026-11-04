@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextTabIndex, revealScrollLeft, overflowsRight, copyText, fallbackSrc } from './collection-helpers.js';
+import { tabKeyTarget, nextTabIndex, revealScrollLeft, overflowsRight, copyText, fallbackSrc } from './collection-helpers.js';
 
 test('arrow keys move to the neighbouring tab and wrap around the ends', () => {
     assert.equal(nextTabIndex('ArrowRight', 0, 4), 1);
@@ -65,4 +65,13 @@ test('copy falls back to the legacy path when the clipboard API is missing, inse
 test('copy reports failure when the legacy path fails or throws', async () => {
     assert.equal(await copyText('a', { clipboard: undefined, secure: false, legacy: () => false }), false);
     assert.equal(await copyText('a', { clipboard: undefined, secure: false, legacy: () => { throw new Error('no'); } }), false);
+});
+
+test('arrows held with Alt, Ctrl, Meta or Shift are left to the browser (Alt+Left is Back)', () => {
+    assert.equal(tabKeyTarget({ key: 'ArrowRight' }, 0, 4), 1);
+    assert.equal(tabKeyTarget({ key: 'Home' }, 2, 4), 0);
+    for (const mod of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey']) {
+        assert.equal(tabKeyTarget({ key: 'ArrowLeft', [mod]: true }, 2, 4), null, mod);
+        assert.equal(tabKeyTarget({ key: 'Home', [mod]: true }, 2, 4), null, mod);
+    }
 });

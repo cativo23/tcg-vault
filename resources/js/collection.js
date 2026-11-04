@@ -1,5 +1,5 @@
 // Client-only behaviour of the collection page. Filtering, counts and batching are Livewire (server-side).
-import { nextTabIndex, revealScrollLeft, overflowsRight, copyText, fallbackSrc } from './collection-helpers.js';
+import { tabKeyTarget, nextTabIndex, revealScrollLeft, overflowsRight, copyText, fallbackSrc } from './collection-helpers.js';
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -53,7 +53,7 @@ document.addEventListener('keydown', (event) => {
     if (!strip) return;
 
     const tabs = [...strip.querySelectorAll('[role="tab"]')];
-    const next = nextTabIndex(event.key, tabs.indexOf(document.activeElement), tabs.length);
+    const next = tabKeyTarget(event, tabs.indexOf(document.activeElement), tabs.length);
     if (next === null) return;
 
     event.preventDefault();

@@ -45,3 +45,9 @@ export async function copyText(text, { clipboard, secure, legacy }) {
         return false;
     }
 }
+
+/** The tab a keydown moves focus to, or null when it is not a plain tab-navigation key (modified keys belong to the browser). */
+export function tabKeyTarget(event, current, count) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null;
+    return nextTabIndex(event.key, current, count);
+}
