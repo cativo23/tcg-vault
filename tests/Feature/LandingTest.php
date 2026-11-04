@@ -121,3 +121,8 @@ test('the landing runs a bounded number of queries without a demo user', functio
 
     expect(count(DB::getQueryLog()))->toBeLessThanOrEqual(2);
 });
+
+test('the landing mounts the stage and the build ships its script', function () {
+    $this->get('/')->assertOk()->assertSee('id="stage"', escape: false);
+    expect(file_get_contents(public_path('build/manifest.json')))->toContain('resources/js/landing-stage.js');
+});
