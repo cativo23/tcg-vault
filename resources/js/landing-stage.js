@@ -27,6 +27,14 @@ if (document.getElementById('stage')) {
   D.pool.forEach(function (c) { POOL_IDS[c.id] = 1; });
   var POOL = D.pool.concat(D.binder.filter(function (c) { return !c.missing && !POOL_IDS[c.id]; }));
   POOL.forEach(function (c, i) { c.i = i; c.inPool = !!POOL_IDS[c.id]; });
+  /* The hero stack is not in value order: the cards named in D.hero lead it (franchise mascot first), then the
+   * rest of the pool by value. The grid and the price slip keep the pool's own value order. */
+  var ORDER = [];
+  (D.hero || []).forEach(function (id) {
+    D.pool.forEach(function (c) { if (c.id === id) ORDER.push(c); });
+  });
+  D.pool.forEach(function (c) { if (ORDER.indexOf(c) < 0) ORDER.push(c); });
+  ORDER.forEach(function (c, i) { c.rk = i; });
   var BY_NUM = {};
   D.binder.forEach(function (c) { BY_NUM[+c.num] = c; });
   var ROWS = D.pool.slice(0, 6);
@@ -99,17 +107,18 @@ if (document.getElementById('stage')) {
       var lift = el('div', 'lift');
       var img = new Image();
       img.className = 'face'; img.alt = ''; img.decoding = 'async';
-      var src = c.img + (i < 2 ? '/high.webp' : '/low.webp');
+      var lead = c.inPool ? c.rk < 2 : false;
+      var src = c.img + (lead ? '/high.webp' : '/low.webp');
       img.onerror = function () { var ph = el('div', 'face noimg', c.name); img.replaceWith(ph); };
       lift.appendChild(img);
       e.appendChild(lift);
-      e.style.zIndex = c.inPool ? 100 - i : 60 + i;
+      e.style.zIndex = c.inPool ? 100 - c.rk : 60 + i;
       root.appendChild(e);
       var o = { c: c, e: e, last: '', img: img, src: src };
       /* the moving stage defers pictures until they are on screen or the gallery is near; static figures
        * only show their own pose, so the browser's lazy loading is enough */
       if (self.fixed) { img.loading = 'lazy'; img.src = src; o.src = null; }
-      else if (i < 2) { img.src = src; o.src = null; }
+      else if (lead) { img.src = src; o.src = null; }
       else self.pending++;
       self.cards.push(o);
     });
@@ -126,7 +135,7 @@ if (document.getElementById('stage')) {
 
     /* hero: the chase card's hang tag */
     this.heroOv = el('div', 'ov fill');
-    this.heroTag = hangTag(D.pool[0], true, 48, 34, 'M48 34 C 30 34, 12 26, 1 1');
+    this.heroTag = hangTag(ORDER[0], true, 48, 34, 'M48 34 C 30 34, 12 26, 1 1');
     this.heroOv.appendChild(this.heroTag);
 
     /* the total: travels from the page head onto the price slip */
@@ -233,14 +242,14 @@ if (document.getElementById('stage')) {
     var cx = R.x + R.w / 2, cy = R.y + R.h / 2;
     var fanR = [-1.5, 4.5, -7, 8.5, -11, 6, -4, 12, -9];
     var fanX = [0, .07, -.09, .13, -.15, .05, -.04, .17, -.12];
-    D.pool.forEach(function (c, i) {
+    ORDER.forEach(function (c, i) {
       var k = Math.min(i, 8), r, dx, dy;
       if (squared) { r = (i % 2 ? 1 : -1) * Math.min(i, 6) * .35; dx = (i % 3 - 1) * 1.2; dy = -i * 1.6; }
       else { r = fanR[k]; dx = fanX[k] * cw; dy = -k * cw * .012; }
       out[c.id] = { x: cx - cw / 2 + dx, y: cy - (cw * RATIO) / 2 + dy, w: cw, r: r, o: 1 };
     });
     if (!squared) {
-      var t0 = out[D.pool[0].id];
+      var t0 = out[ORDER[0].id];
       var tx = t0.x + t0.w * .84 + 36, ty = t0.y + t0.w * .1 + 34 - 30;
       this.T.heroTag = { x: Math.min(tx, this.W - 132), y: ty };
     }
