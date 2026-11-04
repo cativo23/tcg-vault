@@ -291,7 +291,7 @@ body::before {
      give. min-width: 0 lets it shrink below its own content's intrinsic
      width instead of pushing the whole topbar past the viewport; the
      resulting horizontal scroll uses the same contained-scroll idiom as
-     .nw-rail/.nw-toolbar .nw-seg elsewhere in this file, not a new one. */
+     .nw-toolbar .nw-seg elsewhere in this file, not a new one. */
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -942,37 +942,6 @@ body::before {
 .nw-bar { height: 5px; border-radius: 999px; background: var(--hair); overflow: hidden; }
 .nw-bar i { display: block; height: 100%; background: var(--ink); border-radius: 999px; transition: width 700ms var(--ease); }
 .nw-bar.signal i { background: var(--signal); }
-
-/* ─── set rail (compact set chips on the collection home) ─── */
-.nw-rail {
-  margin-top: 14px;
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-block: 14px 4px;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
-.nw-rail::-webkit-scrollbar { display: none; }
-.nw-chip {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--paper);
-  border-radius: 999px;
-  box-shadow: 0 0 0 1px var(--hair);
-  padding: 6px 14px 6px 8px;
-  text-decoration: none;
-  color: inherit;
-  transition: box-shadow 160ms var(--ease), transform 160ms var(--ease), background-color 220ms var(--ease);
-  min-height: 44px;
-}
-.nw-chip:hover,
-.nw-chip:focus-visible { box-shadow: 0 0 0 1px var(--ink); transform: translateY(-1px); }
-.nw-chip img { height: 26px; width: 56px; object-fit: contain; }
-.nw-chip .t { font-variation-settings: 'wdth' 66, 'wght' 800; text-transform: uppercase; font-size: 12px; line-height: 1; }
-.nw-chip .n { font-family: 'Martian Mono', ui-monospace, monospace; font-variation-settings: 'wdth' 87.5, 'wght' 600; font-size: 10px; color: var(--muted); letter-spacing: -.03em; margin-top: 3px; }
 
 .autosave-tag {
   position: absolute; right: 16px; top: 6px; font-size: 9px; font-weight: 700; text-transform: uppercase;

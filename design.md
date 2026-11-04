@@ -172,14 +172,15 @@ Rules that came out of building it:
   decorative logo, disappears) — `app.js` handles both. Never a broken frame.
 - `--signal` in the ticker/arrow means one thing: the resolved price went
   UP versus the previous comparable snapshot (`CardPriceResolver::resolveDelta`).
-  Down is `--flat`; no history is a neutral dot.
+  Down is `--flat`; no history is a neutral dot. On the revamp collection page the hang tag's move is against the same print seven days earlier (`CardPriceResolver::weekDeltaFor`), not the previous snapshot; the rule is otherwise the same.
 - Headline numbers render as their real value; no count-up (retired, see Revamp primitives).
 
 ## Revamp primitives (2026-11, public pages)
 Materials, not boxes: the page is a collector's binder and every primitive is a
 physical thing a collector already knows. Built only from the tokens above.
 - **Stock sheet** — `--color-stock` surface with `--shadow-sheet` and paper grain; the cards sit on it.
-- **Divider tabs** — `--radius-tab` tabs with a `--color-rule-2` edge; on the collection page they are the set filter (same `setsQuery()` + `$setFilter`, no chip rail, no dropdown).
+- **Divider tabs** — `--radius-tab` tabs with a `--color-rule-2` edge; on the collection page they are the set filter (same `setsQuery()` + `$setFilter`, no chip rail, no dropdown). Tabs are real `tablist`/`tab` controls with manual activation; the selected set links to its page.
+- **Hang tag move** — `+$2.40 · 7d` / `−$1.00 · 7d` / `±$0.00 · 7d` under the price in `.col-mono`; green dot only for a rise; nothing when there is no comparable price a week old.
 - **Hang tags** — `--radius-tag` stock tags under a card carrying its price; green only when the price is up.
 - **Binder page + pockets** — `--color-binder-page` with clear pockets (`--color-sleeve-*`); a missing card is an empty pocket with its number pencilled in.
 - **Printed strip** — a one-line set progress strip with hollow slots for missing cards (replaces the `.nw-bar` progress bar on set screens).
