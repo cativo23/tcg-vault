@@ -1,7 +1,6 @@
-/* tcg-vault landing v5 · one stage, five acts, sleeved cards.
+/* tcg-vault landing v5 · one stage, five acts, one set of card pictures.
  *
- * The same card objects (a picture in a penny sleeve; the chase card also in a top-loader) are laid out once
- * per pose: stack → grid (shared page) → sets (divider tabs) → prices (slip + hang tags) → set (binder page) → close.
+ * The same card objects (one picture each) are laid out once per pose: stack → grid (shared page) → sets (divider tabs) → prices (slip + hang tags) → set (binder page) → close.
  * Scrolling interpolates every card between two poses with transform + opacity only. A passive scroll listener
  * feeds one requestAnimationFrame; nothing reads layout per frame.
  * Reduced motion (or ?motion=off) builds one static figure per act from the same layouts.
@@ -79,8 +78,19 @@ if (document.getElementById('stage')) {
     this.root = root;
     this.fixed = fixedPose || null;
     this.cards = [];
+    this.pending = 0;
     this.build();
   }
+
+  /* assign src to deferred cards: only the ones currently shown, or all of them */
+  Stage.prototype.loadImages = function (all) {
+    if (!this.pending) return;
+    var self = this;
+    this.cards.forEach(function (o) {
+      if (!o.src || (!all && o.e.style.visibility === 'hidden')) return;
+      o.img.src = o.src; o.src = null; self.pending--;
+    });
+  };
 
   Stage.prototype.build = function () {
     var root = this.root, self = this;
@@ -89,13 +99,19 @@ if (document.getElementById('stage')) {
       var lift = el('div', 'lift');
       var img = new Image();
       img.className = 'face'; img.alt = ''; img.decoding = 'async';
-      img.src = c.img + (i < 2 ? '/high.webp' : '/low.webp');
+      var src = c.img + (i < 2 ? '/high.webp' : '/low.webp');
       img.onerror = function () { var ph = el('div', 'face noimg', c.name); img.replaceWith(ph); };
       lift.appendChild(img);
       e.appendChild(lift);
       e.style.zIndex = c.inPool ? 100 - i : 60 + i;
       root.appendChild(e);
-      self.cards.push({ c: c, e: e, last: '' });
+      var o = { c: c, e: e, last: '', img: img, src: src };
+      /* the moving stage defers pictures until they are on screen or the gallery is near; static figures
+       * only show their own pose, so the browser's lazy loading is enough */
+      if (self.fixed) { img.loading = 'lazy'; img.src = src; o.src = null; }
+      else if (i < 2) { img.src = src; o.src = null; }
+      else self.pending++;
+      self.cards.push(o);
     });
 
     /* the shared page (grid + sets) */
@@ -543,7 +559,7 @@ if (document.getElementById('stage')) {
 
   var stage = new Stage(document.getElementById('stage'));
   var actsEl = document.getElementById('acts');
-  var segs = [], ticking = false, copies = [], cf = 80;
+  var segs = [], loadAt = Infinity, ticking = false, copies = [], cf = 80;
   var copyOf = function (n) { return acts[n].querySelector('.copy'); };
   var getY = function () { return DBG ? actsEl.scrollTop : window.scrollY; };
   var top = function (n) { return acts[n].offsetTop; };
@@ -560,6 +576,7 @@ if (document.getElementById('stage')) {
       { a: 3, b: 4, s0: S - .55 * vh, s1: S + .05 * vh },
       { a: 4, b: 5, s0: C - .8 * vh, s1: C - .1 * vh }
     ];
+    loadAt = G - .9 * vh;
     stage.chartSpan = [P + .05 * vh, P + .8 * vh];
     /* copy windows: an act's copy is fully on while its own stage content is (from the end of the move that brought it
      * in to the start of the move that takes it out) and fades over `cf` of scroll at each end */
@@ -587,6 +604,9 @@ if (document.getElementById('stage')) {
     var cp = (y - stage.chartSpan[0]) / (stage.chartSpan[1] - stage.chartSpan[0]);
     var fp = (y - stage.fillSpan[0]) / (stage.fillSpan[1] - stage.fillSpan[0]);
     stage.render(a, b, t, cp, fp);
+    /* everything beyond the first act loads once the gallery is about to enter the viewport (a jump-scroll
+     * past it passes the same test); until then only the cards currently shown load */
+    stage.loadImages(y >= loadAt);
     copies.forEach(function (c) {
       var k = ease(clamp((y - c.inY) / cf)), o = k * clamp((c.outY - y) / cf);
       c.els.forEach(function (e) {
@@ -613,6 +633,9 @@ if (document.getElementById('stage')) {
   }
   measure();
   if (DBG) goProgress();
+
+  /* ?progress jumps straight into the story, so the debug view loads everything up front */
+  if (DBG) stage.loadImages(true);
   if (document.fonts) document.fonts.ready.then(function () { measure(); if (DBG) goProgress(); });
 }
 }
