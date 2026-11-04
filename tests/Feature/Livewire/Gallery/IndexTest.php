@@ -773,3 +773,25 @@ test('a signed-in visitor on a collection page sees no Log in link', function ()
 
     expect($html)->not->toContain('href="'.route('login').'"');
 });
+
+test('the page ships the collection script, and the copy button survives Livewire morphs', function () {
+    seedCollection();
+
+    $html = $this->get('/carlos')->assertOk()->getContent();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+    preg_match('#<button[^>]*data-col-copy[^>]*>#', $html, $button);
+    preg_match('#<span[^>]*data-col-copy-status[^>]*>#', $html, $status);
+
+    expect($html)->toContain($manifest['resources/js/collection.js']['file'])
+        ->and($html)->toContain('data-col-tabs')
+        ->and($html)->toContain('data-col-tabs-wrap')
+        ->and($button[0])->toContain('wire:ignore')
+        ->and($status[0])->toContain('role="status"')->toContain('wire:ignore');
+});
+
+test('the landing does not load the collection script', function () {
+    $html = $this->get('/')->getContent();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+
+    expect($html)->not->toContain($manifest['resources/js/collection.js']['file']);
+});

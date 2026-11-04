@@ -5,7 +5,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:js": "node --test resources/js/collection-helpers.test.mjs"
     },
     "devDependencies": {
         "@fontsource-variable/anybody": "^5.3.0",

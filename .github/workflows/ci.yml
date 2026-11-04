@@ -118,6 +118,9 @@ jobs:
       - name: Generate application key
         run: php artisan key:generate
 
+      - name: Test front-end helpers
+        run: npm run test:js
+
       - name: Run test suite
         env:
           # .env.example points at Sail's "pgsql" compose service name,

@@ -136,3 +136,7 @@
 @push('head')
     @vite('resources/css/collection.css')
 @endpush
+
+@push('scripts')
+    @vite('resources/js/collection.js')
+@endpush
