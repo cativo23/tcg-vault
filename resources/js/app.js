@@ -92,26 +92,6 @@ document.addEventListener('livewire:init', () => {
     window.Livewire.hook('morphed', ({ el }) => restoreLoadedImages(el));
 });
 
-// Hero cursor-spotlight (design.md's HP3 pattern, scoped to the hero
-// only). A no-op on touch devices — there's no pointermove to track, so
-// the glow simply stays at its CSS default position, which is fine.
-const bindHeroSpotlight = () => {
-    const hero = document.querySelector('[data-hero-spotlight]');
-    if (!hero || hero.dataset.spotlightBound) return;
-    hero.dataset.spotlightBound = '1';
-
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-    hero.addEventListener('pointermove', (e) => {
-        const r = hero.getBoundingClientRect();
-        hero.style.setProperty('--mx', `${e.clientX - r.left}px`);
-        hero.style.setProperty('--my', `${e.clientY - r.top}px`);
-    });
-};
-
-document.addEventListener('DOMContentLoaded', bindHeroSpotlight);
-document.addEventListener('livewire:navigated', bindHeroSpotlight);
-
 // The nav's fade-edge hint (app.css .nw-nav.is-scrollable::after) must
 // only show when the nav genuinely overflows — a username long enough
 // to push it into scroll on a narrow viewport, not every viewport.
@@ -163,7 +143,10 @@ document.addEventListener('livewire:navigated', bindThemeToggle);
 // stored preference that disagrees with prefers-color-scheme gets lost
 // on every SPA navigation until the next hard reload. Re-apply it here,
 // same event bindThemeToggle already re-binds on.
-document.addEventListener('livewire:navigated', () => applyTheme(localStorage.getItem(THEME_KEY)));
+document.addEventListener('livewire:navigated', () => {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored) applyTheme(stored);
+});
 
 // Sparkline tooltip: nearest-point tracking on pointermove, matching the
 // x-sparkline component's own coordinate space (a fixed 600-wide viewBox

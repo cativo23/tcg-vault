@@ -1,148 +1,74 @@
-<div class="nw-home">
-    <section class="nw-home-hero" data-hero-spotlight>
-        <div class="nw-home-spotlight" aria-hidden="true"></div>
+@php($demoUrl = $exampleUsername ? route('gallery.index', ['username' => $exampleUsername]) : null)
 
-        <div class="nw-wrap">
-            <div class="nw-home-copy">
-                <p class="nw-home-eyebrow">tcg-vault</p>
-                <h1 class="nw-home-h1">Track every <span class="accent">card</span>.</h1>
-                <p class="nw-home-sub">Daily pricing, value history, every card with its own photo. Not a spreadsheet.</p>
-                @if ($registrationOpen)
-                    <a href="{{ route('register') }}" class="nw-home-cta" wire:navigate>Create your account</a>
-                @else
-                    <span class="nw-home-cta">Invite-only — ask an existing member</span>
-                @endif
-                @if ($exampleUsername)
-                    <a href="{{ route('gallery.index', ['username' => $exampleUsername]) }}" class="nw-home-example" wire:navigate>See an example collection →</a>
-                @endif
-            </div>
+<div class="story" id="story">
 
-            <div class="nw-home-fan">
-                <img src="https://assets.tcgdex.net/en/base/base1/4/low.webp" alt="Charizard, Base Set">
-                <img src="https://assets.tcgdex.net/en/swsh/cel25/7/low.webp" alt="Flying Pikachu VMAX">
-                <img src="https://assets.tcgdex.net/en/sv/sv03.5/006/low.webp" alt="Charizard ex">
-                <img src="https://assets.tcgdex.net/en/swsh/cel25/9/low.webp" alt="Surfing Pikachu VMAX">
-                <img src="https://assets.tcgdex.net/en/sm/sm115/9/low.webp" alt="Charizard GX">
-            </div>
-        </div>
-    </section>
+    {{-- One pinned stage. The same sleeved cards travel through every act. --}}
+    <div class="stage" id="stage" aria-hidden="true"></div>
 
-    <section class="nw-wrap">
-        <div class="nw-home-feature">
-            <div>
-                <p class="nw-home-feature-eyebrow">tcg-vault</p>
-                <h2>Fresh pricing, updated daily</h2>
-                <ul>
-                    <li>Synced with tcgdex — tcgplayer (USD) and cardmarket (EUR)</li>
-                    <li>Watch how your collection's value changes over time</li>
-                    <li>Never update anything by hand</li>
-                </ul>
-            </div>
-            <div class="nw-home-feature-visual">
-                {{-- A real price, not a placeholder — Mega Darkrai ex (me05-116), pulled from
-                     tcgdex on 2026-09-15. Ties directly to the real photo in the feature below,
-                     and stays honest: this is a real, sourced snapshot, not an invented figure. --}}
-                <div class="chrome">Mega Darkrai ex</div>
-                <div class="nw-home-fv-price">
-                    <div class="big">$193.30</div>
-                    <div class="row"><span>tcgplayer</span><span class="plain">USD</span></div>
-                    <div class="row"><span>cardmarket</span><span class="plain">€248.35</span></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="nw-home-feature nw-home-feature--reverse">
-            <div>
-                <p class="nw-home-feature-eyebrow">tcg-vault</p>
-                <h2>Your own photo, not a placeholder</h2>
-                <ul>
-                    <li>Upload the real photo of your card when you add it</li>
-                    <li>tcgdex's official art is the backup, not the other way around</li>
-                    <li>Works the same with or without a photo — the data is never missing</li>
-                </ul>
-            </div>
-            <div class="nw-home-feature-visual">
-                <div class="chrome">your card</div>
-                <div class="nw-home-fv-photo">
-                    {{-- A real collector's own photo (uploaded by Carlos, cropped from his physical
-                         card in its toploader) next to tcgdex's official art of the SAME card
-                         (Mega Darkrai ex, me05-116) — an honest, like-for-like comparison, not two
-                         unrelated cards. --}}
-                    <img src="{{ asset('images/home/carlos-mega-darkrai.webp') }}" alt="Mega Darkrai ex, photographed by its owner">
-                    <img src="https://assets.tcgdex.net/en/me/me05/116/high.webp" alt="Mega Darkrai ex, official art">
-                    <div class="label">your photo · official art</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="nw-home-feature">
-            <div>
-                <p class="nw-home-feature-eyebrow">tcg-vault</p>
-                <h2>Complete sets, at a glance</h2>
-                <ul>
-                    <li>See what you're missing from every set you follow</li>
-                    <li>Cards you don't own stay marked, not hidden</li>
-                    <li>Progress per set, not just one total number</li>
-                </ul>
-            </div>
-            <div class="nw-home-feature-visual">
-                <div class="chrome">sets</div>
-                <div class="nw-home-fv-sets">
-                    <div class="set-row"><span class="name">Prismatic Evolutions</span><div class="bar"><div style="width:70%"></div></div><span class="pct">70%</span></div>
-                    <div class="set-row"><span class="name">Journey Together</span><div class="bar"><div style="width:35%"></div></div><span class="pct">35%</span></div>
-                    <div class="set-row"><span class="name">Surging Sparks</span><div class="bar"><div style="width:52%"></div></div><span class="pct">52%</span></div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section class="nw-home-coverage">
-        <div class="nw-wrap">
-            <p class="label">Prices synced with</p>
-            <div class="sources">
-                <span class="src">tcgdex.dev</span>
-                <span class="src">tcgplayer</span>
-                <span class="src">cardmarket</span>
-            </div>
-        </div>
-    </section>
-
-    <section class="nw-home-faq">
-        <div class="nw-wrap">
-            <h2>Frequently asked questions</h2>
-            <div class="item">
-                <p class="q">Is my data private?</p>
-                <p class="a">Yes — your collection is yours. Your collection starts private, and you choose whether to make it public with the Visibility switch on your My Collection page.</p>
-            </div>
-            <div class="item">
-                <p class="q">When does registration open?</p>
-                <p class="a">
+    <div class="acts" id="acts">
+        <section class="act act--hero" data-act="hero" aria-labelledby="h-hero">
+            <div class="copy">
+                <h1 id="h-hero" class="display">Every card you&nbsp;own, on one page.</h1>
+                <p class="lede">Make a list of your Pokémon cards, from the chase card to the bulk commons. tcg-vault shows each one with its picture and today's price, and gives your whole collection a link you can send to anyone.</p>
+                <div class="cta">
                     @if ($registrationOpen)
-                        Yes — registration is open, create your account anytime.
+                        <a class="btn" href="{{ route('register') }}">Create your account</a>
+                        @if ($demoUrl)<a class="btn-2" href="{{ $demoUrl }}">See the demo collection</a>@endif
                     @else
-                        Not yet — it's invite-only while in beta.
+                        @if ($demoUrl)<a class="btn" href="{{ $demoUrl }}">See the demo collection</a>@endif
+                        <p class="cta-note">Accounts are by invitation for now.</p>
                     @endif
-                </p>
+                </div>
             </div>
-            <div class="item">
-                <p class="q">Where do the prices come from?</p>
-                <p class="a">From tcgdex.dev, which aggregates tcgplayer (USD) and cardmarket (EUR).</p>
-            </div>
-            <div class="item">
-                <p class="q">Does it cost anything?</p>
-                <p class="a">No.</p>
-            </div>
-        </div>
-    </section>
+            <div class="still-fig" aria-hidden="true" data-pose="stack"></div>
+        </section>
 
-    <section class="nw-home-close">
-        <h2>Track every <span class="accent">card</span>.</h2>
-        @if ($registrationOpen)
-            <p>Create your account and start tracking.</p>
-            <a href="{{ route('register') }}" class="cta" wire:navigate>Create your account</a>
-        @else
-            <p>Invite-only while in beta.</p>
-            <span class="cta">Invite-only, for now</span>
-        @endif
-    </section>
+        <section class="act act--gallery" data-act="gallery" aria-labelledby="h-gallery">
+            <div class="copy">
+                <h2 id="h-gallery" class="h2">Send a link instead of a spreadsheet.</h2>
+                <p>Your page lives at <span class="url">tcgvault.cativo.dev/yourname</span>. Anyone who opens it sees your cards set by set and what they're worth. They don't need an account.</p>
+            </div>
+            <div class="still-fig" aria-hidden="true" data-pose="sets"></div>
+        </section>
+
+        <section class="act act--prices" data-act="prices" aria-labelledby="h-prices">
+            <div class="copy">
+                <h2 id="h-prices" class="h2">Prices update every day.</h2>
+                <p>Each card gets a tcgplayer price in dollars and a Cardmarket price in euros. The total at the top of your page is today's number, and a chart shows how it has moved.</p>
+            </div>
+            <div class="still-fig" aria-hidden="true" data-pose="prices"></div>
+        </section>
+
+        <section class="act act--set" data-act="set" aria-labelledby="h-set">
+            <div class="copy">
+                <h2 id="h-set" class="h2">Open a set to see what's missing.</h2>
+                <p>The cards you have show in color. The ones you don't stay in place, greyed out, with their price, so you can see what you still need and what it costs.</p>
+            </div>
+            <div class="still-fig" aria-hidden="true" data-pose="set"></div>
+        </section>
+
+        <section class="act act--close" data-act="close" aria-labelledby="h-close">
+            <div class="copy">
+                <h2 id="h-close" class="h2">For now, it's a place for your collection.</h2>
+                <p>Building decks from your cards or marking some for sale are ideas for later. Today it keeps your list priced and makes it look good when you share it.</p>
+            </div>
+            <div class="still-fig" aria-hidden="true" data-pose="close"></div>
+            <div class="closing">
+                <p class="closing-line">Free. Export your whole collection to CSV at any time.</p>
+                <div class="cta">
+                    @if ($registrationOpen)
+                        <a class="btn" href="{{ route('register') }}">Create your account</a>
+                        @if ($demoUrl)<a class="btn-2" href="{{ $demoUrl }}">See the demo collection</a>@endif
+                    @else
+                        @if ($demoUrl)<a class="btn" href="{{ $demoUrl }}">See the demo collection</a>@endif
+                        <p class="cta-note">Accounts are by invitation for now.</p>
+                    @endif
+                </div>
+            </div>
+        </section>
+    </div>
 </div>
+
+@push('scripts')
+    @vite('resources/js/landing-stage.js')
+@endpush
