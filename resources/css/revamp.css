@@ -205,8 +205,6 @@ img { display: block; }
 .skip { position: absolute; left: var(--space-md); top: -100px; z-index: 50; background: var(--color-ink); color: var(--color-stock); padding: var(--space-xs) var(--space-md); border-radius: var(--radius-pill); text-decoration: none; }
 .skip:focus-visible { top: var(--space-sm); }
 
-.reg-open .only-invite, html:not(.reg-open) .only-open { display: none !important; }
-
 /* ---------- top bar ---------- */
 .bar {
   position: fixed; inset: 0 0 auto 0; z-index: 20; height: var(--bar-h);

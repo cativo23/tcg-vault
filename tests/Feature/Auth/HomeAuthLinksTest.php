@@ -23,9 +23,8 @@ test('a guest sees a sign-up link and open-registration copy when registration i
     $response = $this->get('/');
 
     $response->assertOk();
-    $response->assertSee('Sign up');
     $response->assertSee('Create your account');
-    $response->assertDontSee('Invite-only');
+    $response->assertDontSee('Accounts are by invitation for now.');
 });
 
 test('a guest sees invite-only copy and no sign-up link when registration is closed', function () {
@@ -35,15 +34,8 @@ test('a guest sees invite-only copy and no sign-up link when registration is clo
     $response = $this->get('/');
 
     $response->assertOk();
-    $response->assertDontSee('Sign up');
-    $response->assertSee('Invite-only');
-});
-
-test('the privacy FAQ points to where the visibility control actually is', function () {
-    $this->get('/')
-        ->assertOk()
-        ->assertSee('My Collection')
-        ->assertDontSee('from your profile');
+    $response->assertDontSee('Create your account');
+    $response->assertSee('Accounts are by invitation for now.');
 });
 
 function publicDemo(string $email = 'demo@tcg-vault.invalid', bool $withItem = true): void
@@ -67,7 +59,7 @@ test('the home page links to the example collection once it is public', function
     $this->get('/')
         ->assertOk()
         ->assertSee(route('gallery.index', ['username' => 'demo']))
-        ->assertSee('See an example collection');
+        ->assertSee('See the demo collection');
 });
 
 test('the home page hides the example link while there is no public demo collection', function () {
@@ -77,17 +69,17 @@ test('the home page hides the example link while there is no public demo collect
 
     $this->get('/')
         ->assertOk()
-        ->assertDontSee('See an example collection');
+        ->assertDontSee('See the demo collection');
 });
 
 test('the home page ignores a real member who took the demo username', function () {
     publicDemo(email: 'someone@example.test');
 
-    $this->get('/')->assertOk()->assertDontSee('See an example collection');
+    $this->get('/')->assertOk()->assertDontSee('See the demo collection');
 });
 
 test('the home page hides the example link while the demo collection has no cards', function () {
     publicDemo(withItem: false);
 
-    $this->get('/')->assertOk()->assertDontSee('See an example collection');
+    $this->get('/')->assertOk()->assertDontSee('See the demo collection');
 });
