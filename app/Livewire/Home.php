@@ -22,7 +22,7 @@ use Livewire\Component;
  * speak to the general public, not funnel every visitor into one
  * specific collection.
  */
-#[Layout('layouts.public')]
+#[Layout('layouts.revamp')]
 final class Home extends Component
 {
     public bool $registrationOpen;
