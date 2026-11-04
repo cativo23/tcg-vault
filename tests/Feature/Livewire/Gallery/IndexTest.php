@@ -10,6 +10,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\Support\PriceRowReads;
@@ -472,4 +473,66 @@ test('the set rail chip falls back to the local card count when tcgdex reports z
         ->assertOk()
         ->assertSee('1 / 2')
         ->assertDontSee('1 / 0');
+});
+
+test('each entry carries its 7-day move next to the previous-day delta', function () {
+    $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    foreach ([0 => 1240, 1 => 1230, 7 => 1000] as $days => $minor) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($days), 'currency' => 'USD', 'market_minor' => $minor]);
+    }
+
+    $entry = Livewire::test(Index::class, ['username' => 'carlos'])->viewData('entries')->first();
+
+    expect($entry['delta']->deltaMinor)->toBe(10)
+        ->and($entry['weekDelta']->deltaMinor)->toBe(240)
+        ->and($entry['weekDelta']->previous->market_minor)->toBe(1000);
+});
+
+test('the 7-day move costs no extra queries however many cards the page prices', function () {
+    $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $now = now();
+    $add = function (int $from, int $to) use ($collection, $set, $now) {
+        DB::table('cards')->insert(collect(range($from, $to))->map(fn (int $i) => [
+            'tcgdex_id' => "me05-$i", 'set_id' => $set->id, 'local_id' => (string) $i,
+            'name' => sprintf('Card %04d', $i), 'created_at' => $now, 'updated_at' => $now,
+        ])->all());
+        $tcgdexIds = Card::whereIn('tcgdex_id', collect(range($from, $to))->map(fn (int $i) => "me05-$i")->all())->pluck('tcgdex_id', 'id');
+        DB::table('collection_items')->insert($tcgdexIds->map(fn (string $tcgdexId, int $id) => [
+            'collection_id' => $collection->id, 'card_id' => $id, 'card_tcgdex_id' => $tcgdexId, 'variant' => 'normal',
+            'condition' => 'NM', 'quantity' => 1, 'created_at' => $now, 'updated_at' => $now,
+        ])->values()->all());
+        // Ten daily rows per card, rising one cent a day: every card's 7-day move is +7.
+        DB::table('card_price_snapshots')->insert($tcgdexIds->keys()->flatMap(fn (int $id) => collect(range(0, 9))->map(fn (int $d) => [
+            'card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal',
+            'captured_on' => today()->subDays($d)->toDateString(), 'currency' => 'USD', 'market_minor' => 1000 + $id - $d,
+            'created_at' => $now, 'updated_at' => $now,
+        ]))->all());
+    };
+    // Measured cold both times (flushed cache), so a hit on one side cannot hide a per-card read on the other.
+    $queriesFor = function (): array {
+        Cache::flush();
+        $count = 0;
+        DB::listen(function () use (&$count) {
+            $count++;
+        });
+        $entries = Livewire::test(Index::class, ['username' => 'carlos'])->viewData('entries');
+
+        return [$count, $entries];
+    };
+
+    $add(1, 3);
+    [$few, $fewEntries] = $queriesFor();
+    $add(4, 30);
+    [$many, $manyEntries] = $queriesFor();
+
+    expect($fewEntries)->toHaveCount(3)
+        ->and($manyEntries)->toHaveCount(24)
+        ->and($manyEntries->every(fn (array $e) => $e['weekDelta']?->deltaMinor === 7))->toBeTrue()
+        ->and($many)->toBe($few);
 });

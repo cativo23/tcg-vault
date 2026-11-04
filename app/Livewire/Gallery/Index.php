@@ -207,6 +207,7 @@ final class Index extends Component
             'card' => $card,
             'snapshot' => $snapshot = $headlineOf($card),
             'delta' => $resolver->deltaFor($card, $snapshot),
+            'weekDelta' => $resolver->weekDeltaFor($card, $snapshot),
             'items' => $card->collectionItems,
             'valueMinor' => $snapshot?->market_minor,
         ]);
