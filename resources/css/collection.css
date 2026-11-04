@@ -123,6 +123,7 @@
   .col-slot.col-enter { opacity: 1 !important; transform: none !important; }
   .col-card:hover, .col-card:focus-visible { transform: none; }
   .col-card:hover .col-pic, .col-card:focus-visible .col-pic { box-shadow: 0 0 0 2px var(--color-ink); }
+  .col-card:hover .col-pic::after { opacity: 0; }
   .col-search-busy { animation: none; }
 }
 

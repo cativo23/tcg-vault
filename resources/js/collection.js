@@ -28,6 +28,7 @@ document.addEventListener('click', async (event) => {
     });
     const label = button.querySelector('.col-copy__label');
     const status = document.querySelector('[data-col-copy-status]');
+    if (!label || !status) return; // the copy itself has run; without its feedback nodes there is nothing to update
 
     button.classList.toggle('is-done', ok);
     button.classList.toggle('is-failed', !ok);

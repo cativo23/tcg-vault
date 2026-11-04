@@ -169,7 +169,9 @@ Rules that came out of building it:
 - The collector's own photo is always the primary image when it exists;
   official art is the alternate view, never the other way round.
 - An image that fails to load degrades to the empty-image state (or, for a
-  decorative logo, disappears) — `app.js` handles both. Never a broken frame.
+  decorative logo, disappears). The collection page's tiles use
+  `resources/js/collection.js` (retry `low.webp` once as `high.webp`, then the
+  "No image" face); old-layout pages keep `app.js`. Never a broken frame.
 - `--signal` in the ticker/arrow means one thing: the resolved price went
   UP versus the previous comparable snapshot (`CardPriceResolver::resolveDelta`).
   Down is `--flat`; no history is a neutral dot. On the revamp collection page the hang tag's move is against the same print seven days earlier (`CardPriceResolver::weekDeltaFor`), not the previous snapshot; the rule is otherwise the same.
