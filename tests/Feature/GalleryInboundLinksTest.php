@@ -17,7 +17,7 @@ function navigatingCollectionLinks(string $html): array
     return array_values(array_filter($tags[0], fn (string $tag) => str_contains($tag, 'href="'.$url.'"') && str_contains($tag, 'wire:navigate')));
 }
 
-test('pages still on the old layout never wire:navigate into the revamp collection page', function (string $path) {
+test('no page wire:navigates into the revamp collection page', function (string $path) {
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 120]);
@@ -32,6 +32,7 @@ test('pages still on the old layout never wire:navigate into the revamp collecti
 })->with([
     'a set page' => ['/carlos/me05'],
     'sets' => ['/carlos/sets'],
+    'activity' => ['/carlos/activity'],
     'a card page' => ['/carlos/me05/116'],
 ]);
 
@@ -46,7 +47,7 @@ function navigatingSetsLinks(string $html): array
 
 // A page on the old layout must never client-side-navigate into the revamp sets page (the swap would keep app.css);
 // each row stays a guard once its page moves to the revamp shell.
-test('pages still on the old layout never wire:navigate into the revamp sets page', function (string $path) {
+test('no page wire:navigates into the revamp sets page', function (string $path) {
     $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 120]);
