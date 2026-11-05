@@ -1,6 +1,6 @@
 // Client-only behaviour of the activity page. The range itself, the chart and the feed are Livewire (server-side).
-import { tabKeyTarget, fallbackSrc } from './collection-helpers.js';
-import { nearestIndex, readingStep, readingText, stopsReadingOnLeave } from './activity-helpers.js';
+import { tabKeyTarget } from './collection-helpers.js';
+import { nearestIndex, readingStep, readingText, setValue, stopsReadingOnLeave, degradeThumb } from './activity-helpers.js';
 
 /* ---------- range tabs: keyboard with manual activation ---------- */
 document.addEventListener('keydown', (event) => {
@@ -25,12 +25,6 @@ const pointsOf = (chart) => {
     }
 };
 const slotOf = (chart) => chart.closest('[data-act-history]')?.querySelector('[data-act-read]');
-
-// The chart is a slider: its value is the index of the day being read, its value text what the visible readout says.
-const setValue = (chart, index, text) => {
-    chart.setAttribute('aria-valuenow', String(index));
-    chart.setAttribute('aria-valuetext', text);
-};
 
 // `announce` is true for keyboard readings only: they move the slider's value, which a screen reader speaks once per key
 // press. Pointer readings never touch it, so a mouse sweep does not flood a screen reader.
@@ -89,19 +83,8 @@ document.addEventListener('keydown', (event) => {
 });
 
 /* ---------- thumbnails: this script owns the whole failure path ---------- */
-// The pictures are not `data-optional`, so app.js leaves them alone. A missing low.webp is retried once as
-// high.webp; a second failure, or no fallback to try, removes the picture and the paper frame stays.
-const degradeThumb = (img) => {
-    const retry = img.dataset.retried ? null : fallbackSrc(img.getAttribute('src'));
-    if (retry) {
-        img.dataset.retried = '1';
-        img.src = retry;
-        return;
-    }
-
-    img.remove();
-};
-
+// The pictures are not `data-optional`, so app.js leaves them alone: degradeThumb retries a missing low.webp once as
+// high.webp, and a second failure, or no fallback to try, removes the picture and the paper frame stays.
 // `error` does not bubble on <img>: capture phase.
 document.addEventListener('error', (event) => {
     if (event.target instanceof HTMLImageElement && event.target.matches('.act-thumb img')) degradeThumb(event.target);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nearestIndex, readingStep, readingText, stopsReadingOnLeave } from './activity-helpers.js';
+import { nearestIndex, readingStep, readingText, setValue, stopsReadingOnLeave, degradeThumb } from './activity-helpers.js';
 
 test('the point nearest the pointer is read; a tie keeps the earlier point', () => {
     assert.equal(nearestIndex([0, 50, 100], 20), 0);
@@ -51,4 +51,63 @@ test('a pointer leaving a chart that keeps keyboard focus does not end the readi
     assert.equal(stopsReadingOnLeave('pointerout', true), false);
     assert.equal(stopsReadingOnLeave('focusout', false), true);
     assert.equal(stopsReadingOnLeave('focusout', true), true);
+});
+
+// Plain stand-ins for the DOM objects the helpers touch: no jsdom.
+const fakeSlider = () => {
+    const attributes = {};
+    return { attributes, setAttribute: (name, value) => { attributes[name] = value; } };
+};
+
+const fakeImg = (src) => {
+    let current = src;
+    return {
+        dataset: {},
+        removed: false,
+        getAttribute: (name) => (name === 'src' ? current : null),
+        get src() { return current; },
+        set src(value) { current = value; },
+        remove() { this.removed = true; },
+    };
+};
+
+test('setValue writes the slider value and its text', () => {
+    const slider = fakeSlider();
+
+    setValue(slider, 3, '2 Nov · $9.00');
+
+    assert.deepEqual(slider.attributes, { 'aria-valuenow': '3', 'aria-valuetext': '2 Nov · $9.00' });
+});
+
+test('a thumbnail that fails on low.webp is retried once as high.webp', () => {
+    const img = fakeImg('https://assets.tcgdex.net/en/me/me05/116/low.webp');
+
+    degradeThumb(img);
+
+    assert.equal(img.src, 'https://assets.tcgdex.net/en/me/me05/116/high.webp');
+    assert.equal(img.dataset.retried, '1');
+    assert.equal(img.removed, false);
+});
+
+test('a thumbnail that fails again after its retry is removed', () => {
+    const img = fakeImg('https://assets.tcgdex.net/en/me/me05/116/low.webp');
+
+    degradeThumb(img);
+    degradeThumb(img);
+
+    assert.equal(img.removed, true);
+    assert.equal(img.src, 'https://assets.tcgdex.net/en/me/me05/116/high.webp');
+});
+
+test('a thumbnail with no fallback address is removed straight away', () => {
+    const high = fakeImg('https://assets.tcgdex.net/en/me/me05/116/high.webp');
+    const elsewhere = fakeImg('https://example.test/card.webp');
+
+    degradeThumb(high);
+    degradeThumb(elsewhere);
+
+    assert.equal(high.removed, true);
+    assert.equal(elsewhere.removed, true);
+    assert.equal(high.dataset.retried, undefined);
+    assert.equal(elsewhere.dataset.retried, undefined);
 });

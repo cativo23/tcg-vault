@@ -1,4 +1,5 @@
-// Pure helpers for the activity page; no DOM access, so `npm run test:js` covers them.
+// Helpers for the activity page. They touch only the element-like object they are handed (setAttribute, dataset, getAttribute, src, remove), so `npm run test:js` covers them with plain objects.
+import { fallbackSrc } from './collection-helpers.js';
 
 /** Index of the point whose x (0-100) is nearest to x, or -1 when there are none. A tie keeps the earlier point. */
 export function nearestIndex(xs, x) {
@@ -33,4 +34,22 @@ export function readingText(point) {
 /** Whether leaving the chart ends its reading. A pointer leaving a chart that still has keyboard focus keeps it, so a keyboard reading survives a mouse moving away; losing focus always ends it. */
 export function stopsReadingOnLeave(eventType, chartIsFocused) {
     return !(eventType === 'pointerout' && chartIsFocused);
+}
+
+/** Moves the chart slider: its value is the index of the day being read, its value text what the readout says. */
+export function setValue(slider, index, text) {
+    slider.setAttribute('aria-valuenow', String(index));
+    slider.setAttribute('aria-valuetext', text);
+}
+
+/** A thumbnail that failed to load is retried once at its fallback address; a second failure, or no fallback to try, removes it. */
+export function degradeThumb(img) {
+    const retry = img.dataset.retried ? null : fallbackSrc(img.getAttribute('src'));
+    if (retry) {
+        img.dataset.retried = '1';
+        img.src = retry;
+        return;
+    }
+
+    img.remove();
 }
