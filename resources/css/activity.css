@@ -60,6 +60,7 @@
 @keyframes act-lift { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 .moving .act-who { animation: act-lift var(--dur-slow) var(--ease-settle) both; }
 .moving .act-day { animation: act-lift var(--dur-slow) var(--ease-settle) both; animation-delay: calc(min(var(--i, 0), 8) * 55ms + 120ms); }
+.still .act-who, .still .act-day { animation: none; }
 
 @media (max-width: 679px) {
   .act-summary { font-size: var(--text-md); }
@@ -76,5 +77,5 @@
   .act-empty { margin-left: 0; margin-right: 0; border-radius: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .act-who, .act-day { animation: none; }
+  .act-who, .act-day { animation: none !important; }
 }
