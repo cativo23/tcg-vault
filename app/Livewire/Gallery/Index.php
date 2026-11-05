@@ -6,9 +6,9 @@ namespace App\Livewire\Gallery;
 
 use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
-use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Services\DecidingPriceRows;
+use App\Modules\Catalog\Support\MarketplaceSync;
 use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Services\Valuation;
 use Illuminate\Contracts\View\View;
@@ -127,14 +127,9 @@ final class Index extends Component
         $sets = $public->setsQuery()->orderByDesc('released_on')->get()->sortByDesc('owned_card_count')->values();
 
         $totals = $valuation->totalsByCurrency($allCards);
-        // The latest marketplace sync, and where its prices came from. A
-        // manual price is typed in, not synced, so it neither dates this
-        // nor gets credited to a feed.
-        $synced = $allCards->flatMap(fn (Card $c) => $c->priceSnapshots)
-            ->filter(fn (CardPriceSnapshot $s) => $s->source !== 'manual' && $s->market_minor !== null);
-        $updatedAt = $synced
-            ->reduce(fn (?CardPriceSnapshot $latest, CardPriceSnapshot $s) => $latest === null || $s->capturedOnKey() > $latest->capturedOnKey() ? $s : $latest)
-            ?->captured_on;
+        // The latest marketplace sync, and where its prices came from.
+        $synced = MarketplaceSync::rows($allCards);
+        $updatedAt = MarketplaceSync::latestDay($synced);
         $priceOrigins = $synced->pluck('origin')->unique()->sort()->values();
         $topEntry = $allCards
             ->map(fn (Card $card) => ['card' => $card, 'valueMinor' => $headlines->get($card->id)?->market_minor])

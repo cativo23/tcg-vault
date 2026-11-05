@@ -8,11 +8,16 @@ use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Services\DecidingPriceRows;
+use App\Modules\Catalog\Services\PriceDelta;
 use App\Modules\Catalog\Support\ChartRange;
+use App\Modules\Catalog\Support\MarketplaceSync;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\Valuation;
+use App\Modules\Collection\Support\ValueChart;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -21,12 +26,20 @@ use Livewire\Component;
  * What changed: price moves since the previous snapshot and cards added,
  * as one chronological feed, under the collection's value over time.
  */
-#[Layout('layouts.public')]
+#[Layout('layouts.revamp')]
 final class Activity extends Component
 {
     use ResolvesPublicCollection;
 
     private const MAX_FEED = 40;
+
+    /**
+     * The smallest price move the feed lists, in minor units of the move's
+     * own currency ($1.00, €1.00), per card as the row shows it, never
+     * multiplied by the copies held. Smaller moves are day-to-day noise
+     * that would crowd out the rest; additions are always listed.
+     */
+    public const MIN_MOVE_MINOR = 100;
 
     /**
      * The chart's range, from `?range=`. Untrusted like CardShow's, hence
@@ -69,7 +82,8 @@ final class Activity extends Component
                 // trend for a card they do not have.
                 $delta = $resolver->deltaFor($card, $valuation->headlineSnapshot($card));
 
-                if ($delta === null || $delta->deltaMinor === 0) {
+                // Under MIN_MOVE_MINOR is not listed (the page says so); zero never was.
+                if ($delta === null || abs($delta->deltaMinor) < self::MIN_MOVE_MINOR) {
                     return null;
                 }
 
@@ -82,7 +96,8 @@ final class Activity extends Component
             })
             ->filter();
 
-        $items = $public->itemsQuery()->take(self::MAX_FEED)->get();
+        // Copies added in one bulk action share a created_at, so the id breaks the tie: the cap keeps the newest of them, not whichever the database hands back first.
+        $items = $public->itemsQuery()->orderByDesc('id')->take(self::MAX_FEED)->get();
 
         // An added copy's card is almost always one the headline already
         // loaded, price rows included: reuse it, so its rows are neither
@@ -123,10 +138,29 @@ final class Activity extends Component
                 'at' => $item->created_at,
             ]);
 
+        // Newest first. Every move of a day carries that day's midnight, so
+        // moves of the same day go biggest first, equal ones by card id, so
+        // the database's card order never decides what the cap keeps. Small
+        // moves were dropped above, before this cap, so they never take one
+        // of its slots.
         $feed = $moves->concat($additions)
-            ->sortByDesc(fn ($e) => $e['at']->timestamp ?? 0)
+            ->sort(fn (array $a, array $b) => [$b['at']->timestamp ?? 0, self::size($b), $a['card']->id] <=> [$a['at']->timestamp ?? 0, self::size($a), $b['card']->id])
             ->take(self::MAX_FEED)
             ->values();
+
+        // Display only: the same entries in the same order, cut into one
+        // group per calendar day (a move's day is its latest price's day,
+        // an addition's the day it was added). An entry without a time is
+        // only possible in the types (captured_on is NOT NULL, every copy
+        // gets created_at); it groups at the epoch, last, where the sort put it.
+        $days = $feed
+            ->groupBy(fn (array $entry) => ($entry['at'] ?? CarbonImmutable::createFromTimestamp(0))->toDateString())
+            ->map(fn (Collection $entries, string|int $day) => ['date' => CarbonImmutable::parse((string) $day), 'entries' => $entries->values()])
+            ->values();
+
+        // The latest marketplace sync, which dates the summary as the
+        // collection page dates its own.
+        $updatedAt = MarketplaceSync::latestDay(MarketplaceSync::rows($cards));
 
         $startsAfterRange = $earliest !== null && $earliest->toDateString() > $chartRange->start(today())->toDateString();
         $historySince = $series->isNotEmpty() && $startsAfterRange ? $series->first()['date'] : null;
@@ -142,15 +176,31 @@ final class Activity extends Component
             // showing real "Added <card>" entries. This is what's
             // actually listed below.
             'feedCount' => $feed->count(),
+            'days' => $days,
+            'updatedAt' => $updatedAt,
             'totals' => $totals,
             'series' => $series,
             'primaryCurrency' => $primaryCurrency,
             'chartRange' => $chartRange,
             'historySince' => $historySince,
+            'chart' => $primaryCurrency === null ? null : ValueChart::of($series, $primaryCurrency),
         ])->layoutData([
             'title' => "Activity · {$name}'s collection",
             'description' => "Price movements and recent additions in {$name}'s Pokémon TCG collection.",
             'isOwner' => $this->isOwnerViewing(),
         ]);
+    }
+
+    /**
+     * How big a feed entry's move is, for ordering a day's moves; an
+     * addition has none.
+     *
+     * @param  array<string, mixed>  $entry
+     */
+    private static function size(array $entry): int
+    {
+        $delta = $entry['delta'] ?? null;
+
+        return $delta instanceof PriceDelta ? abs($delta->deltaMinor) : 0;
     }
 }

@@ -84,7 +84,7 @@ with narrow, explicit exceptions (marked below), never loosened wholesale:**
 - Focus state · `outline: 2px solid var(--color-accent)` offset 3px — same visual treatment as hover, so keyboard users get full parity
 
 ## Motion stance
-- App pages: `--dur-fast`/`--dur-base` for hover, focus and state changes; staggered card entrance (~55ms stagger, `--dur-slow` max) with `--ease-out`.
+- App pages: `--dur-fast`/`--dur-base` for hover, focus and state changes; staggered card entrance (~55ms stagger, `--dur-slow` max) with `--ease-out`; a one-off page entrance (the collection and Activity heads, the Activity day sheets and chart cover) may use `--ease-settle`, never longer than `--dur-slow`.
 - Landing only: the scroll choreography may run entrances of 460–900 ms with `--ease-settle`. It is the one place longer timings are allowed.
 - 1 hover primitive (lift + scale) + 1 one-shot sleeve-reflection sweep (plays once per hover)
 - Reduced-motion fallback · all durations → 0, hover collapses to a 2px ink ring only
@@ -183,6 +183,7 @@ physical thing a collector already knows. Built only from the tokens above.
 - **Stock sheet** — `--color-stock` surface with `--shadow-sheet` and paper grain; the cards sit on it.
 - **Divider tabs** — `--radius-tab` tabs with a `--color-rule-2` edge; on the collection page they are the set filter (same `setsQuery()` + `$setFilter`, no chip rail, no dropdown). Tabs are real `tablist`/`tab` controls with manual activation; the selected set links to its page.
 - **Hang tag move** — `+$2.40 · 7d` / `−$1.00 · 7d` / `±$0.00 · 7d` under the price in `.col-mono`; green dot only for a rise; nothing when there is no comparable price a week old.
+- **Activity range tabs and day sheets** — on `/{user}/activity` the collection value sits on a stock sheet behind divider tabs `1M · 3M · 6M · 1Y`: a `tablist`/`tab` with manual activation like the collection's set tabs (arrows move focus, Enter or Space selects), selection in `?range=` (absent = 1M); the card page's `.nw-range-pills` are not used here. The sheet head reads "Collection value · 3 months", the last value and the range move (`+$12.40 · 3 months`: green only for a rise, a fall `−$659.38` in `--color-flat`), and a muted "History since 15 Sep" sits under the chart when the data starts after the range start. The chart is one continuous line: the series has a value on every sampled day, so nothing is drawn dotted. It is a keyboard `slider` (←/→/Home/End/Esc; value = the day read, value text = the readout), and a pointer reading never reaches the screen reader. Days read `4 Nov`, with the year only when it is not this year (`4 Nov 2025`), on every Activity date. The heading is the collection's name size (`--act-who` = `--col-who`). The feed is one stock sheet per calendar day (UTC) under a divider tab (`4 Nov` · `N updates`); in a row a rise is `--color-accent-deep` with a green dot, a fall is `--color-flat`, an addition's price is ink, and a price move under 1.00 of its own currency is not listed.
 - **Hang tags** — `--radius-tag` stock tags under a card carrying its price; green only when the price is up.
 - **Binder page + pockets** — `--color-binder-page` with clear pockets (`--color-sleeve-*`); a missing card is an empty pocket with its number pencilled in.
 - **Printed strip** — a one-line set progress strip with hollow slots for missing cards (replaces the `.nw-bar` progress bar on set screens).
@@ -256,13 +257,11 @@ physical thing a collector already knows. Built only from the tokens above.
   card opens on its priciest variant). Wraps on narrow
   screens; 44px on coarse pointers. Hidden when the card has one variant or none.
 - **Range pills** `.nw-range-pills > .nw-variant-pill` in the card page's price history
-  panel head and the Activity page's collection value panel head — the variant pill's voice, tighter padding: `1M · 3M · 6M · 1Y`,
+  panel head — the variant pill's voice, tighter padding: `1M · 3M · 6M · 1Y`,
   `.on` = filled ink with `aria-pressed="true"`. The selection lives in `?range=`
   (absent = 1M). The panel head says the range ("Price history · 3 months"); when
   the data starts after the range start, a muted "History since 15 Sep" sits under
-  the chart (date in `.mono`). The Activity value panel uses the same pills (`?range=`,
-  absent = 1M); its head reads "+$12.40 · 3 months" and the same "History since …"
-  line sits under its chart. The buttons carry no `aria-label` of their own (the
+  the chart (date in `.mono`). The buttons carry no `aria-label` of their own (the
   visible text is the name); the group carries one.
 
 ## Theming — dark mode (2026-09-16)
