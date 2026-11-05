@@ -84,7 +84,7 @@ with narrow, explicit exceptions (marked below), never loosened wholesale:**
 - Focus state · `outline: 2px solid var(--color-accent)` offset 3px — same visual treatment as hover, so keyboard users get full parity
 
 ## Motion stance
-- App pages: `--dur-fast`/`--dur-base` for hover, focus and state changes; staggered card entrance (~55ms stagger, `--dur-slow` max) with `--ease-out`; a one-off page entrance (the collection and Activity heads, the Activity day sheets and chart cover) may use `--ease-settle`, never longer than `--dur-slow`.
+- App pages: `--dur-fast`/`--dur-base` for hover, focus and state changes; staggered card entrance (~55ms stagger, delay included within `--dur-slow`) with `--ease-out`; a one-off page entrance (the collection and Activity heads, the Activity day sheets and chart cover, the card page's plate, name, price tags and chart cover) may use `--ease-settle`, never longer than `--dur-slow`.
 - Landing only: the scroll choreography may run entrances of 460–900 ms with `--ease-settle`. It is the one place longer timings are allowed.
 - 1 hover primitive (lift + scale) + 1 one-shot sleeve-reflection sweep (plays once per hover)
 - Reduced-motion fallback · all durations → 0, hover collapses to a 2px ink ring only
@@ -246,23 +246,15 @@ physical thing a collector already knows. Built only from the tokens above.
   rows (64px).
 
 ## Card page primitives (public)
-- **Variant pills** `.nw-variant-pills > .nw-variant-pill` on `/{user}/{set}/{number}` —
-  the toolbar's segmented-pill voice: hairline outline at rest, `.on` = filled
-  ink on bone with `aria-pressed="true"`. Each pill is the variant label, its
-  price in `.mono` (`—` when unpriced) and, when the collector holds it, a
-  muted `×N` in `.mono` — never `--signal`, which means "price up" only. The
-  selection lives in `?variant=` (`unspecified` for copies with no variant);
-  the page opens on the collector's priciest copy's variant (when they own
-  copies but none is priced, on the variant the set tile prices; an unowned
-  card opens on its priciest variant). Wraps on narrow
-  screens; 44px on coarse pointers. Hidden when the card has one variant or none.
-- **Range pills** `.nw-range-pills > .nw-variant-pill` in the card page's price history
-  panel head — the variant pill's voice, tighter padding: `1M · 3M · 6M · 1Y`,
-  `.on` = filled ink with `aria-pressed="true"`. The selection lives in `?range=`
-  (absent = 1M). The panel head says the range ("Price history · 3 months"); when
-  the data starts after the range start, a muted "History since 15 Sep" sits under
-  the chart (date in `.mono`). The buttons carry no `aria-label` of their own (the
-  visible text is the name); the group carries one.
+The card page (`/{user}/{set}/{number}`) is on the revamp shell: classes `.crd-*` in `resources/css/card.css`, behaviour in `resources/js/card.js` (pure parts in `card-helpers.js`, covered by `npm run test:js`). Its related strip uses the collection's tile (`.col-*`).
+- **Plate with crop marks** — the card centred on a `--color-binder-page` sheet with a 10 mm grid, crop ticks and `63 mm` / `88 mm` labels naming its printed size (the drawing is not to scale). Thumbs switch between the collector's photo and the official art; a photo is shown whole (`object-fit: contain`) with no marks and no ring, under "Your photo of this copy. The printed size applies to the official art." The column is `wire:ignore`.
+- **Variant pills** `.crd-vpill` — little tickets: label, price in `.crd-mono` (`—` when unpriced), muted `×N owned` when held; `aria-pressed`; selection in `?variant=` (`unspecified` for copies with no variant); opens on the collector's priciest copy's variant (owned but unpriced: the variant the set tile prices; unowned: the priciest). Hidden for one variant or none.
+- **Hang tags** `.crd-htag` — one per market read, the headline read edged in ink. The headline shows two moves, `+$8.00 · 1d   +$32.00 · 7d` (`1d` is the real gap in days to the previous price day; `7d` comes from the week-baseline read model), then its low; others show low and trend; `entered D` (manual) and `as of D` (a source that stopped updating) stand alone. Moves use `Money::move()` (`+`, `−`, `±`). Only a rise is green, on the move, never the amount. One short settle on entry.
+- **Price history** — a stock sheet behind divider tabs `1M · 3M · 6M · 1Y`: a `tablist` with manual activation (arrows move focus, Enter/Space selects), selection in `?range=` (absent = 1M). Drawn server-side from `PriceChart`: x by date; a market day with no price breaks the line and is bridged by a dotted segment, a lone day is a dot; a manual price is one continuous step line from its first to its last entry in the range (it holds until changed; it is not carried out to the range edges). The end dot and range move are green only when the range ended higher. "History since 15 Sep" under the chart when the data starts after the range start. Day labels on the chart, "History since" and the tag notes and move titles read `4 Nov`, with the year only when it is not this year (`4 Nov 2025`; `DayLabel::of()`). Hover or the keys read a day; the chart is a keyboard `slider` (←/→/↑/↓/Home/End/Esc; value = the day read, value text = the readout, resting on the newest day) and a pointer reading never reaches the screen reader; the draw-in plays on the first load only.
+- **Ticket stubs** — one per copy: quantity on the stub; condition name and code, or `PSA 10 graded`; variant, `Added D`, `own photo`, notes. **Catalogue label** — the card's facts with dotted leaders; HP, Pokédex and Catalog ID in mono.
+- **More from {set}** — a divider tab over a stock sheet with up to eight owned cards in number order, each the collection's tile (own-print price, `· 7d`, stamps, slab, `×N`), hover sweep included.
+- **Copy link** — copies the page URL with its `variant=` pair only (never range or display switches).
+- Numerals-only exception: `.crd-tsub`, `.crd-vo` ("owned"), `.crd-ch-read` set a few words in Martian Mono, as the old price note did.
 
 ## Theming — dark mode (2026-09-16)
 Three-state precedence, same as every browser-native dark mode: no
