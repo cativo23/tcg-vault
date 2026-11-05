@@ -27,6 +27,14 @@ test('the hero stack opens with the franchise mascot and the iconic chase cards'
     }
 });
 
+test('every landing hero card is in the demo collection seed list', function () {
+    // The hero's "See the demo collection" button lands on the seeded gallery,
+    // so a visitor must find each card they just saw there.
+    $missing = array_values(array_diff(landingDemoData()['hero'], config('tcgvault.demo.cards')));
+
+    expect($missing)->toBe([], 'hero cards missing from tcgvault.demo.cards: '.implode(', ', $missing));
+});
+
 test('the demo headline total is the last point of its value history', function () {
     $demo = landingDemoData();
 

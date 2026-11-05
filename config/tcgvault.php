@@ -83,6 +83,8 @@ return [
             'swsh7-215',   // Umbreon VMAX (alt art), Evolving Skies
             'sv08.5-161',  // Umbreon ex (SIR), Prismatic Evolutions
             'swsh7-218',   // Rayquaza VMAX (alt art), Evolving Skies
+            'swsh8-271',   // Gengar VMAX (alt art), Fusion Strike
+            'base1-4',     // Charizard (unlimited holo), Base Set
             'swsh11-186',  // Giratina V (alt art), Lost Origin
             'me02-125',    // Mega Charizard X ex (SIR), Phantasmal Flames
             'swsh12-186',  // Lugia V (alt art), Silver Tempest
