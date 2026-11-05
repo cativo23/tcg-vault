@@ -218,3 +218,49 @@ html:not(.js) .crd-chart-cover, .still .crd-chart-cover, .crd-settled .crd-chart
 @media (max-width: 679px) {
   .crd-chart, .crd-no-hist { height: 180px; }
 }
+
+/* ---------- section heads (market, copies, facts) ---------- */
+.crd-sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px var(--space-md); padding-bottom: 10px; border-bottom: 2px solid var(--color-ink); }
+.crd-sec-t { min-width: 0; font: 760 var(--crd-text-sec)/1.05 var(--font-display); font-variation-settings: "wdth" 72; letter-spacing: -.005em; }
+.crd-sec-v { font: 600 var(--text-sm)/1 var(--font-body); color: var(--color-muted); letter-spacing: 0; }
+.crd-sec-r { font-size: var(--text-sm); color: var(--color-muted); }
+.crd-sec-r .crd-mono { font-size: .9em; color: var(--color-ink-2); }
+
+/* ---------- market value: tags hanging off a rail ---------- */
+.crd-market { margin-top: clamp(32px, 4vw, 52px); }
+.crd-rail { position: relative; display: flex; flex-wrap: wrap; gap: 0 clamp(16px, 2.4vw, 36px); padding: 0 clamp(4px, 1.5vw, 20px); }
+/* .crd-htag owns the entrance (one short settle), .crd-htag-in the hover (design.md cascade split); the string comes down from the section rule */
+.crd-htag { position: relative; flex: 0 1 15.5rem; min-width: 0; padding-top: 30px; }
+.crd-htag::before { content: ""; position: absolute; left: 50%; top: 0; width: 1.2px; height: 40px; margin-left: -.6px; background: var(--color-string); }
+/* 240 ms + at most 4 x 55 ms of stagger: done well inside the 520 ms cap */
+.js:not(.still):not(.crd-settled) .crd-htag { animation: crd-tag-in var(--dur-base) var(--ease-settle) both; animation-delay: calc(min(var(--i, 0), 4) * 55ms); }
+@keyframes crd-tag-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.crd-htag-in { position: relative; filter: drop-shadow(0 1px 1px var(--shadow-contact)) drop-shadow(0 10px 14px var(--shadow-ambient)); }
+@media (hover: hover) {
+  .crd-htag-in { transform-origin: 50% -30px; transition: transform var(--dur-slow) var(--ease-settle); }
+  .crd-htag:hover .crd-htag-in { transform: rotate(-2deg); }
+}
+.crd-htag-face { --crd-cut: 16px; position: relative; display: block; padding: 32px 18px 18px; background: var(--color-stock);
+  clip-path: polygon(var(--crd-cut) 0, calc(100% - var(--crd-cut)) 0, 100% var(--crd-cut), 100% 100%, 0 100%, 0 var(--crd-cut)); }
+/* the headline read wears an ink edge: an ink face under the stock face, 1.5px larger */
+.crd-htag--lead .crd-htag-in::before { content: ""; position: absolute; inset: -1.5px; background: var(--color-ink);
+  clip-path: polygon(16.5px 0, calc(100% - 16.5px) 0, 100% 16.5px, 100% 100%, 0 100%, 0 16.5px); }
+.crd-htag-hole { position: absolute; left: 50%; top: 11px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--color-paper-3);
+  box-shadow: inset 0 1px 1px var(--shadow-contact), 0 0 0 3px var(--color-paper-2); }
+.crd-src { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; font-size: var(--text-xs); color: var(--color-muted); }
+.crd-src b { font-weight: 600; color: var(--color-ink); letter-spacing: .01em; }
+.crd-amt { display: block; margin-top: 8px; font: 600 var(--crd-text-amt)/1 var(--font-mono); font-variation-settings: "wdth" 87.5; letter-spacing: -.05em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.crd-htag:not(.crd-htag--lead) .crd-amt { font-size: var(--crd-text-amt-sm); }
+.crd-tsub { display: block; margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--color-rule-2); font: 400 var(--text-2xs)/1.55 var(--font-mono); font-variation-settings: "wdth" 87.5; letter-spacing: -.02em; color: var(--color-flat); }
+.crd-tline { display: flex; flex-wrap: wrap; gap: 0 14px; }
+/* one segment of a tag's note line (a move, a low, a trend): its own class, so no other control restyles it */
+.crd-seg { white-space: nowrap; }
+.crd-move--up { color: var(--color-accent-deep); font-weight: 600; }
+.crd-move--up::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--color-accent); vertical-align: 1px; }
+.crd-mv-empty { padding: var(--space-lg) 0 0; color: var(--color-muted); font-size: var(--text-sm); }
+@media (max-width: 679px) {
+  .crd-rail { padding: 0; }
+  .crd-htag { flex: 1 1 0; }
+  .crd-htag-face { padding: 30px 12px 14px; }
+  .crd-src { flex-direction: column; }
+}

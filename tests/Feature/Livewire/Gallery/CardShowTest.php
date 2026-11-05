@@ -137,8 +137,9 @@ test('a market read older than the rest says how old it is, and is not the headl
     $response = $this->get('/carlos/me05/116');
 
     $response->assertOk();
-    $response->assertSee('as of '.today()->subDays(12)->format('j M'));
-    $response->assertSeeInOrder(['box-shadow: 0 0 0 1.5px var(--ink)', 'Cardmarket'], false);
+    $response->assertSee('as of '.DayLabel::of(today()->subDays(12)));
+    preg_match('#class="crd-htag crd-htag--lead".*?<b>([^<]+)</b>#s', $response->getContent(), $lead);
+    expect($lead[1] ?? null)->toBe('Cardmarket');
 });
 
 test('the headline read is never marked as old, and a manual price does not date tcgdex reads', function () {
@@ -165,7 +166,7 @@ test('a headline price that is all there is but frozen says how old it is instea
     $response->assertOk();
     // The tile says how old the price is instead of a move; the price
     // history chart below still dates its own points.
-    $response->assertSeeInOrder(['$9.00', 'as of '.today()->subDays(12)->format('j M'), 'Price history']);
+    $response->assertSeeInOrder(['$9.00', 'as of '.DayLabel::of(today()->subDays(12)), 'Price history']);
 });
 
 test('the market header names the origins of the prices shown, and dates the latest sync, not a manual entry', function () {
@@ -181,7 +182,7 @@ test('the market header names the origins of the prices shown, and dates the lat
     $response->assertSee(today()->subDay()->format('j M Y'));
     $response->assertSee('· via tcgcsv · tcgdex');
     // Only the date is set in the numeral face; the words stay in the body face.
-    $response->assertSee('<span class="mono" style="letter-spacing: -.02em">'.today()->subDay()->format('j M Y').'</span>', false);
+    $response->assertSee('<span class="crd-mono">'.today()->subDay()->format('j M Y').'</span> · via', false);
     $response->assertDontSee(today()->format('j M Y').' · via');
 });
 
@@ -194,7 +195,7 @@ test('a manual price says when it was entered, and every tile says where its pri
     $response = $this->get('/carlos/me05/116');
 
     $response->assertOk();
-    $response->assertSee('entered '.today()->subDays(2)->format('j M'));
+    $response->assertSee('entered '.DayLabel::of(today()->subDays(2)));
     $response->assertSee('title="TCGplayer market price via tcgdex, '.today()->format('j M Y').'"', false);
     $response->assertSee('title="Manual price entered by hand, '.today()->subDays(2)->format('j M Y').'"', false);
 });
@@ -221,7 +222,7 @@ test('a manual price copied from a feed says so, is never shown as a move, and d
     $response->assertOk();
     $response->assertSee('copied by hand from TCGplayer (tcgcsv)');
     $response->assertSee('entered '.today()->subYear()->addDay()->format('j M Y'));
-    $response->assertDontSee('class="amt up"', false);
+    $response->assertDontSee('crd-move--up', false);
 });
 
 function seedVariantCard(): array
@@ -247,7 +248,7 @@ test('the card page opens on the priciest variant the collector owns', function 
 
     Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
         ->assertViewHas('selected', fn ($s) => $s['key'] === 'normal')
-        ->assertSee('Market value · Normal');
+        ->assertSeeHtml('Market value <span class="crd-sec-v">· Normal</span>');
 });
 
 test('a card the collector does not own opens on its priciest variant', function () {
@@ -955,4 +956,67 @@ test('a pill whose latest price is missing shows no price history, even with old
         ->assertSee('No market price for')
         ->assertDontSee('crd-tabs', false)
         ->assertDontSee("selectRange('3m')", false);
+});
+
+test('the headline tag shows its 1-day and 7-day moves and its low, and each move is green only when it is a rise', function () {
+    seedMovedHeadline(); // $40.00 today, $32.00 yesterday, $8.00 a week ago, low $35.00
+    $day = DayLabel::of(today()->subDay());
+    $week = DayLabel::of(today()->subDays(7));
+
+    $html = $this->get('/carlos/me05/116')->getContent();
+
+    expect(substr_count($html, 'class="crd-htag crd-htag--lead"'))->toBe(1)
+        ->and($html)->toContain('<span class="crd-seg crd-move--up" title="Since '.$day.'">+$8.00 · 1d</span>')
+        ->and($html)->toContain('<span class="crd-seg crd-move--up" title="Since '.$week.'">+$32.00 · 7d</span>')
+        ->and($html)->toContain('<span class="crd-seg" title="Lowest current listing">low $35.00</span>');
+});
+
+test('a fall on the day and a rise on the week colour only the rise', function () {
+    seedMovedHeadline(today: 3000);
+    $day = DayLabel::of(today()->subDay());
+    $week = DayLabel::of(today()->subDays(7));
+
+    expect($this->get('/carlos/me05/116')->getContent())
+        ->toContain("<span class=\"crd-seg\" title=\"Since {$day}\">\u{2212}\$2.00 · 1d</span>")
+        ->toContain('<span class="crd-seg crd-move--up" title="Since '.$week.'">+$22.00 · 7d</span>');
+});
+
+test('when both moves are falls nothing on the tag is green', function () {
+    seedMovedHeadline(today: 500);
+
+    expect($this->get('/carlos/me05/116')->getContent())
+        ->toContain("\u{2212}\$27.00 · 1d</span>")
+        ->toContain("\u{2212}\$3.00 · 7d</span>")
+        ->not->toContain('crd-move--up');
+});
+
+test('the first move says how many days back its comparison price is, and a card with no stored baseline shows only that move', function () {
+    seedMovedHeadline(previousDaysAgo: 3);
+    DB::table('card_price_week_baselines')->delete();
+
+    expect($this->get('/carlos/me05/116')->getContent())
+        ->toContain('+$8.00 · 3d</span>')
+        ->not->toContain('· 7d')
+        ->not->toContain('· 1d');
+});
+
+test('a read that is not the headline shows its low and trend on separate lines, and no move', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 900]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 700, 'low_minor' => 500, 'trend_minor' => 650]);
+
+    expect($this->get('/carlos/me05/116')->getContent())
+        ->toContain('<span class="crd-seg" title="Lowest current listing">low €5.00</span>')
+        ->toContain('<span class="crd-seg" title="Price trend">trend €6.50</span>');
+});
+
+test('an empty market shows one sentence and no tags', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = $this->get('/carlos/me05/116')->getContent();
+
+    expect($html)->toContain('<p class="crd-mv-empty">No market price recorded for this card yet.</p>')
+        ->and($html)->not->toContain('crd-htag');
 });
