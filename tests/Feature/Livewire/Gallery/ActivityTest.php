@@ -272,7 +272,7 @@ test('the value chart prices each copy by its own variant, not one price per car
     $response = $this->get('/carlos/activity');
 
     $response->assertOk();
-    // The sparkline's accessible description carries both endpoints.
+    // The chart's accessible description carries both endpoints.
     $response->assertSee('from $1.10 to $2.20');
     // The chart's last point must agree with the headline total, which
     // has always summed per variant — they price the same collection.
