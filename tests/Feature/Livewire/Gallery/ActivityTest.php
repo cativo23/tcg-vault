@@ -576,6 +576,20 @@ test('the feed is cut into one group per day, newest day first, without changing
     ])->and($days->flatMap(fn (array $d) => $d['entries'])->all())->toBe($page->viewData('feed')->all());
 });
 
+test('a day is a UTC calendar day: copies added minutes either side of midnight land in different groups', function () {
+    ownedCardPricedDaysAgo([], 'me05-311');
+    ownedCardPricedDaysAgo([], 'me05-312');
+    CollectionItem::query()->where('card_tcgdex_id', 'me05-311')->update(['created_at' => today()->subDay()->setTime(23, 59)]);
+    CollectionItem::query()->where('card_tcgdex_id', 'me05-312')->update(['created_at' => today()->setTime(0, 1)]);
+
+    $days = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('days');
+
+    expect($days->map(fn (array $d) => [$d['date']->toDateString(), $d['entries']->map(fn (array $e) => $e['card']->tcgdex_id)->all()])->all())->toBe([
+        [today()->toDateString(), ['me05-312']],
+        [today()->subDay()->toDateString(), ['me05-311']],
+    ]);
+});
+
 test('the summary is dated by the newest marketplace price, never a manual one', function () {
     ownedCardPricedDaysAgo([2 => 1000, 3 => 900], 'me05-401');
     CardPriceSnapshot::create(['card_id' => Card::where('tcgdex_id', 'me05-401')->sole()->id, 'source' => 'manual', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5000]);
