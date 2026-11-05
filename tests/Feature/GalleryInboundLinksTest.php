@@ -45,8 +45,8 @@ function navigatingSetsLinks(string $html): array
     return array_values(array_filter($tags[0], fn (string $tag) => str_contains($tag, 'href="'.$url.'"') && str_contains($tag, 'wire:navigate')));
 }
 
-// Each row FAILS while its page still renders the old layout (its Sets link carries wire:navigate) and is a guard once
-// the page is on the revamp shell. All three pages are on the old layout when this lands.
+// A page on the old layout must never client-side-navigate into the revamp sets page (the swap would keep app.css);
+// each row stays a guard once its page moves to the revamp shell.
 test('pages still on the old layout never wire:navigate into the revamp sets page', function (string $path) {
     $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
