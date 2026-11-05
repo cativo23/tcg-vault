@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 test('lists sets the user has at least one card from, with correct completion counts', function () {
     $user = User::factory()->create(['username' => 'carlos']);
@@ -97,4 +100,44 @@ test('falls back to the local card count when tcgdex reports zero', function () 
         ->assertOk()
         ->assertSee('1 / 2')
         ->assertDontSee('1 / 0');
+});
+
+test('the sets page reads the same number of queries however many sets it lists', function () {
+    $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $addSets = function (int $from, int $to) use ($collection): void {
+        foreach (range($from, $to) as $n) {
+            $set = Set::create(['tcgdex_id' => "s{$n}", 'name' => "Set {$n}", 'card_count' => 10, 'released_on' => today()->subYears($n), 'logo_url' => "https://assets.tcgdex.net/en/s/s{$n}/logo.png"]);
+            foreach (['001', '002'] as $localId) {
+                $card = Card::create(['tcgdex_id' => "s{$n}-{$localId}", 'set_id' => $set->id, 'local_id' => $localId, 'name' => "Card {$n}-{$localId}"]);
+                CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 100 * $n]);
+                CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "s{$n}-{$localId}", 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+            }
+            // Imported but not owned: its number must reach the page without a query of its own.
+            Card::create(['tcgdex_id' => "s{$n}-003", 'set_id' => $set->id, 'local_id' => '003', 'name' => "Card {$n}-003"]);
+        }
+    };
+    // Cold both times (cache flushed), so the deciding price-row query is counted on each side.
+    $queriesFor = function (): int {
+        Cache::flush();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->get('/demo/sets')->assertOk();
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $count;
+    };
+
+    $addSets(1, 2);
+    // Warm-up: the old layout resolves a scoped settings object (one `settings` read) on the first request
+    // of a test and reuses it afterwards, which would make the first measured request one query heavier.
+    // Cache::flush() inside $queriesFor still keeps the deciding-row load cold.
+    $this->get('/demo/sets')->assertOk();
+    $few = $queriesFor();
+    $addSets(3, 8);
+    $many = $queriesFor();
+
+    expect($few)->toBe(7)
+        ->and($many)->toBe($few);
 });
