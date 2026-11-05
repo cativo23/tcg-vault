@@ -117,10 +117,7 @@ every public screen instead of re-styled per page:
   what gets the treatment** — the old green ring on owned cards is gone.
 - **Set card** `.nw-setcard` (logo band, completion row + `.nw-bar`, owned
   value) and the compact `.nw-chip` rail on the collection home.
-- **Panel / feed** `.nw-panel` (+ `<x-sparkline>`, inline SVG, no library),
-  `.nw-section-head`, `.nw-feed`.
-- **Detail** `.nw-detail` (5/7 grid, sticky `.nw-hero`, `.nw-thumbs` for
-  photo ↔ official art), `.nw-prices > .nw-price`, `.nw-kv`, `.nw-copy`, `.nw-badge`.
+- **Panel / feed** `.nw-panel`, `.nw-section-head`, `.nw-feed`.
 - **Link** `.nw-link` — navigation-style link or button: ink text, no underline,
   a 2px transparent bottom border that turns `--signal` with `.is-active`
   (the current nav item). Fades on hover; recolored to the chrome foreground
@@ -165,7 +162,7 @@ Rules that came out of building it:
     (16+ distinct hues) or to a price-driven accent — both were
     considered and explicitly ruled out in the same conversation.
 - A graded copy replaces the rarity chip with the slab label (`PSA 10`) in
-  `--signal` on ink; on the detail page it is an ink-filled `.nw-badge.slab`.
+  `--signal` on ink; on the card page a graded copy's stub reads `PSA 10 graded`.
 - The collector's own photo is always the primary image when it exists;
   official art is the alternate view, never the other way round.
 - An image that fails to load degrades to the empty-image state (or, for a
@@ -183,7 +180,7 @@ physical thing a collector already knows. Built only from the tokens above.
 - **Stock sheet** — `--color-stock` surface with `--shadow-sheet` and paper grain; the cards sit on it.
 - **Divider tabs** — `--radius-tab` tabs with a `--color-rule-2` edge; on the collection page they are the set filter (same `setsQuery()` + `$setFilter`, no chip rail, no dropdown). Tabs are real `tablist`/`tab` controls with manual activation; the selected set links to its page.
 - **Hang tag move** — `+$2.40 · 7d` / `−$1.00 · 7d` / `±$0.00 · 7d` under the price in `.col-mono`; green dot only for a rise; nothing when there is no comparable price a week old.
-- **Activity range tabs and day sheets** — on `/{user}/activity` the collection value sits on a stock sheet behind divider tabs `1M · 3M · 6M · 1Y`: a `tablist`/`tab` with manual activation like the collection's set tabs (arrows move focus, Enter or Space selects), selection in `?range=` (absent = 1M); the card page's `.nw-range-pills` are not used here. The sheet head reads "Collection value · 3 months", the last value and the range move (`+$12.40 · 3 months`: green only for a rise, a fall `−$659.38` in `--color-flat`), and a muted "History since 15 Sep" sits under the chart when the data starts after the range start. The chart is one continuous line: the series has a value on every sampled day, so nothing is drawn dotted. It is a keyboard `slider` (←/→/Home/End/Esc; value = the day read, value text = the readout), and a pointer reading never reaches the screen reader. Days read `4 Nov`, with the year only when it is not this year (`4 Nov 2025`), on every Activity date. The heading is the collection's name size (`--act-who` = `--col-who`). The feed is one stock sheet per calendar day (UTC) under a divider tab (`4 Nov` · `N updates`); in a row a rise is `--color-accent-deep` with a green dot, a fall is `--color-flat`, an addition's price is ink, and a price move under 1.00 of its own currency is not listed.
+- **Activity range tabs and day sheets** — on `/{user}/activity` the collection value sits on a stock sheet behind divider tabs `1M · 3M · 6M · 1Y`: a `tablist`/`tab` with manual activation like the collection's set tabs (arrows move focus, Enter or Space selects), selection in `?range=` (absent = 1M). The sheet head reads "Collection value · 3 months", the last value and the range move (`+$12.40 · 3 months`: green only for a rise, a fall `−$659.38` in `--color-flat`), and a muted "History since 15 Sep" sits under the chart when the data starts after the range start. The chart is one continuous line: the series has a value on every sampled day, so nothing is drawn dotted. It is a keyboard `slider` (←/→/Home/End/Esc; value = the day read, value text = the readout), and a pointer reading never reaches the screen reader. Days read `4 Nov`, with the year only when it is not this year (`4 Nov 2025`), on every Activity date. The heading is the collection's name size (`--act-who` = `--col-who`). The feed is one stock sheet per calendar day (UTC) under a divider tab (`4 Nov` · `N updates`); in a row a rise is `--color-accent-deep` with a green dot, a fall is `--color-flat`, an addition's price is ink, and a price move under 1.00 of its own currency is not listed.
 - **Hang tags** — `--radius-tag` stock tags under a card carrying its price; green only when the price is up.
 - **Binder page + pockets** — `--color-binder-page` with clear pockets (`--color-sleeve-*`); a missing card is an empty pocket with its number pencilled in.
 - **Printed strip** — a one-line set progress strip with hollow slots for missing cards (replaces the `.nw-bar` progress bar on set screens).
