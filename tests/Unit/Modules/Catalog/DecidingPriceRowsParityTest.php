@@ -391,7 +391,11 @@ test('the deciding rows are loaded in one query, with the card ids bound as one 
     (new DecidingPriceRows)->loadOnto($cards);
 
     expect($queries)->toHaveCount(1)
-        ->and($queries[0]->bindings)->toHaveCount(3)
+        ->and($queries[0]->bindings)->toHaveCount(4)
+        ->and($queries[0]->bindings[0])->toBe($queries[0]->bindings[2])
+        ->and($queries[0]->bindings[1])->toBe($queries[0]->bindings[3])
+        ->and($queries[0]->sql)->toContain('where card_id = any(?::bigint[])')
+        ->and($queries[0]->sql)->toContain('from "card_price_week_baselines" where card_id = any(?::bigint[]) and baseline_on >= ?::date')
         ->and($cards->every(fn (Card $c) => $c->relationLoaded('priceSnapshots')))->toBeTrue()
         ->and($cards->flatMap(fn (Card $c) => $c->priceSnapshots)->every(fn (CardPriceSnapshot $s) => ! array_key_exists('raw', $s->getAttributes())))->toBeTrue();
 });

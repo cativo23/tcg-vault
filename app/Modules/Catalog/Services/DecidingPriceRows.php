@@ -200,9 +200,11 @@ class DecidingPriceRows
                 where card_id = any(?::bigint[])
                   and (captured_on >= ?::date or source = 'manual')
             ) as windowed
-            left join "card_price_week_baselines" as wb
+            left join (
+                select * from "card_price_week_baselines" where card_id = any(?::bigint[]) and baseline_on >= ?::date
+            ) as wb
                 on wb.card_id = windowed.card_id and wb.source = windowed.source and wb.variant = windowed.variant
-               and wb.currency = windowed.currency and wb.baseline_on >= ?::date
+               and wb.currency = windowed.currency
             where windowed.newest = 1
                or (windowed.market_minor is not null and windowed.priced_rank <= 2)
                or (windowed.market_minor is not null and windowed.source <> 'manual' and windowed.origin_rank = 1)
@@ -210,6 +212,7 @@ class DecidingPriceRows
             SQL, [
             '{'.$idList.'}',
             $from,
+            '{'.$idList.'}',
             $from,
         ]);
 
