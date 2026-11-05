@@ -119,7 +119,8 @@ docker compose -f compose.prod.yml exec app php artisan migrate --force
 # (compose falls back to a possibly stale local :latest without it):
 #   IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml run --rm --no-deps app php artisan migrate --force
 #   IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml run --rm --no-deps app php artisan prices:refresh-week-baselines
-# (skip if you ran the run form above)
+# If you ran those two `run` lines, skip the `exec ... migrate --force` line above
+# and the `exec ... prices:refresh-week-baselines` line below. Otherwise run both `exec` lines.
 docker compose -f compose.prod.yml exec app php artisan prices:refresh-week-baselines
 # Every deploy, not just the first: idempotent (firstOrCreate/
 # assignRole no-op if already done), and now also the only thing that
