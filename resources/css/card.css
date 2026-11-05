@@ -1,0 +1,165 @@
+/* tcg-vault · public card page (/{username}/{set}/{number}). Loaded only by livewire/gallery/card.blade.php, after revamp.css and collection.css.
+   Every selector is prefixed .crd- so nothing collides with revamp.css (.sheet, .chart, .htag, .strip, .src, .copy, .bar ...) or collection.css (.col-*).
+   The page bar and footer come from revamp.css. Every animation stays within --dur-slow, delay included. */
+
+.crd-page {
+  --crd-silver: oklch(88% 0.008 250);
+  --crd-silver-hi: oklch(96% 0.006 250);
+  --crd-foil-1: oklch(84% 0.07 200);
+  --crd-foil-2: oklch(86% 0.07 300);
+  --crd-foil-3: oklch(88% 0.07 20);
+  --crd-foil-4: oklch(90% 0.07 95);
+  --crd-chip-ink: oklch(22% 0.006 85);
+  --crd-plate-line: oklch(18% 0.006 85 / 0.07);
+  --crd-mark: oklch(18% 0.006 85 / 0.55);
+  /* display sizes: the only font sizes of this page that are not --text-* tokens */
+  --crd-text-name: clamp(3rem, 1.2rem + 5.4vw, 7.4rem);
+  --crd-text-sec: clamp(1.3rem, 1rem + 1vw, 1.75rem);
+  --crd-text-amt: clamp(1.65rem, 1.1rem + 1.5vw, 2.35rem);
+  --crd-text-amt-sm: clamp(1.35rem, 1rem + 1vw, 1.8rem);
+  --crd-text-chart: 1.35rem;
+  --crd-text-face: 1.6rem;
+  --crd-text-rel: clamp(1.1rem, .9rem + .8vw, 1.5rem);
+  --crd-radius-card: 4.762% / 3.409%;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .crd-page { --crd-silver: oklch(78% 0.01 250); --crd-silver-hi: oklch(88% 0.008 250);
+    --crd-plate-line: oklch(95% 0.012 85 / 0.06); --crd-mark: oklch(95% 0.012 85 / 0.5); }
+}
+:root[data-theme='dark'] .crd-page { --crd-silver: oklch(78% 0.01 250); --crd-silver-hi: oklch(88% 0.008 250);
+  --crd-plate-line: oklch(95% 0.012 85 / 0.06); --crd-mark: oklch(95% 0.012 85 / 0.5); }
+
+.crd-page h1, .crd-page h2, .crd-page p { margin: 0; }
+.crd-page button, .crd-page input { font: inherit; color: inherit; }
+.crd-mono { font-family: var(--font-mono); font-variation-settings: "wdth" 87.5; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.crd-up { color: var(--color-accent-deep); font-weight: 600; }
+
+/* ---------- breadcrumb ---------- */
+.crd-crumbs { padding: clamp(18px, 3vw, 32px) var(--gutter) 0; }
+.crd-crumbs ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; font-size: var(--text-sm); color: var(--color-muted); }
+.crd-crumbs li { white-space: nowrap; }
+.crd-crumbs li + li::before { content: "/"; margin: 0 .6em; color: var(--color-rule-2); }
+.crd-crumbs a { color: var(--color-ink-2); text-decoration: none; font-weight: 600; }
+.crd-crumbs a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.crd-crumbs [aria-current] .crd-mono { font-size: .92em; color: var(--color-ink); }
+
+/* ---------- the lot: plate left, what it is and what it is worth right ---------- */
+.crd-lot { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: start;
+  gap: clamp(28px, 4vw, 72px); padding: clamp(16px, 2.4vw, 28px) var(--gutter) clamp(40px, 6vw, 80px); }
+.crd-plate-col { position: sticky; top: calc(var(--bar-h) + 16px); min-width: 0; }
+
+/* the plate: a measuring sheet with a 10 mm grid; the card sits centred at a fixed width */
+.crd-plate {
+  position: relative; overflow: hidden; border-radius: 3px; padding: 40px;
+  background-color: var(--color-binder-page);
+  background-image: linear-gradient(var(--crd-plate-line) 1px, transparent 1px), linear-gradient(90deg, var(--crd-plate-line) 1px, transparent 1px);
+  background-size: 10mm 10mm; background-position: center;
+  box-shadow: var(--shadow-sheet);
+}
+.crd-pos { position: relative; width: min(100%, 320px); aspect-ratio: 63 / 88; margin: 0 auto; }
+/* .crd-drop owns the entrance; .crd-card the picture and its shadow */
+.crd-drop { width: 100%; height: 100%; }
+.js:not(.still):not(.crd-settled) .crd-drop { animation: crd-settle var(--dur-slow) var(--ease-settle) both; }
+@keyframes crd-settle { 0% { opacity: 0; transform: translateY(-6%) rotate(-2.5deg) scale(1.03); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+.crd-card { position: relative; width: 100%; height: 100%; border-radius: var(--crd-radius-card); }
+.crd-card::before { content: ""; position: absolute; inset: 0; border-radius: var(--crd-radius-card); box-shadow: var(--shadow-rest); pointer-events: none; }
+.crd-card img { position: relative; z-index: 1; display: block; width: 100%; height: 100%; object-fit: cover; border-radius: var(--crd-radius-card); background: var(--color-paper-3); }
+/* a collector's photo is not printed at 63 mm: shown whole, never cropped to the card */
+.crd-card img.is-photo { object-fit: contain; background: var(--color-paper-2); }
+.crd-ring { position: absolute; inset: -1.2%; z-index: 0; border-radius: 5.6% / 4%;
+  background: conic-gradient(from 210deg, var(--crd-foil-1), var(--crd-foil-2), var(--crd-foil-3), var(--crd-foil-4), var(--crd-foil-1), var(--crd-foil-2), var(--crd-foil-3), var(--crd-foil-4), var(--crd-foil-1)); }
+.crd-noimg { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; align-content: center; gap: 6px; padding: 14%; text-align: center; border-radius: var(--crd-radius-card);
+  background: repeating-linear-gradient(135deg, var(--color-paper-2) 0 6px, var(--color-paper-3) 6px 7px); }
+.crd-noimg b { font: 760 var(--crd-text-face)/1.05 var(--font-display); font-variation-settings: "wdth" 70; }
+.crd-noimg span { font-size: var(--text-xs); color: var(--color-muted); }
+
+/* crop marks and the printed size, drawn around the card */
+.crd-marks { position: absolute; inset: 0; pointer-events: none; }
+.crd-tick { position: absolute; width: 14px; height: 14px; border: 0 solid var(--crd-mark); }
+.crd-tick--tl { left: -20px; top: -20px; border-right-width: 1px; border-bottom-width: 1px; }
+.crd-tick--tr { right: -20px; top: -20px; border-left-width: 1px; border-bottom-width: 1px; }
+.crd-tick--bl { left: -20px; bottom: -20px; border-right-width: 1px; border-top-width: 1px; }
+.crd-tick--br { right: -20px; bottom: -20px; border-left-width: 1px; border-top-width: 1px; }
+.crd-rule { position: absolute; background: var(--crd-mark); }
+.crd-rule--h { left: 0; right: 0; top: -14px; height: 1px; }
+.crd-rule--v { top: 0; bottom: 0; right: -14px; width: 1px; }
+.crd-dim { position: absolute; font-size: var(--text-2xs); line-height: 1; color: var(--color-muted); white-space: nowrap; background: var(--color-binder-page); padding: 0 6px; }
+.crd-dim--h { left: 50%; top: -24px; transform: translateX(-50%); }
+.crd-dim--v { top: 50%; right: -24px; transform: translate(50%, -50%) rotate(90deg); }
+.crd-plate[data-view="photo"] .crd-marks, .crd-plate[data-view="photo"] .crd-ring { display: none; }
+
+/* the views (photo / official art) need card.js; without it the plate is the first picture */
+html:not(.js) .crd-views { display: none; }
+.crd-views { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-top: var(--space-md); }
+.crd-view { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 12px 4px 4px; border: 1px solid var(--color-rule-2); border-radius: 4px; background: transparent; cursor: pointer; font-size: var(--text-sm); font-weight: 600; }
+.crd-view img { width: 30px; height: 41px; object-fit: cover; border-radius: 2px; }
+.crd-view[aria-pressed="true"] { border-color: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-ink); }
+.crd-note { margin-top: var(--space-sm); max-width: 54ch; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted); }
+
+/* ---------- badges, name, set line, Copy link ---------- */
+.crd-info { min-width: 0; padding-top: 4px; }
+.crd-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-md); }
+.crd-badge { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 10px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; box-shadow: inset 0 0 0 1px var(--color-rule-2); color: var(--color-ink-2); }
+.crd-badge svg { width: 12px; height: 12px; }
+.crd-badge--own { background: var(--color-ink); color: var(--color-stock); box-shadow: none; }
+.crd-badge--out { box-shadow: none; outline: 1px dashed var(--color-rule-2); outline-offset: -1px; color: var(--color-muted); }
+.crd-badge--slab { font-family: var(--font-mono); font-variation-settings: "wdth" 87.5; letter-spacing: -.02em; box-shadow: inset 0 0 0 1.5px var(--color-ink); color: var(--color-ink); }
+.crd-badge--silver { color: var(--crd-chip-ink); box-shadow: none; background: linear-gradient(180deg, var(--crd-silver-hi), var(--crd-silver)); }
+.crd-badge--chase { color: var(--crd-chip-ink); box-shadow: none; background: linear-gradient(120deg, var(--crd-foil-1), var(--crd-foil-2) 40%, var(--crd-foil-3) 70%, var(--crd-foil-4)); }
+.crd-name { min-width: 0; overflow-wrap: anywhere; font: 820 var(--crd-text-name)/.84 var(--font-display); font-variation-settings: "wdth" 62; letter-spacing: -.02em; text-wrap: balance; }
+.js:not(.still):not(.crd-settled) .crd-name { animation: crd-rise var(--dur-slow) var(--ease-settle) both; }
+@keyframes crd-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.crd-setline { margin-top: var(--space-md); font-size: var(--text-lg); color: var(--color-ink-2); }
+.crd-setline a { font-weight: 600; color: var(--color-ink); text-underline-offset: 4px; text-decoration-thickness: 1px; text-decoration-color: var(--color-rule-2); }
+.crd-setline a:hover { text-decoration-color: var(--color-ink); }
+.crd-sep { margin: 0 .4em; color: var(--color-muted); }
+.crd-setline .crd-mono { font-size: .86em; color: var(--color-ink); }
+.crd-share { margin-top: var(--space-md); }
+.crd-copy { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px 0 13px;
+  border: 1px solid var(--color-rule-2); border-radius: var(--radius-pill); background: var(--color-stock);
+  font-weight: 600; font-size: var(--text-sm); cursor: pointer; white-space: nowrap;
+  box-shadow: 0 1px 0 var(--color-highlight) inset, 0 1px 2px var(--shadow-ambient);
+  transition: border-color var(--dur-base) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+.crd-copy:hover { border-color: var(--color-ink); }
+.crd-copy:active { transform: translateY(1px); }
+.crd-copy svg { width: 16px; height: 16px; flex: none; }
+.crd-copy .crd-i-ok { display: none; }
+.crd-copy.is-done .crd-i-link { display: none; }
+.crd-copy.is-done .crd-i-ok { display: block; }
+.crd-copy.is-failed .crd-copy__label { font-weight: 500; }
+
+/* ---------- variant pills: little tickets ---------- */
+.crd-variants { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13.5rem), 1fr)); gap: 8px; margin-top: clamp(24px, 3vw, 36px); }
+.crd-vpill { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 10px; text-align: left;
+  padding: 10px 14px 11px; border: 0; border-radius: 4px; cursor: pointer; background: var(--color-paper);
+  box-shadow: inset 0 0 0 1px var(--color-rule-2); transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
+.crd-vpill:hover { box-shadow: inset 0 0 0 1px var(--color-ink); }
+.crd-vpill:active { transform: translateY(1px); }
+.crd-vl { min-width: 0; font-weight: 600; font-size: var(--text-sm); line-height: 1.25; }
+.crd-vp { font: 600 var(--text-sm)/1.2 var(--font-mono); font-variation-settings: "wdth" 87.5; letter-spacing: -.02em; white-space: nowrap; }
+.crd-vo { grid-column: 1 / -1; font: 500 var(--text-2xs)/1.2 var(--font-mono); font-variation-settings: "wdth" 87.5; color: var(--color-muted); }
+.crd-vpill[aria-pressed="true"] { background: var(--color-ink); color: var(--color-stock); box-shadow: none; }
+.crd-vpill[aria-pressed="true"] .crd-vo { color: var(--color-paper-3); }
+
+/* ---------- narrow ---------- */
+@media (max-width: 959px) {
+  .crd-lot { grid-template-columns: minmax(0, 1fr); }
+  .crd-plate-col { position: static; }
+}
+@media (max-width: 679px) {
+  .crd-lot { padding-left: 0; padding-right: 0; }
+  .crd-plate { border-radius: 0; }
+  .crd-views, .crd-note { margin-left: var(--gutter); margin-right: var(--gutter); }
+  .crd-info { padding: 0 var(--gutter); }
+  .crd-setline { font-size: var(--text-md); }
+}
+@media (pointer: coarse) {
+  .crd-copy { min-height: 44px; }
+  .crd-vpill { min-height: 44px; }
+}
+
+/* ---------- reduced motion: nothing moves ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .crd-page *, .crd-page *::before, .crd-page *::after { transition-duration: 0ms !important; animation: none !important; }
+}
+.still .crd-drop, .still .crd-name { animation: none; opacity: 1; transform: none; }

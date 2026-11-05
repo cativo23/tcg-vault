@@ -34,7 +34,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * owned or not — the set screen links to both, and a "not in the
  * collection" page is honest context, not a dead end.
  */
-#[Layout('layouts.public')]
+#[Layout('layouts.revamp')]
 final class CardShow extends Component
 {
     use ResolvesPublicCollection;

@@ -12,6 +12,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\WeekBaselines;
 use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Catalog\Support\PriceChart;
+use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
+use Tests\Support\RevampHtml;
 
 function seedCardPage(bool $public = true): array
 {
@@ -353,7 +355,7 @@ test('a card with a single variant shows no switcher', function () {
 
     Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
         ->assertViewHas('switcher', false)
-        ->assertDontSeeHtml('nw-variant-pills');
+        ->assertDontSeeHtml('crd-variants');
 });
 
 test('a variant with no price says so instead of borrowing another', function () {
@@ -396,17 +398,15 @@ test('the pills are buttons, only the selected one is pressed, and owned ones sh
 
     $html = Livewire::withQueryParams(['variant' => 'normal'])
         ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
-        ->assertSeeHtml('nw-variant-pills')
-        ->assertSeeHtml('aria-pressed="true"')
+        ->assertSeeHtml('<div class="crd-variants" role="group" aria-label="Variants of Mega Darkrai ex">')
         ->assertSeeHtml('<span class="sr-only">2 owned</span>')
-        ->assertSee('×2')
+        ->assertSeeHtml('<span class="crd-vo" aria-hidden="true">×2 owned</span>')
         ->html();
 
-    // The price history panel's range pills share these classes, so count within the variant group only.
-    preg_match('/<div class="nw-variant-pills".*?<\/div>/s', $html, $group);
+    preg_match('/<div class="crd-variants".*?<\/div>/s', $html, $group);
     $pills = $group[0];
 
-    expect(substr_count($pills, 'class="nw-variant-pill on"'))->toBe(1)
+    expect(substr_count($pills, 'class="crd-vpill"'))->toBe(2)
         ->and(substr_count($pills, 'aria-pressed="true"'))->toBe(1)
         ->and(substr_count($pills, 'aria-pressed="false"'))->toBe(1)
         ->and(substr_count($pills, '<button type="button" wire:key="variant-'))->toBe(2);
@@ -758,4 +758,119 @@ test('the related strip asks the database for number order', function () {
 
     expect($strips)->toHaveCount(1)
         ->and($strips[0])->toContain('order by "local_id" asc');
+});
+
+/** An owned Mega Darkrai ex page (PSA 10 and a raw copy), as HTML. */
+function ownedCardPageHtml(): string
+{
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 2]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'grade_company' => 'PSA', 'grade_value' => '10', 'quantity' => 1]);
+
+    return test()->get('/carlos/me05/116')->assertOk()->getContent();
+}
+
+test('the card page sits on the revamp shell with its own stylesheet, and keeps its title, description, canonical and image', function () {
+    $html = ownedCardPageHtml();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+
+    expect(RevampHtml::currentNav($html))->toBe('Collection')
+        ->and($html)->toContain('<nav class="bar-nav" aria-label="Gallery">')
+        ->and($html)->toContain($manifest['resources/css/revamp.css']['file'])
+        ->and($html)->toContain($manifest['resources/css/collection.css']['file'])
+        ->and($html)->toContain($manifest['resources/css/card.css']['file'])
+        ->and($html)->not->toContain($manifest['resources/css/app.css']['file'])
+        ->and($html)->not->toContain('wire:navigate')
+        ->and($html)->not->toContain('noindex')
+        ->and($html)->toContain('<title>Mega Darkrai ex #116 · Pitch Black · tcg-vault</title>')
+        ->and($html)->toContain('<meta name="description" content="Mega Darkrai ex #116 from Pitch Black, Special illustration rare — in Carlos&#039;s collection.">')
+        ->and($html)->toContain('<link rel="canonical" href="'.url('/carlos/me05/116').'">')
+        ->and($html)->toContain('<meta property="og:image" content="https://official.example/116/high.webp">');
+});
+
+test('the head of the page: breadcrumb, badges, the name and the set line', function () {
+    $html = ownedCardPageHtml();
+
+    expect($html)->toContain('<nav class="crd-crumbs" aria-label="Breadcrumb">')
+        ->and($html)->toContain('<li><a href="'.route('gallery.index', ['username' => 'carlos']).'">Collection</a></li>')
+        ->and($html)->toContain('<li><a href="'.route('gallery.show', ['username' => 'carlos', 'setTcgdexId' => 'me05']).'">Pitch Black</a></li>')
+        ->and($html)->toContain('<li aria-current="page"><span class="crd-mono">#116</span></li>')
+        ->and($html)->toContain('class="crd-badge crd-badge--own"')
+        ->and($html)->toContain('<span class="crd-badge crd-badge--slab">PSA 10</span>')
+        ->and($html)->toContain('<span class="crd-badge crd-badge--chase">'.e(Rarity::label('Special illustration rare')).'</span>')
+        ->and($html)->toContain('<h1 id="crd-name" class="crd-name">Mega Darkrai ex</h1>')
+        ->and($html)->toContain('<span class="crd-mono">#116/120</span>')
+        ->and($html)->toContain('Mega Evolution</p>');
+});
+
+test('a set with no printed total or series still reads cleanly on the set line', function () {
+    ['collection' => $collection, 'card' => $card, 'set' => $set] = seedCardPage();
+    $set->update(['card_count' => null, 'series' => null]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = $this->get('/carlos/me05/116')->assertOk()->getContent();
+
+    expect($html)->toContain('<span class="crd-mono">#116</span></p>')
+        ->and($html)->not->toContain('#116/');
+});
+
+test('a card not in the collection wears the dashed badge', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    expect($this->get('/carlos/me05/003')->assertOk()->getContent())
+        ->toContain('<span class="crd-badge crd-badge--out">Not in the collection</span>')
+        ->not->toContain('crd-badge--own');
+});
+
+test('Copy link is a button the page script owns, with a status line, and both survive Livewire morphs', function () {
+    $html = ownedCardPageHtml();
+    preg_match('#<button[^>]*data-crd-copy[^>]*>#', $html, $button);
+    preg_match('#<span[^>]*data-crd-copy-status[^>]*>#', $html, $status);
+
+    expect($button[0] ?? '')->toContain('wire:ignore')
+        ->and($html)->toContain('<span class="crd-copy__label">Copy link</span>')
+        ->and($status[0] ?? '')->toContain('role="status"')->toContain('wire:ignore');
+});
+
+test('the plate shows the official art on a static plate with crop marks, and Livewire leaves it alone', function () {
+    $html = ownedCardPageHtml();
+    preg_match('#<section class="crd-plate-col"[^>]*>#', $html, $col);
+
+    expect($col[0] ?? '')->toContain('wire:ignore')
+        ->and($html)->toContain('src="https://official.example/116/high.webp"')
+        ->and($html)->toContain('alt="Mega Darkrai ex, Pitch Black #116"')
+        ->and($html)->toContain('data-view="official"')
+        ->and($html)->toContain('data-crd-kind="official"')
+        ->and($html)->toContain('<span class="crd-ring" aria-hidden="true"></span>')
+        ->and($html)->toContain('<span class="crd-dim crd-dim--h crd-mono">63 mm</span>')
+        ->and($html)->toContain('<span class="crd-dim crd-dim--v crd-mono">88 mm</span>')
+        ->and($html)->not->toContain('data-crd-size')
+        ->and($html)->not->toContain('data-crd-loupe-toggle')
+        ->and($html)->not->toContain('data-crd-note');
+});
+
+test('a collector photo leads, with its own alt text, the note that says the printed size is for the official art, and a thumb for each view', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'photo_path' => 'my-photo.jpg']);
+    $photoUrl = Storage::disk('collection-photos')->url('my-photo.jpg');
+
+    $html = $this->get('/carlos/me05/116')->assertOk()->getContent();
+
+    expect($html)->toContain('data-view="photo"')
+        ->and($html)->toContain('alt="Your photo of Mega Darkrai ex, Pitch Black #116"')
+        ->and($html)->toContain('<p class="crd-note" data-crd-note>Your photo of this copy. The printed size applies to the official art.</p>')
+        ->and(substr_count($html, 'data-crd-view="'))->toBe(2)
+        ->and($html)->toContain('data-crd-view="'.$photoUrl.'" data-crd-kind="photo" data-crd-alt="Your photo of Mega Darkrai ex, Pitch Black #116" aria-pressed="true"')
+        ->and($html)->toContain('data-crd-view="https://official.example/116/high.webp" data-crd-kind="official" data-crd-alt="Mega Darkrai ex, Pitch Black #116" aria-pressed="false"');
+});
+
+test('a card with no image keeps its name on a hatched face and offers no views', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    $card->update(['official_image_url' => null]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    expect($this->get('/carlos/me05/116')->assertOk()->getContent())
+        ->toContain('<div class="crd-noimg"><b>Mega Darkrai ex</b><span>No image</span></div>')
+        ->not->toContain('data-crd-view=');
 });
