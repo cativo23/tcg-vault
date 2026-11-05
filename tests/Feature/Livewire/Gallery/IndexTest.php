@@ -619,6 +619,24 @@ test('every set the collector owns from is a divider tab with its progress, All 
         ->and($set[0])->toContain('aria-selected="false"')->toContain('tabindex="-1"');
 });
 
+test('the selected tab is stacked above every other tab, wherever it sits in the strip', function () {
+    seedCollection();
+
+    $zIndexes = function (string $html): array {
+        preg_match_all('#<button[^>]*id="(col-tab-[^"]+)"[^>]*style="z-index: (\d+)"#', $html, $m);
+
+        return array_combine($m[1], array_map('intval', $m[2]));
+    };
+
+    foreach (['' => 'col-tab-all', 'me05' => 'col-tab-me05', 'fut2020' => 'col-tab-fut2020'] as $set => $selected) {
+        $z = $zIndexes($this->get('/carlos'.($set === '' ? '' : "?set=$set"))->getContent());
+        $others = array_diff_key($z, [$selected => true]);
+
+        expect($z)->toHaveCount(3)
+            ->and($z[$selected])->toBeGreaterThan(max($others));
+    }
+});
+
 test('the tab for an unknown ?set= leaves All as the tab stop so the strip stays reachable by keyboard', function () {
     seedCollection();
 

@@ -44,12 +44,14 @@
         <section class="col-binder" aria-label="Cards">
             <div class="col-tabs-wrap" data-col-tabs-wrap>
                 <div class="col-tabs" role="tablist" aria-label="Sets" data-col-tabs>
-                    <button type="button" role="tab" id="col-tab-all" class="col-tab" style="z-index: {{ $sets->count() + 1 }}"
+                    {{-- Tabs overlap leftward, so each sits above the one to its right; the selected tab is stacked above all of them. --}}
+                    @php $selectedZ = $sets->count() + 2; @endphp
+                    <button type="button" role="tab" id="col-tab-all" class="col-tab" style="z-index: {{ $setFilter === '' ? $selectedZ : $sets->count() + 1 }}"
                             aria-selected="{{ $setFilter === '' ? 'true' : 'false' }}" tabindex="{{ $tabStop === '' ? 0 : -1 }}"
                             aria-controls="col-sheet" wire:click="selectSet('')" wire:key="tab-all"><span class="col-tab__nm">All</span> <b class="col-tab__n">{{ $collectionTotal }}</b></button>
                     @foreach ($sets as $set)
                         @php $total = $set->card_count ?: $set->real_card_count; @endphp
-                        <button type="button" role="tab" id="col-tab-{{ $set->tcgdex_id }}" class="col-tab" style="z-index: {{ $sets->count() - $loop->index }}"
+                        <button type="button" role="tab" id="col-tab-{{ $set->tcgdex_id }}" class="col-tab" style="z-index: {{ $setFilter === $set->tcgdex_id ? $selectedZ : $sets->count() - $loop->index }}"
                                 aria-selected="{{ $setFilter === $set->tcgdex_id ? 'true' : 'false' }}" tabindex="{{ $tabStop === $set->tcgdex_id ? 0 : -1 }}"
                                 aria-controls="col-sheet" aria-label="{{ $set->name }}, {{ $set->owned_card_count }} of {{ $total }} cards"
                                 wire:click="selectSet(@js($set->tcgdex_id))" wire:key="tab-{{ $set->tcgdex_id }}"><span class="col-tab__nm">{{ $set->name }}</span> <b class="col-tab__n">{{ $set->owned_card_count }}/{{ $total }}</b></button>
