@@ -197,7 +197,7 @@ test('the sets page reads the same number of queries however many sets it lists'
         ->and($many)->toBe($few);
 });
 
-test('the page gets each set\'s strip as runs, from the catalogue numbers in the sets query and the cards it already loads', function () {
+test('the page gets each set\'s strip as runs, from the imported and owned card numbers in the sets query', function () {
     seedSetsShelf();
     $ids = Set::pluck('id', 'tcgdex_id');
 
@@ -210,6 +210,46 @@ test('the page gets each set\'s strip as runs, from the catalogue numbers in the
             ['state' => 'owned', 'left' => 95.8333, 'width' => 0.8333],
         ])
         ->and($strips->get($ids['sv08.5']))->toBe([['state' => 'owned', 'left' => 0.0, 'width' => 1.1111]]);
+});
+
+test('a card owned past the 600-card value bound still shows as owned on its strip', function () {
+    // 601 owned cards in one set: with ownership read from the bounded card load, the last one would be hollow.
+    $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'big', 'name' => 'Big Set', 'card_count' => 601]);
+    $now = now();
+    Card::insert(array_map(fn (int $n) => [
+        'tcgdex_id' => "big-{$n}", 'set_id' => $set->id, 'local_id' => (string) $n, 'name' => "Card {$n}", 'created_at' => $now, 'updated_at' => $now,
+    ], range(1, 601)));
+    CollectionItem::insert(Card::where('set_id', $set->id)->get(['id', 'tcgdex_id'])->map(fn (Card $card) => [
+        'collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => $card->tcgdex_id, 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1, 'created_at' => $now, 'updated_at' => $now,
+    ])->all());
+
+    $strips = Livewire::test(Sets::class, ['username' => 'demo'])->viewData('strips');
+
+    expect($strips->get($set->id))->toBe([['state' => 'owned', 'left' => 0.0, 'width' => 100.0]]);
+});
+
+test('the strip counts only public ownership, and a card held in several variants and conditions as one owned slot', function () {
+    $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
+    $public = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $private = Collection::factory()->for($user)->create(['is_public' => false, 'slug' => 'vault']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 5]);
+    $cards = [];
+    foreach (['001', '002', '003', '004'] as $localId) {
+        $cards[$localId] = Card::create(['tcgdex_id' => "me05-{$localId}", 'set_id' => $set->id, 'local_id' => $localId, 'name' => "Card {$localId}"]);
+    }
+    foreach ([[$public, '001', 'normal', 'NM'], [$public, '001', 'holo', 'LP'], [$private, '002', 'normal', 'NM']] as [$collection, $localId, $variant, $condition]) {
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $cards[$localId]->id, 'card_tcgdex_id' => "me05-{$localId}", 'variant' => $variant, 'condition' => $condition, 'quantity' => 1]);
+    }
+
+    $strips = Livewire::test(Sets::class, ['username' => 'demo'])->viewData('strips');
+
+    // 001 owned; 002 (private only) is missing like the unowned 003 and 004; the fifth slot is not imported.
+    expect($strips->get($set->id))->toBe([
+        ['state' => 'owned', 'left' => 0.0, 'width' => 20.0],
+        ['state' => 'missing', 'left' => 20.0, 'width' => 60.0],
+    ]);
 });
 
 test('sets released on the same day are listed by name', function () {
