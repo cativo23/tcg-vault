@@ -15,3 +15,9 @@ test('signed format carries the direction of a delta', function () {
         ->and(Money::signed(-15, 'USD'))->toBe('-$0.15')
         ->and(Money::signed(0, 'EUR'))->toBe('€0.00');
 });
+
+test('a move carries a true minus sign, and a plus-minus when nothing changed', function () {
+    expect(Money::move(240, 'USD'))->toBe('+$2.40')
+        ->and(Money::move(-100, 'USD'))->toBe("\u{2212}\$1.00")
+        ->and(Money::move(0, 'EUR'))->toBe("\u{00B1}€0.00");
+});

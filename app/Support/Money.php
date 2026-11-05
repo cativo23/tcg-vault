@@ -32,4 +32,16 @@ final class Money
             default => $formatted,
         };
     }
+
+    /** "+$2.40" / "−$1.00" / "±$0.00": a price move on the revamp pages, with a true minus sign and ± for no change. */
+    public static function move(int $minor, string $currency): string
+    {
+        $formatted = self::format(abs($minor), $currency);
+
+        return match (true) {
+            $minor > 0 => '+'.$formatted,
+            $minor < 0 => "\u{2212}".$formatted,
+            default => "\u{00B1}".$formatted,
+        };
+    }
 }
