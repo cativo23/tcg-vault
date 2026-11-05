@@ -128,3 +128,7 @@
 @push('head')
     @vite('resources/css/activity.css')
 @endpush
+
+@push('scripts')
+    @vite('resources/js/activity.js')
+@endpush

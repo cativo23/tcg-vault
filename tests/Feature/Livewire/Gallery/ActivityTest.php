@@ -831,3 +831,30 @@ test('a fall over the range is neutral', function () {
         ->and($html)->not->toContain('act-move--up')
         ->and($html)->not->toContain('act-end--up');
 });
+
+test('the page ships its own script, and neither the landing nor the collection loads it', function () {
+    ownedCardPricedDaysAgo([0 => 300, 2 => 200]);
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+    $script = $manifest['resources/js/activity.js']['file'];
+
+    expect($this->get('/carlos/activity')->getContent())->toContain($script)
+        ->and($this->get('/')->getContent())->not->toContain($script)
+        ->and($this->get('/carlos')->getContent())->not->toContain($script);
+});
+
+test('the chart carries the hooks its script reads', function () {
+    ownedCardPricedDaysAgo([0 => 300, 2 => 200]);
+
+    $html = $this->get('/carlos/activity')->assertOk()->getContent();
+    preg_match("#data-points='([^']*)'#", $html, $m);
+    $points = json_decode($m[1] ?? '[]', true);
+
+    expect($html)->toContain('data-act-tabs')
+        ->and($html)->toContain('data-act-history')
+        ->and($html)->toContain('<div class="act-chart" tabindex="0" role="group" aria-label="Value by day" data-act-chart data-points=\'')
+        ->and($html)->toContain('data-act-read aria-hidden="true"')
+        ->and($html)->toContain('class="act-cross"')
+        ->and($html)->toContain('class="act-dot"')
+        ->and($html)->toContain('class="act-cover"')
+        ->and(array_keys($points[0] ?? []))->toEqualCanonicalizing(['x', 'y', 'd', 'v']);
+});
