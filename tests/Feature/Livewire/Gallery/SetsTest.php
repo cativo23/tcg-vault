@@ -332,6 +332,24 @@ test('each set is one divider, newest release first: tab (abbreviation, else tcg
         ->and(stsTexts($html, 'sts-row'))->toBe(['Completed 2 / 120 2% Owned value $25.00', 'Completed 2 / 180 1% Owned value —']);
 });
 
+test('only numerals use the mono face: the set code is set in the body face, the set count and the release year in mono', function () {
+    seedSetsShelf();
+
+    $html = $this->get('/demo/sets')->assertOk()->getContent();
+
+    expect(stsTexts($html, 'sts-mono'))->toBe(['2', '2026', '2025']);
+});
+
+test('hover and focus motion on the sets page stays at the base duration or faster', function () {
+    // design.md: app pages use --dur-fast/--dur-base for hover, focus and state changes; --dur-slow is for entrances.
+    $css = (string) file_get_contents(resource_path('css/sets.css'));
+
+    preg_match_all('/transition:[^;]*;/', $css, $transitions);
+
+    expect($transitions[0])->not->toBeEmpty()
+        ->and(implode("\n", $transitions[0]))->not->toContain('--dur-slow');
+});
+
 test('a set with no release date or series shows its code alone on the tab and the catalogue name in the series line', function () {
     seedSetsShelf();
     Set::where('tcgdex_id', 'sv08.5')->update(['released_on' => null, 'series' => null]);
