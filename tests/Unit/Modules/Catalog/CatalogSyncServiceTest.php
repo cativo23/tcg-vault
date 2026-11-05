@@ -20,6 +20,7 @@ use App\Modules\Catalog\Tcgcsv\TcgcsvPriceRow;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Spatie\LaravelData\DataCollection;
@@ -654,9 +655,10 @@ test('the baseline refresh runs inside the sync\'s transaction', function () {
 test('a sync whose baseline refresh fails still stores the day\'s prices', function () {
     [$service, $card] = syncedWithWeekOld();
     Schema::drop('card_price_week_baselines'); // rolled back with the test's transaction
-    $this->withoutExceptionHandling();
+    Exceptions::fake();
 
     $synced = $service->syncCard('me05-116');
 
     expect($synced->priceSnapshots->firstWhere('captured_on', today())?->market_minor)->toBe(19524);
+    Exceptions::assertReported(QueryException::class);
 });
