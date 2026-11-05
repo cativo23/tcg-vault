@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\Support\PriceRowReads;
+use Tests\Support\RevampHtml;
 
 test('shows a price delta for a card with two snapshot days', function () {
     $user = User::factory()->create(['username' => 'carlos']);
@@ -635,4 +636,126 @@ test('the page\'s query count does not grow with the collection', function () {
     expect($fewFeed->where('kind', 'move'))->toHaveCount(3)
         ->and($manyFeed->where('kind', 'move')->count())->toBeGreaterThan(3)
         ->and($many)->toBe($few);
+});
+
+/**
+ * Two cards: Mega Darkrai ex rose $2.00 today, Lampent fell $1.50
+ * yesterday; both copies were added three days ago.
+ */
+function activitySeedFeed(): void
+{
+    $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+
+    foreach ([['me05-116', '116', 'Mega Darkrai ex', [1 => 1000, 0 => 1200]], ['me05-037', '037', 'Lampent', [2 => 1000, 1 => 850]]] as $n => [$tcgdexId, $localId, $name, $rows]) {
+        $card = Card::create(['tcgdex_id' => $tcgdexId, 'set_id' => $set->id, 'local_id' => $localId, 'name' => $name, 'rarity' => 'Rare', 'official_image_url' => "https://assets.tcgdex.net/en/me/me05/{$localId}/high.webp"]);
+        $item = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => $tcgdexId, 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+        CollectionItem::whereKey($item->id)->update(['created_at' => now()->subDays(3)->subMinutes($n)]);
+        foreach ($rows as $daysAgo => $minor) {
+            CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($daysAgo), 'currency' => 'USD', 'market_minor' => $minor]);
+        }
+    }
+}
+
+/**
+ * Every feed amount as [class attribute, visible text], in page order.
+ *
+ * @return list<array{0: string, 1: string}>
+ */
+function activityAmounts(string $html): array
+{
+    preg_match_all('#<p class="(act-amt[^"]*)">(.*?)</p>#s', $html, $m, PREG_SET_ORDER);
+
+    return array_map(fn (array $x) => [$x[1], trim((string) preg_replace('/\s+/', ' ', strip_tags($x[2])))], $m);
+}
+
+test('the page sits on the revamp shell: Activity marked in the nav, its own stylesheet only, no client-side navigation, indexable', function () {
+    activitySeedFeed();
+
+    $html = $this->get('/carlos/activity')->assertOk()->getContent();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+
+    expect(RevampHtml::currentNav($html))->toBe('Activity')
+        ->and($html)->toContain('<header class="bar bar--nav">')
+        ->and($html)->toContain($manifest['resources/css/revamp.css']['file'])
+        ->and($html)->toContain($manifest['resources/css/activity.css']['file'])
+        ->and($html)->not->toContain($manifest['resources/css/app.css']['file'])
+        ->and($html)->not->toContain('wire:navigate')
+        ->and($html)->not->toContain('noindex')
+        ->and($html)->toContain('<title>Activity · Carlos&#039;s collection · tcg-vault</title>')
+        ->and($html)->toContain('<meta name="description" content="Price movements and recent additions in Carlos&#039;s Pokémon TCG collection.">');
+});
+
+test('the head is the word Activity and one summary line; other currencies go to a note', function () {
+    activitySeedFeed();
+    $card = Card::create(['tcgdex_id' => 'me05-050', 'set_id' => Set::where('tcgdex_id', 'me05')->sole()->id, 'local_id' => '050', 'name' => 'Card me05-050']);
+    CollectionItem::create(['collection_id' => Collection::withoutGlobalScopes()->where('slug', 'main')->sole()->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-050', 'condition' => 'NM', 'quantity' => 1]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 330]);
+
+    $html = $this->get('/carlos/activity')->getContent();
+
+    expect($html)->toContain('<h1 id="act-h" class="act-who">Activity</h1>')
+        ->and(RevampHtml::text('act-summary', $html))->toBe('$20.50 on '.today()->format('j M'))
+        ->and(RevampHtml::text('act-note', $html))->toBe('Also €3.30 priced in EUR, not added to the total.')
+        ->and($html)->not->toContain('collection history');
+});
+
+test('the feed is one sheet per day under a tab that counts its updates, and says what it leaves out', function () {
+    activitySeedFeed();
+
+    $html = $this->get('/carlos/activity')->getContent();
+    preg_match_all('#<h3 class="act-dtab"[^>]*>(.*?)</h3>#s', $html, $tabs);
+
+    expect(RevampHtml::text('act-sec-t', $html))->toBe('Latest · 4 updates')
+        ->and(RevampHtml::text('act-sec-r', $html))->toBe('Price moves under $1 are not listed.')
+        ->and(array_map(fn (string $t) => trim((string) preg_replace('/\s+/', ' ', strip_tags($t))), $tabs[1]))->toBe([
+            today()->format('j M').' 1 update',
+            today()->subDay()->format('j M').' 1 update',
+            today()->subDays(3)->format('j M').' 2 updates',
+        ]);
+});
+
+test('every row carries its card thumbnail, only additions the plus, a rise is green and a fall is flat grey', function () {
+    $this->freezeTime();
+    activitySeedFeed();
+
+    $html = $this->get('/carlos/activity')->getContent();
+
+    expect(substr_count($html, 'src="https://assets.tcgdex.net/en/me/me05/116/low.webp"'))->toBe(2)
+        ->and(substr_count($html, 'src="https://assets.tcgdex.net/en/me/me05/037/low.webp"'))->toBe(2)
+        ->and(substr_count($html, 'class="act-plus"'))->toBe(2)
+        ->and(activityAmounts($html))->toBe([
+            ['act-amt act-amt--up', '+$2.00 now $12.00'],
+            ['act-amt act-amt--down', '−$1.50 now $8.50'],
+            ['act-amt', '$12.00 '.now()->subDays(3)->diffForHumans(short: true)],
+            ['act-amt', '$8.50 '.now()->subDays(3)->subMinute()->diffForHumans(short: true)],
+        ])
+        ->and($html)->toContain('went up')
+        ->and($html)->toContain('went down')
+        ->and($html)->not->toContain('&#9660;')
+        ->and($html)->not->toContain('▼');
+});
+
+test('rows link to the card page with a plain link', function () {
+    activitySeedFeed();
+
+    $html = $this->get('/carlos/activity')->getContent();
+    $href = route('gallery.card', ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116']);
+
+    expect(substr_count($html, '<a href="'.$href.'">'))->toBe(2);
+});
+
+test('an empty feed keeps the approved copy and still says which moves are left out', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+
+    $html = $this->get('/carlos/activity')->assertOk()->getContent();
+
+    expect(RevampHtml::text('act-sec-t', $html))->toBe('Latest · 0 updates')
+        ->and(RevampHtml::text('act-empty-t', $html))->toBe('Nothing yet')
+        ->and($html)->toContain('Additions and price movements show up here as they happen.')
+        ->and($html)->toContain('Price moves under $1 are not listed.')
+        ->and($html)->not->toContain('act-day')
+        ->and($html)->not->toContain('act-summary');
 });

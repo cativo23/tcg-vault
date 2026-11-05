@@ -25,7 +25,7 @@ use Livewire\Component;
  * What changed: price moves since the previous snapshot and cards added,
  * as one chronological feed, under the collection's value over time.
  */
-#[Layout('layouts.public')]
+#[Layout('layouts.revamp')]
 final class Activity extends Component
 {
     use ResolvesPublicCollection;

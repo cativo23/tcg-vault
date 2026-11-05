@@ -1,102 +1,110 @@
+@use('App\Modules\Catalog\Support\CardImage')
+@use('App\Modules\Catalog\Support\CardVariants')
 @use('App\Modules\Catalog\Support\Rarity')
 @use('App\Support\Money')
 
-<div class="nw-wrap">
-    <section class="nw-masthead">
-        <div class="nw-eyebrow"><span>{{ $targetUser->username }} · collection history</span></div>
-        <h1 class="nw-display nw-h1 nw-h1--md">Activity</h1>
+@php
+    $headCurrency = array_key_first(array_filter($totals));
+    $otherTotals = collect(array_filter($totals))->except($headCurrency);
+    // A move's sign comes from Money::move (true minus for a fall, ± for none). Colour is the view's job:
+    // a rise is the accent, a fall is --color-flat, nothing else is coloured.
+@endphp
+
+<div class="act-page">
+    <section class="act-head" aria-labelledby="act-h">
+        <h1 id="act-h" class="act-who">Activity</h1>
+        @if ($headCurrency)
+            <p class="act-summary"><span class="act-mono">{{ Money::format($totals[$headCurrency], $headCurrency) }}</span>@if ($updatedAt) on <span class="act-mono">{{ $updatedAt->format('j M') }}</span>@endif</p>
+        @endif
+        @if ($otherTotals->isNotEmpty())
+            <p class="act-note">@foreach ($otherTotals as $currency => $minor)Also {{ Money::format($minor, $currency) }} priced in {{ $currency }}, not added to the total. @endforeach</p>
+        @endif
     </section>
 
-    <div class="nw-panel mt-6 sm:mt-8">
-        <div class="head">
-            <div>
-                <div class="k">Collection value</div>
-                <div class="v">
-                    <x-value-totals :totals="$totals" empty="No prices yet" />
+    <section class="act-history" aria-label="Collection value">
+        <div class="nw-panel">
+            <div class="head">
+                <div>
+                    <div class="k">Collection value</div>
+                    <div class="v">
+                        <x-value-totals :totals="$totals" empty="No prices yet" />
+                        @if ($series->count() >= 2)
+                            @php $first = $series->first()['minor']; $last = $series->last()['minor']; @endphp
+                            <small class="{{ $last > $first ? 'up' : '' }}">{{ Money::signed($last - $first, $primaryCurrency) }} · {{ $chartRange->label() }}</small>
+                        @endif
+                    </div>
                     @if ($series->count() >= 2)
-                        @php $first = $series->first()['minor']; $last = $series->last()['minor']; @endphp
-                        <small class="{{ $last > $first ? 'up' : '' }}">{{ Money::signed($last - $first, $primaryCurrency) }} · {{ $chartRange->label() }}</small>
+                        <div class="k mt-1">{{ $series->first()['date']->format('j M') }} – {{ $series->last()['date']->format('j M') }}</div>
                     @endif
                 </div>
+                <x-range-pills :active="$chartRange" label="Collection value range" />
+            </div>
+            <div class="nw-chart">
                 @if ($series->count() >= 2)
-                    <div class="k mt-1">{{ $series->first()['date']->format('j M') }} – {{ $series->last()['date']->format('j M') }}</div>
+                    <x-sparkline :points="$series->pluck('minor')->all()" :up="$last > $first" :height="150"
+                        :dates="$series->pluck('date')->all()" :currency="$primaryCurrency"
+                        :label="'Collection value over '.$chartRange->label().', from '.Money::format($first, $primaryCurrency).' to '.Money::format($last, $primaryCurrency)" />
+                    @if ($historySince)
+                        <p class="text-xs px-2" style="color: var(--muted)">History since <span class="mono">{{ $historySince->format('j M') }}</span></p>
+                    @endif
+                @else
+                    <div class="h-16 flex items-center px-2 text-xs" style="color: var(--muted)">A value chart appears once two daily price snapshots exist.</div>
                 @endif
             </div>
-            <x-range-pills :active="$chartRange" label="Collection value range" />
         </div>
-        <div class="nw-chart">
-            @if ($series->count() >= 2)
-                <x-sparkline :points="$series->pluck('minor')->all()" :up="$last > $first" :height="150"
-                    :dates="$series->pluck('date')->all()" :currency="$primaryCurrency"
-                    :label="'Collection value over '.$chartRange->label().', from '.Money::format($first, $primaryCurrency).' to '.Money::format($last, $primaryCurrency)" />
-                @if ($historySince)
-                    <p class="text-xs px-2" style="color: var(--muted)">History since <span class="mono">{{ $historySince->format('j M') }}</span></p>
-                @endif
-            @else
-                <div class="h-16 flex items-center px-2 text-xs" style="color: var(--muted)">A value chart appears once two daily price snapshots exist.</div>
-            @endif
-        </div>
-    </div>
+    </section>
 
-    <div class="nw-section-head">
-        <span>Latest · {{ $feedCount }} {{ Str::plural('update', $feedCount) }}</span>
-    </div>
-
-    @if ($feed->isEmpty())
-        <div class="nw-empty">
-            <div class="t">Nothing yet</div>
-            <p>Additions and price movements show up here as they happen.</p>
+    <section class="act-feed" aria-labelledby="act-fd-h">
+        <div class="act-sec-head">
+            <h2 class="act-sec-t" id="act-fd-h">Latest · {{ $feedCount }} {{ Str::plural('update', $feedCount) }}</h2>
+            <p class="act-sec-r">Price moves under $1 are not listed.</p>
         </div>
-    @else
-        <ul class="nw-feed mb-12">
-            @foreach ($feed as $entry)
-                @php
-                    $card = $entry['card'];
-                    $href = $card && $card->set ? route('gallery.card', ['username' => $targetUser->username, 'setTcgdexId' => $card->set->tcgdex_id, 'localId' => $card->local_id]) : null;
-                @endphp
-                <li>
-                    @if ($entry['kind'] === 'move')
-                        @php $up = $entry['delta']->isUp(); @endphp
-                        <div class="ico {{ $up ? 'up' : 'down' }}" aria-hidden="true">{!! $up ? '&#9650;' : '&#9660;' !!}</div>
-                        <div class="fbody">
-                            <div class="title">
-                                @if ($href)<a href="{{ $href }}" wire:navigate>{{ $card->name }} <span class="mono" style="font-weight: 600">#{{ $card->local_id }}</span></a>@else {{ $card->name }} @endif
-                                {{ $up ? 'went up' : 'went down' }}
-                            </div>
-                            <div class="sub">{{ Rarity::label($card->rarity) ?: 'Card' }} · {{ $card->set?->name }} · {{ $entry['delta']->latest->sourceLabel() }}</div>
-                        </div>
-                        <div class="fright">
-                            <div class="famt {{ $up ? 'up' : 'down' }}">{{ Money::signed($entry['delta']->deltaMinor, $entry['delta']->latest->currency) }}</div>
-                            <div class="fwhen">{{ $entry['at']->format('j M') }}</div>
-                        </div>
-                    @else
-                        <div class="ico">
-                            @if ($card?->official_image_url)
-                                <img src="{{ $card->official_image_url }}" alt="" loading="lazy" decoding="async" data-optional>
+
+        @forelse ($days as $day)
+            @php $dayKey = $day['date']->toDateString(); $dayCount = $day['entries']->count(); @endphp
+            <section class="act-day" style="--i: {{ $loop->index }}" aria-labelledby="act-day-{{ $dayKey }}" wire:key="day-{{ $dayKey }}">
+                <h3 class="act-dtab" id="act-day-{{ $dayKey }}"><b>{{ $day['date']->format('j M') }}</b> <span>{{ $dayCount }} {{ Str::plural('update', $dayCount) }}</span></h3>
+                <ul class="act-dsheet">
+                    @foreach ($day['entries'] as $entry)
+                        @php
+                            $card = $entry['card'];
+                            $href = $card && $card->set ? route('gallery.card', ['username' => $targetUser->username, 'setTcgdexId' => $card->set->tcgdex_id, 'localId' => $card->local_id]) : null;
+                            $thumb = CardImage::sized($card?->official_image_url, false);
+                        @endphp
+                        <li class="act-row">
+                            <span class="act-thumb">
+                                @if ($thumb)<img src="{{ $thumb }}" alt="" width="46" height="64" loading="lazy" decoding="async" data-optional>@endif
+                                @if ($entry['kind'] === 'added')<span class="act-plus" aria-hidden="true">+</span>@endif
+                            </span>
+                            @if ($entry['kind'] === 'move')
+                                @php $delta = $entry['delta']; $up = $delta->isUp(); @endphp
+                                <div class="act-body">
+                                    <p class="act-rt">@if ($href)<a href="{{ $href }}">{{ $card->name }} <span class="act-mono">#{{ $card->local_id }}</span></a>@else{{ $card->name }} <span class="act-mono">#{{ $card->local_id }}</span>@endif <span class="act-verb">{{ $up ? 'went up' : 'went down' }}</span></p>
+                                    <p class="act-rs">{{ Rarity::label($card->rarity) ?: 'Card' }} · {{ $card->set?->name }} · {{ $delta->latest->sourceLabel() }}</p>
+                                </div>
+                                <p class="act-amt {{ $up ? 'act-amt--up' : 'act-amt--down' }}">{{ Money::move($delta->deltaMinor, $delta->latest->currency) }} <small>now {{ Money::format($delta->latest->market_minor, $delta->latest->currency) }}</small></p>
+                            @else
+                                @php $item = $entry['item']; $snapshot = $entry['snapshot']; @endphp
+                                <div class="act-body">
+                                    <p class="act-rt"><span class="act-verb">Added</span> @if ($href)<a href="{{ $href }}">{{ $card->name }}</a>@else{{ $card?->name ?? 'a card' }}@endif @if ($item->quantity > 1)<span class="act-mono">×{{ $item->quantity }}</span>@endif</p>
+                                    <p class="act-rs">{{ $card?->set?->name }} · {{ $item->grade_company ? $item->grade_company.' '.$item->grade_value : $item->condition }}@if ($item->variant) · {{ CardVariants::label($item->variant) }}@endif</p>
+                                </div>
+                                <p class="act-amt">@if ($snapshot && $snapshot->market_minor !== null){{ Money::format($snapshot->market_minor, $snapshot->currency) }} @endif<small title="{{ $entry['at']->toDayDateTimeString() }}">{{ $entry['at']->diffForHumans(short: true) }}</small></p>
                             @endif
-                            <span class="fallback" aria-hidden="true">+</span>
-                        </div>
-                        <div class="fbody">
-                            <div class="title">
-                                Added
-                                @if ($href)<a href="{{ $href }}" wire:navigate>{{ $card->name }}</a>@else {{ $card?->name ?? 'a card' }} @endif
-                                @if ($entry['item']->quantity > 1) <span class="mono" style="font-weight: 600">×{{ $entry['item']->quantity }}</span> @endif
-                            </div>
-                            <div class="sub">
-                                {{ $card?->set?->name }}
-                                · {{ $entry['item']->grade_company ? $entry['item']->grade_company.' '.$entry['item']->grade_value : $entry['item']->condition }}
-                                @if ($entry['item']->variant) · {{ \App\Modules\Catalog\Support\CardVariants::label($entry['item']->variant) }} @endif
-                            </div>
-                        </div>
-                        <div class="fright">
-                            @if ($entry['snapshot'] && $entry['snapshot']->market_minor !== null)
-                                <div class="famt">{{ Money::format($entry['snapshot']->market_minor, $entry['snapshot']->currency) }}</div>
-                            @endif
-                            <div class="fwhen" title="{{ $entry['at']->toDayDateTimeString() }}">{{ $entry['at']->diffForHumans(short: true) }}</div>
-                        </div>
-                    @endif
-                </li>
-            @endforeach
-        </ul>
-    @endif
+                        </li>
+                    @endforeach
+                </ul>
+            </section>
+        @empty
+            <div class="act-empty">
+                <div class="act-pockets" aria-hidden="true"><i></i><i></i><i></i></div>
+                <h3 class="act-empty-t">Nothing yet</h3>
+                <p>Additions and price movements show up here as they happen.</p>
+            </div>
+        @endforelse
+    </section>
 </div>
+
+@push('head')
+    @vite('resources/css/activity.css')
+@endpush

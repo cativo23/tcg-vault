@@ -27,6 +27,14 @@ final class RevampHtml
         return self::textOf('col-note', $html);
     }
 
+    /** The visible text of the first <p>/<h1>-<h3> whose class attribute is exactly $class, whitespace collapsed; '' when absent. */
+    public static function text(string $class, string $html): string
+    {
+        preg_match('#class="'.preg_quote($class, '#').'"[^>]*>(.*?)</(?:p|h1|h2|h3)>#s', $html, $m);
+
+        return trim((string) preg_replace('/\s+/', ' ', strip_tags($m[1] ?? '')));
+    }
+
     private static function textOf(string $class, string $html): string
     {
         preg_match('#<p class="'.$class.'">(.*?)</p>#s', $html, $m);

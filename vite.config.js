@@ -12,6 +12,7 @@ export default defineConfig({
                 'resources/css/collection.css',
                 'resources/css/sets.css',
                 'resources/js/collection.js',
+                'resources/css/activity.css',
                 'resources/js/landing-stage.js',
             ],
             refresh: true,
