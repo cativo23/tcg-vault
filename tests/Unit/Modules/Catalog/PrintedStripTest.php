@@ -36,6 +36,16 @@ test('lettered numbers are grouped after the numbered run, in natural order', fu
     ]);
 });
 
+test('lettered numbers without padding sort naturally, so TG2 comes before TG10', function () {
+    $slots = PrintedStrip::slots([
+        ['number' => 'TG10', 'owned' => false],
+        ['number' => 'TG2', 'owned' => true],
+        ['number' => '1', 'owned' => true],
+    ], 3);
+
+    expect(array_column($slots, 'number'))->toBe(['1', 'TG2', 'TG10']);
+});
+
 test('a partly imported set keeps its full length: one of 217 is one numbered slot among grey ones', function () {
     $slots = PrintedStrip::slots([['number' => '186', 'owned' => true]], 217);
 
