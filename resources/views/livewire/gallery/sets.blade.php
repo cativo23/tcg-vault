@@ -22,7 +22,7 @@
             @foreach ($sets as $set)
                 @php
                     $owned = (int) $set->owned_card_count;
-                    $total = (int) ($set->card_count ?: $set->real_card_count);
+                    $total = $totals[$set->id];
                     $pct = Completion::percent($owned, $total);
                     $code = $set->display_code;
                     $year = $set->released_on?->format('Y');

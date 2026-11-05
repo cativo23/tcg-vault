@@ -67,12 +67,15 @@ final class Sets extends Component
             $set->id => $valuation->totalsByCurrency($ownedBySet->get($set->id, collect())),
         ]);
 
+        // What tcgdex reports for the set, else what the catalogue holds. The
+        // strip and the printed "x / y" both read this one figure.
+        $totals = $sets->mapWithKeys(fn (Set $set) => [
+            $set->id => (int) ($set->card_count ?: $set->getAttribute('real_card_count')),
+        ]);
+
         // The same slot rule as the set page's strip, compressed into runs.
         $strips = $sets->mapWithKeys(fn (Set $set) => [
-            $set->id => PrintedStrip::runs(PrintedStrip::slots(
-                $this->importedCards($set),
-                $set->card_count ?: (int) $set->getAttribute('real_card_count'),
-            )),
+            $set->id => PrintedStrip::runs(PrintedStrip::slots($this->importedCards($set), $totals->get($set->id, 0))),
         ]);
 
         $name = $this->collectorName();
@@ -80,6 +83,7 @@ final class Sets extends Component
         return view('livewire.gallery.sets', [
             'sets' => $sets,
             'setValues' => $setValues,
+            'totals' => $totals,
             'strips' => $strips,
         ])->layoutData([
             'title' => "Sets · {$name}'s collection",
