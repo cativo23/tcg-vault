@@ -16,6 +16,7 @@ use App\Modules\Catalog\Support\Rarity;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
+use App\Support\DayLabel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
@@ -527,20 +528,22 @@ test('the range and the variant survive switching each other, and the chart foll
     expect($page->get('variant'))->toBe('reverse-holofoil');
 });
 
-test('the range buttons render with aria-pressed on the active one', function () {
+test('the range tabs are a tablist with the active one selected and the only one in the tab order', function () {
     rangedCardPage([0, 20]);
 
     $html = $this->get('/carlos/me05/116?range=3m')->assertOk()->getContent();
 
-    expect($html)->toMatch('/aria-pressed="true"[^>]*selectRange\(\'3m\'\)/s')
-        ->toMatch('/aria-pressed="false"[^>]*selectRange\(\'1m\'\)/s');
+    expect($html)->toContain('<div class="crd-tabs" role="tablist" aria-label="Price history range" data-crd-tabs>')
+        ->toMatch('/aria-selected="true"[^>]*tabindex="0"[^>]*selectRange\(\'3m\'\)/s')
+        ->toMatch('/aria-selected="false"[^>]*tabindex="-1"[^>]*selectRange\(\'1m\'\)/s')
+        ->toContain('id="crd-chart-panel" role="tabpanel" aria-labelledby="crd-range-3m"');
 });
 
 test('history since shows only when the price data starts after the range start', function () {
     rangedCardPage([0, 20, 45]);
 
     $this->get('/carlos/me05/116')->assertDontSee('History since');
-    $this->get('/carlos/me05/116?range=3m')->assertSee('History since')->assertSee(today()->subDays(45)->format('j M'));
+    $this->get('/carlos/me05/116?range=3m')->assertSee('History since')->assertSee(DayLabel::of(today()->subDays(45)));
 });
 
 test('a range with no two points keeps its buttons and says so', function () {
@@ -873,4 +876,83 @@ test('a card with no image keeps its name on a hatched face and offers no views'
     expect($this->get('/carlos/me05/116')->assertOk()->getContent())
         ->toContain('<div class="crd-noimg"><b>Mega Darkrai ex</b><span>No image</span></div>')
         ->not->toContain('data-crd-view=');
+});
+
+test('a market day with no price breaks the chart line and is drawn as a dotted gap', function () {
+    rangedCardPage([0, 1, 3, 4]);
+
+    $html = $this->get('/carlos/me05/116')->getContent();
+
+    expect(substr_count($html, '<path class="crd-line"'))->toBe(2)
+        ->and(substr_count($html, '<line class="crd-gap"'))->toBe(1);
+});
+
+test('consecutive days draw one line and no gap', function () {
+    rangedCardPage([0, 1, 2]);
+
+    $html = $this->get('/carlos/me05/116')->getContent();
+
+    expect(substr_count($html, '<path class="crd-line"'))->toBe(1)
+        ->and($html)->not->toContain('<line class="crd-gap"');
+});
+
+test('a manual price is one continuous step line, with no gaps and no dots', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil:cosmos']);
+    foreach ([25 => 400, 10 => 500, 2 => 500] as $ago => $minor) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => $minor]);
+    }
+
+    $html = $this->get('/carlos/me05/116?range=3m')->assertOk()->getContent();
+
+    expect(substr_count($html, '<path class="crd-line"'))->toBe(1)
+        ->and($html)->not->toContain('<line class="crd-gap"')
+        ->and($html)->not->toContain('class="crd-dot"')
+        ->and($html)->toContain('<path class="crd-line" d="M0.0 ');
+});
+
+test('the end of the line and the range move are green only when the range ended higher', function () {
+    rangedCardPage([0, 1, 2]); // 1002 -> 1001 -> 1000: down
+
+    $down = $this->get('/carlos/me05/116')->getContent();
+    expect($down)->toContain('<span class="crd-end"')
+        ->and($down)->not->toContain('crd-end--up')
+        ->and($down)->toContain("\u{2212}\$0.02 since ".DayLabel::of(today()->subDays(2)));
+
+    $card = Card::where('tcgdex_id', 'me05-116')->firstOrFail();
+    CardPriceSnapshot::where('card_id', $card->id)->where('variant', 'normal')->whereDate('captured_on', today())->update(['market_minor' => 1100]);
+
+    $up = $this->get('/carlos/me05/116')->getContent();
+    expect($up)->toContain('<span class="crd-end crd-end--up"')
+        ->and($up)->toContain('<small class="crd-up">+$0.98 since '.DayLabel::of(today()->subDays(2)).'</small>');
+});
+
+test('the chart hands its readings to the page script as data, and is a keyboard slider resting on the newest day', function () {
+    rangedCardPage([0, 1]);
+
+    $html = $this->get('/carlos/me05/116')->getContent();
+    preg_match("#data-points='([^']*)'#", $html, $m);
+    $points = json_decode(html_entity_decode($m[1] ?? '[]'), true);
+
+    expect($points)->toHaveCount(2)
+        ->and($points[1])->toBe(['x' => 100, 'y' => 90.3, 'read' => DayLabel::of(today()).' · $10.00'])
+        ->and($html)->toContain('data-crd-chart tabindex="0" role="slider" aria-label="Price chart. Left and right arrow keys read each day." aria-valuemin="0" aria-valuemax="1" aria-valuenow="1" aria-valuetext="'.DayLabel::of(today()).' · $10.00" aria-describedby="crd-chart-sum"')
+        ->and($html)->toContain('<p class="sr-only" id="crd-chart-sum">Market price of Mega Darkrai ex')
+        ->and($html)->toContain(', from $10.01 to $10.00</p>')
+        ->and($html)->toContain('<svg viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true">')
+        ->and($html)->not->toContain('data-crd-chart-status')
+        ->and($html)->toContain('<p class="crd-ch-read crd-mono" data-crd-chart-read aria-hidden="true"></p>');
+});
+
+test('a pill whose latest price is missing shows no price history, even with older prices', function () {
+    $page = rangedCardPage([0, 20]);
+    $id = $page->instance()->card->id;
+    foreach ([10 => 300, 9 => 310, 0 => null] as $ago => $minor) {
+        CardPriceSnapshot::create(['card_id' => $id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => $minor]);
+    }
+
+    $this->get('/carlos/me05/116?variant=reverse-holofoil')->assertOk()
+        ->assertSee('No market price for')
+        ->assertDontSee('crd-tabs', false)
+        ->assertDontSee("selectRange('3m')", false);
 });

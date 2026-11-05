@@ -68,6 +68,7 @@
             @endif
 
             @include('partials.card.market')
+            @include('partials.card.history')
         </section>
     </div>
 
