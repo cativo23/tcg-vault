@@ -24,7 +24,7 @@ services:
     networks: [space-server_web, tcgvault-internal]
     deploy:
       resources:
-        limits: { cpus: '2.0', memory: 192M }
+        limits: { cpus: '2.0', memory: 256M }
         reservations: { cpus: '0.1', memory: 96M }
     labels:
       - "traefik.enable=true"
