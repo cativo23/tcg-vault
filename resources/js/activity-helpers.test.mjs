@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nearestIndex, readingStep, readingText } from './activity-helpers.js';
+import { nearestIndex, readingStep, readingText, stopsReadingOnLeave } from './activity-helpers.js';
 
 test('the point nearest the pointer is read; a tie keeps the earlier point', () => {
     assert.equal(nearestIndex([0, 50, 100], 20), 0);
@@ -44,4 +44,11 @@ test('other keys and an empty chart do nothing', () => {
 
 test('the readout is the day and the value', () => {
     assert.equal(readingText({ d: '4 Nov', v: '$10,814.05' }), '4 Nov · $10,814.05');
+});
+
+test('a pointer leaving a chart that keeps keyboard focus does not end the reading; losing focus always does', () => {
+    assert.equal(stopsReadingOnLeave('pointerout', false), true);
+    assert.equal(stopsReadingOnLeave('pointerout', true), false);
+    assert.equal(stopsReadingOnLeave('focusout', false), true);
+    assert.equal(stopsReadingOnLeave('focusout', true), true);
 });

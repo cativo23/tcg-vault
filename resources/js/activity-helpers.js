@@ -29,3 +29,8 @@ export function readingStep(key, current, count) {
 export function readingText(point) {
     return `${point.d} · ${point.v}`;
 }
+
+/** Whether leaving the chart ends its reading. A pointer leaving a chart that still has keyboard focus keeps it, so a keyboard reading survives a mouse moving away; losing focus always ends it. */
+export function stopsReadingOnLeave(eventType, chartIsFocused) {
+    return !(eventType === 'pointerout' && chartIsFocused);
+}

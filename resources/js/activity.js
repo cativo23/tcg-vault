@@ -1,6 +1,6 @@
 // Client-only behaviour of the activity page. The range itself, the chart and the feed are Livewire (server-side).
 import { tabKeyTarget, fallbackSrc } from './collection-helpers.js';
-import { nearestIndex, readingStep, readingText } from './activity-helpers.js';
+import { nearestIndex, readingStep, readingText, stopsReadingOnLeave } from './activity-helpers.js';
 
 /* ---------- range tabs: keyboard with manual activation ---------- */
 document.addEventListener('keydown', (event) => {
@@ -68,7 +68,8 @@ document.addEventListener('pointermove', (event) => {
 
 const leave = (event) => {
     const chart = event.target.closest?.('[data-act-chart]');
-    if (chart && !chart.contains(event.relatedTarget)) stopReading(chart);
+    if (!chart || chart.contains(event.relatedTarget)) return;
+    if (stopsReadingOnLeave(event.type, document.activeElement === chart)) stopReading(chart);
 };
 document.addEventListener('pointerout', leave);
 document.addEventListener('focusout', leave);
