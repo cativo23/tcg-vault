@@ -148,9 +148,11 @@ final class Activity extends Component
 
         // Display only: the same entries in the same order, cut into one
         // group per calendar day (a move's day is its latest price's day,
-        // an addition's the day it was added).
+        // an addition's the day it was added). An entry without a time is
+        // only possible in the types (captured_on is NOT NULL, every copy
+        // gets created_at); it groups at the epoch, last, where the sort put it.
         $days = $feed
-            ->groupBy(fn (array $entry) => $entry['at']->toDateString())
+            ->groupBy(fn (array $entry) => ($entry['at'] ?? CarbonImmutable::createFromTimestamp(0))->toDateString())
             ->map(fn (Collection $entries, string|int $day) => ['date' => CarbonImmutable::parse((string) $day), 'entries' => $entries->values()])
             ->values();
 
