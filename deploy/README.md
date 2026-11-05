@@ -105,6 +105,8 @@ docker compose -f compose.prod.yml exec redis redis-cli -a "$REDIS_PASSWORD" INF
 ssh polaris2
 cd ~/deploy/tcg-vault
 docker compose -f compose.prod.yml pull
+# If this release adds a migration, run the two `IMAGE_TAG=vX.Y.Z ... run --rm --no-deps app`
+# lines below (migrate --force, prices:refresh-week-baselines) BEFORE `up -d`.
 docker compose -f compose.prod.yml up -d
 # Migrations are a deliberate manual step (never auto-run):
 docker compose -f compose.prod.yml exec app php artisan migrate --force
@@ -117,6 +119,7 @@ docker compose -f compose.prod.yml exec app php artisan migrate --force
 # (compose falls back to a possibly stale local :latest without it):
 #   IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml run --rm --no-deps app php artisan migrate --force
 #   IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml run --rm --no-deps app php artisan prices:refresh-week-baselines
+# (skip if you ran the run form above)
 docker compose -f compose.prod.yml exec app php artisan prices:refresh-week-baselines
 # Every deploy, not just the first: idempotent (firstOrCreate/
 # assignRole no-op if already done), and now also the only thing that
