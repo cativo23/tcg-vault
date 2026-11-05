@@ -52,13 +52,15 @@
                         // The slider rests on the newest day; its value text is the same words the script writes for a reading.
                         $lastIndex = count($chart->points) - 1;
                         $restText = $chart->points[$lastIndex]['d'].' · '.$chart->points[$lastIndex]['v'];
+                        $highLineY = round($chart->highY * ValueChart::HEIGHT / 100, 1);
+                        $lowLineY = round($chart->lowY * ValueChart::HEIGHT / 100, 1);
                     @endphp
                     {{-- A slider's children are presentational, so the drawing is described here and the slider points at it. --}}
                     <p class="sr-only" id="act-chart-sum">Collection value over {{ $chartRange->label() }}, from {{ Money::format($first, $primaryCurrency) }} to {{ Money::format($last, $primaryCurrency) }}</p>
                     <div class="act-chart" tabindex="0" role="slider" aria-label="Value by day" aria-valuemin="0" aria-valuemax="{{ $lastIndex }}" aria-valuenow="{{ $lastIndex }}" aria-valuetext="{{ $restText }}" aria-describedby="act-chart-sum" data-act-chart data-points='@json($chart->points)'>
                         <svg class="act-svg" viewBox="0 0 {{ ValueChart::WIDTH }} {{ ValueChart::HEIGHT }}" preserveAspectRatio="none" aria-hidden="true">
-                            <line class="act-grid" x1="0" x2="{{ ValueChart::WIDTH }}" y1="{{ $chart->highY * ValueChart::HEIGHT / 100 }}" y2="{{ $chart->highY * ValueChart::HEIGHT / 100 }}"/>
-                            <line class="act-grid" x1="0" x2="{{ ValueChart::WIDTH }}" y1="{{ $chart->lowY * ValueChart::HEIGHT / 100 }}" y2="{{ $chart->lowY * ValueChart::HEIGHT / 100 }}"/>
+                            <line class="act-grid" x1="0" x2="{{ ValueChart::WIDTH }}" y1="{{ $highLineY }}" y2="{{ $highLineY }}"/>
+                            <line class="act-grid" x1="0" x2="{{ ValueChart::WIDTH }}" y1="{{ $lowLineY }}" y2="{{ $lowLineY }}"/>
                             <path class="act-area" d="{{ $chart->area }}"/>
                             <path class="act-line" d="{{ $chart->line }}"/>
                         </svg>

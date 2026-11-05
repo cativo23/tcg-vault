@@ -1,13 +1,17 @@
 /* tcg-vault · public activity (/{username}/activity). Loaded only by livewire/gallery/activity.blade.php, after revamp.css.
    Every selector is prefixed .act- so nothing collides with revamp.css (.sheet, .chart, .copy, .btn ...) or collection.css.
-   The bar and footer come from revamp.css. Font sizes come from the --text-* scale only. */
+   The bar and footer come from revamp.css. Font sizes come from the --text-* scale only, apart from the heading's --act-who. */
 
-.act-page { --act-radius-card: 4.762% / 3.409%; }
+.act-page {
+  /* the page heading matches the collector's name on the collection page (--col-who in collection.css), as the sets heading does (--sts-who in sets.css) */
+  --act-who: clamp(4.2rem, 1.6rem + 11vw, 11rem);
+  --act-radius-card: 4.762% / 3.409%;
+}
 .act-mono { font-family: var(--font-mono); font-variation-settings: "wdth" 87.5; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 
 /* ---------- head ---------- */
 .act-head { padding: clamp(28px, 6vw, 72px) var(--gutter) clamp(28px, 4vw, 52px); }
-.act-who { margin: 0; font: 820 var(--text-display)/.8 var(--font-display); font-variation-settings: "wdth" 62; letter-spacing: -.02em; }
+.act-who { margin: 0; font: 820 var(--act-who)/.8 var(--font-display); font-variation-settings: "wdth" 62; letter-spacing: -.02em; }
 .act-summary { margin: var(--space-md) 0 0; font-size: var(--text-lg); color: var(--color-ink-2); }
 .act-summary .act-mono { font-size: var(--text-md); font-weight: 600; color: var(--color-ink); }
 .act-note { margin: var(--space-2xs) 0 0; max-width: 60ch; font-size: var(--text-sm); color: var(--color-muted); }
@@ -36,7 +40,8 @@
 .act-span { margin: 4px 0 0; font-size: var(--text-2xs); color: var(--color-muted); }
 .act-read { margin: 0; min-height: 1.4em; padding-top: 4px; font-size: var(--text-xs); color: var(--color-ink-2); text-align: right; white-space: nowrap; }
 .act-plot { position: relative; margin: var(--space-sm) 78px 0 0; height: clamp(200px, 22vw, 300px); }
-.act-chart { position: absolute; inset: 0 0 22px 0; }
+/* pan-y: the page still scrolls vertically over the chart, while a horizontal drag reads it instead of panning */
+.act-chart { position: absolute; inset: 0 0 22px 0; touch-action: pan-y; }
 .act-chart:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 6px; }
 .act-svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .act-line { fill: none; stroke: var(--color-ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
