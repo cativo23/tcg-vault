@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Livewire\Gallery\Activity;
+use App\Livewire\Gallery\CardShow;
 use App\Livewire\Gallery\Index;
 use App\Livewire\Gallery\Sets;
 use App\Livewire\Gallery\Show;
@@ -152,6 +153,7 @@ dataset('gallery pages', [
     'set page' => [Show::class, ['setTcgdexId' => 'me05'], [], ['entries', 'ownedCount', 'ownedTotals', 'mostValuable']],
     'set page with missing cards, by value' => [Show::class, ['setTcgdexId' => 'sv08'], ['missing' => true, 'sort' => 'value'], ['entries', 'ownedCount', 'ownedTotals', 'mostValuable']],
     'set page, searched' => [Show::class, ['setTcgdexId' => 'sv08'], ['search' => 'Card 1'], ['entries', 'ownedCount', 'ownedTotals', 'mostValuable']],
+    'card page' => [CardShow::class, ['setTcgdexId' => 'me05', 'localId' => '4'], [], ['related', 'snapshot', 'delta', 'weekDelta']],
     'activity' => [Activity::class, [], [], ['feed', 'feedCount', 'totals', 'series', 'primaryCurrency', 'historySince']],
     'activity over a year' => [Activity::class, [], ['range' => '1y'], ['feed', 'totals', 'series', 'historySince']],
 ]);
@@ -274,4 +276,14 @@ test('the seeded collection shows 7-day moves, so the page comparison covers the
     $entries = Livewire::withQueryParams(['sort' => 'value'])->test(Index::class, ['username' => 'carlos'])->viewData('entries');
 
     expect($entries->filter(fn (array $e) => $e['weekDelta'] !== null))->not->toBeEmpty();
+});
+
+test('the seeded collection gives the card page a strip with 7-day moves, so the page comparison covers them', function () {
+    $this->freezeTime();
+    seedPagesCollection();
+
+    $related = Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '4'])->viewData('related');
+
+    expect($related)->not->toBeEmpty()
+        ->and($related->filter(fn (array $entry) => $entry['weekDelta'] !== null))->not->toBeEmpty();
 });

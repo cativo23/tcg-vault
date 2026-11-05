@@ -3,15 +3,19 @@
 declare(strict_types=1);
 
 use App\Livewire\Gallery\CardShow;
+use App\Livewire\Gallery\Index;
 use App\Livewire\Gallery\Show;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\WeekBaselines;
 use App\Modules\Catalog\Support\ChartRange;
+use App\Modules\Catalog\Support\PriceChart;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
@@ -570,4 +574,169 @@ test('the range buttons are named by their visible text, with the group named on
         ->assertDontSee('aria-label="3 months"', false)
         ->assertDontSee('aria-label="1 month"', false)
         ->assertSee('over 3 months, from');
+});
+
+/**
+ * An owned holofoil card whose tcgplayer price is 4000 minor units today, 3200
+ * $previousDaysAgo days ago (yesterday by default) and 800 a week ago (low $35.00
+ * today), with its week baseline stored: the headline moved +$8.00 since the
+ * previous price and +$32.00 in a week.
+ */
+function seedMovedHeadline(int $today = 4000, int $yesterday = 3200, int $week = 800, int $previousDaysAgo = 1): array
+{
+    $seed = seedCardPage();
+    ['collection' => $collection, 'card' => $card] = $seed;
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'holofoil', 'condition' => 'NM', 'quantity' => 1]);
+    foreach ([7 => $week, $previousDaysAgo => $yesterday, 0 => $today] as $ago => $minor) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => $minor, 'low_minor' => $ago === 0 ? 3500 : null]);
+    }
+    app(WeekBaselines::class)->refreshAll();
+
+    return $seed;
+}
+
+function cardPageOf(string $localId = '116'): Testable
+{
+    return Livewire::test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => $localId]);
+}
+
+test('the headline price carries both its 1-day and its 7-day move', function () {
+    seedMovedHeadline();
+
+    $page = cardPageOf();
+
+    expect($page->viewData('delta')?->deltaMinor)->toBe(800)
+        ->and($page->viewData('weekDelta')?->deltaMinor)->toBe(3200)
+        ->and($page->viewData('weekDelta')?->previous->capturedOnKey())->toBe(today()->subDays(7)->toDateString());
+});
+
+test('without a stored week baseline the headline has no 7-day move', function () {
+    seedMovedHeadline();
+    DB::table('card_price_week_baselines')->delete();
+
+    expect(cardPageOf()->viewData('weekDelta'))->toBeNull();
+});
+
+test('a manual headline price never has a 7-day move', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+    foreach ([7 => 400, 0 => 500] as $ago => $minor) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'normal', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => $minor]);
+    }
+    app(WeekBaselines::class)->refreshAll();
+
+    expect(cardPageOf()->viewData('weekDelta'))->toBeNull();
+});
+
+test('the 7-day move costs the page one read of the week-baseline table, and no more', function () {
+    seedMovedHeadline();
+
+    $reads = [];
+    DB::listen(function ($query) use (&$reads) {
+        if (str_contains($query->sql, 'card_price_week_baselines')) {
+            $reads[] = $query->sql;
+        }
+    });
+    cardPageOf();
+
+    expect($reads)->toHaveCount(1);
+});
+
+test('the chart plots the range by date and breaks the line where a market day has no price', function () {
+    $chart = rangedCardPage([0, 1, 3, 4])->viewData('chart');
+
+    expect($chart)->toBeInstanceOf(PriceChart::class)
+        ->and($chart->step)->toBeFalse()
+        ->and($chart->lines)->toHaveCount(2)
+        ->and($chart->gaps)->toHaveCount(1)
+        ->and(array_column($chart->points, 'minor'))->toBe([1004, 1003, 1001, 1000]);
+});
+
+test('a manual price chart is one continuous step line, however far apart its entries are', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil:cosmos']);
+    foreach ([25 => 400, 10 => 500, 2 => 500] as $ago => $minor) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays($ago), 'currency' => 'USD', 'market_minor' => $minor]);
+    }
+
+    $chart = cardPageOf()->viewData('chart');
+
+    expect($chart)->toBeInstanceOf(PriceChart::class)
+        ->and($chart->step)->toBeTrue()
+        ->and($chart->lines)->toHaveCount(1)
+        ->and($chart->gaps)->toBe([])
+        ->and($chart->dots)->toBe([]);
+});
+
+test('a range with fewer than two priced days has no chart to draw', function () {
+    expect(rangedCardPage([0, 45])->viewData('chart'))->toBeNull();
+});
+
+test('hasMarket and marketEmpty are the one answer to whether a market price shows', function () {
+    seedMovedHeadline();
+    $priced = cardPageOf();
+    expect($priced->viewData('hasMarket'))->toBeTrue()
+        ->and($priced->viewData('marketEmpty'))->toBeNull();
+});
+
+test('a pill with no price, a card priced only before the window and a card never priced each say which in marketEmpty', function () {
+    $seed = seedVariantCard();
+    $seed['card']->update(['variants' => ['normal' => true, 'reverse' => true, 'holo' => true]]);
+    ownCopy($seed, 'normal');
+
+    $pill = Livewire::withQueryParams(['variant' => 'holofoil'])->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116']);
+    expect($pill->viewData('hasMarket'))->toBeFalse()
+        ->and($pill->viewData('marketEmpty'))->toBe('No market price for Holofoil yet.');
+
+    // The never-priced card: 003 has no rows at all.
+    expect(cardPageOf('003')->viewData('marketEmpty'))->toBe('No market price recorded for this card yet.');
+
+    // Priced only before the window: 003 gets one row older than the window.
+    CardPriceSnapshot::create(['card_id' => $seed['other']->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(CardPriceSnapshot::RECENT_DAYS + 5), 'currency' => 'USD', 'market_minor' => 300]);
+    $old = cardPageOf('003');
+    expect($old->viewData('hasMarket'))->toBeFalse()
+        ->and($old->viewData('marketEmpty'))->toBe('No market price in the last '.CardPriceSnapshot::RECENT_DAYS.' days.');
+});
+
+/**
+ * Carlos owns 116 (unpriced) and 003 as a reverse holo: $9.00 today, $10.00 a
+ * week ago, while 003's normal print (which resolve()'s card-level chain picks)
+ * is $50.00.
+ */
+function seedRelatedStrip(): array
+{
+    $seed = seedCardPage();
+    ['collection' => $collection, 'card' => $card, 'other' => $other] = $seed;
+    $other->update(['variants' => ['normal' => true, 'reverse' => true]]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $other->id, 'card_tcgdex_id' => 'me05-003', 'variant' => 'reverse-holofoil', 'condition' => 'NM', 'quantity' => 1]);
+    CardPriceSnapshot::create(['card_id' => $other->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5000]);
+    CardPriceSnapshot::create(['card_id' => $other->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 900]);
+    CardPriceSnapshot::create(['card_id' => $other->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDays(7), 'currency' => 'USD', 'market_minor' => 1000]);
+    app(WeekBaselines::class)->refreshAll();
+
+    return $seed;
+}
+
+test('the related strip prices each card like its collection tile and carries the 7-day move', function () {
+    ['other' => $other] = seedRelatedStrip();
+
+    $related = cardPageOf()->viewData('related');
+    $tile = Livewire::test(Index::class, ['username' => 'carlos'])->viewData('entries')->first(fn ($e) => $e['card']->is($other));
+
+    expect($related)->toHaveCount(1)
+        ->and($related->first()['snapshot']->is($tile['snapshot']))->toBeTrue()
+        ->and($related->first()['snapshot']->market_minor)->toBe(900)
+        ->and($related->first()['weekDelta']?->deltaMinor)->toBe(-100)
+        ->and($tile['weekDelta']?->deltaMinor)->toBe(-100);
+});
+
+test('the related strip lists the same cards in number order on every render', function () {
+    $seed = seedCardPage();
+    foreach (['009', '005', '007'] as $number) {
+        $card = Card::create(['tcgdex_id' => "me05-{$number}", 'set_id' => $seed['set']->id, 'local_id' => $number, 'name' => "Card {$number}"]);
+        CollectionItem::create(['collection_id' => $seed['collection']->id, 'card_id' => $card->id, 'card_tcgdex_id' => "me05-{$number}", 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    expect(cardPageOf()->viewData('related')->map(fn (array $entry) => $entry['card']->local_id)->all())->toBe(['005', '007', '009']);
 });

@@ -9,8 +9,11 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Services\DecidingPriceRows;
+use App\Modules\Catalog\Services\WeekBaselines;
 use App\Modules\Catalog\Support\CardVariants;
 use App\Modules\Catalog\Support\ChartRange;
+use App\Modules\Catalog\Support\PriceChart;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
 use App\Modules\Collection\Support\VariantChips;
@@ -133,6 +136,12 @@ final class CardShow extends Component
         // switcher, the selected pill's price instead.
         $snapshot = $selected !== null ? $selected['snapshot'] : $valuation->headlineSnapshot($priced);
         $delta = $resolver->deltaFor($priced, $snapshot);
+        // The 7-day move reads the week-baseline read model, which only rows loaded by
+        // DecidingPriceRows carry. This page reads the plain window (it needs `raw`), so the
+        // headline row alone gets its baseline from one bounded read.
+        $weekDelta = $snapshot !== null
+            ? $resolver->weekDeltaFor($priced, app(WeekBaselines::class)->attach($snapshot))
+            : null;
         $chartRange = ChartRange::fromInput($this->range);
         $history = $resolver->historyIn($snapshot, $chartRange->start(today()));
         $span = $resolver->historySpan($snapshot);
@@ -150,6 +159,18 @@ final class CardShow extends Component
             ->filter()
             ->sortBy(fn (CardPriceSnapshot $s) => $snapshot && $s->is($snapshot) ? 0 : 1)
             ->values();
+        // Rows older than the window are not "no price yet": the page must not claim the card
+        // was never priced.
+        $pricedBeforeWindow = $marketReads->isEmpty()
+            && $card->priceSnapshots()->whereNotNull('market_minor')->exists();
+        // The one answer to "is there a market price to show", read by the market tags and the
+        // price history alike, so the chart can never show under a "No market price" sentence.
+        $marketEmpty = match (true) {
+            $selected !== null && $snapshot?->market_minor === null => "No market price for {$selected['label']} yet.",
+            $pricedBeforeWindow => 'No market price in the last '.CardPriceSnapshot::RECENT_DAYS.' days.',
+            $marketReads->isEmpty() => 'No market price recorded for this card yet.',
+            default => null,
+        };
 
         $shownItems = $selected === null
             ? $items
@@ -170,16 +191,23 @@ final class CardShow extends Component
             $images[] = ['url' => $card->official_image_url, 'label' => 'Official art', 'kind' => 'official'];
         }
 
-        $related = $card->set->cards()
-            ->whereKeyNot($card->id)
-            ->whereHas('collectionItems', fn ($q) => $public->scopeItems($q))
-            ->with(['set', 'priceSnapshots' => fn ($q) => $q->recent(), 'collectionItems' => fn ($q) => $public->scopeItems($q)])
-            ->take(8)
-            ->get()
+        // Priced like the collection tile for the same card (the collector's own print,
+        // Valuation::headlineSnapshot()), from the deciding rows the listings load, which also
+        // carry the week baseline the 7-day move reads. Numbered order, so the strip is the same
+        // eight cards on every render and shares its cache entry.
+        $related = app(DecidingPriceRows::class)
+            ->loadOnto($card->set->cards()
+                ->whereKeyNot($card->id)
+                ->whereHas('collectionItems', fn ($q) => $public->scopeItems($q))
+                ->with(['set', 'collectionItems' => fn ($q) => $public->scopeItems($q)])
+                ->orderBy('local_id')
+                ->take(8)
+                ->get())
             ->map(fn (Card $c) => [
                 'card' => $c,
-                'snapshot' => $resolver->resolve($c),
-                'delta' => $resolver->resolveDelta($c),
+                'snapshot' => $tilePrice = $valuation->headlineSnapshot($c),
+                'delta' => $resolver->deltaFor($c, $tilePrice),
+                'weekDelta' => $resolver->weekDeltaFor($c, $tilePrice),
                 'items' => $c->collectionItems,
             ]);
 
@@ -198,6 +226,12 @@ final class CardShow extends Component
             'delta' => $delta,
             'history' => $history,
             'chartRange' => $chartRange,
+            'chart' => PriceChart::plot($history
+                ->map(fn (CardPriceSnapshot $s): array => ['day' => $s->capturedOnKey(), 'minor' => (int) $s->market_minor])
+                ->all(), step: $snapshot?->source === 'manual'),
+            'weekDelta' => $weekDelta,
+            'hasMarket' => $marketEmpty === null,
+            'marketEmpty' => $marketEmpty,
             'canChart' => $span['priced'] >= 2,
             'historySince' => $historyStartsAfterRange ? $history->first()?->captured_on : null,
             'ownedTotal' => $ownedTotal,
@@ -219,10 +253,7 @@ final class CardShow extends Component
             'newestMarketDay' => $priced->priceSnapshots
                 ->reject(fn (CardPriceSnapshot $s) => $s->source === 'manual' || $s->market_minor === null)
                 ->max(fn (CardPriceSnapshot $s) => $s->capturedOnKey()),
-            // Rows older than the window are not "no price yet" — the page
-            // must not claim the card was never priced.
-            'pricedBeforeWindow' => $marketReads->isEmpty()
-                && $card->priceSnapshots()->whereNotNull('market_minor')->exists(),
+            'pricedBeforeWindow' => $pricedBeforeWindow,
             'recentDays' => CardPriceSnapshot::RECENT_DAYS,
         ])->layoutData([
             'title' => "{$card->name} #{$card->local_id} · {$card->set->name}",
