@@ -6,11 +6,11 @@ namespace App\Livewire\Gallery;
 
 use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
-use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Services\DecidingPriceRows;
 use App\Modules\Catalog\Services\PriceDelta;
 use App\Modules\Catalog\Support\ChartRange;
+use App\Modules\Catalog\Support\MarketplaceSync;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\Valuation;
@@ -157,12 +157,8 @@ final class Activity extends Component
             ->values();
 
         // The latest marketplace sync, which dates the summary as the
-        // collection page dates its own: a manual price is typed in, not
-        // synced, so it never does.
-        $updatedAt = $cards->flatMap(fn (Card $card) => $card->priceSnapshots)
-            ->filter(fn (CardPriceSnapshot $s) => $s->source !== 'manual' && $s->market_minor !== null)
-            ->reduce(fn (?CardPriceSnapshot $latest, CardPriceSnapshot $s) => $latest === null || $s->capturedOnKey() > $latest->capturedOnKey() ? $s : $latest)
-            ?->captured_on;
+        // collection page dates its own.
+        $updatedAt = MarketplaceSync::latestDay(MarketplaceSync::rows($cards));
 
         $startsAfterRange = $earliest !== null && $earliest->toDateString() > $chartRange->start(today())->toDateString();
         $historySince = $series->isNotEmpty() && $startsAfterRange ? $series->first()['date'] : null;
