@@ -24,7 +24,7 @@ test('lettered numbers are grouped after the numbered run, in natural order', fu
         ['number' => '1', 'owned' => true],
         ['number' => 'TG10', 'owned' => false],
         ['number' => 'TG01', 'owned' => false],
-    ], 3);
+    ], 6);
 
     expect($slots)->toBe([
         ['number' => '1', 'state' => 'owned'],
@@ -71,12 +71,62 @@ test('numbers outside 1..total (0, above the total) are treated like lettered on
         ['number' => '2', 'owned' => true],
     ], 10);
 
-    expect($slots)->toHaveCount(12)
+    expect($slots)->toHaveCount(10)
         ->and($slots[1])->toBe(['number' => '2', 'state' => 'owned'])
-        ->and(array_slice($slots, 10))->toBe([
+        ->and(array_slice($slots, 8))->toBe([
             ['number' => '0', 'state' => 'missing'],
             ['number' => '11', 'state' => 'owned'],
         ]);
+});
+
+test('a lettered card is part of the set total, so it takes a slot of its own instead of adding one', function () {
+    $cards = array_map(fn (int $n) => ['number' => (string) $n, 'owned' => true], range(1, 88));
+    $cards[] = ['number' => 'Museum', 'owned' => true];
+
+    $slots = PrintedStrip::slots($cards, 89);
+
+    expect($slots)->toHaveCount(89)
+        ->and(array_column($slots, 'state'))->not->toContain('absent')
+        ->and($slots[87])->toBe(['number' => '88', 'state' => 'owned'])
+        ->and($slots[88])->toBe(['number' => 'Museum', 'state' => 'owned']);
+});
+
+test('lettered cards missing from the catalogue stay grey before the lettered ones that are imported', function () {
+    $cards = array_map(fn (int $n) => ['number' => (string) $n, 'owned' => $n % 2 === 0], range(1, 186));
+    foreach (range(1, 10) as $n) {
+        $cards[] = ['number' => sprintf('TG%02d', $n), 'owned' => false];
+    }
+
+    $slots = PrintedStrip::slots($cards, 216);
+
+    expect($slots)->toHaveCount(216)
+        ->and($slots[185])->toBe(['number' => '186', 'state' => 'owned'])
+        ->and(array_slice($slots, 186, 20))->each->toBe(['number' => null, 'state' => 'absent'])
+        ->and($slots[206])->toBe(['number' => 'TG01', 'state' => 'missing'])
+        ->and($slots[215])->toBe(['number' => 'TG10', 'state' => 'missing']);
+});
+
+test('a total that does not cover the lettered cards never cuts the numbered run short', function () {
+    $cards = array_map(fn (int $n) => ['number' => (string) $n, 'owned' => true], range(1, 5));
+    $cards[] = ['number' => 'TG01', 'owned' => true];
+
+    $slots = PrintedStrip::slots($cards, 5);
+
+    expect($slots)->toHaveCount(6)
+        ->and($slots[4])->toBe(['number' => '5', 'state' => 'owned'])
+        ->and($slots[5])->toBe(['number' => 'TG01', 'state' => 'owned']);
+});
+
+test('a set with no tcgdex total draws one slot per imported card, none of them grey', function () {
+    $slots = PrintedStrip::slots([
+        ['number' => '116', 'owned' => true],
+        ['number' => '003', 'owned' => false],
+    ], 2);
+
+    expect($slots)->toBe([
+        ['number' => '003', 'state' => 'missing'],
+        ['number' => '116', 'state' => 'owned'],
+    ]);
 });
 
 test('no cards and no total is an empty strip; no total keeps the lettered cards', function () {

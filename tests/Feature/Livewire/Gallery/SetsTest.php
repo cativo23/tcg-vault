@@ -152,7 +152,9 @@ test('falls back to the local card count when tcgdex reports zero', function () 
     $this->get('/carlos/sets')
         ->assertOk()
         ->assertSee('1 / 2')
-        ->assertDontSee('1 / 0');
+        ->assertDontSee('1 / 0')
+        // Two cards, two slots: 003 is out of the two-card total, so both sit after the (empty) numbered run.
+        ->assertSee('<span class="sts-strip"><i class="sts-miss" style="left: 0%; width: 50%"></i><i class="sts-own" style="left: 50%; width: 50%"></i></span>', false);
 });
 
 test('the sets page reads the same number of queries however many sets it lists', function () {

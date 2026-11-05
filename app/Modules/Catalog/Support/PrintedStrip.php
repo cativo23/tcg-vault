@@ -11,6 +11,13 @@ namespace App\Modules\Catalog\Support;
  * that number; lettered numbers (TG05, SWSH050) and numbers outside the
  * total are grouped after the numbered run, in natural order; a number the
  * catalogue has not imported is a grey, unnumbered slot.
+ *
+ * The set total counts every card of the set, lettered ones included, so the
+ * numbered run is the total less the lettered cards that are imported (never
+ * shorter than the highest numbered card): each card takes one slot, and no
+ * grey slot stands for a card that cannot exist. A partly imported set whose
+ * numbers are all lettered (SWSH001...) still shows grey slots, because the
+ * shape of the numbers that are not imported cannot be known.
  */
 final class PrintedStrip
 {
@@ -30,12 +37,14 @@ final class PrintedStrip
 
         $numbered = [];
         $extras = [];
+        $highest = 0;
         foreach ($cards as $card) {
             $number = (string) $card['number'];
             $owned = $card['owned'];
 
             if (ctype_digit($number) && (int) $number >= 1 && (int) $number <= $total) {
                 $position = (int) $number;
+                $highest = max($highest, $position);
                 // The longer spelling ('003' over '3') labels the slot, so the label never depends on input order.
                 $numbered[$position] = isset($numbered[$position])
                     ? ['number' => self::longer($numbered[$position]['number'], $number), 'owned' => $numbered[$position]['owned'] || $owned]
@@ -49,7 +58,8 @@ final class PrintedStrip
         uasort($extras, fn (array $a, array $b) => strnatcasecmp($a['number'], $b['number']));
 
         $slots = [];
-        for ($position = 1; $position <= $total; $position++) {
+        $length = max($highest, $total - count($extras));
+        for ($position = 1; $position <= $length; $position++) {
             $slots[] = isset($numbered[$position])
                 ? self::slot($numbered[$position])
                 : ['number' => null, 'state' => self::ABSENT];
