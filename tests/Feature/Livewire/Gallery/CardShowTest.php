@@ -1166,3 +1166,10 @@ test('the card page ships the card script, and the landing and the collection do
         ->and($this->get('/')->getContent())->not->toContain($script)
         ->and($this->get('/carlos')->getContent())->not->toContain($script);
 });
+
+test('the card script bundle carries the plate tools', function () {
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+    $bundle = (string) file_get_contents(public_path('build/'.$manifest['resources/js/card.js']['file']));
+
+    expect($bundle)->toContain('tcg-vault-cal')->toContain('crd:view');
+});
