@@ -185,10 +185,6 @@ test('the sets page reads the same number of queries however many sets it lists'
     };
 
     $addSets(1, 2);
-    // Warm-up: the old layout resolves a scoped settings object (one `settings` read) on the first request
-    // of a test and reuses it afterwards, which would make the first measured request one query heavier.
-    // Cache::flush() inside $queriesFor still keeps the deciding-row load cold.
-    $this->get('/demo/sets')->assertOk();
     $few = $queriesFor();
     $addSets(3, 8);
     $many = $queriesFor();
