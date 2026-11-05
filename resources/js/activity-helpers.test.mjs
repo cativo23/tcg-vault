@@ -13,8 +13,8 @@ test('no points, no reading', () => {
     assert.equal(nearestIndex([], 10), -1);
 });
 
-test('arrows step one point and stop at the ends; the first press starts at the newest point', () => {
-    assert.equal(readingStep('ArrowLeft', -1, 5), 4);
+test('arrows step one point and stop at the ends; with no reading yet they step from the newest point', () => {
+    assert.equal(readingStep('ArrowLeft', -1, 5), 3);
     assert.equal(readingStep('ArrowRight', -1, 5), 4);
     assert.equal(readingStep('ArrowLeft', 4, 5), 3);
     assert.equal(readingStep('ArrowRight', 4, 5), 4);
