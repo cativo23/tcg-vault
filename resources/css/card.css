@@ -30,7 +30,7 @@
   --crd-plate-line: oklch(95% 0.012 85 / 0.06); --crd-mark: oklch(95% 0.012 85 / 0.5); }
 
 .crd-page h1, .crd-page h2, .crd-page p { margin: 0; }
-.crd-page button, .crd-page input { font: inherit; color: inherit; }
+:where(.crd-page) button, :where(.crd-page) input { font: inherit; color: inherit; }
 .crd-mono { font-family: var(--font-mono); font-variation-settings: "wdth" 87.5; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .crd-up { color: var(--color-accent-deep); font-weight: 600; }
 

@@ -10,3 +10,10 @@ test('no time literal in the card stylesheet is longer than the 520 ms motion ca
         ->and(max(array_map('floatval', $literals[1])))->toBeLessThanOrEqual(520.0)
         ->and($css)->not->toMatch('/(?<![\w-])\d+(?:\.\d+)?s\b(?!\s*\))/');
 });
+
+test('the card stylesheet resets buttons with zero specificity so component rules keep their type', function () {
+    $css = (string) file_get_contents(resource_path('css/card.css'));
+
+    expect($css)->toContain(':where(.crd-page) button')
+        ->and($css)->not->toMatch('/\.crd-page\s+(button|input)\b/');
+});
