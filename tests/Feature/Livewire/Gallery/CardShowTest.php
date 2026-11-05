@@ -731,7 +731,7 @@ test('the related strip prices each card like its collection tile and carries th
         ->and($tile['weekDelta']?->deltaMinor)->toBe(-100);
 });
 
-test('the related strip lists the same cards in number order on every render', function () {
+test('the related strip comes out in number order', function () {
     $seed = seedCardPage();
     foreach (['009', '005', '007'] as $number) {
         $card = Card::create(['tcgdex_id' => "me05-{$number}", 'set_id' => $seed['set']->id, 'local_id' => $number, 'name' => "Card {$number}"]);
