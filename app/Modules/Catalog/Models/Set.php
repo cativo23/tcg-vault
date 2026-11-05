@@ -7,6 +7,7 @@ namespace App\Modules\Catalog\Models;
 use App\Modules\Catalog\Providers\TcgdexCardCatalogProvider;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 final class Set extends Model
 {
@@ -37,6 +38,15 @@ final class Set extends Model
         $logo = $this->logo_url;
 
         return is_string($logo) && str_starts_with($logo, TcgdexCardCatalogProvider::LOGO_URL_PREFIX) ? $logo : null;
+    }
+
+    /**
+     * The code a set is known by on a tab, tray or summary line: its
+     * abbreviation (PBL), else its tcgdex id (ME05), upper-cased.
+     */
+    public function getDisplayCodeAttribute(): string
+    {
+        return Str::upper($this->abbreviation ?: $this->tcgdex_id);
     }
 
     /** @return HasMany<Card, $this> */
