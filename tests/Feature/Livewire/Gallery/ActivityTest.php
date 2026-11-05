@@ -711,9 +711,9 @@ test('the feed is one sheet per day under a tab that counts its updates, and say
     expect(RevampHtml::text('act-sec-t', $html))->toBe('Latest · 4 updates')
         ->and(RevampHtml::text('act-sec-r', $html))->toBe('Price moves under $1 are not listed.')
         ->and(array_map(fn (string $t) => trim((string) preg_replace('/\s+/', ' ', strip_tags($t))), $tabs[1]))->toBe([
-            DayLabel::of(today()).' 1 update',
-            DayLabel::of(today()->subDay()).' 1 update',
-            DayLabel::of(today()->subDays(3)).' 2 updates',
+            DayLabel::of(today()).', 1 update',
+            DayLabel::of(today()->subDay()).', 1 update',
+            DayLabel::of(today()->subDays(3)).', 2 updates',
         ]);
 });
 

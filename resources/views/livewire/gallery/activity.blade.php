@@ -89,7 +89,7 @@
         @forelse ($days as $day)
             @php $dayKey = $day['date']->toDateString(); $dayCount = $day['entries']->count(); @endphp
             <section class="act-day" style="--i: {{ $loop->index }}" wire:key="day-{{ $dayKey }}">
-                <h3 class="act-dtab" id="act-day-{{ $dayKey }}"><b>{{ DayLabel::of($day['date']) }}</b> <span>{{ $dayCount }} {{ Str::plural('update', $dayCount) }}</span></h3>
+                <h3 class="act-dtab" id="act-day-{{ $dayKey }}"><b>{{ DayLabel::of($day['date']) }}</b><span class="sr-only">, </span><span>{{ $dayCount }} {{ Str::plural('update', $dayCount) }}</span></h3>
                 {{-- role="list": list-style: none makes WebKit/VoiceOver drop the list semantics otherwise --}}
                 <ul class="act-dsheet" role="list">
                     @foreach ($day['entries'] as $entry)
