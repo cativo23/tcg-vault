@@ -1,6 +1,8 @@
 @use('App\Modules\Catalog\Support\CardImage')
 @use('App\Modules\Catalog\Support\CardVariants')
+@use('App\Modules\Catalog\Support\ChartRange')
 @use('App\Modules\Catalog\Support\Rarity')
+@use('App\Modules\Collection\Support\ValueChart')
 @use('App\Support\Money')
 
 @php
@@ -21,36 +23,53 @@
         @endif
     </section>
 
-    <section class="act-history" aria-label="Collection value">
-        <div class="nw-panel">
-            <div class="head">
+    <section class="act-history" aria-labelledby="act-cv-h" data-act-history>
+        <div class="act-tabs" role="tablist" aria-label="Collection value range" data-act-tabs>
+            @foreach (ChartRange::cases() as $option)
+                @php $isOn = $option === $chartRange; @endphp
+                <button type="button" role="tab" id="act-tab-{{ $option->value }}" class="act-tab" aria-selected="{{ $isOn ? 'true' : 'false' }}" tabindex="{{ $isOn ? 0 : -1 }}" aria-controls="act-chart-panel" wire:click="selectRange('{{ $option->value }}')" wire:key="range-{{ $option->value }}">{{ $option->button() }}</button>
+            @endforeach
+        </div>
+        <div class="act-sheet act-chart-sheet" role="tabpanel" id="act-chart-panel" aria-labelledby="act-tab-{{ $chartRange->value }}">
+            <div class="act-ch-head">
                 <div>
-                    <div class="k">Collection value</div>
-                    <div class="v">
-                        <x-value-totals :totals="$totals" empty="No prices yet" />
-                        @if ($series->count() >= 2)
-                            @php $first = $series->first()['minor']; $last = $series->last()['minor']; @endphp
-                            <small class="{{ $last > $first ? 'up' : '' }}">{{ Money::signed($last - $first, $primaryCurrency) }} · {{ $chartRange->label() }}</small>
-                        @endif
-                    </div>
-                    @if ($series->count() >= 2)
-                        <div class="k mt-1">{{ $series->first()['date']->format('j M') }} – {{ $series->last()['date']->format('j M') }}</div>
+                    <h2 class="act-k" id="act-cv-h">Collection value · {{ $chartRange->label() }}</h2>
+                    @if ($chart)
+                        @php $first = $series->first()['minor']; $last = $series->last()['minor']; @endphp
+                        <p class="act-v">{{ Money::format($last, $primaryCurrency) }} <small class="act-move{{ $chart->up ? ' act-move--up' : '' }}">{{ Money::move($last - $first, $primaryCurrency) }} · {{ $chartRange->label() }}</small></p>
+                        <p class="act-span act-mono">{{ $series->first()['date']->format('j M') }} – {{ $series->last()['date']->format('j M') }}</p>
+                    @else
+                        <p class="act-v">{{ $headCurrency ? Money::format($totals[$headCurrency], $headCurrency) : 'No prices yet' }}</p>
                     @endif
                 </div>
-                <x-range-pills :active="$chartRange" label="Collection value range" />
+                {{-- The slot shows pointer and keyboard readings to the eye; only keyboard readings are announced, so a mouse sweep does not flood a screen reader. --}}
+                <p class="act-read act-mono" data-act-read aria-hidden="true"></p>
+                <p class="sr-only" data-act-announce aria-live="polite"></p>
             </div>
-            <div class="nw-chart">
-                @if ($series->count() >= 2)
-                    <x-sparkline :points="$series->pluck('minor')->all()" :up="$last > $first" :height="150"
-                        :dates="$series->pluck('date')->all()" :currency="$primaryCurrency"
-                        :label="'Collection value over '.$chartRange->label().', from '.Money::format($first, $primaryCurrency).' to '.Money::format($last, $primaryCurrency)" />
-                    @if ($historySince)
-                        <p class="text-xs px-2" style="color: var(--muted)">History since <span class="mono">{{ $historySince->format('j M') }}</span></p>
-                    @endif
+            <div class="act-plot">
+                @if ($chart)
+                    <div class="act-chart" tabindex="0" role="group" aria-label="Value by day" data-act-chart data-points='@json($chart->points)'>
+                        <svg class="act-svg" viewBox="0 0 {{ ValueChart::WIDTH }} {{ ValueChart::HEIGHT }}" preserveAspectRatio="none" role="img" aria-label="Collection value over {{ $chartRange->label() }}, from {{ Money::format($first, $primaryCurrency) }} to {{ Money::format($last, $primaryCurrency) }}">
+                            <line class="act-grid" x1="0" x2="{{ ValueChart::WIDTH }}" y1="{{ $chart->highY * ValueChart::HEIGHT / 100 }}" y2="{{ $chart->highY * ValueChart::HEIGHT / 100 }}"/>
+                            <line class="act-grid" x1="0" x2="{{ ValueChart::WIDTH }}" y1="{{ $chart->lowY * ValueChart::HEIGHT / 100 }}" y2="{{ $chart->lowY * ValueChart::HEIGHT / 100 }}"/>
+                            <path class="act-area" d="{{ $chart->area }}"/>
+                            <path class="act-line" d="{{ $chart->line }}"/>
+                        </svg>
+                        <span class="act-ylab act-mono" style="top: {{ $chart->highY }}%" aria-hidden="true">{{ $chart->high }}</span>
+                        <span class="act-ylab act-mono" style="top: {{ $chart->lowY }}%" aria-hidden="true">{{ $chart->low }}</span>
+                        <span class="act-cross" aria-hidden="true"></span>
+                        <span class="act-dot" aria-hidden="true"></span>
+                        <span class="act-end{{ $chart->up ? ' act-end--up' : '' }}" style="left: 100%; top: {{ $chart->endY }}%" aria-hidden="true"></span>
+                        <span class="act-cover" aria-hidden="true"></span>
+                    </div>
+                    <p class="act-xlabs act-mono" aria-hidden="true"><span>{{ $series->first()['date']->format('j M') }}</span><span>{{ $series->last()['date']->format('j M') }}</span></p>
                 @else
-                    <div class="h-16 flex items-center px-2 text-xs" style="color: var(--muted)">A value chart appears once two daily price snapshots exist.</div>
+                    <p class="act-no-hist">A value chart appears once two daily price snapshots exist.</p>
                 @endif
             </div>
+            @if ($chart && $historySince)
+                <p class="act-since">History since <span class="act-mono">{{ $historySince->format('j M') }}</span></p>
+            @endif
         </div>
     </section>
 

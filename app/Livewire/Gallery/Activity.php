@@ -14,6 +14,7 @@ use App\Modules\Catalog\Support\MarketplaceSync;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\Valuation;
+use App\Modules\Collection\Support\ValueChart;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Collection;
@@ -181,6 +182,7 @@ final class Activity extends Component
             'primaryCurrency' => $primaryCurrency,
             'chartRange' => $chartRange,
             'historySince' => $historySince,
+            'chart' => $primaryCurrency === null ? null : ValueChart::of($series, $primaryCurrency),
         ])->layoutData([
             'title' => "Activity · {$name}'s collection",
             'description' => "Price movements and recent additions in {$name}'s Pokémon TCG collection.",

@@ -370,8 +370,8 @@ test('history since shows when the collection\'s prices start after the range st
     ownedCardPricedDaysAgo([0 => 300, 46 => 200]);
 
     $this->get('/carlos/activity')->assertDontSee('History since');
-    $this->get('/carlos/activity?range=3m')->assertSeeHtml('History since <span class="mono">'.today()->subDays(46)->format('j M').'</span>');
-    $this->get('/carlos/activity?range=1y')->assertSeeHtml('History since <span class="mono">'.today()->subDays(46)->format('j M').'</span>');
+    $this->get('/carlos/activity?range=3m')->assertSeeHtml('History since <span class="act-mono">'.today()->subDays(46)->format('j M').'</span>');
+    $this->get('/carlos/activity?range=1y')->assertSeeHtml('History since <span class="act-mono">'.today()->subDays(46)->format('j M').'</span>');
 });
 
 test('history older than the range does not claim a start', function () {
@@ -788,4 +788,46 @@ test('an empty feed keeps the approved copy and still says which moves are left 
         ->and($html)->toContain('Price moves under $1 are not listed.')
         ->and($html)->not->toContain('act-day')
         ->and($html)->not->toContain('act-summary');
+});
+
+test('the range tabs are a tablist: the open range is selected and holds the tab stop', function () {
+    ownedCardPricedDaysAgo([0 => 300, 2 => 200]);
+
+    $html = $this->get('/carlos/activity?range=3m')->assertOk()->getContent();
+
+    expect($html)->toContain('<div class="act-tabs" role="tablist" aria-label="Collection value range" data-act-tabs>')
+        ->and($html)->toContain('<button type="button" role="tab" id="act-tab-3m" class="act-tab" aria-selected="true" tabindex="0" aria-controls="act-chart-panel" wire:click="selectRange(\'3m\')"')
+        ->and($html)->toContain('<button type="button" role="tab" id="act-tab-1m" class="act-tab" aria-selected="false" tabindex="-1" aria-controls="act-chart-panel" wire:click="selectRange(\'1m\')"')
+        ->and($html)->toContain('role="tabpanel" id="act-chart-panel" aria-labelledby="act-tab-3m"')
+        ->and($html)->not->toContain('aria-pressed');
+});
+
+test('the chart is drawn on the server, and a rise over the range is green', function () {
+    ownedCardPricedDaysAgo([0 => 300, 2 => 200]);
+
+    $html = $this->get('/carlos/activity')->getContent();
+    preg_match("#data-points='([^']*)'#", $html, $m);
+    $points = json_decode($m[1] ?? '[]', true);
+
+    expect($html)->toContain('<small class="act-move act-move--up">+$1.00 · 1 month</small>')
+        ->and($html)->toContain('class="act-end act-end--up"')
+        ->and($html)->toContain('preserveAspectRatio="none"')
+        ->and($html)->toContain('aria-label="Collection value over 1 month, from $2.00 to $3.00"')
+        ->and($html)->toContain('<h2 class="act-k" id="act-cv-h">Collection value · 1 month</h2>')
+        ->and($html)->toContain('<p class="sr-only" data-act-announce aria-live="polite"></p>')
+        ->and($html)->not->toContain('data-act-read aria-live')
+        ->and($html)->not->toContain('class="nw-')
+        ->and($points)->toHaveCount(3)
+        ->and(end($points)['v'])->toBe('$3.00');
+});
+
+test('a fall over the range is neutral', function () {
+    ownedCardPricedDaysAgo([0 => 200, 2 => 300]);
+
+    $html = $this->get('/carlos/activity')->getContent();
+
+    expect($html)->toContain('<small class="act-move">−$1.00 · 1 month</small>')
+        ->and($html)->toContain('class="act-end"')
+        ->and($html)->not->toContain('act-move--up')
+        ->and($html)->not->toContain('act-end--up');
 });
