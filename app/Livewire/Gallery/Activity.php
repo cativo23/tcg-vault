@@ -6,6 +6,7 @@ namespace App\Livewire\Gallery;
 
 use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
+use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Services\DecidingPriceRows;
 use App\Modules\Catalog\Services\PriceDelta;
@@ -153,6 +154,14 @@ final class Activity extends Component
             ->map(fn (Collection $entries, string|int $day) => ['date' => CarbonImmutable::parse((string) $day), 'entries' => $entries->values()])
             ->values();
 
+        // The latest marketplace sync, which dates the summary as the
+        // collection page dates its own: a manual price is typed in, not
+        // synced, so it never does.
+        $updatedAt = $cards->flatMap(fn (Card $card) => $card->priceSnapshots)
+            ->filter(fn (CardPriceSnapshot $s) => $s->source !== 'manual' && $s->market_minor !== null)
+            ->reduce(fn (?CardPriceSnapshot $latest, CardPriceSnapshot $s) => $latest === null || $s->capturedOnKey() > $latest->capturedOnKey() ? $s : $latest)
+            ?->captured_on;
+
         $startsAfterRange = $earliest !== null && $earliest->toDateString() > $chartRange->start(today())->toDateString();
         $historySince = $series->isNotEmpty() && $startsAfterRange ? $series->first()['date'] : null;
 
@@ -168,6 +177,7 @@ final class Activity extends Component
             // actually listed below.
             'feedCount' => $feed->count(),
             'days' => $days,
+            'updatedAt' => $updatedAt,
             'totals' => $totals,
             'series' => $series,
             'primaryCurrency' => $primaryCurrency,

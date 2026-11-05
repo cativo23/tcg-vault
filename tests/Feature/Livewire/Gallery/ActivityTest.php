@@ -573,3 +573,12 @@ test('the feed is cut into one group per day, newest day first, without changing
         [today()->subDays(3)->toDateString(), ['added', 'added']],
     ])->and($days->flatMap(fn (array $d) => $d['entries'])->all())->toBe($page->viewData('feed')->all());
 });
+
+test('the summary is dated by the newest marketplace price, never a manual one', function () {
+    ownedCardPricedDaysAgo([2 => 1000, 3 => 900], 'me05-401');
+    CardPriceSnapshot::create(['card_id' => Card::where('tcgdex_id', 'me05-401')->sole()->id, 'source' => 'manual', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 5000]);
+
+    $updatedAt = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('updatedAt');
+
+    expect($updatedAt?->toDateString())->toBe(today()->subDays(2)->toDateString());
+});
