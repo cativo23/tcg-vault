@@ -29,7 +29,9 @@ use Illuminate\Support\Facades\DB;
  * one lock per card (in id order), so a rebuild and a card's refresh never
  * interleave, two refreshes of the same card never interleave, and refreshes
  * of different cards run in parallel. A refresh called inside a larger
- * transaction (syncCard) holds its locks until that transaction commits.
+ * transaction (syncCard) holds its locks until that transaction commits. A
+ * refresh of many cards is split into chunks, each its own transaction, so
+ * the locks it holds at once stay bounded.
  * Without them, under READ COMMITTED a per-card delete would not see rows a
  * concurrent rebuild inserted and its insert would hit the primary key.
  *
@@ -49,8 +51,12 @@ final class WeekBaselines
     /** First key of the per-card lock pair (this, card id). */
     private const CARD_LOCK_KEY = 703_202_612;
 
+    /** Cards per refresh transaction, so a huge batch never holds thousands of advisory locks at once. */
+    private const CHUNK_SIZE = 200;
+
     /**
-     * Rebuilds the baselines of these cards only.
+     * Rebuilds the baselines of these cards only, CHUNK_SIZE cards per
+     * transaction (inside a larger transaction they share it).
      *
      * @param  array<int, int|string>  $cardIds
      * @return int rows written
@@ -65,7 +71,7 @@ final class WeekBaselines
 
         sort($ids);
 
-        return $this->rebuild($ids);
+        return array_sum(array_map($this->rebuild(...), array_chunk($ids, self::CHUNK_SIZE)));
     }
 
     /** @return int rows written */

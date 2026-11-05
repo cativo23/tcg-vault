@@ -8,7 +8,9 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Services\PriceDataVersion;
 use App\Modules\Catalog\Services\WeekBaselines;
+use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 
 function baselineCard(string $id = 'me05-116'): Card
 {
@@ -185,4 +187,29 @@ test('no card ids writes nothing and runs no query', function () {
 
     expect(app(WeekBaselines::class)->refreshCards([]))->toBe(0)
         ->and($queries)->toBe(0);
+});
+
+test('a refresh of more cards than one chunk runs one transaction per chunk and rebuilds every card', function () {
+    $set = Set::firstOrCreate(['tcgdex_id' => 'me05'], ['name' => 'Pitch Black']);
+    $now = now();
+    DB::table('cards')->insert(collect(range(1, 450))->map(fn (int $i) => [
+        'tcgdex_id' => "me05-$i", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card $i", 'created_at' => $now, 'updated_at' => $now,
+    ])->all());
+    $ids = Card::pluck('id')->all();
+    DB::table('card_price_snapshots')->insert(collect($ids)->flatMap(fn (int $id) => [
+        ['card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today()->toDateString(), 'currency' => 'USD', 'market_minor' => 500, 'created_at' => $now, 'updated_at' => $now],
+        ['card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today()->subDays(8)->toDateString(), 'currency' => 'USD', 'market_minor' => 450, 'created_at' => $now, 'updated_at' => $now],
+    ])->all());
+
+    $transactions = 0;
+    Event::listen(TransactionBeginning::class, function () use (&$transactions) {
+        $transactions++;
+    });
+
+    $written = app(WeekBaselines::class)->refreshCards($ids);
+
+    // 450 cards is three chunks of 200 (200, 200, 50): each takes its own locks and releases them on commit.
+    expect($written)->toBe(450)
+        ->and(DB::table('card_price_week_baselines')->count())->toBe(450)
+        ->and($transactions)->toBe(3);
 });
