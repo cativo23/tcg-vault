@@ -474,6 +474,28 @@ test('a feed copy whose card is past the headline\'s card cap is still priced', 
         ->and($added->every(fn (array $e) => $e['snapshot']?->market_minor === 1000 + $e['card']->id))->toBeTrue();
 });
 
+test('copies added in one bulk action share a time, so the cap keeps the newest copies by id', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $at = now()->subDay()->toDateTimeString();
+
+    DB::table('cards')->insert(collect(range(1, 45))->map(fn (int $i) => [
+        'tcgdex_id' => "me05-{$i}", 'set_id' => $set->id, 'local_id' => (string) $i,
+        'name' => "Card {$i}", 'created_at' => $at, 'updated_at' => $at,
+    ])->all());
+    DB::table('collection_items')->insert(Card::orderBy('id')->pluck('tcgdex_id', 'id')->map(fn (string $tcgdexId, int $id) => [
+        'collection_id' => $collection->id, 'card_id' => $id, 'card_tcgdex_id' => $tcgdexId, 'variant' => 'normal',
+        'condition' => 'NM', 'quantity' => 1, 'created_at' => $at, 'updated_at' => $at,
+    ])->values()->all());
+
+    $listed = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed')
+        ->where('kind', 'added')->map(fn (array $e) => $e['item']->id)->sort()->values()->all();
+
+    expect($listed)->toHaveCount(40)
+        ->and($listed)->toBe(CollectionItem::orderByDesc('id')->limit(40)->pluck('id')->sort()->values()->all());
+});
+
 /**
  * One public copy of a card whose price moved from $from to $to (minor
  * units) between yesterday and today. A USD move is tcgplayer's normal

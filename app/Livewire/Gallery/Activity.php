@@ -96,7 +96,8 @@ final class Activity extends Component
             })
             ->filter();
 
-        $items = $public->itemsQuery()->take(self::MAX_FEED)->get();
+        // Copies added in one bulk action share a created_at, so the id breaks the tie: the cap keeps the newest of them, not whichever the database hands back first.
+        $items = $public->itemsQuery()->orderByDesc('id')->take(self::MAX_FEED)->get();
 
         // An added copy's card is almost always one the headline already
         // loaded, price rows included: reuse it, so its rows are neither
