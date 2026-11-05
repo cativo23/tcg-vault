@@ -558,3 +558,18 @@ test('a newer day lists before an older day, whatever the sizes', function () {
 
     expect($moves->map(fn (array $e) => $e['delta']->deltaMinor)->values()->all())->toBe([150, 500]);
 });
+
+test('the feed is cut into one group per day, newest day first, without changing what is listed', function () {
+    ownedCardPricedDaysAgo([1 => 1000, 0 => 1200], 'me05-301');
+    ownedCardPricedDaysAgo([2 => 400, 1 => 900], 'me05-302');
+    CollectionItem::query()->update(['created_at' => now()->subDays(3)]);
+
+    $page = Livewire::test(Activity::class, ['username' => 'carlos']);
+    $days = $page->viewData('days');
+
+    expect($days->map(fn (array $d) => [$d['date']->toDateString(), $d['entries']->pluck('kind')->all()])->all())->toBe([
+        [today()->toDateString(), ['move']],
+        [today()->subDay()->toDateString(), ['move']],
+        [today()->subDays(3)->toDateString(), ['added', 'added']],
+    ])->and($days->flatMap(fn (array $d) => $d['entries'])->all())->toBe($page->viewData('feed')->all());
+});

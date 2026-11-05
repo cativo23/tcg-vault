@@ -13,7 +13,9 @@ use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\Valuation;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -143,6 +145,14 @@ final class Activity extends Component
             ->take(self::MAX_FEED)
             ->values();
 
+        // Display only: the same entries in the same order, cut into one
+        // group per calendar day (a move's day is its latest price's day,
+        // an addition's the day it was added).
+        $days = $feed
+            ->groupBy(fn (array $entry) => $entry['at']->toDateString())
+            ->map(fn (Collection $entries, string|int $day) => ['date' => CarbonImmutable::parse((string) $day), 'entries' => $entries->values()])
+            ->values();
+
         $startsAfterRange = $earliest !== null && $earliest->toDateString() > $chartRange->start(today())->toDateString();
         $historySince = $series->isNotEmpty() && $startsAfterRange ? $series->first()['date'] : null;
 
@@ -157,6 +167,7 @@ final class Activity extends Component
             // showing real "Added <card>" entries. This is what's
             // actually listed below.
             'feedCount' => $feed->count(),
+            'days' => $days,
             'totals' => $totals,
             'series' => $series,
             'primaryCurrency' => $primaryCurrency,
