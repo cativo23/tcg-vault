@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Livewire\Gallery\Activity;
+use App\Livewire\Gallery\Index;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
@@ -12,6 +13,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\PublicCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\Support\PriceRowReads;
@@ -581,4 +583,42 @@ test('the summary is dated by the newest marketplace price, never a manual one',
     $updatedAt = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('updatedAt');
 
     expect($updatedAt?->toDateString())->toBe(today()->subDays(2)->toDateString());
+});
+
+test('the summary date is the one the collection page shows for the same data', function () {
+    ownedCardPricedDaysAgo([2 => 1000, 3 => 900], 'me05-401');
+    CardPriceSnapshot::create(['card_id' => Card::where('tcgdex_id', 'me05-401')->sole()->id, 'source' => 'manual', 'variant' => 'normal', 'captured_on' => today()->addDay(), 'currency' => 'USD', 'market_minor' => 9000]);
+
+    $activity = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('updatedAt');
+    $collection = Livewire::test(Index::class, ['username' => 'carlos'])->viewData('updatedAt');
+
+    expect($activity?->toDateString())->toBe($collection?->toDateString())->and($activity)->not->toBeNull();
+});
+
+test('the page\'s query count does not grow with the collection', function () {
+    $add = function (int $from, int $to) {
+        foreach (range($from, $to) as $i) {
+            activityMover(sprintf('me05-%03d', $i), 1000, 1150);
+        }
+    };
+    // Cold both times, so a cache hit on one side cannot hide a per-card read on the other.
+    $queriesFor = function (): array {
+        Cache::flush();
+        $count = 0;
+        DB::listen(function () use (&$count) {
+            $count++;
+        });
+        $feed = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed');
+
+        return [$count, $feed];
+    };
+
+    $add(1, 3);
+    [$few, $fewFeed] = $queriesFor();
+    $add(4, 30);
+    [$many, $manyFeed] = $queriesFor();
+
+    expect($fewFeed->where('kind', 'move'))->toHaveCount(3)
+        ->and($manyFeed->where('kind', 'move')->count())->toBeGreaterThan(3)
+        ->and($many)->toBe($few);
 });
