@@ -1119,3 +1119,13 @@ test('nothing on the card page uses the old styles or the old navigation', funct
         ->not->toContain('imgwrap')
         ->not->toContain('wire:navigate');
 });
+
+test('the card page ships the card script, and the landing and the collection do not', function () {
+    $html = ownedCardPageHtml();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+    $script = $manifest['resources/js/card.js']['file'];
+
+    expect($html)->toContain($script)
+        ->and($this->get('/')->getContent())->not->toContain($script)
+        ->and($this->get('/carlos')->getContent())->not->toContain($script);
+});

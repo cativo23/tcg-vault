@@ -79,3 +79,7 @@
 @push('head')
     @vite(['resources/css/collection.css', 'resources/css/card.css'])
 @endpush
+
+@push('scripts')
+    @vite('resources/js/card.js')
+@endpush
