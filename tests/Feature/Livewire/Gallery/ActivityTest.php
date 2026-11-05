@@ -534,3 +534,27 @@ test('moves of the same day are listed biggest first', function () {
 
     expect($moves->map(fn (array $e) => $e['delta']->deltaMinor)->values()->all())->toBe([500, 400, 300, 250, 200, 150]);
 });
+
+// Equal sizes leave the order to the database, which hands the cards back
+// in no fixed order, so six of them: only a tie-breaker lists all six by
+// card id, and the same page always reads the same.
+test('moves of the same day and size are listed by card id, oldest card first', function () {
+    foreach (range(206, 201) as $number) {
+        activityMover(sprintf('me05-%03d', $number), 1000, 1200);
+    }
+
+    $moves = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed')->where('kind', 'move');
+    $ids = $moves->map(fn (array $e) => $e['card']->id)->values()->all();
+
+    expect($ids)->toHaveCount(6)
+        ->and($ids)->toBe(collect($ids)->sort()->values()->all());
+});
+
+test('a newer day lists before an older day, whatever the sizes', function () {
+    ownedCardPricedDaysAgo([3 => 1000, 2 => 1500], 'me05-501');
+    ownedCardPricedDaysAgo([1 => 1000, 0 => 1150], 'me05-502');
+
+    $moves = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed')->where('kind', 'move');
+
+    expect($moves->map(fn (array $e) => $e['delta']->deltaMinor)->values()->all())->toBe([150, 500]);
+});

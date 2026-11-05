@@ -134,10 +134,12 @@ final class Activity extends Component
             ]);
 
         // Newest first. Every move of a day carries that day's midnight, so
-        // moves of the same day go biggest first. Small moves were dropped
-        // above, before this cap, so they never take one of its slots.
+        // moves of the same day go biggest first, equal ones by card id, so
+        // the database's card order never decides what the cap keeps. Small
+        // moves were dropped above, before this cap, so they never take one
+        // of its slots.
         $feed = $moves->concat($additions)
-            ->sort(fn (array $a, array $b) => [$b['at']->timestamp ?? 0, self::size($b)] <=> [$a['at']->timestamp ?? 0, self::size($a)])
+            ->sort(fn (array $a, array $b) => [$b['at']->timestamp ?? 0, self::size($b), $a['card']->id] <=> [$a['at']->timestamp ?? 0, self::size($a), $b['card']->id])
             ->take(self::MAX_FEED)
             ->values();
 
