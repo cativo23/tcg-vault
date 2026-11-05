@@ -1,0 +1,323 @@
+/* tcg-vault · public card page (/{username}/{set}/{number}). Loaded only by livewire/gallery/card.blade.php, after revamp.css and collection.css.
+   Every selector is prefixed .crd- so nothing collides with revamp.css (.sheet, .chart, .htag, .strip, .src, .copy, .bar ...) or collection.css (.col-*).
+   The page bar and footer come from revamp.css. Every animation stays within --dur-slow, delay included. */
+
+.crd-page {
+  --crd-silver: oklch(88% 0.008 250);
+  --crd-silver-hi: oklch(96% 0.006 250);
+  --crd-foil-1: oklch(84% 0.07 200);
+  --crd-foil-2: oklch(86% 0.07 300);
+  --crd-foil-3: oklch(88% 0.07 20);
+  --crd-foil-4: oklch(90% 0.07 95);
+  --crd-chip-ink: oklch(22% 0.006 85);
+  --crd-plate-line: oklch(18% 0.006 85 / 0.07);
+  --crd-mark: oklch(18% 0.006 85 / 0.55);
+  /* display sizes: the only font sizes of this page that are not --text-* tokens */
+  --crd-text-name: clamp(3rem, 1.2rem + 5.4vw, 7.4rem);
+  --crd-text-sec: clamp(1.3rem, 1rem + 1vw, 1.75rem);
+  --crd-text-amt: clamp(1.65rem, 1.1rem + 1.5vw, 2.35rem);
+  --crd-text-amt-sm: clamp(1.35rem, 1rem + 1vw, 1.8rem);
+  --crd-text-chart: 1.35rem;
+  --crd-text-face: 1.6rem;
+  --crd-text-rel: clamp(1.1rem, .9rem + .8vw, 1.5rem);
+  --crd-radius-card: 4.762% / 3.409%;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .crd-page { --crd-silver: oklch(78% 0.01 250); --crd-silver-hi: oklch(88% 0.008 250);
+    --crd-plate-line: oklch(95% 0.012 85 / 0.06); --crd-mark: oklch(95% 0.012 85 / 0.5); }
+}
+:root[data-theme='dark'] .crd-page { --crd-silver: oklch(78% 0.01 250); --crd-silver-hi: oklch(88% 0.008 250);
+  --crd-plate-line: oklch(95% 0.012 85 / 0.06); --crd-mark: oklch(95% 0.012 85 / 0.5); }
+
+:where(.crd-page) h1, :where(.crd-page) h2, :where(.crd-page) p { margin: 0; }
+:where(.crd-page) button, :where(.crd-page) input { font: inherit; color: inherit; }
+.crd-mono { font-family: var(--font-mono); font-variation-settings: "wdth" 87.5; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.crd-up { color: var(--color-accent-deep); font-weight: 600; }
+
+/* ---------- breadcrumb ---------- */
+.crd-crumbs { padding: clamp(18px, 3vw, 32px) var(--gutter) 0; }
+.crd-crumbs ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; font-size: var(--text-sm); color: var(--color-muted); }
+.crd-crumbs li { white-space: nowrap; }
+.crd-crumbs li + li::before { content: "/"; margin: 0 .6em; color: var(--color-rule-2); }
+.crd-crumbs a { color: var(--color-ink-2); text-decoration: none; font-weight: 600; }
+.crd-crumbs a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.crd-crumbs [aria-current] .crd-mono { font-size: .92em; color: var(--color-ink); }
+
+/* ---------- the lot: plate left, what it is and what it is worth right ---------- */
+.crd-lot { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: start;
+  gap: clamp(28px, 4vw, 72px); padding: clamp(16px, 2.4vw, 28px) var(--gutter) clamp(40px, 6vw, 80px); }
+.crd-plate-col { position: sticky; top: calc(var(--bar-h) + 16px); min-width: 0; }
+
+/* the plate: a measuring sheet with a 10 mm grid; the card sits centred at a fixed width */
+.crd-plate {
+  position: relative; overflow: hidden; border-radius: 3px; padding: 40px;
+  background-color: var(--color-binder-page);
+  background-image: linear-gradient(var(--crd-plate-line) 1px, transparent 1px), linear-gradient(90deg, var(--crd-plate-line) 1px, transparent 1px);
+  background-size: 10mm 10mm; background-position: center;
+  box-shadow: var(--shadow-sheet);
+}
+.crd-pos { position: relative; width: min(100%, 320px); aspect-ratio: 63 / 88; margin: 0 auto; }
+/* .crd-drop owns the entrance; .crd-card the picture and its shadow */
+.crd-drop { width: 100%; height: 100%; }
+.js:not(.still):not(.crd-settled) .crd-drop { animation: crd-settle var(--dur-slow) var(--ease-settle) both; }
+@keyframes crd-settle { 0% { opacity: 0; transform: translateY(-6%) rotate(-2.5deg) scale(1.03); } 60% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+.crd-card { position: relative; width: 100%; height: 100%; border-radius: var(--crd-radius-card); }
+.crd-card::before { content: ""; position: absolute; inset: 0; border-radius: var(--crd-radius-card); box-shadow: var(--shadow-rest); pointer-events: none; }
+.crd-card img { position: relative; z-index: 1; display: block; width: 100%; height: 100%; object-fit: cover; border-radius: var(--crd-radius-card); background: var(--color-paper-3); }
+/* a collector's photo is not printed at 63 mm: shown whole, never cropped to the card */
+.crd-card img.is-photo { object-fit: contain; background: var(--color-paper-2); }
+.crd-ring { position: absolute; inset: -1.2%; z-index: 0; border-radius: 5.6% / 4%;
+  background: conic-gradient(from 210deg, var(--crd-foil-1), var(--crd-foil-2), var(--crd-foil-3), var(--crd-foil-4), var(--crd-foil-1), var(--crd-foil-2), var(--crd-foil-3), var(--crd-foil-4), var(--crd-foil-1)); }
+.crd-noimg { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; align-content: center; gap: 6px; padding: 14%; text-align: center; border-radius: var(--crd-radius-card);
+  background: repeating-linear-gradient(135deg, var(--color-paper-2) 0 6px, var(--color-paper-3) 6px 7px); }
+.crd-noimg b { font: 760 var(--crd-text-face)/1.05 var(--font-display); font-variation-settings: "wdth" 70; }
+.crd-noimg span { font-size: var(--text-xs); color: var(--color-muted); }
+
+/* crop marks and the printed size, drawn around the card */
+.crd-marks { position: absolute; inset: 0; pointer-events: none; }
+.crd-tick { position: absolute; width: 14px; height: 14px; border: 0 solid var(--crd-mark); }
+.crd-tick--tl { left: -20px; top: -20px; border-right-width: 1px; border-bottom-width: 1px; }
+.crd-tick--tr { right: -20px; top: -20px; border-left-width: 1px; border-bottom-width: 1px; }
+.crd-tick--bl { left: -20px; bottom: -20px; border-right-width: 1px; border-top-width: 1px; }
+.crd-tick--br { right: -20px; bottom: -20px; border-left-width: 1px; border-top-width: 1px; }
+.crd-rule { position: absolute; background: var(--crd-mark); }
+.crd-rule--h { left: 0; right: 0; top: -14px; height: 1px; }
+.crd-rule--v { top: 0; bottom: 0; right: -14px; width: 1px; }
+.crd-dim { position: absolute; font-size: var(--text-2xs); line-height: 1; color: var(--color-muted); white-space: nowrap; background: var(--color-binder-page); padding: 0 6px; }
+.crd-dim--h { left: 50%; top: -24px; transform: translateX(-50%); }
+.crd-dim--v { top: 50%; right: -24px; transform: translate(50%, -50%) rotate(90deg); }
+.crd-plate[data-view="photo"] .crd-marks, .crd-plate[data-view="photo"] .crd-ring { display: none; }
+
+/* the views (photo / official art) need card.js; without it the plate is the first picture */
+html:not(.js) .crd-views { display: none; }
+.crd-views { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-top: var(--space-md); }
+.crd-view { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 12px 4px 4px; border: 1px solid var(--color-rule-2); border-radius: 4px; background: transparent; cursor: pointer; font-size: var(--text-sm); font-weight: 600; }
+.crd-view img { width: 30px; height: 41px; object-fit: cover; border-radius: 2px; }
+.crd-view[aria-pressed="true"] { border-color: var(--color-ink); box-shadow: inset 0 0 0 1px var(--color-ink); }
+.crd-note { margin-top: var(--space-sm); max-width: 54ch; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted); }
+
+/* ---------- badges, name, set line, Copy link ---------- */
+.crd-info { min-width: 0; padding-top: 4px; }
+.crd-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-md); }
+.crd-badge { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 10px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; box-shadow: inset 0 0 0 1px var(--color-rule-2); color: var(--color-ink-2); }
+.crd-badge svg { width: 12px; height: 12px; }
+.crd-badge--own { background: var(--color-ink); color: var(--color-stock); box-shadow: none; }
+.crd-badge--out { box-shadow: none; outline: 1px dashed var(--color-rule-2); outline-offset: -1px; color: var(--color-muted); }
+.crd-badge--slab { font-family: var(--font-mono); font-variation-settings: "wdth" 87.5; letter-spacing: -.02em; box-shadow: inset 0 0 0 1.5px var(--color-ink); color: var(--color-ink); }
+.crd-badge--silver { color: var(--crd-chip-ink); box-shadow: none; background: linear-gradient(180deg, var(--crd-silver-hi), var(--crd-silver)); }
+.crd-badge--chase { color: var(--crd-chip-ink); box-shadow: none; background: linear-gradient(120deg, var(--crd-foil-1), var(--crd-foil-2) 40%, var(--crd-foil-3) 70%, var(--crd-foil-4)); }
+.crd-name { min-width: 0; overflow-wrap: anywhere; font: 820 var(--crd-text-name)/.84 var(--font-display); font-variation-settings: "wdth" 62; letter-spacing: -.02em; text-wrap: balance; }
+.js:not(.still):not(.crd-settled) .crd-name { animation: crd-rise var(--dur-slow) var(--ease-settle) both; }
+@keyframes crd-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.crd-setline { margin-top: var(--space-md); font-size: var(--text-lg); color: var(--color-ink-2); }
+.crd-setline a { font-weight: 600; color: var(--color-ink); text-underline-offset: 4px; text-decoration-thickness: 1px; text-decoration-color: var(--color-rule-2); }
+.crd-setline a:hover { text-decoration-color: var(--color-ink); }
+.crd-sep { margin: 0 .4em; color: var(--color-muted); }
+.crd-setline .crd-mono { font-size: .86em; color: var(--color-ink); }
+.crd-share { margin-top: var(--space-md); }
+.crd-copy { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px 0 13px;
+  border: 1px solid var(--color-rule-2); border-radius: var(--radius-pill); background: var(--color-stock);
+  font-weight: 600; font-size: var(--text-sm); cursor: pointer; white-space: nowrap;
+  box-shadow: 0 1px 0 var(--color-highlight) inset, 0 1px 2px var(--shadow-ambient);
+  transition: border-color var(--dur-base) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+.crd-copy:hover { border-color: var(--color-ink); }
+.crd-copy:active { transform: translateY(1px); }
+.crd-copy svg { width: 16px; height: 16px; flex: none; }
+.crd-copy .crd-i-ok { display: none; }
+.crd-copy.is-done .crd-i-link { display: none; }
+.crd-copy.is-done .crd-i-ok { display: block; }
+.crd-copy.is-failed .crd-copy__label { font-weight: 500; }
+
+/* ---------- variant pills: little tickets ---------- */
+.crd-variants { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13.5rem), 1fr)); gap: 8px; margin-top: clamp(24px, 3vw, 36px); }
+.crd-vpill { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 10px; text-align: left;
+  padding: 10px 14px 11px; border: 0; border-radius: 4px; cursor: pointer; background: var(--color-paper);
+  box-shadow: inset 0 0 0 1px var(--color-rule-2); transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
+.crd-vpill:hover { box-shadow: inset 0 0 0 1px var(--color-ink); }
+.crd-vpill:active { transform: translateY(1px); }
+.crd-vl { min-width: 0; font-weight: 600; font-size: var(--text-sm); line-height: 1.25; }
+.crd-vp { font: 600 var(--text-sm)/1.2 var(--font-mono); font-variation-settings: "wdth" 87.5; letter-spacing: -.02em; white-space: nowrap; }
+.crd-vo { grid-column: 1 / -1; font: 500 var(--text-2xs)/1.2 var(--font-mono); font-variation-settings: "wdth" 87.5; color: var(--color-muted); }
+.crd-vpill[aria-pressed="true"] { background: var(--color-ink); color: var(--color-stock); box-shadow: none; }
+.crd-vpill[aria-pressed="true"] .crd-vo { color: var(--color-paper-3); }
+
+/* ---------- narrow ---------- */
+@media (max-width: 959px) {
+  .crd-lot { grid-template-columns: minmax(0, 1fr); }
+  .crd-plate-col { position: static; }
+}
+@media (max-width: 679px) {
+  .crd-lot { padding-left: 0; padding-right: 0; }
+  .crd-plate { border-radius: 0; }
+  .crd-views, .crd-note { margin-left: var(--gutter); margin-right: var(--gutter); }
+  .crd-info { padding: 0 var(--gutter); }
+  .crd-setline { font-size: var(--text-md); }
+}
+@media (pointer: coarse) {
+  .crd-copy { min-height: 44px; }
+  .crd-vpill { min-height: 44px; }
+}
+
+/* ---------- reduced motion: nothing moves ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .crd-page *, .crd-page *::before, .crd-page *::after { transition-duration: 0ms !important; animation: none !important; }
+}
+.still .crd-drop, .still .crd-name { animation: none; opacity: 1; transform: none; }
+
+/* ---------- price history: a sheet behind range dividers ---------- */
+/* isolation keeps the selected tab's z-index inside this block, so it never paints over the sticky bar */
+.crd-history { margin-top: clamp(36px, 4vw, 56px); isolation: isolate; }
+.crd-tabs { display: flex; align-items: flex-end; padding: 0 2px; }
+.crd-tab { position: relative; flex: none; margin-right: -6px; padding: 9px 18px 9px 16px; border: 0; cursor: pointer;
+  background: var(--color-paper-2); color: var(--color-ink-2); border-radius: var(--radius-tab);
+  box-shadow: inset 0 1px 0 var(--color-highlight), 0 0 0 1px var(--color-rule);
+  font: 600 var(--text-xs)/1.2 var(--font-mono); font-variation-settings: "wdth" 87.5; transform: translateY(4px);
+  transition: transform var(--dur-base) var(--ease-out); }
+.crd-tab:hover { transform: translateY(1px); }
+.crd-tab[aria-selected="true"] { z-index: 4; background: var(--color-stock); color: var(--color-ink); transform: translateY(1px);
+  box-shadow: inset 0 1px 0 var(--color-highlight), 0 -1px 0 var(--color-rule), -1px 0 0 var(--color-rule), 1px 0 0 var(--color-rule); }
+.crd-tab:focus-visible { outline-offset: -3px; }
+.crd-sheet { position: relative; z-index: 1; background: var(--color-stock); border-radius: 0 3px 3px 3px; box-shadow: var(--shadow-sheet); }
+.crd-chart-sheet { padding: var(--space-lg) clamp(16px, 2vw, 28px) var(--space-md); }
+.crd-ch-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-md); }
+.crd-ch-k { font-size: var(--text-sm); font-weight: 600; color: var(--color-muted); }
+.crd-ch-v { margin-top: 4px; font: 600 var(--crd-text-chart)/1.2 var(--font-mono); font-variation-settings: "wdth" 87.5; letter-spacing: -.04em; }
+.crd-ch-v small { display: inline-block; margin-left: 8px; font-size: var(--text-2xs); font-weight: 400; letter-spacing: -.02em; color: var(--color-flat); }
+.crd-ch-v small.crd-up { color: var(--color-accent-deep); font-weight: 600; }
+.crd-ch-read { min-height: 1.4em; padding-top: 4px; font-size: var(--text-xs); color: var(--color-ink-2); text-align: right; white-space: nowrap; }
+.crd-chart { position: relative; height: 210px; margin-top: var(--space-sm); padding: 0 64px 22px 0; touch-action: pan-y; }
+.crd-chart:focus-visible { outline-offset: 6px; }
+.crd-plot { position: relative; width: 100%; height: 100%; }
+.crd-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.crd-line { fill: none; stroke: var(--color-ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.crd-area { fill: var(--color-ink); opacity: .05; }
+.crd-gap { fill: none; stroke: var(--color-muted); stroke-width: 1.5; stroke-dasharray: 2 5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.crd-grid { stroke: var(--color-rule); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.crd-dot, .crd-end, .crd-hover-dot { position: absolute; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+.crd-dot { width: 4px; height: 4px; background: var(--color-ink); }
+.crd-end { width: 9px; height: 9px; background: var(--color-ink); }
+.crd-end--up { background: var(--color-accent); }
+.crd-cross { position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -.5px; background: var(--color-ink); opacity: 0; pointer-events: none; }
+.crd-hover-dot { width: 9px; height: 9px; background: var(--color-stock); box-shadow: 0 0 0 2px var(--color-ink); opacity: 0; }
+.crd-chart.is-reading .crd-cross { opacity: .5; }
+.crd-chart.is-reading .crd-hover-dot { opacity: 1; }
+.crd-ylab, .crd-xlab { position: absolute; font-size: var(--text-2xs); line-height: 1; color: var(--color-muted); white-space: nowrap; }
+.crd-ylab { left: calc(100% + 14px); transform: translateY(-50%); }
+.crd-xlab { top: calc(100% + 8px); left: 0; }
+.crd-xlab--end { left: auto; right: 0; }
+/* the draw-in: a stock-coloured cover slides off to the right (transform only), on the first load only, in --dur-slow */
+.crd-chart-cover { fill: var(--color-stock); transform-box: fill-box; transform-origin: 100% 50%; }
+.js:not(.still):not(.crd-settled) .crd-chart-cover { animation: crd-uncover var(--dur-slow) var(--ease-settle) both; }
+@keyframes crd-uncover { to { transform: scaleX(0); } }
+/* the dots and labels are HTML above the SVG: hold them back (opacity only) until the line is uncovered */
+.js:not(.still):not(.crd-settled) :is(.crd-dot, .crd-end, .crd-ylab, .crd-xlab) { animation: crd-late var(--dur-slow) steps(1, jump-end) both; }
+@keyframes crd-late { from { opacity: 0; } to { opacity: 1; } }
+html:not(.js) .crd-chart-cover, .still .crd-chart-cover, .crd-settled .crd-chart-cover { display: none; }
+.crd-since { margin-top: var(--space-xs); font-size: var(--text-xs); color: var(--color-muted); }
+.crd-no-hist { display: grid; place-items: center; height: 210px; color: var(--color-muted); font-size: var(--text-sm); }
+@media (max-width: 679px) {
+  .crd-chart, .crd-no-hist { height: 180px; }
+}
+
+/* ---------- section heads (market, copies, facts) ---------- */
+.crd-sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px var(--space-md); padding-bottom: 10px; border-bottom: 2px solid var(--color-ink); }
+.crd-sec-t { min-width: 0; font: 760 var(--crd-text-sec)/1.05 var(--font-display); font-variation-settings: "wdth" 72; letter-spacing: -.005em; }
+.crd-sec-v { font: 600 var(--text-sm)/1 var(--font-body); color: var(--color-muted); letter-spacing: 0; }
+.crd-sec-r { font-size: var(--text-sm); color: var(--color-muted); }
+.crd-sec-r .crd-mono { font-size: .9em; color: var(--color-ink-2); }
+
+/* ---------- market value: tags hanging off a rail ---------- */
+.crd-market { margin-top: clamp(32px, 4vw, 52px); }
+.crd-rail { position: relative; display: flex; flex-wrap: wrap; gap: 0 clamp(16px, 2.4vw, 36px); padding: 0 clamp(4px, 1.5vw, 20px); }
+/* .crd-htag owns the entrance (one short settle), .crd-htag-in the hover (design.md cascade split); the string comes down from the section rule */
+.crd-htag { position: relative; flex: 0 1 15.5rem; min-width: 0; padding-top: 30px; }
+.crd-htag::before { content: ""; position: absolute; left: 50%; top: 0; width: 1.2px; height: 40px; margin-left: -.6px; background: var(--color-string); }
+/* 240 ms + at most 4 x 55 ms of stagger: done well inside the 520 ms cap */
+.js:not(.still):not(.crd-settled) .crd-htag { animation: crd-tag-in var(--dur-base) var(--ease-settle) both; animation-delay: calc(min(var(--i, 0), 4) * 55ms); }
+@keyframes crd-tag-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.crd-htag-in { position: relative; filter: drop-shadow(0 1px 1px var(--shadow-contact)) drop-shadow(0 10px 14px var(--shadow-ambient)); }
+@media (hover: hover) {
+  .crd-htag-in { transform-origin: 50% -30px; transition: transform var(--dur-slow) var(--ease-settle); }
+  .crd-htag:hover .crd-htag-in { transform: rotate(-2deg); }
+}
+.crd-htag-face { --crd-cut: 16px; position: relative; display: block; padding: 32px 18px 18px; background: var(--color-stock);
+  clip-path: polygon(var(--crd-cut) 0, calc(100% - var(--crd-cut)) 0, 100% var(--crd-cut), 100% 100%, 0 100%, 0 var(--crd-cut)); }
+/* the headline read wears an ink edge: an ink face under the stock face, 1.5px larger */
+.crd-htag--lead .crd-htag-in::before { content: ""; position: absolute; inset: -1.5px; background: var(--color-ink);
+  clip-path: polygon(16.5px 0, calc(100% - 16.5px) 0, 100% 16.5px, 100% 100%, 0 100%, 0 16.5px); }
+.crd-htag-hole { position: absolute; left: 50%; top: 11px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--color-paper-3);
+  box-shadow: inset 0 1px 1px var(--shadow-contact), 0 0 0 3px var(--color-paper-2); }
+.crd-src { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; font-size: var(--text-xs); color: var(--color-muted); }
+.crd-src b { font-weight: 600; color: var(--color-ink); letter-spacing: .01em; }
+.crd-amt { display: block; margin-top: 8px; font: 600 var(--crd-text-amt)/1 var(--font-mono); font-variation-settings: "wdth" 87.5; letter-spacing: -.05em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.crd-htag:not(.crd-htag--lead) .crd-amt { font-size: var(--crd-text-amt-sm); }
+.crd-tsub { display: block; margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--color-rule-2); font: 400 var(--text-2xs)/1.55 var(--font-mono); font-variation-settings: "wdth" 87.5; letter-spacing: -.02em; color: var(--color-flat); }
+.crd-tline { display: flex; flex-wrap: wrap; gap: 0 14px; }
+/* one segment of a tag's note line (a move, a low, a trend): its own class, so no other control restyles it */
+.crd-seg { white-space: nowrap; }
+.crd-move--up { color: var(--color-accent-deep); font-weight: 600; }
+.crd-move--up::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--color-accent); vertical-align: 1px; }
+.crd-mv-empty { padding: var(--space-lg) 0 0; color: var(--color-muted); font-size: var(--text-sm); }
+@media (max-width: 679px) {
+  .crd-rail { padding: 0; }
+  .crd-htag { flex: 1 1 9.5rem; }
+  .crd-htag-face { padding: 30px 12px 14px; }
+  .crd-src { flex-direction: column; }
+}
+
+/* ---------- lower band: the copies as ticket stubs + the card's catalogue label ---------- */
+.crd-lower { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: clamp(32px, 5vw, 80px); padding: 0 var(--gutter) clamp(48px, 6vw, 88px); }
+.crd-total small { margin-left: 6px; color: var(--color-muted); }
+.crd-note-text { max-width: 46ch; padding-top: var(--space-md); color: var(--color-ink-2); font-size: var(--text-md); }
+.crd-note-text a { font-weight: 600; text-underline-offset: 3px; }
+.crd-note-text--muted { color: var(--color-muted); font-size: var(--text-sm); }
+/* a stub: quantity on the left, a perforation, the rest on the ticket */
+.crd-stubs { list-style: none; margin: 0; padding: var(--space-lg) 0 0; display: grid; gap: var(--space-sm); }
+.crd-stub { position: relative; display: grid; grid-template-columns: 5.2rem minmax(0, 1fr); min-height: 96px;
+  filter: drop-shadow(0 1px 1px var(--shadow-contact)) drop-shadow(0 8px 12px var(--shadow-ambient)); }
+.crd-stub > * { background: var(--color-stock); }
+.crd-stub-q { display: grid; place-items: center; border-radius: 4px 0 0 4px; font-size: var(--crd-text-face); font-weight: 600; letter-spacing: -.05em;
+  -webkit-mask: radial-gradient(circle 7px at 100% 0, transparent 6.5px, #000 7px) top / 100% 51% no-repeat, radial-gradient(circle 7px at 100% 100%, transparent 6.5px, #000 7px) bottom / 100% 51% no-repeat;
+          mask: radial-gradient(circle 7px at 100% 0, transparent 6.5px, #000 7px) top / 100% 51% no-repeat, radial-gradient(circle 7px at 100% 100%, transparent 6.5px, #000 7px) bottom / 100% 51% no-repeat; }
+.crd-stub-b { position: relative; padding: 16px 20px 16px 22px; border-radius: 0 4px 4px 0;
+  -webkit-mask: radial-gradient(circle 7px at 0 0, transparent 6.5px, #000 7px) top / 100% 51% no-repeat, radial-gradient(circle 7px at 0 100%, transparent 6.5px, #000 7px) bottom / 100% 51% no-repeat;
+          mask: radial-gradient(circle 7px at 0 0, transparent 6.5px, #000 7px) top / 100% 51% no-repeat, radial-gradient(circle 7px at 0 100%, transparent 6.5px, #000 7px) bottom / 100% 51% no-repeat; }
+.crd-stub-b::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; border-left: 1.5px dashed var(--color-rule-2); }
+.crd-stub-desc { font-weight: 600; font-size: var(--text-md); }
+.crd-stub-aside { margin-left: 6px; font-size: var(--text-2xs); font-weight: 400; color: var(--color-muted); }
+.crd-stub-meta { margin-top: 4px; font-size: var(--text-sm); color: var(--color-muted); }
+.crd-stub-meta .crd-mono { font-size: .9em; color: var(--color-ink-2); }
+.crd-stub-notes { margin-top: 8px; font-size: var(--text-sm); color: var(--color-ink-2); }
+/* the facts: dotted leaders run from each name to its value */
+.crd-kv { margin: 0; padding-top: var(--space-md); display: grid; }
+.crd-kv > div { display: flex; align-items: baseline; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--color-rule); }
+.crd-kv dt { display: flex; flex: 1 1 auto; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--text-sm); color: var(--color-muted); white-space: nowrap; }
+.crd-kv dt::after { content: ""; flex: 1 1 auto; min-width: 16px; height: 3px; background-image: radial-gradient(circle, var(--color-rule-2) 1px, transparent 1.2px); background-size: 6px 3px; background-repeat: repeat-x; }
+.crd-kv dd { margin: 0; min-width: 0; font-size: var(--text-sm); font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.crd-kv dd.crd-mono { font-size: var(--text-xs); }
+
+/* ---------- more from the set: a divider tab over a strip of collection tiles ---------- */
+.crd-related { padding: 0 var(--gutter) clamp(56px, 7vw, 96px); }
+.crd-rel-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-md); }
+.crd-rel-tab { position: relative; z-index: 2; min-width: 0; margin-bottom: -1px; padding: 12px 22px 11px 18px; border-radius: var(--radius-tab); background: var(--color-stock);
+  box-shadow: inset 0 1px 0 var(--color-highlight), 0 -1px 0 var(--color-rule), -1px 0 0 var(--color-rule), 1px 0 0 var(--color-rule);
+  font: 760 var(--crd-text-rel)/1.1 var(--font-display); font-variation-settings: "wdth" 72; overflow-wrap: anywhere; }
+.crd-setlink { padding-bottom: 10px; font-size: var(--text-sm); font-weight: 600; text-underline-offset: 3px; text-decoration-thickness: 1px; white-space: nowrap; }
+.crd-setlink:hover { text-decoration-thickness: 2px; }
+.crd-rel-sheet { padding: clamp(24px, 3vw, 36px) clamp(16px, 2.8vw, 40px) clamp(28px, 3vw, 40px); }
+/* the collection's grid turned into one scrolling row; room above and below for the tile's lift and shadow */
+.crd-related .crd-strip { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: clamp(132px, 12vw, 190px); column-gap: clamp(14px, 2vw, 30px);
+  padding: 18px 12px; scroll-padding-inline: 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.crd-related .col-slot { scroll-snap-align: start; }
+/* the strip sits below the fold: the tile's staggered rise would only run past the motion cap */
+.js:not(.still) .crd-related .col-slot.col-enter { animation: none; opacity: 1; transform: none; }
+
+@media (max-width: 959px) {
+  .crd-lower { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 679px) {
+  .crd-related { padding-left: 0; padding-right: 0; }
+  .crd-rel-head { padding: 0 var(--gutter) 0 0; }
+  .crd-rel-tab { padding-left: var(--gutter); border-radius: 0 8px 0 0; }
+  .crd-rel-sheet { border-radius: 0; }
+}

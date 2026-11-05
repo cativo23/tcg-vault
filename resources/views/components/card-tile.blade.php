@@ -35,7 +35,7 @@
 @endphp
 
 <div class="nw-slot" style="--i: {{ $index }}">
-    <a href="{{ $href }}" class="nw-tile {{ $owned ? '' : 'ghost' }} {{ $rarityTier !== 'standard' ? 'rarity-'.$rarityTier : '' }}" wire:navigate
+    <a href="{{ $href }}" class="nw-tile {{ $owned ? '' : 'ghost' }} {{ $rarityTier !== 'standard' ? 'rarity-'.$rarityTier : '' }}"
        aria-label="{{ $card->name }}, number {{ $card->local_id }}{{ $card->set ? ', '.$card->set->name : '' }}{{ $stamps->isNotEmpty() ? ', '.$stamps->implode(', ') : '' }}{{ $owned ? '' : ', not in the collection' }}">
         <div class="chead">
             {{-- The collector shorthand tcgdex prints per set (e.g. "PBL")

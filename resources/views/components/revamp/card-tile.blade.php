@@ -36,7 +36,7 @@
         $d = $weekDelta->deltaMinor;
         $move = [
             'up' => $d > 0,
-            'text' => ($d > 0 ? '+' : ($d < 0 ? '−' : '±')).Money::format(abs($d), $currency).' · 7d',
+            'text' => Money::move($d, $currency).' · 7d',
             'spoken' => $d > 0 ? 'up '.Money::format($d, $currency).' in 7 days'
                 : ($d < 0 ? 'down '.Money::format(-$d, $currency).' in 7 days' : 'unchanged in 7 days'),
         ];

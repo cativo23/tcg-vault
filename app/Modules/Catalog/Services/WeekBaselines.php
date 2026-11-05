@@ -80,6 +80,40 @@ final class WeekBaselines
         return $this->rebuild(null);
     }
 
+    /**
+     * Gives one price row the week-baseline attributes DecidingPriceRows joins
+     * onto the rows it loads (ATTRIBUTES), so CardPriceResolver::weekDeltaFor()
+     * can answer for a row loaded some other way: the card page reads the plain
+     * recent window because it needs each row's `raw`. One read of the table's
+     * primary key, at most one row, and none for a manual or unpriced row (they
+     * have no baseline). A baseline outside the recent window is not attached,
+     * exactly as the deciding-rows join leaves it out. Returns the same row.
+     */
+    public function attach(CardPriceSnapshot $row): CardPriceSnapshot
+    {
+        if ($row->source === 'manual' || $row->market_minor === null) {
+            return $row;
+        }
+
+        $baseline = DB::table('card_price_week_baselines')
+            ->where('card_id', $row->card_id)
+            ->where('source', $row->source)
+            ->where('variant', $row->variant)
+            ->where('currency', $row->currency)
+            ->where('baseline_on', '>=', CardPriceSnapshot::recentFrom()->toDateString())
+            ->first();
+
+        if ($baseline !== null) {
+            $row->setAttribute('week_anchor_on', $baseline->anchor_on);
+            $row->setAttribute('week_baseline_id', $baseline->baseline_id);
+            $row->setAttribute('week_baseline_on', $baseline->baseline_on);
+            $row->setAttribute('week_baseline_origin', $baseline->baseline_origin);
+            $row->setAttribute('week_baseline_minor', $baseline->baseline_minor);
+        }
+
+        return $row;
+    }
+
     /** @param  list<int>|null  $ids  sorted card ids, or null for every card */
     private function rebuild(?array $ids): int
     {

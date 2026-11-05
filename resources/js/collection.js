@@ -1,23 +1,10 @@
 // Client-only behaviour of the collection page. Filtering, counts and batching are Livewire (server-side).
-import { tabKeyTarget, nextTabIndex, revealScrollLeft, overflowsRight, copyText, fallbackSrc } from './collection-helpers.js';
+import { tabKeyTarget, nextTabIndex, revealScrollLeft, overflowsRight, copyText } from './collection-helpers.js';
+import { degradeImage, legacyCopy } from './dom-helpers.js';
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- copy link ---------- */
-const legacyCopy = (text) => {
-    const field = document.createElement('textarea');
-    field.value = text;
-    field.setAttribute('readonly', '');
-    field.style.position = 'fixed';
-    field.style.opacity = '0';
-    document.body.appendChild(field);
-    field.select();
-    let ok = false;
-    try { ok = document.execCommand('copy'); } catch { ok = false; }
-    document.body.removeChild(field);
-    return ok;
-};
-
 let copyTimer;
 document.addEventListener('click', async (event) => {
     const button = event.target.closest?.('[data-col-copy]');
@@ -83,34 +70,13 @@ document.addEventListener('scroll', (event) => {
 window.addEventListener('resize', syncEdge);
 
 /* ---------- image optional, data mandatory: a failed picture becomes the hatched face ---------- */
-const degrade = (img) => {
-    const pic = img.closest('.col-pic');
-    if (!pic || pic.classList.contains('col-pic--empty')) return;
-
-    // A tcgdex low.webp that is missing is retried once at high.webp before giving up on the picture.
-    const retry = img.dataset.retried ? null : fallbackSrc(img.getAttribute('src'));
-    if (retry) {
-        img.dataset.retried = '1';
-        img.src = retry;
-        return;
-    }
-
-    pic.classList.add('col-pic--empty');
-    const name = document.createElement('b');
-    name.textContent = img.dataset.name || '';
-    const note = document.createElement('span');
-    note.textContent = 'No image';
-    img.remove();
-    pic.append(name, note);
-};
-
 // `error` does not bubble on <img>: capture phase.
 document.addEventListener('error', (event) => {
-    if (event.target instanceof HTMLImageElement) degrade(event.target);
+    if (event.target instanceof HTMLImageElement) degradeImage(event.target);
 }, true);
 
 const sweepBrokenImages = () => document.querySelectorAll('.col-pic img').forEach((img) => {
-    if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) degrade(img);
+    if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) degradeImage(img);
 });
 
 /* ---------- re-apply after every Livewire morph (the server HTML resets all of the above) ---------- */

@@ -213,3 +213,56 @@ test('a refresh of more cards than one chunk runs one transaction per chunk and 
         ->and(DB::table('card_price_week_baselines')->count())->toBe(450)
         ->and($transactions)->toBe(3);
 });
+
+test('attach gives a price row the baseline columns the resolver reads, with one bounded read', function () {
+    $card = baselineCard();
+    baselinePrice($card, 7, 800);
+    baselinePrice($card, 1, 3200);
+    $latest = baselinePrice($card, 0, 4000);
+    app(WeekBaselines::class)->refreshCards([$card->id]);
+    $card->load(['priceSnapshots' => fn ($q) => $q->recent()]);
+    $row = $card->priceSnapshots->first(fn (CardPriceSnapshot $s) => $s->is($latest));
+
+    $reads = [];
+    DB::listen(function ($query) use (&$reads) {
+        $reads[] = $query->sql;
+    });
+    $attached = app(WeekBaselines::class)->attach($row);
+
+    $delta = (new CardPriceResolver)->weekDeltaFor($card, $attached);
+
+    expect($reads)->toHaveCount(1)
+        ->and($attached)->toBe($row)
+        ->and($delta?->deltaMinor)->toBe(3200)
+        ->and($delta?->previous->market_minor)->toBe(800)
+        ->and($delta?->previous->capturedOnKey())->toBe(today()->subDays(7)->toDateString());
+});
+
+test('attach does nothing, and reads nothing, for a manual or unpriced row', function () {
+    $card = baselineCard();
+    $manual = baselinePrice($card, 0, 500, source: 'manual', origin: 'hand');
+    $unpriced = baselinePrice($card, 0, null, variant: 'holofoil');
+
+    $reads = [];
+    DB::listen(function ($query) use (&$reads) {
+        $reads[] = $query->sql;
+    });
+
+    expect(array_keys(app(WeekBaselines::class)->attach($manual)->getAttributes()))->not->toContain('week_anchor_on')
+        ->and(array_keys(app(WeekBaselines::class)->attach($unpriced)->getAttributes()))->not->toContain('week_anchor_on')
+        ->and($reads)->toBe([]);
+});
+
+test('attach leaves a print without a stored baseline, or whose baseline fell out of the window, without a 7-day move', function () {
+    $card = baselineCard();
+    $fresh = baselinePrice($card, 0, 4000);
+    // This print's newest day is inside the window but its baseline day is not.
+    baselinePrice($card, 25, 900, variant: 'holofoil');
+    $old = baselinePrice($card, 35, 800, variant: 'holofoil');
+    app(WeekBaselines::class)->refreshCards([$card->id]);
+    $newestHolo = CardPriceSnapshot::where('card_id', $card->id)->where('variant', 'holofoil')->orderByDesc('captured_on')->firstOrFail();
+
+    expect($old->exists)->toBeTrue()
+        ->and(array_keys(app(WeekBaselines::class)->attach($fresh)->getAttributes()))->not->toContain('week_anchor_on')
+        ->and(array_keys(app(WeekBaselines::class)->attach($newestHolo)->getAttributes()))->not->toContain('week_anchor_on');
+});
