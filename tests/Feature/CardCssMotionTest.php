@@ -24,3 +24,10 @@ test('the chart hands horizontal touch drags to the page script and keeps vertic
 
     expect($rule[1] ?? '')->toContain('touch-action: pan-y');
 });
+
+test('the card stylesheet resets heading and paragraph margins with zero specificity so a component margin wins', function () {
+    $css = (string) file_get_contents(resource_path('css/card.css'));
+
+    expect($css)->toContain(':where(.crd-page) h1, :where(.crd-page) h2, :where(.crd-page) p')
+        ->and($css)->not->toMatch('/\.crd-page\s+(h1|h2|p)\b/');
+});

@@ -29,7 +29,7 @@
 :root[data-theme='dark'] .crd-page { --crd-silver: oklch(78% 0.01 250); --crd-silver-hi: oklch(88% 0.008 250);
   --crd-plate-line: oklch(95% 0.012 85 / 0.06); --crd-mark: oklch(95% 0.012 85 / 0.5); }
 
-.crd-page h1, .crd-page h2, .crd-page p { margin: 0; }
+:where(.crd-page) h1, :where(.crd-page) h2, :where(.crd-page) p { margin: 0; }
 :where(.crd-page) button, :where(.crd-page) input { font: inherit; color: inherit; }
 .crd-mono { font-family: var(--font-mono); font-variation-settings: "wdth" 87.5; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .crd-up { color: var(--color-accent-deep); font-weight: 600; }
@@ -308,7 +308,7 @@ html:not(.js) .crd-chart-cover, .still .crd-chart-cover, .crd-settled .crd-chart
 .crd-rel-sheet { padding: clamp(24px, 3vw, 36px) clamp(16px, 2.8vw, 40px) clamp(28px, 3vw, 40px); }
 /* the collection's grid turned into one scrolling row; room above and below for the tile's lift and shadow */
 .crd-related .crd-strip { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: clamp(132px, 12vw, 190px); column-gap: clamp(14px, 2vw, 30px);
-  padding: 10px 4px 18px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: thin; }
+  padding: 18px 12px; scroll-padding-inline: 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: thin; }
 .crd-related .col-slot { scroll-snap-align: start; }
 /* the strip sits below the fold: the tile's staggered rise would only run past the motion cap */
 .js:not(.still) .crd-related .col-slot.col-enter { animation: none; opacity: 1; transform: none; }
