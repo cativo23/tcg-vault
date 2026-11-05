@@ -79,8 +79,8 @@
                     <div class="hidden sm:block">
                         <nav class="nw-nav" aria-label="Gallery">
                             <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif>Collection</a>
-                            <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif wire:navigate>Sets</a>
-                            <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif wire:navigate>Activity</a>
+                            <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif>Sets</a>
+                            <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif>Activity</a>
                         </nav>
                     </div>
                 @endif
@@ -151,8 +151,8 @@
                     aria-label="Gallery"
                 >
                     <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif @click="mobileNavOpen = false">Collection</a>
-                    <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Sets</a>
-                    <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Activity</a>
+                    <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif @click="mobileNavOpen = false">Sets</a>
+                    <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif @click="mobileNavOpen = false">Activity</a>
                     @if ($isOwner)
                         <a href="{{ route('admin.collection.index') }}" @click="mobileNavOpen = false">{{ __('Manage collection') }}</a>
                     @endif
