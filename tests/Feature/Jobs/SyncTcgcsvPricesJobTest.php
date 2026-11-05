@@ -1507,3 +1507,16 @@ test('a tcgcsv price older than 90 days is no reference: a third-party link is u
     expect(CardPriceSnapshot::where('card_id', $card->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->exists())->toBeTrue()
         ->and(CardPriceSnapshot::where('card_id', $other->id)->where('source', 'tcgplayer')->whereDate('captured_on', today())->exists())->toBeFalse();
 });
+
+test('a filled price refreshes that card\'s week baseline', function () {
+    config(['tcgcsv.mode' => 'fill']);
+    $card = gapFixture();
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays(7), 'currency' => 'USD', 'market_minor' => 125]);
+    gapFake();
+
+    runTcgcsvSync();
+
+    $row = DB::table('card_price_week_baselines')->where('card_id', $card->id)->where('source', 'tcgplayer')->sole();
+    expect([$row->anchor_on, $row->baseline_on, $row->baseline_origin, (int) $row->baseline_minor])
+        ->toBe([today()->toDateString(), today()->subDays(7)->toDateString(), 'tcgcsv', 125]);
+});

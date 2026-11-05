@@ -19,7 +19,9 @@ use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
 use App\Modules\Catalog\Tcgcsv\TcgcsvPriceRow;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Spatie\LaravelData\DataCollection;
 use Tests\Support\ShownPrices;
 
@@ -605,4 +607,56 @@ test('a current tcgdex TCGplayer price is still written by the midnight sync, wi
     syncDarkrai([tcgplayerEntry(14300, '2026-10-21T22:00:00Z')], keptFor($card));
 
     expect(todaysTcgplayer($card)->only(['origin', 'market_minor']))->toBe(['origin' => 'tcgdex', 'market_minor' => 14300]);
+});
+
+function syncedWithWeekOld(): array
+{
+    $provider = Mockery::mock(CardCatalogProvider::class);
+    $provider->shouldReceive('findCard')->with('me05-116')->andReturn(fakeCardDetail());
+    $provider->shouldReceive('findSet')->with('me05')->andReturn(new SetSummaryData(
+        tcgdexId: 'me05', name: 'Pitch Black', series: 'Mega Evolution',
+        releasedOn: null, cardCount: 84, logoUrl: 'https://assets.tcgdex.net/en/me/me05/logo.png',
+    ));
+    $service = new CatalogSyncService($provider);
+    $card = $service->syncCard('me05-116');
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'holofoil', 'captured_on' => today()->subDays(7), 'currency' => 'USD', 'market_minor' => 19000]);
+
+    return [$service, $card];
+}
+
+test('a sync refreshes the card\'s week baselines with the prices it wrote', function () {
+    [$service, $card] = syncedWithWeekOld();
+    DB::table('card_price_week_baselines')->delete();
+
+    $service->syncCard('me05-116');
+
+    $row = DB::table('card_price_week_baselines')->where('card_id', $card->id)->sole();
+    expect([$row->source, $row->variant, $row->currency, $row->anchor_on, $row->baseline_on, (int) $row->baseline_minor])
+        ->toBe(['tcgplayer', 'holofoil', 'USD', today()->toDateString(), today()->subDays(7)->toDateString(), 19000]);
+});
+
+test('the baseline refresh runs inside the sync\'s transaction', function () {
+    [$service] = syncedWithWeekOld();
+    $levels = [];
+    DB::listen(function ($query) use (&$levels) {
+        if (str_starts_with($query->sql, 'insert into card_price_week_baselines')) {
+            $levels[] = DB::transactionLevel();
+        }
+    });
+
+    $service->syncCard('me05-116');
+
+    // The test's own transaction (1), syncCard's (2), the refresh's (3). Called after syncCard's commit it would be 2.
+    expect($levels)->not->toBeEmpty()
+        ->and(min($levels))->toBeGreaterThanOrEqual(3);
+});
+
+test('a sync whose baseline refresh fails still stores the day\'s prices', function () {
+    [$service, $card] = syncedWithWeekOld();
+    Schema::drop('card_price_week_baselines'); // rolled back with the test's transaction
+    $this->withoutExceptionHandling();
+
+    $synced = $service->syncCard('me05-116');
+
+    expect($synced->priceSnapshots->firstWhere('captured_on', today())?->market_minor)->toBe(19524);
 });
