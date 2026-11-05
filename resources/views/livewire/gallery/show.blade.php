@@ -4,7 +4,7 @@
 <div class="nw-wrap">
     <section class="nw-masthead">
         <div class="nw-eyebrow">
-            <a href="{{ route('gallery.sets', ['username' => $targetUser->username]) }}" wire:navigate>Sets</a>
+            <a href="{{ route('gallery.sets', ['username' => $targetUser->username]) }}">Sets</a>
             <span aria-hidden="true">/</span>
             <span>{{ $set->series ?: 'Pokémon TCG' }} · {{ Str::upper($set->tcgdex_id) }}@if ($set->released_on) · {{ $set->released_on->format('M Y') }}@endif</span>
         </div>
