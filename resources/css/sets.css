@@ -1,0 +1,108 @@
+/* tcg-vault · public sets list (/{username}/sets). Loaded only by livewire/gallery/sets.blade.php, after revamp.css.
+   Every selector is prefixed .sts- so nothing collides with revamp.css (.sheet, .strip, .copy, .btn, .bar ...).
+   The page bar and footer come from revamp.css, so none of their rules live here. */
+
+.sts-page {
+  /* the page heading matches the collector's name on the collection page (--col-who in collection.css) */
+  --sts-who: clamp(4.2rem, 1.6rem + 11vw, 11rem);
+  --sts-tray-h: 216px;
+  --sts-radius-card: 4.762% / 3.409%;
+}
+
+.sts-mono { font-family: var(--font-mono); font-variation-settings: "wdth" 87.5; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+
+/* ---------- head: the word, big, and one summary line ---------- */
+.sts-head { padding: clamp(28px, 6vw, 72px) var(--gutter) clamp(28px, 4vw, 52px); }
+.sts-title { margin: 0; font: 820 var(--sts-who)/.8 var(--font-display); font-variation-settings: "wdth" 62; letter-spacing: -.02em; }
+.sts-summary { margin: var(--space-md) 0 0; font-size: var(--text-lg); color: var(--color-ink-2); }
+.sts-summary .sts-mono { font-size: var(--text-md); font-weight: 600; color: var(--color-ink); }
+.sts-sep { color: var(--color-muted); margin: 0 .35em; }
+
+/* ---------- the shelf: one filed divider per set ---------- */
+.sts-shelf {
+  list-style: none; margin: 0; padding: 0 var(--gutter) clamp(64px, 8vw, 120px);
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: clamp(40px, 4vw, 56px) clamp(20px, 2.4vw, 36px);
+}
+/* .sts-set owns the entrance; .sts-card owns hover. Never both on one element. */
+.sts-set { min-width: 0; }
+.sts-card { position: relative; display: block; text-decoration: none; color: inherit; transition: transform var(--dur-base) var(--ease-out); }
+.sts-card:focus-visible { outline-offset: 6px; }
+
+.sts-tab {
+  position: relative; z-index: 2; display: inline-flex; align-items: baseline; gap: 10px; padding: 8px 16px 7px 14px;
+  border-radius: var(--radius-tab); background: var(--color-stock);
+  box-shadow: inset 0 1px 0 var(--color-highlight), 0 -1px 0 var(--color-rule-2), -1px 0 0 var(--color-rule-2), 1px 0 0 var(--color-rule-2);
+  font-size: var(--text-xs); font-weight: 600; color: var(--color-ink-2); white-space: nowrap;
+}
+.sts-tab .sts-mono { font-size: var(--text-2xs); color: var(--color-ink); }
+
+.sts-face { position: relative; display: block; padding: 12px 12px 18px; background: var(--color-stock); border-radius: 0 3px 3px 3px; box-shadow: var(--shadow-sheet); }
+/* two stacked shadows: hover fades the lifted one in, so motion stays opacity/transform */
+.sts-face::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: var(--shadow-lift); opacity: 0; transition: opacity var(--dur-base) var(--ease-out); }
+
+/* the tray: the set logo on binder-page stock */
+.sts-tray {
+  position: relative; display: grid; place-items: center; height: var(--sts-tray-h); padding: 28px 36px; overflow: hidden;
+  border-radius: 2px; background: var(--color-binder-page); box-shadow: inset 0 1px 3px var(--shadow-ambient), inset 0 0 0 1px var(--color-rule);
+}
+.sts-tray img { width: auto; height: auto; max-width: 78%; max-height: 120px; object-fit: contain; filter: drop-shadow(0 2px 3px var(--shadow-ambient)); transition: transform var(--dur-slow) var(--ease-settle); }
+/* image optional, data mandatory: the code shows when there is no logo, or once app.js has removed a logo that failed */
+.sts-tray img + .sts-code { display: none; }
+.sts-code { font: 820 var(--text-h2)/1 var(--font-display); font-variation-settings: "wdth" 62; color: var(--color-muted); text-transform: uppercase; text-align: center; overflow-wrap: anywhere; }
+
+@media (hover: hover) {
+  .sts-card:hover { transform: translateY(-4px); }
+  .sts-card:hover .sts-face::after { opacity: 1; }
+  .sts-card:hover .sts-tray img { transform: scale(1.05); }
+}
+.sts-card:focus-visible .sts-face::after { opacity: 1; }
+
+/* below the tray */
+.sts-info { display: block; padding: 16px 6px 0; }
+.sts-name { display: block; font: 780 var(--text-lg)/1.05 var(--font-display); font-variation-settings: "wdth" 70; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.sts-series { display: block; margin-top: 4px; font-size: var(--text-sm); color: var(--color-muted); }
+
+/* the mini printed strip: one track per set (grey = cards the catalogue has not imported); the server places each
+   run as a percentage: owned = filled, missing = hollow. Same slot rule as the set page's strip (PrintedStrip). */
+.sts-strip { position: relative; display: block; height: 10px; margin-top: 16px; overflow: hidden; border-radius: 1px; background: var(--color-paper-3); }
+.sts-strip i { position: absolute; top: 0; bottom: 0; min-width: 1px; }
+.sts-own { background: var(--color-ink-2); }
+.sts-miss { background: var(--color-binder-page); box-shadow: inset 0 0 0 1px var(--color-rule-2); }
+
+.sts-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 10px; font-size: var(--text-xs); color: var(--color-muted); }
+.sts-row b { display: block; margin-top: 2px; font: 600 var(--text-sm)/1.2 var(--font-mono); font-variation-settings: "wdth" 87.5; font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--color-ink); }
+.sts-row b small { margin-left: 6px; font-weight: 400; font-size: var(--text-2xs); color: var(--color-muted); }
+.sts-r { text-align: right; }
+
+/* ---------- empty: a binder page with three empty pockets ---------- */
+.sts-empty {
+  margin: 0 var(--gutter) var(--space-2xl); padding: clamp(24px, 5vw, 56px) var(--space-md) clamp(32px, 6vw, 72px); text-align: center;
+  background: var(--color-binder-page); border-radius: 3px; box-shadow: var(--shadow-sheet);
+}
+.sts-empty p { margin: var(--space-xs) auto 0; max-width: 38ch; color: var(--color-ink-2); }
+.sts-empty-t { margin: 0; font: 760 var(--text-h2)/1 var(--font-display); font-variation-settings: "wdth" 70; letter-spacing: -.01em; text-wrap: balance; }
+.sts-pockets { display: flex; justify-content: center; gap: clamp(8px, 1.6vw, 18px); margin: 0 auto clamp(24px, 4vw, 40px); }
+.sts-pockets i {
+  width: clamp(64px, 9vw, 112px); aspect-ratio: 245 / 342; border-radius: var(--sts-radius-card);
+  box-shadow: inset 0 0 0 1px var(--color-rule-2), inset 0 2px 0 var(--color-highlight-hi);
+  background: linear-gradient(115deg, transparent 40%, var(--color-glint-hi) 50%, transparent 60%), var(--color-paper-2);
+}
+.sts-pockets i:nth-child(2) { transform: translateY(-6px); }
+
+/* ---------- entrance: the heading, then each divider in turn (stagger capped in the view) ---------- */
+@keyframes sts-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.js:not(.still) .sts-title { animation: sts-rise var(--dur-slow) var(--ease-settle) both; }
+.js:not(.still) .sts-set { animation: sts-rise var(--dur-slow) var(--ease-settle) both; animation-delay: calc(var(--i, 0) * 40ms + 120ms); }
+.still .sts-title, .still .sts-set { animation: none; }
+
+@media (max-width: 679px) {
+  .sts-page { --sts-tray-h: 196px; }
+  .sts-summary { font-size: var(--text-md); }
+  .sts-empty { margin: 0 0 var(--space-xl); border-radius: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sts-page *, .sts-page *::before, .sts-page *::after { transition-duration: 0ms !important; animation: none !important; }
+  .sts-card:hover, .sts-card:focus-visible { transform: none; }
+  .sts-card:hover .sts-tray img { transform: none; }
+}

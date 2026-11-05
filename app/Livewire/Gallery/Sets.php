@@ -16,7 +16,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Component;
 
 /** Sets are collections within the collection: completion, a mini printed strip and owned value per set. */
-#[Layout('layouts.public')]
+#[Layout('layouts.revamp')]
 final class Sets extends Component
 {
     use ResolvesPublicCollection;

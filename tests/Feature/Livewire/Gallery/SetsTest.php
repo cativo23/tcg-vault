@@ -13,6 +13,7 @@ use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
+use Tests\Support\RevampHtml;
 
 /**
  * A demo-shaped collection over two sets. Prismatic Evolutions (older, no
@@ -42,6 +43,28 @@ function seedSetsShelf(): void
     CardPriceSnapshot::create(['card_id' => Card::where('tcgdex_id', 'me05-116')->value('id'), 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1250]);
 }
 
+/**
+ * Visible text of every element carrying $class, in document order,
+ * whitespace collapsed.
+ *
+ * @return list<string>
+ */
+function stsTexts(string $html, string $class): array
+{
+    $previous = libxml_use_internal_errors(true);
+    $doc = new DOMDocument;
+    $doc->loadHTML('<?xml encoding="utf-8" ?>'.$html);
+    libxml_clear_errors();
+    libxml_use_internal_errors($previous);
+
+    $texts = [];
+    foreach ((new DOMXPath($doc))->query("//*[contains(concat(' ', normalize-space(@class), ' '), ' {$class} ')]") ?: [] as $node) {
+        $texts[] = trim((string) preg_replace('/\s+/u', ' ', $node->textContent));
+    }
+
+    return $texts;
+}
+
 test('lists sets the user has at least one card from, with correct completion counts', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
@@ -62,9 +85,8 @@ test('lists sets the user has at least one card from, with correct completion co
     $response->assertSee('2 / 120'); // 2 distinct cards owned, out of the set's total
 });
 
-test('owning even one card out of a huge set never rounds the progress bar down to 0%', function () {
-    // A tiny nonzero fraction (1/217 = 0.46%) must not round down to 0%,
-    // which would be visually indistinguishable from owning nothing at all.
+test('owning even one card out of a huge set never rounds the completion down to 0%', function () {
+    // 1/217 is 0.46%: shown as 0% it would read as owning nothing at all.
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me02.5', 'name' => 'Ascended Heroes', 'card_count' => 217]);
@@ -75,7 +97,7 @@ test('owning even one card out of a huge set never rounds the progress bar down 
 
     $response->assertOk();
     $response->assertSee('1 / 217');
-    $response->assertSee('width: 1%', false);
+    $response->assertSee('<small>1%</small>', false);
 });
 
 test('a set the user has no cards from does not appear', function () {
@@ -200,4 +222,124 @@ test('sets released on the same day are listed by name', function () {
     $sets = Livewire::test(Sets::class, ['username' => 'demo'])->viewData('sets');
 
     expect($sets->pluck('name')->all())->toBe(['Alpha', 'Beta']);
+});
+
+test('the sets page sits on the revamp shell: its own stylesheet only, Sets current, no client-side navigation, indexable, same title and description', function () {
+    seedSetsShelf();
+
+    $html = $this->get('/demo/sets')->assertOk()->getContent();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+
+    // app.css first: on the old page this is the assertion that fails.
+    expect($html)->not->toContain($manifest['resources/css/app.css']['file'])
+        ->and($html)->toContain($manifest['resources/css/revamp.css']['file'])
+        ->and($html)->toContain($manifest['resources/css/sets.css']['file'])
+        ->and($html)->not->toContain($manifest['resources/css/collection.css']['file'])
+        ->and(RevampHtml::currentNav($html))->toBe('Sets')
+        ->and($html)->toContain('<nav class="bar-nav" aria-label="Gallery">')
+        ->and($html)->not->toContain('wire:navigate')
+        ->and($html)->not->toContain('noindex')
+        ->and($html)->not->toContain('class="nw-')
+        ->and($html)->toContain('<title>Sets · Demo&#039;s collection · tcg-vault</title>')
+        ->and($html)->toContain('<meta name="description" content="The 2 Pokémon TCG sets in Demo&#039;s collection, with completion and owned value per set.">');
+});
+
+test('the owner keeps the Manage collection link on their own sets page, a guest does not get it', function () {
+    seedSetsShelf();
+
+    $this->get('/demo/sets')->assertOk()->assertDontSee('Manage collection');
+
+    $this->actingAs(User::where('username', 'demo')->firstOrFail());
+
+    $this->get('/demo/sets')->assertOk()
+        ->assertSee('href="'.route('admin.collection.index').'"', false)
+        ->assertSee('Manage collection');
+});
+
+test('the head is the word Sets and one summary line, with no eyebrow', function () {
+    seedSetsShelf();
+
+    $html = $this->get('/demo/sets')->assertOk()->getContent();
+
+    expect(stsTexts($html, 'sts-title'))->toBe(['Sets'])
+        ->and(stsTexts($html, 'sts-summary'))->toBe(['2 sets · newest first'])
+        ->and($html)->not->toContain('by official set');
+});
+
+test('one set reads in the singular', function () {
+    $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 120]);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = $this->get('/demo/sets')->assertOk()->getContent();
+
+    expect(stsTexts($html, 'sts-summary'))->toBe(['1 set · newest first']);
+});
+
+test('each set is one divider, newest release first: tab (abbreviation, else tcgdex id), name, series line, completion and owned value', function () {
+    seedSetsShelf();
+
+    $html = $this->get('/demo/sets')->assertOk()->getContent();
+
+    expect($html)->toContain('<ol class="sts-shelf" role="list">')
+        ->and(stsTexts($html, 'sts-name'))->toBe(['Pitch Black', 'Prismatic Evolutions'])
+        ->and(stsTexts($html, 'sts-tab'))->toBe(['PBL 2026', 'SV08.5 2025'])
+        ->and(stsTexts($html, 'sts-series'))->toBe(['Mega Evolution · PBL · 2026', 'Scarlet & Violet · SV08.5 · 2025'])
+        ->and(stsTexts($html, 'sts-row'))->toBe(['Completed 2 / 120 2% Owned value $25.00', 'Completed 2 / 180 1% Owned value —']);
+});
+
+test('a set with no release date or series shows its code alone on the tab and the catalogue name in the series line', function () {
+    seedSetsShelf();
+    Set::where('tcgdex_id', 'sv08.5')->update(['released_on' => null, 'series' => null]);
+
+    $html = $this->get('/demo/sets')->assertOk()->getContent();
+
+    expect(stsTexts($html, 'sts-tab'))->toContain('SV08.5')
+        ->and(stsTexts($html, 'sts-series'))->toContain('Pokémon TCG · SV08.5');
+});
+
+test('the tray shows the tcgdex logo with the code as its fallback, and only the code when there is no usable logo', function () {
+    seedSetsShelf();
+    Set::where('tcgdex_id', 'sv08.5')->update(['logo_url' => 'https://example.com/logo.png']);
+
+    $html = $this->get('/demo/sets')->assertOk()->getContent();
+
+    expect($html)->toContain('<img src="https://assets.tcgdex.net/en/me/me05/logo.png" alt="" loading="lazy" decoding="async" data-optional>')
+        ->and(substr_count($html, 'data-optional'))->toBe(1)
+        ->and($html)->not->toContain('example.com/logo.png')
+        ->and(stsTexts($html, 'sts-code'))->toBe(['PBL', 'SV08.5']);
+});
+
+test('the mini printed strip draws owned runs, missing runs and leaves unimported slots as the grey track', function () {
+    seedSetsShelf();
+
+    $html = $this->get('/demo/sets')->assertOk()->getContent();
+
+    expect($html)->toContain('<span class="sts-strip"><i class="sts-own" style="left: 1.6667%; width: 0.8333%"></i><i class="sts-miss" style="left: 2.5%; width: 0.8333%"></i><i class="sts-own" style="left: 95.8333%; width: 0.8333%"></i></span>')
+        ->and($html)->toContain('<span class="sts-strip"><i class="sts-own" style="left: 0%; width: 1.1111%"></i></span>');
+});
+
+test('each divider is one plain link to its set page, named for screen readers', function () {
+    seedSetsShelf();
+
+    $html = $this->get('/demo/sets')->assertOk()->getContent();
+
+    expect($html)->toContain('<a class="sts-card" href="'.route('gallery.show', ['username' => 'demo', 'setTcgdexId' => 'me05']).'" aria-label="Pitch Black, 2 of 120 cards, 2% collected, $25.00 owned">')
+        ->and($html)->toContain('<a class="sts-card" href="'.route('gallery.show', ['username' => 'demo', 'setTcgdexId' => 'sv08.5']).'" aria-label="Prismatic Evolutions, 2 of 180 cards, 1% collected">')
+        ->and(substr_count($html, '<span class="sts-info" aria-hidden="true">'))->toBe(2);
+});
+
+test('a collection with no public sets keeps the empty state wording, with no summary line', function () {
+    $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
+    Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+
+    $html = $this->get('/demo/sets')->assertOk()->getContent();
+
+    expect(stsTexts($html, 'sts-empty-t'))->toBe(['No sets yet'])
+        ->and($html)->toContain('<p>Sets appear here once at least one card from them is in the public collection.</p>')
+        ->and($html)->toContain('<div class="sts-pockets" aria-hidden="true"><i></i><i></i><i></i></div>')
+        ->and(stsTexts($html, 'sts-summary'))->toBe([])
+        ->and($html)->not->toContain('class="sts-shelf"');
 });
