@@ -43,14 +43,20 @@
                         <p class="act-v">{{ $headCurrency ? Money::format($totals[$headCurrency], $headCurrency) : 'No prices yet' }}</p>
                     @endif
                 </div>
-                {{-- The slot shows pointer and keyboard readings to the eye; only keyboard readings are announced, so a mouse sweep does not flood a screen reader. --}}
+                {{-- The slot shows pointer and keyboard readings to the eye; only a keyboard reading reaches a screen reader, through the slider's aria-valuetext, so a mouse sweep does not flood it. --}}
                 <p class="act-read act-mono" data-act-read aria-hidden="true"></p>
-                <p class="sr-only" data-act-announce aria-live="polite"></p>
             </div>
             <div class="act-plot">
                 @if ($chart)
-                    <div class="act-chart" tabindex="0" role="group" aria-label="Value by day" data-act-chart data-points='@json($chart->points)'>
-                        <svg class="act-svg" viewBox="0 0 {{ ValueChart::WIDTH }} {{ ValueChart::HEIGHT }}" preserveAspectRatio="none" role="img" aria-label="Collection value over {{ $chartRange->label() }}, from {{ Money::format($first, $primaryCurrency) }} to {{ Money::format($last, $primaryCurrency) }}">
+                    @php
+                        // The slider rests on the newest day; its value text is the same words the script writes for a reading.
+                        $lastIndex = count($chart->points) - 1;
+                        $restText = $chart->points[$lastIndex]['d'].' · '.$chart->points[$lastIndex]['v'];
+                    @endphp
+                    {{-- A slider's children are presentational, so the drawing is described here and the slider points at it. --}}
+                    <p class="sr-only" id="act-chart-sum">Collection value over {{ $chartRange->label() }}, from {{ Money::format($first, $primaryCurrency) }} to {{ Money::format($last, $primaryCurrency) }}</p>
+                    <div class="act-chart" tabindex="0" role="slider" aria-label="Value by day" aria-valuemin="0" aria-valuemax="{{ $lastIndex }}" aria-valuenow="{{ $lastIndex }}" aria-valuetext="{{ $restText }}" aria-describedby="act-chart-sum" data-act-chart data-points='@json($chart->points)'>
+                        <svg class="act-svg" viewBox="0 0 {{ ValueChart::WIDTH }} {{ ValueChart::HEIGHT }}" preserveAspectRatio="none" aria-hidden="true">
                             <line class="act-grid" x1="0" x2="{{ ValueChart::WIDTH }}" y1="{{ $chart->highY * ValueChart::HEIGHT / 100 }}" y2="{{ $chart->highY * ValueChart::HEIGHT / 100 }}"/>
                             <line class="act-grid" x1="0" x2="{{ ValueChart::WIDTH }}" y1="{{ $chart->lowY * ValueChart::HEIGHT / 100 }}" y2="{{ $chart->lowY * ValueChart::HEIGHT / 100 }}"/>
                             <path class="act-area" d="{{ $chart->area }}"/>

@@ -26,9 +26,14 @@ const pointsOf = (chart) => {
 };
 const slotOf = (chart) => chart.closest('[data-act-history]')?.querySelector('[data-act-read]');
 
-const announcerOf = (chart) => chart.closest('[data-act-history]')?.querySelector('[data-act-announce]');
+// The chart is a slider: its value is the index of the day being read, its value text what the visible readout says.
+const setValue = (chart, index, text) => {
+    chart.setAttribute('aria-valuenow', String(index));
+    chart.setAttribute('aria-valuetext', text);
+};
 
-// `announce` is true for keyboard readings only: the live region speaks once per key press, never once per pointer move.
+// `announce` is true for keyboard readings only: they move the slider's value, which a screen reader speaks once per key
+// press. Pointer readings never touch it, so a mouse sweep does not flood a screen reader.
 const readAt = (chart, index, announce = false) => {
     const point = pointsOf(chart)[index];
     if (!point) return;
@@ -38,17 +43,18 @@ const readAt = (chart, index, announce = false) => {
     chart.classList.add('is-reading');
     const slot = slotOf(chart);
     if (slot) slot.textContent = readingText(point);
-    const announcer = announce ? announcerOf(chart) : null;
-    if (announcer) announcer.textContent = readingText(point);
+    if (announce) setValue(chart, index, readingText(point));
 };
 
+// Leaving the chart puts the slider back on its resting value, the newest day.
 const stopReading = (chart) => {
     chart.classList.remove('is-reading');
     delete chart.dataset.reading;
     const slot = slotOf(chart);
     if (slot) slot.textContent = '';
-    const announcer = announcerOf(chart);
-    if (announcer) announcer.textContent = '';
+    const points = pointsOf(chart);
+    const last = points.length - 1;
+    if (last >= 0) setValue(chart, last, readingText(points[last]));
 };
 
 document.addEventListener('pointermove', (event) => {

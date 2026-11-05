@@ -818,14 +818,19 @@ test('the chart is drawn on the server, and a rise over the range is green', fun
     $html = $this->get('/carlos/activity')->getContent();
     preg_match("#data-points='([^']*)'#", $html, $m);
     $points = json_decode($m[1] ?? '[]', true);
+    preg_match('#<div class="act-chart"[^>]*>#', $html, $slider);
 
     expect($html)->toContain('<small class="act-move act-move--up">+$1.00 · 1 month</small>')
         ->and($html)->toContain('class="act-end act-end--up"')
-        ->and($html)->toContain('preserveAspectRatio="none"')
-        ->and($html)->toContain('aria-label="Collection value over 1 month, from $2.00 to $3.00"')
+        ->and($html)->toContain('preserveAspectRatio="none" aria-hidden="true">')
         ->and($html)->toContain('<h2 class="act-k" id="act-cv-h">Collection value · 1 month</h2>')
-        ->and($html)->toContain('<p class="sr-only" data-act-announce aria-live="polite"></p>')
-        ->and($html)->not->toContain('data-act-read aria-live')
+        ->and($slider[0] ?? '')->toContain('role="slider"')
+        ->and($slider[0] ?? '')->toContain('aria-valuemin="0" aria-valuemax="2" aria-valuenow="2"')
+        ->and($slider[0] ?? '')->toContain('aria-valuetext="'.DayLabel::of(today()).' · $3.00"')
+        ->and($slider[0] ?? '')->toContain('aria-describedby="act-chart-sum"')
+        ->and($html)->toContain('<p class="sr-only" id="act-chart-sum">Collection value over 1 month, from $2.00 to $3.00</p>')
+        ->and($html)->not->toContain('aria-live')
+        ->and($html)->not->toContain('data-act-announce')
         ->and($html)->not->toContain('class="nw-')
         ->and($points)->toHaveCount(3)
         ->and(end($points)['v'])->toBe('$3.00');
@@ -861,7 +866,9 @@ test('the chart carries the hooks its script reads', function () {
 
     expect($html)->toContain('data-act-tabs')
         ->and($html)->toContain('data-act-history')
-        ->and($html)->toContain('<div class="act-chart" tabindex="0" role="group" aria-label="Value by day" data-act-chart data-points=\'')
+        ->and($html)->toContain('<div class="act-chart" tabindex="0" role="slider" aria-label="Value by day"')
+        ->and($html)->toContain('data-act-chart')
+        ->and($html)->toContain('data-points=\'')
         ->and($html)->toContain('data-act-read aria-hidden="true"')
         ->and($html)->toContain('class="act-cross"')
         ->and($html)->toContain('class="act-dot"')
