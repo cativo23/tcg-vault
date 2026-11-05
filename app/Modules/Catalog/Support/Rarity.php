@@ -108,4 +108,15 @@ final class Rarity
 
         return self::TIERS[$key] ?? 'standard';
     }
+
+    /**
+     * Where a rarity sits on the printed ladder (TIERS runs commonest to
+     * rarest); wording the ladder does not know sorts after every known one.
+     */
+    public static function rank(?string $rarity): int
+    {
+        $position = array_search(Str::lower(trim((string) $rarity)), array_keys(self::TIERS), true);
+
+        return $position === false ? PHP_INT_MAX : $position;
+    }
 }

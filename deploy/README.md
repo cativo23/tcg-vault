@@ -105,9 +105,23 @@ docker compose -f compose.prod.yml exec redis redis-cli -a "$REDIS_PASSWORD" INF
 ssh polaris2
 cd ~/deploy/tcg-vault
 docker compose -f compose.prod.yml pull
+# If this release adds a migration, run the two `IMAGE_TAG=vX.Y.Z ... run --rm --no-deps app`
+# lines below (migrate --force, prices:refresh-week-baselines) BEFORE `up -d`.
 docker compose -f compose.prod.yml up -d
 # Migrations are a deliberate manual step (never auto-run):
 docker compose -f compose.prod.yml exec app php artisan migrate --force
+# Fills the 7-day-move read model (card_price_week_baselines). Idempotent;
+# needed once after the migration that creates it (until then the gallery
+# shows no 7-day moves, without error), and it also runs nightly at 04:15 UTC.
+# When the deploy job refused the new image over a pending migration, `exec`
+# would reach the OLD container (no such command): run both steps from the
+# new image instead, before redeploying, with the release tag spelled out
+# (compose falls back to a possibly stale local :latest without it):
+#   IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml run --rm --no-deps app php artisan migrate --force
+#   IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml run --rm --no-deps app php artisan prices:refresh-week-baselines
+# If you ran those two `run` lines, skip the `exec ... migrate --force` line above
+# and the `exec ... prices:refresh-week-baselines` line below. Otherwise run both `exec` lines.
+docker compose -f compose.prod.yml exec app php artisan prices:refresh-week-baselines
 # Every deploy, not just the first: idempotent (firstOrCreate/
 # assignRole no-op if already done), and now also the only thing that
 # backfills roles/permissions onto accounts created before a given
@@ -461,11 +475,16 @@ deleted since the backup are deleted again, so none of them can sign in.
    and nothing but this command moves the epoch, so the restore wrote
    around both. The same goes for any other change to a
    `card_price_snapshots` row dated before today, by `psql` or by the app
-   (a data migration, tinker, a backfill): run the same command after it.
+   (a data migration, tinker, a backfill, a hand-added prize-pack price): run the same command after it, and then the baseline rebuild that follows it.
    It exits non-zero if the cache would not take the change; run it again
    once the cache is back:
    ```bash
    dcp run --rm --no-deps -T app php artisan prices:bump-version
+   ```
+   Then rebuild the 7-day-move baselines from the restored prices (until
+   then a card whose newest price changed shows no move):
+   ```bash
+   dcp run --rm --no-deps -T app php artisan prices:refresh-week-baselines
    ```
 5. Start again, then check that `migrate:status` shows nothing pending:
    ```bash

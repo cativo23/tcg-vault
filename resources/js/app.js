@@ -1,39 +1,3 @@
-// Count-up for the headline value in a stat band (design.md motion stance).
-// Numbers are formatted server-side; the script only animates the digits,
-// so the resting DOM is always the real value even with JS off.
-const countUp = (el) => {
-    const target = Number(el.dataset.countup);
-    const text = el.textContent;
-    const match = text.match(/[\d,]+(\.\d+)?/);
-
-    if (!Number.isFinite(target) || !match) return;
-
-    const decimals = match[1] ? match[1].length - 1 : 0;
-    const format = (n) => n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-    const start = performance.now();
-    const duration = 1100;
-
-    const tick = (now) => {
-        const p = Math.min(1, (now - start) / duration);
-        const eased = 1 - Math.pow(1 - p, 3);
-        el.textContent = text.replace(match[0], format(target * eased));
-        if (p < 1) requestAnimationFrame(tick);
-    };
-
-    requestAnimationFrame(tick);
-};
-
-const run = () => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    document.querySelectorAll('[data-countup]:not([data-counted])').forEach((el) => {
-        el.dataset.counted = '1';
-        countUp(el);
-    });
-};
-
-document.addEventListener('DOMContentLoaded', run);
-document.addEventListener('livewire:navigated', run);
-
 // A card image that fails to load (tcgdex outage, a deleted photo) falls
 // back to design.md's empty-image state instead of a blank frame; a
 // decorative image (set logo) marked data-optional simply disappears.

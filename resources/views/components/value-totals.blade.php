@@ -3,7 +3,6 @@
 @props([
     'totals',          // array<string currency, int minor>, primary first
     'empty' => '—',
-    'countup' => false, // animate the headline figure (digits only; the rest of the markup is untouched)
 ])
 
 {{-- A collection total is a small map of currency → amount, never one sum:
@@ -15,7 +14,7 @@
 @else
     @foreach ($totals as $currency => $minor)
         @if ($loop->first)
-            <span @if ($countup) data-countup="{{ number_format($minor / 100, 2, '.', '') }}" @endif>{{ Money::format($minor, $currency) }}</span>
+            <span>{{ Money::format($minor, $currency) }}</span>
         @else
             {{-- "+" visually reads as "add this to the total above" no matter
                  what the tooltip says — a tooltip isn't visible at a glance

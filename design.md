@@ -169,17 +169,20 @@ Rules that came out of building it:
 - The collector's own photo is always the primary image when it exists;
   official art is the alternate view, never the other way round.
 - An image that fails to load degrades to the empty-image state (or, for a
-  decorative logo, disappears) — `app.js` handles both. Never a broken frame.
+  decorative logo, disappears). The collection page's tiles use
+  `resources/js/collection.js` (retry `low.webp` once as `high.webp`, then the
+  "No image" face); old-layout pages keep `app.js`. Never a broken frame.
 - `--signal` in the ticker/arrow means one thing: the resolved price went
   UP versus the previous comparable snapshot (`CardPriceResolver::resolveDelta`).
-  Down is `--flat`; no history is a neutral dot.
+  Down is `--flat`; no history is a neutral dot. On the revamp collection page the hang tag's move is against the same print seven days earlier (`CardPriceResolver::weekDeltaFor`), not the previous snapshot; the rule is otherwise the same.
 - Headline numbers render as their real value; no count-up (retired, see Revamp primitives).
 
 ## Revamp primitives (2026-11, public pages)
 Materials, not boxes: the page is a collector's binder and every primitive is a
 physical thing a collector already knows. Built only from the tokens above.
 - **Stock sheet** — `--color-stock` surface with `--shadow-sheet` and paper grain; the cards sit on it.
-- **Divider tabs** — `--radius-tab` tabs with a `--color-rule-2` edge; on the collection page they are the set filter (same `setsQuery()` + `$setFilter`, no chip rail, no dropdown).
+- **Divider tabs** — `--radius-tab` tabs with a `--color-rule-2` edge; on the collection page they are the set filter (same `setsQuery()` + `$setFilter`, no chip rail, no dropdown). Tabs are real `tablist`/`tab` controls with manual activation; the selected set links to its page.
+- **Hang tag move** — `+$2.40 · 7d` / `−$1.00 · 7d` / `±$0.00 · 7d` under the price in `.col-mono`; green dot only for a rise; nothing when there is no comparable price a week old.
 - **Hang tags** — `--radius-tag` stock tags under a card carrying its price; green only when the price is up.
 - **Binder page + pockets** — `--color-binder-page` with clear pockets (`--color-sleeve-*`); a missing card is an empty pocket with its number pencilled in.
 - **Printed strip** — a one-line set progress strip with hollow slots for missing cards (replaces the `.nw-bar` progress bar on set screens).
@@ -190,7 +193,7 @@ physical thing a collector already knows. Built only from the tokens above.
 
 **Rarity chips on stock** (amends the Rarity accent in the next section): `silver` is a fill, `linear-gradient(oklch(96% .006 250) → oklch(88% .008 250))` (dark: 88% → 78%), and `chase` is a pastel foil fill (`--foil-1..4`, oklch 84–90% L, chroma .07, hues 200/300/20/95); both carry ink text `oklch(22% .006 85)`. The chase tile keeps a thin foil `.ring` around the card. Printed rarity only, never price-driven. The older text-gradient chase and silver-text chip are retired.
 
-**Count-up is retired.** None of the approved revamp pages animates a number (the anti-slop rule bans it); a headline value renders as its real value. `data-countup` in `app.js` stays only until the old pages that use it are replaced.
+**Count-up is retired.** None of the approved revamp pages animates a number (the anti-slop rule bans it); a headline value renders as its real value.
 
 **Chrome is retired.** The frozen-dark band (`--chrome-bg`/`--chrome-fg`: topbar, footer, tile head and ticker, landing hero/close) is gone from the design: topbar and footer are `--color-paper` with a hairline, and the tile head and ticker live on stock. The tokens stay in `app.css` only until the admin screens are redesigned (next after the public pages); the admin PR deletes them. No new code may reference them.
 

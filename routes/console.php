@@ -28,6 +28,16 @@ Schedule::command('catalog:refresh-prices')
 // docblock for the staleness threshold and why it exists.
 Schedule::command('catalog:check-pricing-freshness')->dailyAt('04:00');
 
+// Every price write refreshes its cards' week baselines (see WeekBaselines). This
+// full rebuild runs once the daily sync's jobs have had their retry window, and
+// heals any card a write path missed; a missed card shows no 7-day move until then.
+Schedule::command('prices:refresh-week-baselines')
+    ->dailyAt('04:15')
+    ->withoutOverlapping(30)
+    ->onFailure(fn () => app(DiscordAlerter::class)->send(
+        '⚠️ tcg-vault: prices:refresh-week-baselines errored — 7-day moves are not being healed.'
+    ));
+
 // tcgcsv rebuilds around 20:00 UTC; its TCGplayer prices are compared with
 // tcgdex's and, in fill mode, written for the prints tcgdex doesn't price.
 Schedule::job(new SyncTcgcsvPricesJob)->dailyAt('20:30');

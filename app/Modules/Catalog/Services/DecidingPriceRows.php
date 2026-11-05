@@ -39,9 +39,16 @@ use Illuminate\Support\Facades\DB;
  * history questions (resolveForVariantAsOf(), resolveAsOf(),
  * totalsByCurrencyAsOf(), resolveForVariantOnDays(),
  * distinctSnapshotDates()): those need the rows this drops. historyIn()
- * reads the database and is unaffected.
+ * reads the database and is unaffected. weekDeltaFor() answers only through
+ * the joined baseline columns below: a relation loaded some other way (a
+ * plain `recent()` load) gives it null.
  *
- * Rows carry CardPriceSnapshot::CHART_COLUMNS, not the `raw` payload.
+ * Rows carry CardPriceSnapshot::CHART_COLUMNS, not the `raw` payload, then
+ * WeekBaselines::ATTRIBUTES: their print's week baseline from the
+ * card_price_week_baselines read model, joined on its key (card, source,
+ * variant, currency) and only when the baseline lies inside the window,
+ * null otherwise. The join adds columns, never rows: the key is the
+ * table's primary key. CardPriceResolver::weekDeltaFor() reads them.
  *
  * The rows are cached per set of cards (see cacheKey()), as plain values,
  * compressed, hydrated on every read, for up to a day. An entry is used only while the
@@ -57,9 +64,19 @@ use Illuminate\Support\Facades\DB;
 class DecidingPriceRows
 {
     /** Bump when the query or the entry's shape changes, so a deploy never reads an entry the old code wrote. */
-    private const CACHE_VERSION = 1;
+    private const CACHE_VERSION = 2;
 
     private const TTL_SECONDS = 86400;
+
+    /**
+     * The values each cached and loaded row holds, in order.
+     *
+     * @return list<string>
+     */
+    private static function columns(): array
+    {
+        return [...CardPriceSnapshot::CHART_COLUMNS, ...WeekBaselines::ATTRIBUTES];
+    }
 
     /**
      * @param  EloquentCollection<int, Card>  $cards
@@ -85,7 +102,7 @@ class DecidingPriceRows
                 'version' => $version,
                 'from' => $from,
                 'ids' => $idList,
-                'columns' => CardPriceSnapshot::CHART_COLUMNS,
+                'columns' => self::columns(),
                 // Compressed: a collection's rows serialize to over half a
                 // megabyte and compress about tenfold at the fastest level.
                 'rows' => gzcompress(serialize($values), 1),
@@ -93,7 +110,7 @@ class DecidingPriceRows
         }
 
         $byCard = [];
-        $attributes = array_map(fn (array $row): array => array_combine(CardPriceSnapshot::CHART_COLUMNS, $row), $values);
+        $attributes = array_map(fn (array $row): array => array_combine(self::columns(), $row), $values);
 
         foreach (CardPriceSnapshot::hydrate($attributes) as $snapshot) {
             $byCard[$snapshot->card_id][] = $snapshot;
@@ -119,7 +136,7 @@ class DecidingPriceRows
             || ($entry['version'] ?? null) !== $version
             || ($entry['from'] ?? null) !== $from
             || ($entry['ids'] ?? null) !== $idList
-            || ($entry['columns'] ?? null) !== CardPriceSnapshot::CHART_COLUMNS
+            || ($entry['columns'] ?? null) !== self::columns()
             || ! is_string($entry['rows'] ?? null)
             || ! is_string($packed = @gzuncompress($entry['rows']))) {
             return null;
@@ -131,7 +148,7 @@ class DecidingPriceRows
             return null;
         }
 
-        $width = count(CardPriceSnapshot::CHART_COLUMNS);
+        $width = count(self::columns());
 
         foreach ($values as $row) {
             if (! is_array($row) || count($row) !== $width) {
@@ -157,18 +174,22 @@ class DecidingPriceRows
     }
 
     /**
-     * The deciding rows of the cards, in id order, each as its
-     * CHART_COLUMNS values in that order.
+     * The deciding rows of the cards, in id order, each as its columns()
+     * values in that order.
      *
      * @return list<list<mixed>>
      */
     private function query(string $idList, string $from): array
     {
         $columns = implode(', ', CardPriceSnapshot::CHART_COLUMNS);
+        $outer = implode(', ', array_map(fn (string $column) => "windowed.{$column}", CardPriceSnapshot::CHART_COLUMNS));
         // Running counts over newest-first partitions: a priced row's count
         // is its rank among the priced rows of its partition.
         $rows = DB::select(<<<SQL
-            select {$columns} from (
+            select {$outer},
+                wb.anchor_on as week_anchor_on, wb.baseline_id as week_baseline_id, wb.baseline_on as week_baseline_on,
+                wb.baseline_origin as week_baseline_origin, wb.baseline_minor as week_baseline_minor
+            from (
                 select {$columns},
                     row_number() over (partition by card_id, source, variant order by captured_on desc) as newest,
                     count(*) filter (where market_minor is not null)
@@ -179,11 +200,18 @@ class DecidingPriceRows
                 where card_id = any(?::bigint[])
                   and (captured_on >= ?::date or source = 'manual')
             ) as windowed
-            where newest = 1
-               or (market_minor is not null and priced_rank <= 2)
-               or (market_minor is not null and source <> 'manual' and origin_rank = 1)
-            order by id
+            left join (
+                select * from "card_price_week_baselines" where card_id = any(?::bigint[]) and baseline_on >= ?::date
+            ) as wb
+                on wb.card_id = windowed.card_id and wb.source = windowed.source and wb.variant = windowed.variant
+               and wb.currency = windowed.currency
+            where windowed.newest = 1
+               or (windowed.market_minor is not null and windowed.priced_rank <= 2)
+               or (windowed.market_minor is not null and windowed.source <> 'manual' and windowed.origin_rank = 1)
+            order by windowed.id
             SQL, [
+            '{'.$idList.'}',
+            $from,
             '{'.$idList.'}',
             $from,
         ]);

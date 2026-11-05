@@ -14,6 +14,7 @@ use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Tcgcsv\TcgcsvFallbackPrices;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 final class CatalogSyncService
@@ -78,6 +79,7 @@ final class CatalogSyncService
             );
 
             $this->storePriceSnapshots($card, $cardDetail);
+            $this->refreshWeekBaselines($card);
 
             // The row was written inside this transaction, so it exists.
             return $card->fresh(['priceSnapshots']) ?? $card;
@@ -174,6 +176,24 @@ final class CatalogSyncService
                     'source_updated_at' => $price->sourceUpdatedAt,
                 ],
             );
+        }
+    }
+
+    /**
+     * The card's week baselines, rebuilt from the prices just written and
+     * inside the same transaction, so a page reads both or neither. A query
+     * error in the refresh rolls back to its own savepoint and is reported:
+     * the day's prices are kept and the card shows no 7-day move until the
+     * next refresh (the nightly rebuild at the latest). A deadlock or
+     * serialization failure is not caught: it leaves no usable savepoint, so
+     * the whole sync rolls back and its job retries.
+     */
+    private function refreshWeekBaselines(Card $card): void
+    {
+        try {
+            app(WeekBaselines::class)->refreshCards([$card->id]);
+        } catch (QueryException $e) {
+            report($e);
         }
     }
 

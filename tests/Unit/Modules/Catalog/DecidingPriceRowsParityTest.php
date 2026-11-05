@@ -8,6 +8,7 @@ use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Services\DecidingPriceRows;
 use App\Modules\Catalog\Services\PriceDelta;
+use App\Modules\Catalog\Services\WeekBaselines;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\Valuation;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -15,6 +16,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\FullRecentPriceRows;
+use Tests\Support\LegacyWeekMove;
 
 /*
  * DecidingPriceRows keeps only the rows of the recent window that can decide
@@ -113,6 +115,20 @@ function decidingScenarios(): array
             ['tcgplayer', 'normal', 2, 'USD', 490, 'tcgcsv'], ['tcgplayer', 'normal', 3, 'USD', 485], ['tcgplayer', 'normal', 4, 'USD', 480],
             ['tcgplayer', 'holofoil', 6, 'USD', 900, 'tcgcsv'], ['tcgplayer', 'holofoil', 0, 'USD', 920], ['tcgplayer', 'holofoil', 1, 'USD', 910],
         ],
+        // The week baseline is the newest priced row 7 to 14 days before the latest: the unpriced day 7 and the
+        // gap at day 8 are skipped, so day 9 is the comparison row.
+        'a week baseline behind a gap and an unpriced day' => [
+            ['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 6, 'USD', 480],
+            ['tcgplayer', 'normal', 7, 'USD', null], ['tcgplayer', 'normal', 9, 'USD', 470], ['tcgplayer', 'normal', 12, 'USD', 460],
+        ],
+        // The baseline may be exactly WEEK_DAYS back (normal), exactly WEEK_DAYS + WEEK_SLACK_DAYS back (holofoil), and not one
+        // day further (reverse-holofoil); with nothing in between, only the edge itself can supply it.
+        'week baselines exactly on both edges of their span' => array_merge(
+            [['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 7, 'USD', 450],
+                ['tcgplayer', 'holofoil', 0, 'USD', 900], ['tcgplayer', 'holofoil', 14, 'USD', 800],
+                ['tcgplayer', 'reverse-holofoil', 0, 'USD', 300], ['tcgplayer', 'reverse-holofoil', 15, 'USD', 250]],
+            $daily('ebay', 'normal', 'USD', 0, 25, 60),
+        ),
         'no price rows at all' => [],
     ];
 }
@@ -188,7 +204,7 @@ function decidingKey(mixed $value): mixed
     return match (true) {
         $value === null, is_bool($value) => $value,
         $value instanceof CardPriceSnapshot => [$value->id, $value->market_minor, $value->currency, $value->capturedOnKey()],
-        $value instanceof PriceDelta => [decidingKey($value->latest), decidingKey($value->previous), $value->deltaMinor],
+        $value instanceof PriceDelta => [decidingKey($value->latest), decidingKey($value->previous), $value->previous->origin, $value->previous->source, $value->previous->variant, $value->deltaMinor],
         is_array($value) => array_map(fn ($v) => decidingKey($v), $value),
         default => $value,
     };
@@ -218,17 +234,20 @@ function decidingHoldings(int $cards): array
 }
 
 /**
- * Every current-price answer for the cards, from one loader.
+ * Every current-price answer for the cards, from one loader. $week answers
+ * the 7-day move (default: the resolver's).
  *
  * @param  list<int>  $ids
  * @param  list<list<array{0: ?string, 1: int}>>  $holdings
+ * @param  (Closure(Card, ?CardPriceSnapshot): ?PriceDelta)|null  $week
  * @return array<string, mixed>
  */
-function decidingAnswers(DecidingPriceRows $loader, array $ids, array $holdings): array
+function decidingAnswers(DecidingPriceRows $loader, array $ids, array $holdings, ?Closure $week = null): array
 {
     $cards = $loader->loadOnto(Card::query()->whereIn('id', $ids)->orderBy('id')->get());
     $resolver = new CardPriceResolver;
     $valuation = new Valuation($resolver);
+    $week ??= fn (Card $card, ?CardPriceSnapshot $latest): ?PriceDelta => $resolver->weekDeltaFor($card, $latest);
     $answers = [];
 
     foreach ($cards->values() as $i => $card) {
@@ -255,6 +274,7 @@ function decidingAnswers(DecidingPriceRows $loader, array $ids, array $holdings)
                 $answers["{$tag} resolveForVariant {$v} #{$pass}"] = decidingKey($resolver->resolveForVariant($card, $variant));
             }
             $answers["{$tag} deltaFor pick {$v}"] = decidingKey($resolver->deltaFor($card, $resolver->resolveForVariant($card, $variant)));
+            $answers["{$tag} weekDeltaFor pick {$v}"] = decidingKey($week($card, $resolver->resolveForVariant($card, $variant)));
 
             if ($variant !== null) {
                 $answers["{$tag} hasCurrentMarketPrice {$v}"] = $resolver->hasCurrentMarketPrice($card, $variant);
@@ -265,6 +285,8 @@ function decidingAnswers(DecidingPriceRows $loader, array $ids, array $holdings)
         $answers["{$tag} headlineSnapshot"] = decidingKey($headline);
         $answers["{$tag} headlineItem"] = $card->collectionItems->search($valuation->headlineItem($card), true);
         $answers["{$tag} deltaFor headline"] = decidingKey($resolver->deltaFor($card, $headline));
+        $answers["{$tag} weekDeltaFor headline"] = decidingKey($week($card, $headline));
+        $answers["{$tag} weekDeltaFor resolve"] = decidingKey($week($card, $resolver->resolve($card)));
         $answers["{$tag} cardTotal"] = $valuation->cardTotal($card);
         $answers["{$tag} origins"] = decidingOrigins(new EloquentCollection([$card]));
         $answers["{$tag} newest market day"] = decidingNewestMarketDay(new EloquentCollection([$card]));
@@ -312,8 +334,10 @@ test('the deciding rows answer every current-price question as the whole recent 
         $ids[] = decidingCard($set, $n, $rows)->id;
     }
     $holdings = decidingHoldings(count($ids));
+    app(WeekBaselines::class)->refreshAll();
 
-    $expected = decidingAnswers(new FullRecentPriceRows, $ids, $holdings);
+    // The reference is the whole window with the 7-day move found by scanning it; the deciding side reads the read model.
+    $expected = decidingAnswers(new FullRecentPriceRows, $ids, $holdings, LegacyWeekMove::of(...));
     $actual = decidingAnswers(new DecidingPriceRows, $ids, $holdings);
 
     $mismatches = [];
@@ -323,10 +347,12 @@ test('the deciding rows answer every current-price question as the whole recent 
             $mismatches[] = "{$what}: expected ".json_encode($value).', got '.json_encode($got);
         }
     }
+    $weekMoves = collect($expected)->filter(fn ($value, string $what) => str_contains($what, 'weekDeltaFor') && $value !== null);
 
     expect($mismatches)->toBe([])
         ->and(array_keys($actual))->toBe(array_keys($expected))
-        ->and(count($expected))->toBeGreaterThan(1500);
+        ->and(count($expected))->toBeGreaterThan(1500)
+        ->and($weekMoves->count())->toBeGreaterThan(10);
 });
 
 test('the deciding rows are a strict subset of the window, so the trim is doing something', function () {
@@ -351,7 +377,7 @@ test('the header still lists tcgcsv when tcgdex priced its group on two later da
     expect(decidingOrigins($cards))->toBe(['tcgcsv', 'tcgdex']);
 });
 
-test('the deciding rows are loaded in one query, with the card ids bound as one array and without the raw payload', function () {
+test('the deciding rows are loaded in one query, with the card ids bound as one array, the window start bound for the rows and the baselines, and without the raw payload', function () {
     $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
     foreach (array_values(decidingScenarios()) as $n => $rows) {
         decidingCard($set, $n, $rows);
@@ -365,7 +391,11 @@ test('the deciding rows are loaded in one query, with the card ids bound as one 
     (new DecidingPriceRows)->loadOnto($cards);
 
     expect($queries)->toHaveCount(1)
-        ->and($queries[0]->bindings)->toHaveCount(2)
+        ->and($queries[0]->bindings)->toHaveCount(4)
+        ->and($queries[0]->bindings[0])->toBe($queries[0]->bindings[2])
+        ->and($queries[0]->bindings[1])->toBe($queries[0]->bindings[3])
+        ->and($queries[0]->sql)->toContain('where card_id = any(?::bigint[])')
+        ->and($queries[0]->sql)->toContain('from "card_price_week_baselines" where card_id = any(?::bigint[]) and baseline_on >= ?::date')
         ->and($cards->every(fn (Card $c) => $c->relationLoaded('priceSnapshots')))->toBeTrue()
         ->and($cards->flatMap(fn (Card $c) => $c->priceSnapshots)->every(fn (CardPriceSnapshot $s) => ! array_key_exists('raw', $s->getAttributes())))->toBeTrue();
 });
@@ -540,4 +570,37 @@ test('a cached entry stores its rows compressed, to keep the cache small', funct
 
     expect($entry['rows'])->toBeString()
         ->and(strlen($entry['rows']))->toBeLessThan(intdiv(strlen(serialize($rows)), 4));
+});
+
+test('the loader keeps master\'s rows: no row is kept only as a week baseline', function () {
+    $loaded = function (array $daysAgo): array {
+        Cache::flush();
+        $set = Set::firstOrCreate(['tcgdex_id' => 'me05'], ['name' => 'Pitch Black']);
+        $card = Card::create(['tcgdex_id' => 'me05-'.uniqid(), 'set_id' => $set->id, 'local_id' => '1', 'name' => 'Baseline probe']);
+        foreach ($daysAgo as $d) {
+            CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($d), 'currency' => 'USD', 'market_minor' => 1000 + $d]);
+        }
+        app(WeekBaselines::class)->refreshCards([$card->id]);
+        $card = (new DecidingPriceRows)->loadOnto(new EloquentCollection([$card]))->first();
+
+        return $card->priceSnapshots->map(fn (CardPriceSnapshot $s) => (int) today()->diffInDays($s->capturedOnKey(), true))->sort()->values()->all();
+    };
+
+    expect($loaded([0, 5, 6, 9, 20]))->toBe([0, 5])
+        ->and($loaded([0, 5, CardPriceResolver::WEEK_DAYS]))->toBe([0, 5]);
+});
+
+test('the baseline columns ride on the rows the loader already returns', function () {
+    $set = Set::create(['tcgdex_id' => 'dec', 'name' => 'Deciding']);
+    $card = decidingCard($set, 1, [['tcgplayer', 'normal', 0, 'USD', 500], ['tcgplayer', 'normal', 1, 'USD', 490], ['tcgplayer', 'normal', 7, 'USD', 450], ['cardmarket', 'normal', 0, 'EUR', 400]]);
+    app(WeekBaselines::class)->refreshAll();
+
+    $rows = (new DecidingPriceRows)->loadOnto(Card::whereKey($card->id)->get())->sole()->priceSnapshots
+        ->mapWithKeys(fn (CardPriceSnapshot $s) => ["{$s->source}|{$s->capturedOnKey()}" => array_intersect_key($s->getAttributes(), array_flip(WeekBaselines::ATTRIBUTES))]);
+    $day = fn (int $d) => today()->subDays($d)->toDateString();
+
+    expect($rows->keys()->sort()->values()->all())->toBe(["cardmarket|{$day(0)}", "tcgplayer|{$day(1)}", "tcgplayer|{$day(0)}"]) // string sort: yesterday before today
+        ->and($rows["tcgplayer|{$day(0)}"]['week_anchor_on'])->toBe($day(0))
+        ->and($rows["tcgplayer|{$day(0)}"]['week_baseline_minor'])->toBe(450)
+        ->and($rows["cardmarket|{$day(0)}"])->toBe(array_fill_keys(WeekBaselines::ATTRIBUTES, null));
 });

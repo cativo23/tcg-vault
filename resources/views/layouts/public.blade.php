@@ -61,7 +61,7 @@
 
         <header class="nw-topbar sticky top-0 z-50" x-data="{ mobileNavOpen: false }">
             <div class="nw-wrap flex items-center justify-between gap-4" style="height: 52px">
-                <a href="{{ $username ? route('gallery.index', ['username' => $username]) : url('/') }}" class="nw-brand" wire:navigate>
+                <a href="{{ $username ? route('gallery.index', ['username' => $username]) : url('/') }}" class="nw-brand">
                     <svg class="nw-mark" viewBox="0 0 64 32" aria-hidden="true">
                         <polyline points="4,22 16,27 28,15 40,19 52,7" fill="none" stroke="#f2efe6" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
                         <circle cx="52" cy="7" r="4.5" fill="#37d17f"/>
@@ -78,7 +78,7 @@
                          a hamburger panel rather than fighting for the same row. --}}
                     <div class="hidden sm:block">
                         <nav class="nw-nav" aria-label="Gallery">
-                            <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif wire:navigate>Collection</a>
+                            <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif>Collection</a>
                             <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif wire:navigate>Sets</a>
                             <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif wire:navigate>Activity</a>
                         </nav>
@@ -150,7 +150,7 @@
                     class="nw-nav-mobile sm:hidden"
                     aria-label="Gallery"
                 >
-                    <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Collection</a>
+                    <a href="{{ route('gallery.index', ['username' => $username]) }}" @if ($isActive('gallery.index', 'gallery.card')) aria-current="page" @endif @click="mobileNavOpen = false">Collection</a>
                     <a href="{{ route('gallery.sets', ['username' => $username]) }}" @if ($isActive('gallery.sets', 'gallery.show')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Sets</a>
                     <a href="{{ route('gallery.activity', ['username' => $username]) }}" @if ($isActive('gallery.activity')) aria-current="page" @endif wire:navigate @click="mobileNavOpen = false">Activity</a>
                     @if ($isOwner)

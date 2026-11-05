@@ -9,6 +9,7 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\CardTcgplayerLink;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Services\WeekBaselines;
 use App\Modules\Catalog\Tcgcsv\IdentityOutcome;
 use App\Modules\Catalog\Tcgcsv\TcgcsvClient;
 use App\Modules\Catalog\Tcgcsv\TcgcsvExtraGroups;
@@ -22,6 +23,7 @@ use DateTimeInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\ConnectionException;
@@ -536,6 +538,7 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
         $acceptedAfterHold = [];
         $keep = [];
         $rejected = [];
+        $filledCards = [];
 
         foreach ($gaps as [$link, $row]) {
             $key = "{$link->card_id}|{$link->variant}";
@@ -589,11 +592,20 @@ final class SyncTcgcsvPricesJob implements ShouldQueue
                 continue;
             }
             $filled++;
+            $filledCards[(int) $link->card_id] = true;
             // Reported only when nothing was left to check it against — a
             // price that came back in line passed its check.
             if (Cache::pull(self::HELD_CACHE_PREFIX.$key) !== null && ($lastTcgcsv[$key] ?? null) === null && ($lastTcgdex[$key] ?? null) === null) {
                 $acceptedAfterHold[] = [(int) $link->card_id, (string) $link->variant];
             }
+        }
+
+        // The filled prints' 7-day moves are measured from today's price from here on. The prices are already
+        // written (no transaction here), so a query error in the refresh is reported and left to the nightly rebuild.
+        try {
+            app(WeekBaselines::class)->refreshCards(array_keys($filledCards));
+        } catch (QueryException $e) {
+            report($e);
         }
 
         foreach ($priced as [$link, $row]) {

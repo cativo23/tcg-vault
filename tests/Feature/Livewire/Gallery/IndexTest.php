@@ -7,12 +7,15 @@ use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\WeekBaselines;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Tests\Support\PriceRowReads;
+use Tests\Support\RevampHtml;
 
 function seedCollection(): array
 {
@@ -35,20 +38,20 @@ function seedCollection(): array
     return compact('user', 'collection', 'set', 'darkrai', 'fomantis', 'pikachu');
 }
 
-test('the collection home shows every owned card once, with the collector as the masthead', function () {
+test('the collection home shows every owned card once, led by the collector', function () {
     seedCollection();
 
     $response = $this->get('/carlos');
 
     $response->assertOk();
-    $response->assertSee('Carlos');
+    $response->assertSee('Carlos'); // the page title
     $response->assertSee('Mega Darkrai ex');
     $response->assertSee('Pikachu on the Ball');
     $response->assertDontSee('Fomantis'); // in a touched set, but not owned — the home is the collection, not the catalog
-    $response->assertSeeInOrder(['Showing', '2', 'of', '2']);
+    $response->assertSee('Showing <b>2</b> of <b>2</b>', false);
     // Swapping the result count with no announcement told assistive tech
     // nothing happened when a search/filter actually changed the grid.
-    $response->assertSee('role="status"', false);
+    $response->assertSee('<p class="col-count" role="status">', false);
 });
 
 test('the search box shows a loading indicator while a debounced search is in flight', function () {
@@ -68,12 +71,13 @@ test('the search box shows a loading indicator while a debounced search is in fl
 test('the collection value never adds two currencies together', function () {
     seedCollection();
 
-    $response = $this->get('/carlos');
+    $html = $this->get('/carlos')->getContent();
 
-    // 2 × $194.68 in USD leads; the EUR-priced copies are a footnote, not part of the sum.
-    $response->assertSee('$389.36');
-    $response->assertSee('€333.30');
-    $response->assertDontSee('722.66');
+    // 2 × $194.68 in USD leads the summary; the EUR-priced copies are a note, not part of the sum.
+    expect(RevampHtml::summary($html))->toContain('$389.36')
+        ->and(RevampHtml::summary($html))->not->toContain('€')
+        ->and($html)->toContain('€333.30')
+        ->and($html)->not->toContain('722.66');
 });
 
 test('multiple copies of one card collapse to one tile with a quantity', function () {
@@ -81,8 +85,7 @@ test('multiple copies of one card collapse to one tile with a quantity', functio
 
     $response = $this->get('/carlos');
 
-    $response->assertSee('×2');
-    $response->assertSee('4 copies');
+    $response->assertSee('<span class="col-qty" title="2 copies">×2</span>', false);
 });
 
 test('every tile links to the card detail page', function () {
@@ -314,23 +317,17 @@ test('the owner sees a clearly labeled way to manage their own collection', func
     $response->assertDontSee('>Admin<', false); // renamed: "Admin" reads as a technical/backend term, not "manage my own cards"
 });
 
-test('the desktop nav lives behind sm:block and a hamburger panel exists for narrow viewports', function () {
-    // Regression: .nw-nav shrinks under pressure (min-width: 0) but
-    // .nw-brand and the button group beside it don't — a long right-side
-    // label ("Manage collection") squeezed the 3 nav links to 0 width on
-    // real phones instead of just scrolling, and there was no fallback.
+test('the three collector pages are always in the bar, as plain links, with no hamburger to open', function () {
     seedCollection();
 
-    $response = $this->get('/carlos');
+    $html = $this->get('/carlos')->assertOk()->getContent();
 
-    $response->assertOk();
-    $response->assertSee('class="hidden sm:block"', false);
-    $response->assertSee('nw-hamburger', false);
-    $response->assertSee('id="mobile-gallery-nav"', false);
-    // The desktop nav's 3 links must still exist somewhere for the
-    // mobile panel to duplicate — this isn't asserting the panel is
-    // non-empty, just that both copies exist in the markup.
-    $response->assertSee('aria-label="Gallery"', false);
+    expect($html)->toContain('<nav class="bar-nav" aria-label="Gallery">')
+        ->and($html)->toContain('href="'.route('gallery.sets', ['username' => 'carlos']).'"')
+        ->and($html)->toContain('href="'.route('gallery.activity', ['username' => 'carlos']).'"')
+        ->and($html)->not->toContain('nw-hamburger')
+        ->and($html)->not->toContain('mobile-gallery-nav')
+        ->and($html)->not->toContain('sm:block');
 });
 
 test('a nonexistent username 404s', function () {
@@ -416,7 +413,7 @@ test('cards past the stat band\'s card cap are priced through the deciding query
         'collection_id' => $collection->id, 'card_id' => $id, 'card_tcgdex_id' => $tcgdexId, 'variant' => 'normal',
         'condition' => 'NM', 'quantity' => 1, 'created_at' => $now, 'updated_at' => $now,
     ])->values()->all());
-    // Two priced days per card, so each tile also carries a delta.
+    // Two priced days per card, as a live collection has.
     DB::table('card_price_snapshots')->insert(Card::pluck('id')->flatMap(fn (int $id) => [
         ['card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today()->toDateString(), 'currency' => 'USD', 'market_minor' => 1000 + $id, 'created_at' => $now, 'updated_at' => $now],
         ['card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today()->subDay()->toDateString(), 'currency' => 'USD', 'market_minor' => 900 + $id, 'created_at' => $now, 'updated_at' => $now],
@@ -438,29 +435,28 @@ test('cards past the stat band\'s card cap are priced through the deciding query
     $pastCap = array_values(array_diff(Card::pluck('id')->all(), $band));
 
     expect($entries)->toHaveCount(601)
-        ->and($entries->every(fn (array $e) => $e['snapshot']?->market_minor === 1000 + $e['card']->id && $e['delta']?->deltaMinor === 100))->toBeTrue()
+        ->and($entries->every(fn (array $e) => $e['snapshot']?->market_minor === 1000 + $e['card']->id))->toBeTrue()
         ->and($reads->stray)->toBe([])
         ->and($band)->toHaveCount(600)
         ->and($pastCap)->toHaveCount(1)
         ->and($reads->decidingIds($last))->toBe($pastCap);
 });
 
-test('"Prices updated" dates the latest marketplace sync and names its origins, never a manual entry', function () {
+test('the summary dates the latest marketplace sync and the note names its origins, never a manual entry', function () {
     ['darkrai' => $darkrai] = seedCollection();
     CardPriceSnapshot::query()->delete(); // start from this test's own prices only
     CardPriceSnapshot::create(['card_id' => $darkrai->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today()->subDays(2), 'currency' => 'EUR', 'market_minor' => 100]);
     CardPriceSnapshot::create(['card_id' => $darkrai->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'holofoil:cosmos', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 500]);
 
-    $response = $this->get('/carlos');
+    $html = $this->get('/carlos')->assertOk()->getContent();
 
-    $response->assertOk();
-    $response->assertSeeInOrder(['Prices updated', today()->subDays(2)->format('j M'), 'via tcgdex']);
-    // Words stay in the body face; the numerals-only face is for the date.
-    $response->assertSee('<small class="word">via tcgdex</small>', false);
-    $response->assertDontSee(today()->format('j M').'<small>', false);
+    expect(RevampHtml::summary($html))->toEndWith('on '.today()->subDays(2)->format('j M'))
+        ->and(RevampHtml::summary($html))->not->toContain(today()->format('j M'))
+        ->and(RevampHtml::note($html))->toBe('Prices via tcgdex.') // run once, then pinned
+        ->and(RevampHtml::note($html))->not->toContain('hand');
 });
 
-test('the set rail chip falls back to the local card count when tcgdex reports zero', function () {
+test('a set tab falls back to the local card count when tcgdex reports zero', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
     $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 0]);
@@ -468,8 +464,374 @@ test('the set rail chip falls back to the local card count when tcgdex reports z
     Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis']);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $owned->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    $this->get('/carlos')
-        ->assertOk()
-        ->assertSee('1 / 2')
-        ->assertDontSee('1 / 0');
+    $html = $this->get('/carlos')->assertOk()->getContent();
+
+    expect($html)->toContain('<b class="col-tab__n">1/2</b>')
+        ->and($html)->not->toContain('1/0');
+});
+
+test('each entry carries its 7-day move next to the previous-day delta', function () {
+    $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    foreach ([0 => 1240, 1 => 1230, 7 => 1000] as $days => $minor) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($days), 'currency' => 'USD', 'market_minor' => $minor]);
+    }
+    app(WeekBaselines::class)->refreshAll();
+
+    $entry = Livewire::test(Index::class, ['username' => 'carlos'])->viewData('entries')->first();
+
+    expect($entry['weekDelta']->deltaMinor)->toBe(240)
+        ->and($entry['weekDelta']->previous->market_minor)->toBe(1000);
+});
+
+test('the 7-day move costs no extra queries however many cards the page prices', function () {
+    $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $now = now();
+    $add = function (int $from, int $to) use ($collection, $set, $now) {
+        DB::table('cards')->insert(collect(range($from, $to))->map(fn (int $i) => [
+            'tcgdex_id' => "me05-$i", 'set_id' => $set->id, 'local_id' => (string) $i,
+            'name' => sprintf('Card %04d', $i), 'created_at' => $now, 'updated_at' => $now,
+        ])->all());
+        $tcgdexIds = Card::whereIn('tcgdex_id', collect(range($from, $to))->map(fn (int $i) => "me05-$i")->all())->pluck('tcgdex_id', 'id');
+        DB::table('collection_items')->insert($tcgdexIds->map(fn (string $tcgdexId, int $id) => [
+            'collection_id' => $collection->id, 'card_id' => $id, 'card_tcgdex_id' => $tcgdexId, 'variant' => 'normal',
+            'condition' => 'NM', 'quantity' => 1, 'created_at' => $now, 'updated_at' => $now,
+        ])->values()->all());
+        // Ten daily rows per card, rising one cent a day: every card's 7-day move is +7.
+        DB::table('card_price_snapshots')->insert($tcgdexIds->keys()->flatMap(fn (int $id) => collect(range(0, 9))->map(fn (int $d) => [
+            'card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal',
+            'captured_on' => today()->subDays($d)->toDateString(), 'currency' => 'USD', 'market_minor' => 1000 + $id - $d,
+            'created_at' => $now, 'updated_at' => $now,
+        ]))->all());
+    };
+    // Measured cold both times (flushed cache), so a hit on one side cannot hide a per-card read on the other.
+    $queriesFor = function (): array {
+        Cache::flush();
+        $count = 0;
+        DB::listen(function () use (&$count) {
+            $count++;
+        });
+        $entries = Livewire::test(Index::class, ['username' => 'carlos'])->viewData('entries');
+
+        return [$count, $entries];
+    };
+
+    $add(1, 3);
+    app(WeekBaselines::class)->refreshAll();
+    [$few, $fewEntries] = $queriesFor();
+    $add(4, 30);
+    app(WeekBaselines::class)->refreshAll();
+    [$many, $manyEntries] = $queriesFor();
+
+    expect($fewEntries)->toHaveCount(3)
+        ->and($manyEntries)->toHaveCount(24)
+        ->and($manyEntries->every(fn (array $e) => $e['weekDelta']?->deltaMinor === 7))->toBeTrue()
+        ->and($many)->toBe($few);
+});
+
+function seedLeadCollection(int $cards): void
+{
+    $user = User::factory()->create(['username' => 'carlos', 'name' => 'Carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 120]);
+
+    foreach (range(1, $cards) as $i) {
+        $card = Card::create([
+            'tcgdex_id' => "me05-$i", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card $i",
+            'official_image_url' => "https://assets.tcgdex.net/en/me/me05/$i/high.webp",
+        ]);
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => $i * 100]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "me05-$i", 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    }
+}
+
+test('the page is the collector\'s name, one summary line and the approved copy blocks', function () {
+    seedCollection();
+
+    $html = $this->get('/carlos')->assertOk()->getContent();
+
+    expect($html)->toContain('<h1 id="col-who" class="col-who">carlos</h1>')
+        ->and(RevampHtml::summary($html))->toBe('2 cards · 2 sets · $389.36 on '.today()->format('j M'))
+        ->and($html)->toContain('Showing <b>2</b> of <b>2</b>')
+        ->and($html)->not->toContain('class="nw-masthead"')
+        ->and($html)->not->toContain('Pokémon TCG · Collection'); // the eyebrow is gone
+});
+
+test('the summary counts one card and one set in the singular, and has no value segment when nothing is priced', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = $this->get('/carlos')->getContent();
+
+    expect(RevampHtml::summary($html))->toBe('1 card · 1 set')
+        ->and($html)->not->toContain('class="col-note"');
+});
+
+test('a collection past the stat band\'s cap still reports its real card count', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $now = now();
+    DB::table('cards')->insert(collect(range(1, 601))->map(fn (int $i) => [
+        'tcgdex_id' => "me05-$i", 'set_id' => $set->id, 'local_id' => (string) $i, 'name' => "Card $i", 'created_at' => $now, 'updated_at' => $now,
+    ])->all());
+    DB::table('collection_items')->insert(Card::pluck('tcgdex_id', 'id')->map(fn (string $t, int $id) => [
+        'collection_id' => $collection->id, 'card_id' => $id, 'card_tcgdex_id' => $t, 'condition' => 'NM', 'quantity' => 1, 'created_at' => $now, 'updated_at' => $now,
+    ])->values()->all());
+
+    expect(Livewire::test(Index::class, ['username' => 'carlos'])->viewData('collectionTotal'))->toBe(601)
+        ->and(RevampHtml::summary($this->get('/carlos')->getContent()))->toStartWith('601 cards');
+});
+
+test('other currencies are never added in: they move to a note beside the price attribution', function () {
+    seedCollection();
+
+    $html = $this->get('/carlos')->getContent();
+
+    expect(RevampHtml::note($html))->toBe('Prices via tcgdex. Also €333.30 priced in EUR, not added to the total.')
+        ->and($html)->not->toContain('722.66');
+});
+
+test('every set the collector owns from is a divider tab with its progress, All first', function () {
+    seedCollection();
+
+    $html = $this->get('/carlos')->assertOk()->getContent();
+
+    expect($html)->toContain('role="tablist"')
+        ->and($html)->toContain('id="col-tab-all"')
+        ->and($html)->toContain('id="col-tab-me05"')
+        ->and($html)->toContain('id="col-tab-fut2020"')
+        ->and($html)->toContain('<b class="col-tab__n">2</b>')
+        ->and($html)->toContain('<b class="col-tab__n">1/120</b>')
+        ->and($html)->toContain('<b class="col-tab__n">1/5</b>')
+        ->and($html)->toContain('role="tabpanel"');
+    preg_match('#<button[^>]*id="col-tab-all"[^>]*>#', $html, $all);
+    preg_match('#<button[^>]*id="col-tab-me05"[^>]*>#', $html, $set);
+    expect($all[0])->toContain('aria-selected="true"')->toContain('tabindex="0"')->toContain('aria-controls="col-sheet"')
+        ->and($set[0])->toContain('aria-selected="false"')->toContain('tabindex="-1"');
+});
+
+test('the selected tab is stacked above every other tab, wherever it sits in the strip', function () {
+    seedCollection();
+
+    $zIndexes = function (string $html): array {
+        preg_match_all('#<button[^>]*id="(col-tab-[^"]+)"[^>]*style="z-index: (\d+)"#', $html, $m);
+
+        return array_combine($m[1], array_map('intval', $m[2]));
+    };
+
+    foreach (['' => 'col-tab-all', 'me05' => 'col-tab-me05', 'fut2020' => 'col-tab-fut2020'] as $set => $selected) {
+        $z = $zIndexes($this->get('/carlos'.($set === '' ? '' : "?set=$set"))->getContent());
+        $others = array_diff_key($z, [$selected => true]);
+
+        expect($z)->toHaveCount(3)
+            ->and($z[$selected])->toBeGreaterThan(max($others));
+    }
+});
+
+test('the tab for an unknown ?set= leaves All as the tab stop so the strip stays reachable by keyboard', function () {
+    seedCollection();
+
+    $html = $this->get('/carlos?set=zzz')->getContent();
+    preg_match('#<button[^>]*id="col-tab-all"[^>]*>#', $html, $all);
+
+    expect($all[0])->toContain('tabindex="0"')->toContain('aria-selected="false"')
+        ->and($html)->toContain('No cards match');
+});
+
+test('selecting a tab filters the listing, restarts the batch and offers that set\'s own page', function () {
+    seedCollection();
+
+    Livewire::test(Index::class, ['username' => 'carlos'])
+        ->assertDontSee('Open the Pokémon Futsal 2020 page')
+        ->call('loadMore')->assertSet('take', 48)
+        ->call('selectSet', 'fut2020')
+        ->assertSet('setFilter', 'fut2020')->assertSet('take', 24)
+        ->assertSee('Pikachu on the Ball')->assertDontSee('Mega Darkrai ex')
+        ->assertSee('Open the Pokémon Futsal 2020 page')
+        ->assertSeeHtml('href="'.route('gallery.show', ['username' => 'carlos', 'setTcgdexId' => 'fut2020']).'"')
+        ->call('selectSet', '')
+        ->assertSet('setFilter', '')
+        ->assertSee('Mega Darkrai ex')->assertSee('Pikachu on the Ball');
+});
+
+test('the biggest sets lead the tabs', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $small = Set::create(['tcgdex_id' => 'aaa1', 'name' => 'Small Set', 'card_count' => 10, 'released_on' => '2026-01-01']);
+    $big = Set::create(['tcgdex_id' => 'bbb1', 'name' => 'Big Set', 'card_count' => 10, 'released_on' => '2020-01-01']);
+    foreach ([[$small, 1], [$big, 1], [$big, 2]] as [$set, $n]) {
+        $card = Card::create(['tcgdex_id' => $set->tcgdex_id.'-'.$n, 'set_id' => $set->id, 'local_id' => (string) $n, 'name' => "{$set->name} $n"]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => $card->tcgdex_id, 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    $html = $this->get('/carlos')->getContent();
+
+    expect(strpos($html, 'id="col-tab-bbb1"'))->toBeLessThan(strpos($html, 'id="col-tab-aaa1"'));
+});
+
+test('in value order with no search, the two priciest cards take a double pocket and the high-resolution art', function () {
+    seedLeadCollection(4);
+
+    $html = $this->get('/carlos')->assertOk()->getContent();
+
+    expect(substr_count($html, 'col-slot col-lead col-enter'))->toBe(2)
+        ->and($html)->toContain('src="https://assets.tcgdex.net/en/me/me05/4/high.webp"')
+        ->and($html)->toContain('src="https://assets.tcgdex.net/en/me/me05/3/high.webp"')
+        ->and($html)->toContain('src="https://assets.tcgdex.net/en/me/me05/2/low.webp"')
+        ->and($html)->toContain('src="https://assets.tcgdex.net/en/me/me05/1/low.webp"');
+});
+
+test('there are no double pockets outside value order, while searching, or with two cards or fewer', function (string $query, int $cards) {
+    seedLeadCollection($cards);
+
+    $html = $this->get('/carlos'.$query)->assertOk()->getContent();
+
+    expect(substr_count($html, 'col-lead'))->toBe(0);
+})->with([
+    'name order' => ['?sort=name', 4],
+    'newest order' => ['?sort=newest', 4],
+    'a search' => ['?search=Card', 4],
+    'two cards' => ['', 2],
+]);
+
+test('a set or rarity filter keeps the double pockets', function () {
+    seedLeadCollection(4);
+
+    expect(substr_count($this->get('/carlos?set=me05')->getContent(), 'col-slot col-lead col-enter'))->toBe(2);
+});
+
+test('the rarity filter lists rarities from common up to secret, unknown wording last, and never "None"', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    foreach (['Secret Rare', 'Zany Rare', 'Common', 'Rare Holo', 'None'] as $n => $rarity) {
+        $card = Card::create(['tcgdex_id' => "me05-$n", 'set_id' => $set->id, 'local_id' => (string) $n, 'name' => "Card $n", 'rarity' => $rarity]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "me05-$n", 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    expect(Livewire::test(Index::class, ['username' => 'carlos'])->viewData('rarities')->all())
+        ->toBe(['Common', 'Rare Holo', 'Secret Rare', 'Zany Rare']);
+});
+
+test('a tile shows its 7-day move and only a rise is green', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    foreach ([['Riser', 1240, 1000], ['Faller', 900, 1000]] as $n => [$name, $now, $then]) {
+        $card = Card::create(['tcgdex_id' => "me05-$n", 'set_id' => $set->id, 'local_id' => (string) $n, 'name' => $name]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "me05-$n", 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => $now]);
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(7), 'currency' => 'USD', 'market_minor' => $then]);
+    }
+    app(WeekBaselines::class)->refreshAll();
+
+    $html = $this->get('/carlos')->getContent();
+
+    expect($html)->toContain('<span class="col-delta col-delta--up">+$2.40 · 7d</span>')
+        ->and($html)->toContain('<span class="col-delta">−$1.00 · 7d</span>')
+        ->and(substr_count($html, 'col-delta--up'))->toBe(1);
+});
+
+test('slab, stamp and the collector\'s photo survive on the new tile (option A)', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex', 'rarity' => 'Common', 'official_image_url' => 'https://assets.tcgdex.net/en/me/me05/116/high.webp']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'variant' => 'normal+player-rewards-program', 'condition' => 'NM', 'grade_company' => 'PSA', 'grade_value' => '10', 'photo_path' => 'u/7/darkrai.jpg', 'quantity' => 1]);
+
+    $html = $this->get('/carlos')->getContent();
+
+    expect($html)->toContain('<span class="col-slab">PSA 10</span>')
+        ->and($html)->toContain('Player Rewards Program')
+        ->and($html)->toContain('/storage/collection-photos/u/7/darkrai.jpg')
+        ->and($html)->not->toContain('nw-type-dot');
+});
+
+test('the page sits on the revamp shell: collector nav, its own stylesheet only, no old chrome, no client-side navigation, indexable', function () {
+    seedCollection();
+
+    $html = $this->get('/carlos')->assertOk()->getContent();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+
+    expect(RevampHtml::currentNav($html))->toBe('Collection')
+        ->and($html)->toContain('<nav class="bar-nav" aria-label="Gallery">')
+        ->and($html)->toContain($manifest['resources/css/revamp.css']['file'])
+        ->and($html)->toContain($manifest['resources/css/collection.css']['file'])
+        ->and($html)->not->toContain($manifest['resources/css/app.css']['file'])
+        ->and($html)->not->toContain('wire:navigate')
+        ->and($html)->not->toContain('noindex')
+        ->and($html)->not->toContain('class="nw-')
+        ->and($html)->not->toContain('nw-hamburger');
+});
+
+test('the owner\'s empty state offers Add a card as a plain link and keeps the approved copy', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+
+    $html = $this->actingAs($user)->get('/carlos')->assertOk()->getContent();
+
+    expect($html)->toContain('Nothing here yet')
+        ->and($html)->toContain('Add a card or make one public from your collection.')
+        ->and($html)->toContain('href="'.route('admin.collection.add').'"')
+        ->and($html)->toContain('>Add a card</a>')
+        ->and($html)->not->toContain('col-summary')
+        ->and($html)->not->toContain('role="tablist"');
+});
+
+test('a signed-in visitor on a collection page sees no Log in link', function () {
+    seedCollection();
+
+    $html = $this->actingAs(User::factory()->create(['username' => 'ash']))->get('/carlos')->assertOk()->getContent();
+
+    expect($html)->not->toContain('href="'.route('login').'"');
+});
+
+test('the page ships the collection script, and the copy button survives Livewire morphs', function () {
+    seedCollection();
+
+    $html = $this->get('/carlos')->assertOk()->getContent();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+    preg_match('#<button[^>]*data-col-copy[^>]*>#', $html, $button);
+    preg_match('#<span[^>]*data-col-copy-status[^>]*>#', $html, $status);
+
+    expect($html)->toContain($manifest['resources/js/collection.js']['file'])
+        ->and($html)->toContain('data-col-tabs')
+        ->and($html)->toContain('data-col-tabs-wrap')
+        ->and($button[0])->toContain('wire:ignore')
+        ->and($status[0])->toContain('role="status"')->toContain('wire:ignore');
+});
+
+test('the landing does not load the collection script', function () {
+    $html = $this->get('/')->getContent();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+
+    expect($html)->not->toContain($manifest['resources/js/collection.js']['file']);
+});
+
+test('a set id with a quote reaches Livewire as an encoded JS literal, never a raw quoted string', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => "x'y", 'name' => 'Odd Set', 'card_count' => 5]);
+    $card = Card::create(['tcgdex_id' => "x'y-1", 'set_id' => $set->id, 'local_id' => '1', 'name' => 'Odd Card']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => "x'y-1", 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = $this->get('/carlos')->assertOk()->getContent();
+
+    // @js escapes the apostrophe inside the literal (\u0027), so the expression the browser decodes holds no bare
+    // quote that could end the string; the old interpolation produced x&#039;y, which decodes to one.
+    $encoded = 'wire:click="selectSet('."'x".chr(92)."u0027y'".')"';
+
+    expect($html)->toContain($encoded)
+        ->and($html)->not->toContain('selectSet(&#039;x')
+        ->and($html)->not->toContain("selectSet('x'")
+        ->and($html)->not->toContain('x&#039;y&#039;)');
 });

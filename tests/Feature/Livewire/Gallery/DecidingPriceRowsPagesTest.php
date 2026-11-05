@@ -12,6 +12,7 @@ use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Services\DecidingPriceRows;
+use App\Modules\Catalog\Services\WeekBaselines;
 use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
@@ -105,6 +106,8 @@ function seedPagesCollection(int $seed = 1910): void
     foreach (array_chunk(array_values($rows), 500) as $chunk) {
         CardPriceSnapshot::insert($chunk);
     }
+
+    app(WeekBaselines::class)->refreshAll();
 }
 
 /**
@@ -142,7 +145,7 @@ function renderPageWith(DecidingPriceRows $loader, string $component, array $par
 }
 
 dataset('gallery pages', [
-    'index by value' => [Index::class, [], ['sort' => 'value'], ['entries', 'totalEntries', 'hasMore', 'totals', 'copies', 'updatedAt', 'priceOrigins', 'topEntry', 'rarities']],
+    'index by value' => [Index::class, [], ['sort' => 'value'], ['entries', 'totalEntries', 'hasMore', 'totals', 'updatedAt', 'priceOrigins', 'topEntry', 'rarities']],
     'index by newest' => [Index::class, [], ['sort' => 'newest'], ['entries', 'totals', 'updatedAt', 'priceOrigins', 'topEntry']],
     'index by number, filtered' => [Index::class, [], ['sort' => 'number', 'set' => 'me05', 'rarity' => 'Rare'], ['entries', 'totals', 'topEntry']],
     'sets' => [Sets::class, [], [], ['sets', 'setValues']],
@@ -263,3 +266,12 @@ test('after a price write the next render shows the new price, not the cached on
         CardPriceSnapshot::where('card_id', $card->id)->whereDate('captured_on', today()->subDay())->delete();
     }],
 ]);
+
+test('the seeded collection shows 7-day moves, so the page comparison covers them', function () {
+    $this->freezeTime();
+    seedPagesCollection();
+
+    $entries = Livewire::withQueryParams(['sort' => 'value'])->test(Index::class, ['username' => 'carlos'])->viewData('entries');
+
+    expect($entries->filter(fn (array $e) => $e['weekDelta'] !== null))->not->toBeEmpty();
+});

@@ -9,7 +9,7 @@
 <div class="nw-wrap">
     <section class="nw-masthead">
         <div class="nw-eyebrow">
-            <a href="{{ route('gallery.index', ['username' => $targetUser->username]) }}" wire:navigate>Collection</a>
+            <a href="{{ route('gallery.index', ['username' => $targetUser->username]) }}">Collection</a>
             <span aria-hidden="true">/</span>
             <a href="{{ $setUrl }}" wire:navigate>{{ $card->set->name }}</a>
             <span aria-hidden="true">/</span>

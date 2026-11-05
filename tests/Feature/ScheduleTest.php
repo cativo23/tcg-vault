@@ -54,3 +54,23 @@ test('a failing warm-up dispatch alerts Discord', function () {
 
     Http::assertSent(fn ($request) => str_contains($request['content'], 'gallery:warm-value-series'));
 });
+
+test('a failing week-baseline rebuild alerts Discord', function () {
+    config(['services.discord.alert_webhook_url' => 'https://discord.com/api/webhooks/test']);
+    Http::fake();
+    $event = scheduledEvent('prices:refresh-week-baselines');
+    $event->exitCode = 1;
+
+    $event->callAfterCallbacks(app());
+
+    Http::assertSent(fn ($request) => str_contains($request['content'], 'prices:refresh-week-baselines'));
+});
+
+test('the week baselines are rebuilt nightly after the price sync has drained', function () {
+    // catalog:refresh-prices dispatches at 00:00 and its jobs may retry for 3 hours; the freshness check runs at 04:00.
+    $event = scheduledEvent('prices:refresh-week-baselines');
+
+    expect($event?->expression)->toBe('15 4 * * *')
+        ->and($event?->withoutOverlapping)->toBeTrue()
+        ->and($event?->expiresAt)->toBe(30);
+});
