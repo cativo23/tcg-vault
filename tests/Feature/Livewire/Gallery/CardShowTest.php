@@ -740,3 +740,22 @@ test('the related strip lists the same cards in number order on every render', f
 
     expect(cardPageOf()->viewData('related')->map(fn (array $entry) => $entry['card']->local_id)->all())->toBe(['005', '007', '009']);
 });
+
+// The result above is already in number order on a small table, because the planner walks the (set_id, local_id)
+// index; only the issued SQL shows that the order is asked for rather than left to the planner.
+test('the related strip asks the database for number order', function () {
+    $seed = seedCardPage();
+    $card = Card::create(['tcgdex_id' => 'me05-005', 'set_id' => $seed['set']->id, 'local_id' => '005', 'name' => 'Card 005']);
+    CollectionItem::create(['collection_id' => $seed['collection']->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-005', 'condition' => 'NM', 'quantity' => 1]);
+
+    $strips = [];
+    DB::listen(function ($query) use (&$strips) {
+        if (str_contains($query->sql, 'limit 8') && str_contains($query->sql, 'from "cards"')) {
+            $strips[] = $query->sql;
+        }
+    });
+    cardPageOf();
+
+    expect($strips)->toHaveCount(1)
+        ->and($strips[0])->toContain('order by "local_id" asc');
+});
