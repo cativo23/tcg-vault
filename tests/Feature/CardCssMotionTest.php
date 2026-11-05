@@ -17,3 +17,10 @@ test('the card stylesheet resets buttons with zero specificity so component rule
     expect($css)->toContain(':where(.crd-page) button')
         ->and($css)->not->toMatch('/\.crd-page\s+(button|input)\b/');
 });
+
+test('the chart hands horizontal touch drags to the page script and keeps vertical page scroll', function () {
+    $css = (string) file_get_contents(resource_path('css/card.css'));
+    preg_match('/^\.crd-chart \{([^}]*)\}/m', $css, $rule);
+
+    expect($rule[1] ?? '')->toContain('touch-action: pan-y');
+});
