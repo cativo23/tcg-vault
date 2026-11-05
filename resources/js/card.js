@@ -1,6 +1,6 @@
 // Client-only behaviour of the card page: Copy link, switching between the collector's photo and the official art,
 // the range tabs' keyboard, and reading the price chart. Prices, variants and ranges stay server-side in the
-// CardShow Livewire component; the plate tools (Actual size, calibration, loupe, tilt) are a separate module.
+// CardShow Livewire component.
 import { copyText, tabKeyTarget } from './collection-helpers.js';
 import { nearestIndex, setValue, shareUrl, stepReading, stopsReadingOnLeave } from './card-helpers.js';
 import { degradeImage, legacyCopy } from './dom-helpers.js';

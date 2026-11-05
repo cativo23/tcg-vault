@@ -267,7 +267,6 @@ html:not(.js) .crd-chart-cover, .still .crd-chart-cover, .crd-settled .crd-chart
 
 /* ---------- lower band: the copies as ticket stubs + the card's catalogue label ---------- */
 .crd-lower { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: clamp(32px, 5vw, 80px); padding: 0 var(--gutter) clamp(48px, 6vw, 88px); }
-.crd-total { font-size: var(--text-sm); color: var(--color-ink); }
 .crd-total small { margin-left: 6px; color: var(--color-muted); }
 .crd-note-text { max-width: 46ch; padding-top: var(--space-md); color: var(--color-ink-2); font-size: var(--text-md); }
 .crd-note-text a { font-weight: 600; text-underline-offset: 3px; }
