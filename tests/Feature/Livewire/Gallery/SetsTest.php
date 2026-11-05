@@ -2,14 +2,45 @@
 
 declare(strict_types=1);
 
+use App\Livewire\Gallery\Sets;
 use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Livewire\Livewire;
+
+/**
+ * A demo-shaped collection over two sets. Prismatic Evolutions (older, no
+ * logo, no abbreviation, unpriced) is created first, so newest-first is not
+ * insertion order. Pitch Black is coded PBL and holds a third catalogue card
+ * the collector does not own (imported, missing). Only Mega Darkrai ex is
+ * priced: two copies at $12.50.
+ */
+function seedSetsShelf(): void
+{
+    $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $prismatic = Set::create(['tcgdex_id' => 'sv08.5', 'name' => 'Prismatic Evolutions', 'series' => 'Scarlet & Violet', 'card_count' => 180, 'released_on' => '2025-01-17']);
+    $pitch = Set::create(['tcgdex_id' => 'me05', 'abbreviation' => 'PBL', 'name' => 'Pitch Black', 'series' => 'Mega Evolution', 'card_count' => 120, 'released_on' => '2026-07-17', 'logo_url' => 'https://assets.tcgdex.net/en/me/me05/logo.png']);
+
+    foreach ([
+        [$pitch, 'me05-116', '116', 'Mega Darkrai ex', 2],
+        [$pitch, 'me05-003', '003', 'Fomantis', 1],
+        [$prismatic, 'sv08.5-001', '001', 'Exeggcute', 1],
+        [$prismatic, 'sv08.5-002', '002', 'Exeggutor', 1],
+    ] as [$set, $tcgdexId, $localId, $name, $quantity]) {
+        $card = Card::create(['tcgdex_id' => $tcgdexId, 'set_id' => $set->id, 'local_id' => $localId, 'name' => $name]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => $tcgdexId, 'variant' => 'normal', 'condition' => 'NM', 'quantity' => $quantity]);
+    }
+    Card::create(['tcgdex_id' => 'me05-004', 'set_id' => $pitch->id, 'local_id' => '004', 'name' => 'Lurantis']);
+
+    CardPriceSnapshot::create(['card_id' => Card::where('tcgdex_id', 'me05-116')->value('id'), 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1250]);
+}
 
 test('lists sets the user has at least one card from, with correct completion counts', function () {
     $user = User::factory()->create(['username' => 'carlos']);
@@ -140,4 +171,33 @@ test('the sets page reads the same number of queries however many sets it lists'
 
     expect($few)->toBe(7)
         ->and($many)->toBe($few);
+});
+
+test('the page gets each set\'s strip as runs, from the catalogue numbers in the sets query and the cards it already loads', function () {
+    seedSetsShelf();
+    $ids = Set::pluck('id', 'tcgdex_id');
+
+    $strips = Livewire::test(Sets::class, ['username' => 'demo'])->viewData('strips');
+
+    expect($strips)->toBeInstanceOf(SupportCollection::class)
+        ->and($strips->get($ids['me05']))->toBe([
+            ['state' => 'owned', 'left' => 1.6667, 'width' => 0.8333],
+            ['state' => 'missing', 'left' => 2.5, 'width' => 0.8333],
+            ['state' => 'owned', 'left' => 95.8333, 'width' => 0.8333],
+        ])
+        ->and($strips->get($ids['sv08.5']))->toBe([['state' => 'owned', 'left' => 0.0, 'width' => 1.1111]]);
+});
+
+test('sets released on the same day are listed by name', function () {
+    $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    foreach (['Beta', 'Alpha'] as $name) {
+        $set = Set::create(['tcgdex_id' => strtolower($name), 'name' => $name, 'card_count' => 10, 'released_on' => '2025-01-17']);
+        $card = Card::create(['tcgdex_id' => strtolower($name).'-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => "{$name} card"]);
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => strtolower($name).'-001', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    $sets = Livewire::test(Sets::class, ['username' => 'demo'])->viewData('sets');
+
+    expect($sets->pluck('name')->all())->toBe(['Alpha', 'Beta']);
 });
