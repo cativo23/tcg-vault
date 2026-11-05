@@ -167,7 +167,7 @@ roadmap safe to attempt.
 ## v0.8.0 — Ready for someone else's eyes
 
 - ~~**A live example gallery**, linked from the landing page.~~ — done.
-  A dedicated `demo` account with twelve modern chase cards at real daily
+  A dedicated `demo` account with fourteen chase cards at real daily
   prices, seeded by `php artisan demo:seed-gallery`; the landing link only
   shows once it is public and has cards.
 - ~~**Privacy policy and terms.**~~ — done. `/privacy` and `/terms`,
