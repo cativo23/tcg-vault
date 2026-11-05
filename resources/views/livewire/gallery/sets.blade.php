@@ -30,6 +30,7 @@
                     $values = array_filter($setValues[$set->id]);
                     $head = array_key_first($values);
                     // Built here, not with @foreach in the markup: Livewire's morph markers would land inside the strip.
+                    // Printed raw, so it may only ever hold the class constants and PrintedStrip's float percents, never catalogue text.
                     $runs = '';
                     foreach ($strips[$set->id] as $run) {
                         $class = $run['state'] === PrintedStrip::OWNED ? 'sts-own' : 'sts-miss';
