@@ -756,6 +756,26 @@ test('rows link to the card page with a plain link', function () {
     expect(substr_count($html, '<a href="'.$href.'">'))->toBe(2);
 });
 
+test('a card without an image still gets its rows: name and amount, and no empty img', function () {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => 'me05-001', 'set_id' => $set->id, 'local_id' => '001', 'name' => 'Imageless Mew', 'rarity' => 'Rare']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-001', 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+    foreach ([1 => 1000, 0 => 1200] as $daysAgo => $minor) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($daysAgo), 'currency' => 'USD', 'market_minor' => $minor]);
+    }
+
+    $html = $this->get('/carlos/activity')->assertOk()->getContent();
+    preg_match_all('#<li class="act-row">(.*?)</li>#s', $html, $rows);
+
+    expect($rows[1])->toHaveCount(2)
+        ->and(array_filter($rows[1], fn (string $row) => str_contains($row, '<img')))->toBe([])
+        ->and(array_filter($rows[1], fn (string $row) => str_contains($row, 'Imageless Mew')))->toHaveCount(2)
+        ->and(array_column(activityAmounts($html), 1))->toContain('+$2.00 now $12.00')
+        ->and(array_filter(array_column(activityAmounts($html), 1), fn (string $amount) => str_contains($amount, '$12.00')))->toHaveCount(2);
+});
+
 test('an empty feed keeps the approved copy and still says which moves are left out', function () {
     $user = User::factory()->create(['username' => 'carlos']);
     Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
