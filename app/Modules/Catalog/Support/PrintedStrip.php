@@ -22,7 +22,7 @@ final class PrintedStrip
 
     /**
      * @param  iterable<array{number: string, owned: bool}>  $cards  every imported card of the set, in any order
-     * @return list<array{number: ?string, state: string}>
+     * @return list<array{number: ?string, state: 'owned'|'missing'|'absent'}>
      */
     public static function slots(iterable $cards, int $total): array
     {
@@ -66,8 +66,8 @@ final class PrintedStrip
      * of the whole strip. Absent slots are the track itself and are skipped.
      * The markup grows with the runs, not with the size of the set.
      *
-     * @param  list<array{number: ?string, state: string}>  $slots
-     * @return list<array{state: string, left: float, width: float}>
+     * @param  list<array{number: ?string, state: 'owned'|'missing'|'absent'}>  $slots
+     * @return list<array{state: 'owned'|'missing', left: float, width: float}>
      */
     public static function runs(array $slots): array
     {
@@ -95,7 +95,7 @@ final class PrintedStrip
 
     /**
      * @param  array{number: string, owned: bool}  $card
-     * @return array{number: string, state: string}
+     * @return array{number: string, state: 'owned'|'missing'}
      */
     private static function slot(array $card): array
     {
@@ -111,7 +111,10 @@ final class PrintedStrip
         return strcmp($a, $b) <= 0 ? $a : $b;
     }
 
-    /** @return array{state: string, left: float, width: float} */
+    /**
+     * @param  'owned'|'missing'  $state
+     * @return array{state: 'owned'|'missing', left: float, width: float}
+     */
     private static function run(string $state, int $start, int $end, int $length): array
     {
         return [
