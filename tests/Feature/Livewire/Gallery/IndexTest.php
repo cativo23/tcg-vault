@@ -86,7 +86,6 @@ test('multiple copies of one card collapse to one tile with a quantity', functio
     $response = $this->get('/carlos');
 
     $response->assertSee('<span class="col-qty" title="2 copies">×2</span>', false);
-    expect(Livewire::test(Index::class, ['username' => 'carlos'])->viewData('copies'))->toBe(4);
 });
 
 test('every tile links to the card detail page', function () {
@@ -414,7 +413,7 @@ test('cards past the stat band\'s card cap are priced through the deciding query
         'collection_id' => $collection->id, 'card_id' => $id, 'card_tcgdex_id' => $tcgdexId, 'variant' => 'normal',
         'condition' => 'NM', 'quantity' => 1, 'created_at' => $now, 'updated_at' => $now,
     ])->values()->all());
-    // Two priced days per card, so each tile also carries a delta.
+    // Two priced days per card, as a live collection has.
     DB::table('card_price_snapshots')->insert(Card::pluck('id')->flatMap(fn (int $id) => [
         ['card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today()->toDateString(), 'currency' => 'USD', 'market_minor' => 1000 + $id, 'created_at' => $now, 'updated_at' => $now],
         ['card_id' => $id, 'source' => 'tcgplayer', 'origin' => 'tcgdex', 'variant' => 'normal', 'captured_on' => today()->subDay()->toDateString(), 'currency' => 'USD', 'market_minor' => 900 + $id, 'created_at' => $now, 'updated_at' => $now],
@@ -436,7 +435,7 @@ test('cards past the stat band\'s card cap are priced through the deciding query
     $pastCap = array_values(array_diff(Card::pluck('id')->all(), $band));
 
     expect($entries)->toHaveCount(601)
-        ->and($entries->every(fn (array $e) => $e['snapshot']?->market_minor === 1000 + $e['card']->id && $e['delta']?->deltaMinor === 100))->toBeTrue()
+        ->and($entries->every(fn (array $e) => $e['snapshot']?->market_minor === 1000 + $e['card']->id))->toBeTrue()
         ->and($reads->stray)->toBe([])
         ->and($band)->toHaveCount(600)
         ->and($pastCap)->toHaveCount(1)
@@ -484,8 +483,7 @@ test('each entry carries its 7-day move next to the previous-day delta', functio
 
     $entry = Livewire::test(Index::class, ['username' => 'carlos'])->viewData('entries')->first();
 
-    expect($entry['delta']->deltaMinor)->toBe(10)
-        ->and($entry['weekDelta']->deltaMinor)->toBe(240)
+    expect($entry['weekDelta']->deltaMinor)->toBe(240)
         ->and($entry['weekDelta']->previous->market_minor)->toBe(1000);
 });
 

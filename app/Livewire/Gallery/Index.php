@@ -109,7 +109,7 @@ final class Index extends Component
         $resolver = new CardPriceResolver;
         $valuation = new Valuation($resolver);
 
-        // Collection-wide stats (value, copies, rarities, most valuable
+        // Collection-wide stats (value, rarities, most valuable
         // card) reflect the WHOLE collection, never the grid's current
         // filter/scroll position — same "stats vs grid" split Show.php
         // already uses. Bounded by MAX_CARDS, same as before.
@@ -127,7 +127,6 @@ final class Index extends Component
         $sets = $public->setsQuery()->orderByDesc('released_on')->get()->sortByDesc('owned_card_count')->values();
 
         $totals = $valuation->totalsByCurrency($allCards);
-        $copies = (int) $allCards->sum(fn (Card $card) => $card->collectionItems->sum('quantity'));
         // The latest marketplace sync, and where its prices came from. A
         // manual price is typed in, not synced, so it neither dates this
         // nor gets credited to a feed.
@@ -217,7 +216,6 @@ final class Index extends Component
         $entries = $gridCards->values()->map(fn (Card $card) => [
             'card' => $card,
             'snapshot' => $snapshot = $headlineOf($card),
-            'delta' => $resolver->deltaFor($card, $snapshot),
             'weekDelta' => $resolver->weekDeltaFor($card, $snapshot),
             'items' => $card->collectionItems,
             'valueMinor' => $snapshot?->market_minor,
@@ -234,7 +232,6 @@ final class Index extends Component
             'hasMore' => $entries->count() < $totalEntries,
             'sets' => $sets,
             'totals' => $totals,
-            'copies' => $copies,
             'updatedAt' => $updatedAt,
             'priceOrigins' => $priceOrigins,
             'topEntry' => $topEntry,

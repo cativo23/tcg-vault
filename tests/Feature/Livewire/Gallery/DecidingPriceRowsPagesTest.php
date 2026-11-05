@@ -145,7 +145,7 @@ function renderPageWith(DecidingPriceRows $loader, string $component, array $par
 }
 
 dataset('gallery pages', [
-    'index by value' => [Index::class, [], ['sort' => 'value'], ['entries', 'totalEntries', 'hasMore', 'totals', 'copies', 'updatedAt', 'priceOrigins', 'topEntry', 'rarities']],
+    'index by value' => [Index::class, [], ['sort' => 'value'], ['entries', 'totalEntries', 'hasMore', 'totals', 'updatedAt', 'priceOrigins', 'topEntry', 'rarities']],
     'index by newest' => [Index::class, [], ['sort' => 'newest'], ['entries', 'totals', 'updatedAt', 'priceOrigins', 'topEntry']],
     'index by number, filtered' => [Index::class, [], ['sort' => 'number', 'set' => 'me05', 'rarity' => 'Rare'], ['entries', 'totals', 'topEntry']],
     'sets' => [Sets::class, [], [], ['sets', 'setValues']],

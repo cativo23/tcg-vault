@@ -193,7 +193,7 @@ physical thing a collector already knows. Built only from the tokens above.
 
 **Rarity chips on stock** (amends the Rarity accent in the next section): `silver` is a fill, `linear-gradient(oklch(96% .006 250) → oklch(88% .008 250))` (dark: 88% → 78%), and `chase` is a pastel foil fill (`--foil-1..4`, oklch 84–90% L, chroma .07, hues 200/300/20/95); both carry ink text `oklch(22% .006 85)`. The chase tile keeps a thin foil `.ring` around the card. Printed rarity only, never price-driven. The older text-gradient chase and silver-text chip are retired.
 
-**Count-up is retired.** None of the approved revamp pages animates a number (the anti-slop rule bans it); a headline value renders as its real value. `data-countup` in `app.js` stays only until the old pages that use it are replaced.
+**Count-up is retired.** None of the approved revamp pages animates a number (the anti-slop rule bans it); a headline value renders as its real value.
 
 **Chrome is retired.** The frozen-dark band (`--chrome-bg`/`--chrome-fg`: topbar, footer, tile head and ticker, landing hero/close) is gone from the design: topbar and footer are `--color-paper` with a hairline, and the tile head and ticker live on stock. The tokens stay in `app.css` only until the admin screens are redesigned (next after the public pages); the admin PR deletes them. No new code may reference them.
 
