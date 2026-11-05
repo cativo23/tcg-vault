@@ -50,12 +50,17 @@ const announce = (text) => {
     requestAnimationFrame(() => { status.textContent = text; });
 };
 
+const failedPlates = new WeakMap(); // hatched face -> the plate <img> it replaced
+
 document.addEventListener('click', (event) => {
     const button = event.target.closest?.('[data-crd-view]');
     if (!button || button.getAttribute('aria-pressed') === 'true') return;
 
     const col = button.closest('.crd-plate-col');
     const plate = col?.querySelector('[data-crd-plate]');
+    // A picture that failed became the hatched face: put its <img> back so the other view can try its own source.
+    const failed = plate?.querySelector('.crd-noimg');
+    if (failed && failedPlates.has(failed)) failed.replaceWith(failedPlates.get(failed));
     const img = plate?.querySelector('[data-crd-img]');
     if (!plate || !img) return;
 
@@ -154,7 +159,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 /* ---------- images: optional, data mandatory ---------- */
-// The plate's picture becomes the hatched face with the card's name.
+// The plate's picture becomes the hatched face with the card's name; the face remembers its <img> so a view switch can restore it.
 const plateFailed = (img) => {
     const face = document.createElement('div');
     face.className = 'crd-noimg';
@@ -163,6 +168,7 @@ const plateFailed = (img) => {
     const note = document.createElement('span');
     note.textContent = 'No image';
     face.append(name, note);
+    failedPlates.set(face, img);
     img.replaceWith(face);
 };
 
