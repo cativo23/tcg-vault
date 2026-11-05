@@ -726,7 +726,7 @@ test('each day sheet keeps its list role and the days are headings, not named la
         ->and($html)->toContain('<h3 class="act-dtab" id="act-day-'.today()->toDateString().'">');
 });
 
-test('every row carries its card thumbnail, only additions the plus, a rise is green and a fall is flat grey', function () {
+test('every row carries its card thumbnail, only additions the plus, a rise carries the up class and a fall the down class', function () {
     $this->freezeTime();
     activitySeedFeed();
 
