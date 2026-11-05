@@ -97,10 +97,12 @@
                             $card = $entry['card'];
                             $href = $card && $card->set ? route('gallery.card', ['username' => $targetUser->username, 'setTcgdexId' => $card->set->tcgdex_id, 'localId' => $card->local_id]) : null;
                             $thumb = CardImage::sized($card?->official_image_url, false);
+                            // The key and wire:ignore keep a morph from rewriting a retried picture's src or putting back one the script removed.
+                            $rowKey = $entry['kind'] === 'move' ? 'move-'.$card->id : 'added-'.$entry['item']->id;
                         @endphp
-                        <li class="act-row">
-                            <span class="act-thumb">
-                                @if ($thumb)<img src="{{ $thumb }}" alt="" width="46" height="64" loading="lazy" decoding="async" data-optional>@endif
+                        <li class="act-row" wire:key="{{ $rowKey }}">
+                            <span class="act-thumb" wire:ignore>
+                                @if ($thumb)<img src="{{ $thumb }}" alt="" width="46" height="64" loading="lazy" decoding="async">@endif
                                 @if ($entry['kind'] === 'added')<span class="act-plus" aria-hidden="true">+</span>@endif
                             </span>
                             @if ($entry['kind'] === 'move')

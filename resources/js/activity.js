@@ -87,28 +87,28 @@ document.addEventListener('keydown', (event) => {
     readAt(chart, next, true);
 });
 
-/* ---------- thumbnails: a missing low.webp is retried once as high.webp ---------- */
-const retryThumb = (img) => {
-    if (img.dataset.retried) return false;
-    const retry = fallbackSrc(img.getAttribute('src'));
-    if (!retry) return false;
-    img.dataset.retried = '1';
-    img.src = retry;
-    return true;
+/* ---------- thumbnails: this script owns the whole failure path ---------- */
+// The pictures are not `data-optional`, so app.js leaves them alone. A missing low.webp is retried once as
+// high.webp; a second failure, or no fallback to try, removes the picture and the paper frame stays.
+const degradeThumb = (img) => {
+    const retry = img.dataset.retried ? null : fallbackSrc(img.getAttribute('src'));
+    if (retry) {
+        img.dataset.retried = '1';
+        img.src = retry;
+        return;
+    }
+
+    img.remove();
 };
 
-// The window's capture phase runs before app.js's document-level capture handler, which removes a failed
-// `data-optional` image on the spot: stopping the event here lets the retry happen first. A second failure
-// (retried is set) falls through untouched and app.js removes the picture, the paper frame staying.
-window.addEventListener('error', (event) => {
-    const img = event.target;
-    if (img instanceof HTMLImageElement && img.matches('.act-thumb img') && retryThumb(img)) event.stopImmediatePropagation();
+// `error` does not bubble on <img>: capture phase.
+document.addEventListener('error', (event) => {
+    if (event.target instanceof HTMLImageElement && event.target.matches('.act-thumb img')) degradeThumb(event.target);
 }, true);
 
-// Pictures that failed before this deferred module ran never raised an event it could see; this top-level sweep
-// runs before app.js's DOMContentLoaded sweep removes them.
+// Pictures that failed before this deferred module ran never raised an event it could see.
 document.querySelectorAll('.act-thumb img').forEach((img) => {
-    if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) retryThumb(img);
+    if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) degradeThumb(img);
 });
 
 /* ---------- the draw-in plays once per page load ---------- */

@@ -757,6 +757,27 @@ test('every row carries its card thumbnail, only additions the plus, a rise carr
         ->and($html)->not->toContain('▼');
 });
 
+test('a row owns its thumbnail: the picture is not optional, a morph leaves it alone, and every row is keyed', function () {
+    activitySeedFeed();
+    $darkrai = Card::where('tcgdex_id', 'me05-116')->sole();
+    $lampent = Card::where('tcgdex_id', 'me05-037')->sole();
+
+    $html = $this->get('/carlos/activity')->assertOk()->getContent();
+    preg_match_all('#<img [^>]*src="https://assets\.tcgdex\.net/[^>]*>#', $html, $images);
+    preg_match_all('#<span class="act-thumb"[^>]*>#', $html, $thumbs);
+    preg_match_all('#<li class="act-row"[^>]*>#', $html, $rows);
+
+    expect($images[0])->toHaveCount(4)
+        ->and(array_filter($images[0], fn (string $img) => str_contains($img, 'data-optional')))->toBe([])
+        ->and($thumbs[0])->toBe(array_fill(0, 4, '<span class="act-thumb" wire:ignore>'))
+        ->and($rows[0])->toEqualCanonicalizing([
+            '<li class="act-row" wire:key="move-'.$darkrai->id.'">',
+            '<li class="act-row" wire:key="move-'.$lampent->id.'">',
+            '<li class="act-row" wire:key="added-'.CollectionItem::where('card_id', $darkrai->id)->sole()->id.'">',
+            '<li class="act-row" wire:key="added-'.CollectionItem::where('card_id', $lampent->id)->sole()->id.'">',
+        ]);
+});
+
 test('rows link to the card page with a plain link', function () {
     activitySeedFeed();
 
@@ -777,7 +798,7 @@ test('a card without an image still gets its rows: name and amount, and no empty
     }
 
     $html = $this->get('/carlos/activity')->assertOk()->getContent();
-    preg_match_all('#<li class="act-row">(.*?)</li>#s', $html, $rows);
+    preg_match_all('#<li class="act-row"[^>]*>(.*?)</li>#s', $html, $rows);
 
     expect($rows[1])->toHaveCount(2)
         ->and(array_filter($rows[1], fn (string $row) => str_contains($row, '<img')))->toBe([])
