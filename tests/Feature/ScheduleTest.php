@@ -54,3 +54,12 @@ test('a failing warm-up dispatch alerts Discord', function () {
 
     Http::assertSent(fn ($request) => str_contains($request['content'], 'gallery:warm-value-series'));
 });
+
+test('the week baselines are rebuilt nightly after the price sync has drained', function () {
+    // catalog:refresh-prices dispatches at 00:00 and its jobs may retry for 3 hours; the freshness check runs at 04:00.
+    $event = scheduledEvent('prices:refresh-week-baselines');
+
+    expect($event?->expression)->toBe('15 4 * * *')
+        ->and($event?->withoutOverlapping)->toBeTrue()
+        ->and($event?->expiresAt)->toBe(30);
+});

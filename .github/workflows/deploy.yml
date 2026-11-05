@@ -127,7 +127,8 @@ jobs:
             echo "!!! Migrations are never auto-run. If this release includes"
             echo "!!! new migrations, run manually BEFORE traffic hits the new"
             echo "!!! code (see below):"
-            echo "!!!   docker compose -f compose.prod.yml exec app php artisan migrate --force"
+            echo "!!!   IMAGE_TAG=<this release's tag> docker compose -f compose.prod.yml run --rm --no-deps app php artisan migrate --force"
+            echo "!!!   IMAGE_TAG=<this release's tag> docker compose -f compose.prod.yml run --rm --no-deps app php artisan prices:refresh-week-baselines   (after a migration that adds the week-baseline table; run it before redeploying so the page never shows no moves)"
             echo "!!!   docker compose -f compose.prod.yml exec app php artisan db:seed"
 
             # Read-only status check against the *new* image, before it's
