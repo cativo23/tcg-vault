@@ -211,6 +211,19 @@ test('a card priced only by hand shows no marketplace attribution', function () 
     $response->assertDontSee('· via');
 });
 
+test('the market header shows no date and no origin when the selected variant has only a manual price', function () {
+    $seed = seedVariantCard(); // marketplace prices for other variants, priced today
+    ownCopy($seed, 'holofoil:cosmos');
+    CardPriceSnapshot::create(['card_id' => $seed['card']->id, 'source' => 'manual', 'origin' => 'hand', 'variant' => 'holofoil:cosmos', 'captured_on' => today()->subDays(2), 'currency' => 'USD', 'market_minor' => 500]);
+
+    $response = $this->get('/carlos/me05/116?variant=holofoil:cosmos');
+
+    $response->assertOk()
+        ->assertSee('entered '.DayLabel::of(today()->subDays(2)))
+        ->assertDontSee('<span class="crd-sec-r"><span class="crd-mono">', false)
+        ->assertDontSee('· via');
+});
+
 test('a manual price copied from a feed says so, is never shown as a move, and dates older entries with the year', function () {
     ['collection' => $collection, 'card' => $card] = seedCardPage();
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'holofoil:cosmos']);

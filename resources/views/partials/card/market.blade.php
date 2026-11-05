@@ -18,7 +18,7 @@
 <section class="crd-market" aria-labelledby="crd-mv-h">
     <div class="crd-sec-head">
         <h2 id="crd-mv-h" class="crd-sec-t">Market value{!! $mvSuffix !!}</h2>
-        @if ($newestMarketDay)
+        @if ($newestMarketDay && $marketOrigins->isNotEmpty())
             {{-- Martian Mono is for numerals only (design.md): the date, not the words. --}}
             <span class="crd-sec-r"><span class="crd-mono">{{ CarbonImmutable::parse($newestMarketDay)->format('j M Y') }}</span> · via {{ $marketOrigins->implode(' · ') }}</span>
         @endif
