@@ -691,18 +691,23 @@ final class CardPriceResolver
     }
 
     /**
-     * The movement of a SPECIFIC snapshot against the same print a week
+     * The movement of a resolver pick against the same print a week
      * earlier: the newest priced row of its source, variant and currency
-     * captured WEEK_DAYS to WEEK_DAYS + WEEK_SLACK_DAYS before it. Null when
-     * there is nothing honest to compare: no priced baseline in that span
-     * (a card priced for under a week, a long gap), a pick its marketplace
-     * stopped updating (older than STALE_AFTER_DAYS behind the card's newest
-     * marketplace sync, so its last "week" says nothing about today), or a
-     * manual price (typed in, not a market movement).
+     * captured WEEK_DAYS to WEEK_DAYS + WEEK_SLACK_DAYS before it, inside
+     * the recent window. Null when there is nothing honest to compare: no
+     * pick or an unpriced one, a manual price (typed in, not a market
+     * movement), a pick its marketplace stopped updating (older than
+     * STALE_AFTER_DAYS behind the card's newest marketplace sync), or no
+     * baseline in that span.
      *
-     * Reads only the loaded relation. DecidingPriceRows keeps the baseline
-     * row of every marketplace group, so the answer is the same from its
-     * trimmed rows as from the whole recent window.
+     * The baseline is read from the pick's own row: DecidingPriceRows joins
+     * the card_price_week_baselines read model (see WeekBaselines). It is
+     * used only when its anchor is the pick's day, so a price written since
+     * the last refresh, a print never refreshed or a snapshot that is not
+     * its print's newest gives null, never a move against the wrong week.
+     * The returned `previous` carries the baseline's id, card, source,
+     * origin, variant, day, currency and market price, nothing else. No
+     * query.
      */
     public function weekDeltaFor(Card $card, ?CardPriceSnapshot $latest): ?PriceDelta
     {
@@ -710,37 +715,33 @@ final class CardPriceResolver
             return null;
         }
 
-        $index = $this->indexOf($card->priceSnapshots);
+        $current = $this->currentFrom($this->indexOf($card->priceSnapshots)['synced']);
         $latestKey = $latest->capturedOnKey();
-        $current = $this->currentFrom($index['synced']);
 
         if ($current === null || $latestKey < $current) {
             return null;
         }
 
-        $day = Carbon::parse($latestKey);
-        $newest = $day->copy()->subDays(self::WEEK_DAYS)->toDateString();
-        $oldest = $day->copy()->subDays(self::WEEK_DAYS + self::WEEK_SLACK_DAYS)->toDateString();
-        $wanted = $latest->getAttributes();
+        $attributes = $latest->getAttributes();
+        $anchor = $attributes['week_anchor_on'] ?? null;
+        $minor = $attributes['week_baseline_minor'] ?? null;
 
-        // Newest first: the first row on or before the baseline day that matches wins.
-        foreach ($index['rows'] as $row) {
-            if ($row[self::DAY] > $newest) {
-                continue;
-            }
-
-            if ($row[self::DAY] < $oldest) {
-                break;
-            }
-
-            if ($this->isPricedLike($row, $wanted)) {
-                $previous = $row[self::MODEL];
-
-                return new PriceDelta($latest, $previous, $latest->market_minor - $previous->market_minor);
-            }
+        if (! is_string($anchor) || substr($anchor, 0, 10) !== $latestKey || $minor === null) {
+            return null;
         }
 
-        return null;
+        $previous = (new CardPriceSnapshot)->newFromBuilder([
+            'id' => $attributes['week_baseline_id'] ?? null,
+            'card_id' => $attributes['card_id'] ?? null,
+            'source' => $attributes['source'] ?? null,
+            'origin' => $attributes['week_baseline_origin'] ?? null,
+            'variant' => $attributes['variant'] ?? null,
+            'captured_on' => $attributes['week_baseline_on'] ?? null,
+            'currency' => $attributes['currency'] ?? null,
+            'market_minor' => $minor,
+        ]);
+
+        return new PriceDelta($latest, $previous, $latest->market_minor - (int) $minor);
     }
 
     /**

@@ -30,22 +30,25 @@ use Illuminate\Support\Facades\DB;
  * - The newest priced marketplace row of every (card, source, variant,
  *   origin), so the set of origins a gallery header lists ("via tcgcsv ·
  *   tcgdex") is the same as over the whole window.
- * - The newest priced marketplace row captured CardPriceResolver::WEEK_DAYS
- *   to WEEK_DAYS + WEEK_SLACK_DAYS before the newest priced row of every
- *   (card, source, variant, currency): the comparison row of
- *   CardPriceResolver::weekDeltaFor(). An older row cannot decide a move.
  *
  * The relation then answers current-price questions only, exactly as the
  * whole window would: resolve(), resolveForVariant(), resolveCardWide(),
- * hasCurrentMarketPrice(), deltaFor() / weekDeltaFor() / resolveDelta(), Valuation's
+ * hasCurrentMarketPrice(), deltaFor() / resolveDelta(), Valuation's
  * totalsByCurrency(), cardTotal() and headlineSnapshot(), and the newest
  * priced marketplace day and its origins. It does NOT answer as-of or
  * history questions (resolveForVariantAsOf(), resolveAsOf(),
  * totalsByCurrencyAsOf(), resolveForVariantOnDays(),
  * distinctSnapshotDates()): those need the rows this drops. historyIn()
- * reads the database and is unaffected.
+ * reads the database and is unaffected. weekDeltaFor() answers only through
+ * the joined baseline columns below: a relation loaded some other way (a
+ * plain `recent()` load) gives it null.
  *
- * Rows carry CardPriceSnapshot::CHART_COLUMNS, not the `raw` payload.
+ * Rows carry CardPriceSnapshot::CHART_COLUMNS, not the `raw` payload, then
+ * WeekBaselines::ATTRIBUTES: their print's week baseline from the
+ * card_price_week_baselines read model, joined on its key (card, source,
+ * variant, currency) and only when the baseline lies inside the window,
+ * null otherwise. The join adds columns, never rows: the key is the
+ * table's primary key. CardPriceResolver::weekDeltaFor() reads them.
  *
  * The rows are cached per set of cards (see cacheKey()), as plain values,
  * compressed, hydrated on every read, for up to a day. An entry is used only while the
@@ -64,6 +67,16 @@ class DecidingPriceRows
     private const CACHE_VERSION = 2;
 
     private const TTL_SECONDS = 86400;
+
+    /**
+     * The values each cached and loaded row holds, in order.
+     *
+     * @return list<string>
+     */
+    private static function columns(): array
+    {
+        return [...CardPriceSnapshot::CHART_COLUMNS, ...WeekBaselines::ATTRIBUTES];
+    }
 
     /**
      * @param  EloquentCollection<int, Card>  $cards
@@ -89,7 +102,7 @@ class DecidingPriceRows
                 'version' => $version,
                 'from' => $from,
                 'ids' => $idList,
-                'columns' => CardPriceSnapshot::CHART_COLUMNS,
+                'columns' => self::columns(),
                 // Compressed: a collection's rows serialize to over half a
                 // megabyte and compress about tenfold at the fastest level.
                 'rows' => gzcompress(serialize($values), 1),
@@ -97,7 +110,7 @@ class DecidingPriceRows
         }
 
         $byCard = [];
-        $attributes = array_map(fn (array $row): array => array_combine(CardPriceSnapshot::CHART_COLUMNS, $row), $values);
+        $attributes = array_map(fn (array $row): array => array_combine(self::columns(), $row), $values);
 
         foreach (CardPriceSnapshot::hydrate($attributes) as $snapshot) {
             $byCard[$snapshot->card_id][] = $snapshot;
@@ -123,7 +136,7 @@ class DecidingPriceRows
             || ($entry['version'] ?? null) !== $version
             || ($entry['from'] ?? null) !== $from
             || ($entry['ids'] ?? null) !== $idList
-            || ($entry['columns'] ?? null) !== CardPriceSnapshot::CHART_COLUMNS
+            || ($entry['columns'] ?? null) !== self::columns()
             || ! is_string($entry['rows'] ?? null)
             || ! is_string($packed = @gzuncompress($entry['rows']))) {
             return null;
@@ -135,7 +148,7 @@ class DecidingPriceRows
             return null;
         }
 
-        $width = count(CardPriceSnapshot::CHART_COLUMNS);
+        $width = count(self::columns());
 
         foreach ($values as $row) {
             if (! is_array($row) || count($row) !== $width) {
@@ -161,48 +174,42 @@ class DecidingPriceRows
     }
 
     /**
-     * The deciding rows of the cards, in id order, each as its
-     * CHART_COLUMNS values in that order.
+     * The deciding rows of the cards, in id order, each as its columns()
+     * values in that order.
      *
      * @return list<list<mixed>>
      */
     private function query(string $idList, string $from): array
     {
         $columns = implode(', ', CardPriceSnapshot::CHART_COLUMNS);
-        $week = CardPriceResolver::WEEK_DAYS;
-        $reach = CardPriceResolver::WEEK_DAYS + CardPriceResolver::WEEK_SLACK_DAYS;
+        $outer = implode(', ', array_map(fn (string $column) => "windowed.{$column}", CardPriceSnapshot::CHART_COLUMNS));
         // Running counts over newest-first partitions: a priced row's count
-        // is its rank among the priced rows of its partition. newest_priced
-        // is the newest priced day of the (card, source, variant, currency)
-        // group; week_rank counts, newest first, the marketplace rows priced
-        // on or before that day minus WEEK_DAYS and no older than that day minus
-        // WEEK_DAYS + WEEK_SLACK_DAYS, so rank 1 is the baseline.
+        // is its rank among the priced rows of its partition.
         $rows = DB::select(<<<SQL
-            select {$columns} from (
-                select {$columns}, newest, priced_rank, origin_rank, newest_priced,
-                    count(*) filter (where market_minor is not null and source <> 'manual' and captured_on <= newest_priced - {$week} and captured_on >= newest_priced - {$reach})
-                        over (partition by card_id, source, variant, currency order by captured_on desc rows unbounded preceding) as week_rank
-                from (
-                    select {$columns},
-                        row_number() over (partition by card_id, source, variant order by captured_on desc) as newest,
-                        count(*) filter (where market_minor is not null)
-                            over (partition by card_id, source, variant, currency order by captured_on desc rows unbounded preceding) as priced_rank,
-                        count(*) filter (where market_minor is not null)
-                            over (partition by card_id, source, variant, origin order by captured_on desc rows unbounded preceding) as origin_rank,
-                        max(captured_on) filter (where market_minor is not null)
-                            over (partition by card_id, source, variant, currency) as newest_priced
-                    from "card_price_snapshots"
-                    where card_id = any(?::bigint[])
-                      and (captured_on >= ?::date or source = 'manual')
-                ) as ranked
+            select {$outer},
+                wb.anchor_on as week_anchor_on, wb.baseline_id as week_baseline_id, wb.baseline_on as week_baseline_on,
+                wb.baseline_origin as week_baseline_origin, wb.baseline_minor as week_baseline_minor
+            from (
+                select {$columns},
+                    row_number() over (partition by card_id, source, variant order by captured_on desc) as newest,
+                    count(*) filter (where market_minor is not null)
+                        over (partition by card_id, source, variant, currency order by captured_on desc rows unbounded preceding) as priced_rank,
+                    count(*) filter (where market_minor is not null)
+                        over (partition by card_id, source, variant, origin order by captured_on desc rows unbounded preceding) as origin_rank
+                from "card_price_snapshots"
+                where card_id = any(?::bigint[])
+                  and (captured_on >= ?::date or source = 'manual')
             ) as windowed
-            where newest = 1
-               or (market_minor is not null and priced_rank <= 2)
-               or (market_minor is not null and source <> 'manual' and origin_rank = 1)
-               or (market_minor is not null and source <> 'manual' and captured_on <= newest_priced - {$week} and captured_on >= newest_priced - {$reach} and week_rank = 1)
-            order by id
+            left join "card_price_week_baselines" as wb
+                on wb.card_id = windowed.card_id and wb.source = windowed.source and wb.variant = windowed.variant
+               and wb.currency = windowed.currency and wb.baseline_on >= ?::date
+            where windowed.newest = 1
+               or (windowed.market_minor is not null and windowed.priced_rank <= 2)
+               or (windowed.market_minor is not null and windowed.source <> 'manual' and windowed.origin_rank = 1)
+            order by windowed.id
             SQL, [
             '{'.$idList.'}',
+            $from,
             $from,
         ]);
 

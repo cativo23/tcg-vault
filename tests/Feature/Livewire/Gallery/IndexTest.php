@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\WeekBaselines;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Illuminate\Database\Events\QueryExecuted;
@@ -479,6 +480,7 @@ test('each entry carries its 7-day move next to the previous-day delta', functio
     foreach ([0 => 1240, 1 => 1230, 7 => 1000] as $days => $minor) {
         CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($days), 'currency' => 'USD', 'market_minor' => $minor]);
     }
+    app(WeekBaselines::class)->refreshAll();
 
     $entry = Livewire::test(Index::class, ['username' => 'carlos'])->viewData('entries')->first();
 
@@ -522,8 +524,10 @@ test('the 7-day move costs no extra queries however many cards the page prices',
     };
 
     $add(1, 3);
+    app(WeekBaselines::class)->refreshAll();
     [$few, $fewEntries] = $queriesFor();
     $add(4, 30);
+    app(WeekBaselines::class)->refreshAll();
     [$many, $manyEntries] = $queriesFor();
 
     expect($fewEntries)->toHaveCount(3)
@@ -712,6 +716,7 @@ test('a tile shows its 7-day move and only a rise is green', function () {
         CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => $now]);
         CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(7), 'currency' => 'USD', 'market_minor' => $then]);
     }
+    app(WeekBaselines::class)->refreshAll();
 
     $html = $this->get('/carlos')->getContent();
 

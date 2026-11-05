@@ -49,8 +49,7 @@ function expectedRecentDays(): array
 
 /**
  * The rows of the recent window that can decide a current price (see
- * DecidingPriceRows): the newest and the previous priced one. (The fixture's
- * older rows are beyond the week move's reach, so none is kept as a baseline.)
+ * DecidingPriceRows): the newest and the previous priced one.
  */
 function expectedDecidingDays(): array
 {

@@ -6,6 +6,9 @@ use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
 use App\Modules\Catalog\Services\CardPriceResolver;
+use App\Modules\Catalog\Services\DecidingPriceRows;
+use App\Modules\Catalog\Services\WeekBaselines;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\DB;
 
 function deltaCard(): Card
@@ -114,12 +117,22 @@ function weekPrice(Card $card, int $daysAgo, ?int $minor, string $variant = 'nor
     return CardPriceSnapshot::create(['card_id' => $card->id, 'source' => $source, 'variant' => $variant, 'captured_on' => today()->subDays($daysAgo), 'currency' => $currency, 'market_minor' => $minor]);
 }
 
+/** The card as the gallery loads it: its baselines refreshed, then its deciding rows with the read model joined. */
+function weekLoaded(Card $card, bool $refresh = true): Card
+{
+    if ($refresh) {
+        app(WeekBaselines::class)->refreshCards([$card->id]);
+    }
+
+    return (new DecidingPriceRows)->loadOnto(new EloquentCollection([Card::findOrFail($card->id)]))->sole();
+}
+
 test('the week move compares the latest price with the one seven days earlier on the same print', function () {
     $card = deltaCard();
     foreach ([0 => 1240, 1 => 1230, 3 => 1100, 7 => 1000, 9 => 900] as $days => $minor) {
         weekPrice($card, $days, $minor);
     }
-    $card->load('priceSnapshots');
+    $card = weekLoaded($card);
     $resolver = new CardPriceResolver;
 
     $week = $resolver->weekDeltaFor($card, $resolver->resolve($card));
@@ -136,7 +149,7 @@ test('a gap on the exact day falls back to the newest earlier price, up to a fur
     weekPrice($card, 0, 500);
     weekPrice($card, 8, 400);
     weekPrice($card, 14, 350);
-    $card->load('priceSnapshots');
+    $card = weekLoaded($card);
     $resolver = new CardPriceResolver;
 
     expect($resolver->weekDeltaFor($card, $resolver->resolve($card))->previous->market_minor)->toBe(400);
@@ -144,7 +157,7 @@ test('a gap on the exact day falls back to the newest earlier price, up to a fur
     $onlyOld = deltaCard2();
     weekPrice($onlyOld, 0, 500);
     weekPrice($onlyOld, 15, 300); // 15 days: older than 7 + 7
-    $onlyOld->load('priceSnapshots');
+    $onlyOld = weekLoaded($onlyOld);
 
     expect($resolver->weekDeltaFor($onlyOld, $resolver->resolve($onlyOld)))->toBeNull();
 });
@@ -153,7 +166,7 @@ test('a card priced for less than a week has no week move', function () {
     $card = deltaCard();
     weekPrice($card, 0, 500);
     weekPrice($card, 3, 480);
-    $card->load('priceSnapshots');
+    $card = weekLoaded($card);
     $resolver = new CardPriceResolver;
 
     expect($resolver->weekDeltaFor($card, $resolver->resolve($card)))->toBeNull();
@@ -166,7 +179,7 @@ test('the week move never compares across currency or variant, and skips an unpr
     weekPrice($card, 7, 800, variant: 'holofoil');      // other variant
     weekPrice($card, 8, null);                          // same basis but unpriced
     weekPrice($card, 9, 700);                           // the newest priced same-basis row at or before day 7
-    $card->load('priceSnapshots');
+    $card = weekLoaded($card);
     $resolver = new CardPriceResolver;
 
     $week = $resolver->weekDeltaFor($card, $resolver->resolve($card));
@@ -181,7 +194,7 @@ test('a manual price has no week move, however old its history', function () {
     $card = deltaCard();
     weekPrice($card, 0, 500, source: 'manual');
     weekPrice($card, 7, 400, source: 'manual', variant: 'normal', currency: 'USD');
-    $card->load('priceSnapshots');
+    $card = weekLoaded($card);
     $resolver = new CardPriceResolver;
 
     expect($resolver->weekDeltaFor($card, $resolver->resolve($card)))->toBeNull();
@@ -192,7 +205,7 @@ test('a price its marketplace stopped updating has no week move', function () {
     $frozen = weekPrice($card, 10, 1000);
     weekPrice($card, 17, 900);
     weekPrice($card, 0, 400, variant: 'default', currency: 'EUR', source: 'cardmarket'); // the card's newest marketplace sync
-    $card->load('priceSnapshots');
+    $card = weekLoaded($card);
     $resolver = new CardPriceResolver;
 
     expect($resolver->weekDeltaFor($card, $card->priceSnapshots->firstWhere('id', $frozen->id)))->toBeNull();
@@ -202,7 +215,7 @@ test('no snapshot or an unpriced one means no week move, and the lookup reads no
     $card = deltaCard();
     weekPrice($card, 0, null);
     weekPrice($card, 8, 500);
-    $card->load('priceSnapshots');
+    $card = weekLoaded($card);
     $resolver = new CardPriceResolver;
     $queries = 0;
     DB::listen(function () use (&$queries) {
@@ -212,4 +225,56 @@ test('no snapshot or an unpriced one means no week move, and the lookup reads no
     expect($resolver->weekDeltaFor($card, null))->toBeNull()
         ->and($resolver->weekDeltaFor($card, $resolver->resolve($card)))->toBeNull()
         ->and($queries)->toBe(0);
+});
+
+test('a card whose baselines were never computed has no week move, and no error', function () {
+    $card = deltaCard();
+    weekPrice($card, 0, 1240);
+    weekPrice($card, 7, 1000);
+    $card = weekLoaded($card, refresh: false);
+    $resolver = new CardPriceResolver;
+
+    expect($resolver->weekDeltaFor($card, $resolver->resolve($card)))->toBeNull();
+});
+
+test('a price written after the baselines were refreshed has no week move until the next refresh', function () {
+    $card = deltaCard();
+    weekPrice($card, 1, 1230);
+    weekPrice($card, 7, 1000);
+    weekPrice($card, 8, 990);
+    app(WeekBaselines::class)->refreshCards([$card->id]); // anchored on day 1: baseline day 8
+    weekPrice($card, 0, 1240);                              // today's price, not yet refreshed
+    $resolver = new CardPriceResolver;
+
+    $stale = weekLoaded($card, refresh: false);
+    $fresh = weekLoaded($card);
+
+    expect($resolver->weekDeltaFor($stale, $resolver->resolve($stale)))->toBeNull()
+        ->and($resolver->weekDeltaFor($fresh, $resolver->resolve($fresh))?->previous->market_minor)->toBe(1000)
+        ->and($resolver->weekDeltaFor($fresh, $resolver->resolve($fresh))?->deltaMinor)->toBe(240);
+});
+
+test('a baseline that fell out of the 30-day window is never used', function () {
+    $card = deltaCard();
+    // Every marketplace stopped 20 days ago, so the day-20 price is still the card's current one;
+    // its only priced row a week earlier is 32 days back, outside the window the page loads.
+    weekPrice($card, 20, 500);
+    weekPrice($card, 32, 400);
+    $card = weekLoaded($card);
+    $resolver = new CardPriceResolver;
+
+    expect($resolver->weekDeltaFor($card, $resolver->resolve($card)))->toBeNull();
+});
+
+test('the week move\'s comparison price carries the print, day, origin and value it was measured against', function () {
+    $card = deltaCard();
+    weekPrice($card, 0, 1240);
+    $base = CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'origin' => 'tcgcsv', 'variant' => 'normal', 'captured_on' => today()->subDays(7), 'currency' => 'USD', 'market_minor' => 1000]);
+    $card = weekLoaded($card);
+    $resolver = new CardPriceResolver;
+
+    $previous = $resolver->weekDeltaFor($card, $resolver->resolve($card))->previous;
+
+    expect([$previous->id, $previous->source, $previous->origin, $previous->variant, $previous->currency, $previous->capturedOnKey(), $previous->market_minor])
+        ->toBe([$base->id, 'tcgplayer', 'tcgcsv', 'normal', 'USD', today()->subDays(7)->toDateString(), 1000]);
 });
