@@ -206,7 +206,6 @@ final class CardShow extends Component
             ->map(fn (Card $c) => [
                 'card' => $c,
                 'snapshot' => $tilePrice = $valuation->headlineSnapshot($c),
-                'delta' => $resolver->deltaFor($c, $tilePrice),
                 'weekDelta' => $resolver->weekDeltaFor($c, $tilePrice),
                 'items' => $c->collectionItems,
             ]);

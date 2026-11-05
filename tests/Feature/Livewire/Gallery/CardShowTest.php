@@ -1035,3 +1035,87 @@ test('an empty market shows one sentence and no tags', function () {
     expect($html)->toContain('<p class="crd-mv-empty">No market price recorded for this card yet.</p>')
         ->and($html)->not->toContain('crd-htag');
 });
+
+test('each copy is a ticket stub: quantity, condition or grade, date added and notes', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    $raw = CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'LP', 'quantity' => 2, 'notes' => 'binder copy']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'grade_company' => 'PSA', 'grade_value' => '10', 'quantity' => 1]);
+
+    $html = $this->get('/carlos/me05/116')->getContent();
+
+    expect(substr_count($html, '<li class="crd-stub"'))->toBe(2)
+        ->and($html)->toContain('<h2 id="crd-cp-h" class="crd-sec-t">In the collection · 3 copies</h2>')
+        ->and($html)->toContain('<div class="crd-stub-q crd-mono" aria-label="2 copies">×2</div>')
+        ->and($html)->toContain('Lightly Played <span class="crd-stub-aside crd-mono">LP</span>')
+        ->and($html)->toContain('PSA 10 <span class="crd-stub-aside">graded</span>')
+        ->and($html)->toContain('Added <span class="crd-mono">'.$raw->created_at->format('j M Y').'</span>')
+        ->and($html)->toContain('<p class="crd-stub-notes">binder copy</p>');
+});
+
+test('a card not in the collection says so in a sentence that links its set', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    expect($this->get('/carlos/me05/003')->getContent())
+        ->toContain('<h2 id="crd-cp-h" class="crd-sec-t">Collection</h2>')
+        ->toContain('<p class="crd-note-text">This card is in <a href="'.route('gallery.show', ['username' => 'carlos', 'setTcgdexId' => 'me05']).'">Pitch Black</a>, but not in carlos\'s collection yet.</p>');
+});
+
+test('the facts are a catalogue label with numbers in the numeral face', function () {
+    $html = ownedCardPageHtml();
+
+    expect($html)->toContain('<dl class="crd-kv">')
+        ->toContain('<div><dt>Illustrator</dt><dd class="crd-val">AKIRA EGAWA</dd></div>')
+        ->toContain('<div><dt>HP</dt><dd class="crd-mono">280</dd></div>')
+        ->toContain('<div><dt>Pokédex</dt><dd class="crd-mono">#0491</dd></div>')
+        ->toContain('<div><dt>Catalog ID</dt><dd class="crd-mono">me05-116</dd></div>');
+});
+
+test('the related strip is the collection tile: own-print price, 7-day move, a plain link, and a way to the set', function () {
+    seedRelatedStrip();
+
+    $html = $this->get('/carlos/me05/116')->getContent();
+
+    expect($html)->toContain('<section class="crd-related col-page" aria-labelledby="crd-rl-h">')
+        ->and($html)->toContain('<h2 id="crd-rl-h" class="crd-rel-tab">More from Pitch Black</h2>')
+        ->and($html)->toContain('<a class="crd-setlink" href="'.route('gallery.show', ['username' => 'carlos', 'setTcgdexId' => 'me05']).'">View the set</a>')
+        ->and($html)->toContain('<ol class="col-grid crd-strip">')
+        ->and($html)->toContain('href="'.route('gallery.card', ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '003']).'"')
+        ->and($html)->toContain('aria-label="Fomantis, Pitch Black 003, $9.00, down $1.00 in 7 days"')
+        ->and($html)->toContain('<span class="col-price">$9.00</span>')
+        ->and($html)->toContain("<span class=\"col-delta\">\u{2212}\$1.00 · 7d</span>");
+});
+
+test('a pill the collector holds no copies of says so, naming who holds the others', function () {
+    $seed = seedVariantCard();
+    ownCopy($seed, 'normal');
+
+    Livewire::withQueryParams(['variant' => 'reverse-holofoil'])
+        ->test(CardShow::class, ['username' => 'carlos', 'setTcgdexId' => 'me05', 'localId' => '116'])
+        ->assertSeeHtml('<p class="crd-note-text crd-note-text--muted">No Reverse Holofoil copies. carlos holds other variants of this card.</p>');
+});
+
+test('a strip card keeps its copies, its slab and its stamps, as its collection tile does', function () {
+    ['collection' => $collection, 'card' => $card, 'set' => $set] = seedCardPage();
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+    $petilil = Card::create(['tcgdex_id' => 'me05-004', 'set_id' => $set->id, 'local_id' => '004', 'name' => 'Petilil', 'rarity' => 'Rare']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $petilil->id, 'card_tcgdex_id' => 'me05-004', 'variant' => 'holofoil:cosmos+player-rewards-program', 'condition' => 'NM', 'quantity' => 2]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $petilil->id, 'card_tcgdex_id' => 'me05-004', 'variant' => 'normal', 'grade_company' => 'PSA', 'grade_value' => '10', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = $this->get('/carlos/me05/116')->getContent();
+
+    expect($html)->toContain('<span class="col-qty" title="3 copies">×3</span>')
+        ->and($html)->toContain('<span class="col-slab">PSA 10</span>')
+        ->and($html)->toContain('title="Player Rewards Program">Player Rewards Program</span>')
+        ->and($html)->toContain('aria-label="Petilil, Pitch Black 004, 3 copies, graded PSA 10, Player Rewards Program, no price"');
+});
+
+test('nothing on the card page uses the old styles or the old navigation', function () {
+    seedRelatedStrip();
+
+    expect($this->get('/carlos/me05/116')->getContent())
+        ->not->toContain('class="nw-')
+        ->not->toContain('class="mono')
+        ->not->toContain('imgwrap')
+        ->not->toContain('wire:navigate');
+});
