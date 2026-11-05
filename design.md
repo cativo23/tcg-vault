@@ -186,6 +186,7 @@ physical thing a collector already knows. Built only from the tokens above.
 - **Hang tags** — `--radius-tag` stock tags under a card carrying its price; green only when the price is up.
 - **Binder page + pockets** — `--color-binder-page` with clear pockets (`--color-sleeve-*`); a missing card is an empty pocket with its number pencilled in.
 - **Printed strip** — a one-line set progress strip with hollow slots for missing cards (replaces the `.nw-bar` progress bar on set screens).
+- **Mini printed strip** — the sets list draws each set with the same slot rule as the set page's printed strip (`PrintedStrip::slots()`): a card whose number is plain digits within the set total sits at its number; lettered numbers (TG, GG, SV…) and numbers outside the total are grouped after the numbered run; a number the catalogue has not imported is a grey, unnumbered slot. On the list the slots are compressed to a 10 px track: owned runs filled, missing runs hollow, unimported slots left as the grey track.
 - **Ticket stub** — one stub per owned copy on the card page.
 - **Catalogue label** — the facts block (set, number, rarity, artist) set as a library label.
 - **Plate with crop marks** — the card image at 63×88 mm marks, with Actual size, loupe (capped at scan resolution) and calibration.
