@@ -29,6 +29,14 @@ final class Activity extends Component
     private const MAX_FEED = 40;
 
     /**
+     * The smallest price move the feed lists, in minor units of the move's
+     * own currency ($1.00, €1.00), per card as the row shows it, never
+     * multiplied by the copies held. Smaller moves are day-to-day noise
+     * that would crowd out the rest; additions are always listed.
+     */
+    public const MIN_MOVE_MINOR = 100;
+
+    /**
      * The chart's range, from `?range=`. Untrusted like CardShow's, hence
      * the union: ChartRange::fromInput() turns anything unknown into one
      * month.
@@ -69,7 +77,8 @@ final class Activity extends Component
                 // trend for a card they do not have.
                 $delta = $resolver->deltaFor($card, $valuation->headlineSnapshot($card));
 
-                if ($delta === null || $delta->deltaMinor === 0) {
+                // Under MIN_MOVE_MINOR is not listed (the page says so); zero never was.
+                if ($delta === null || abs($delta->deltaMinor) < self::MIN_MOVE_MINOR) {
                     return null;
                 }
 
@@ -123,6 +132,7 @@ final class Activity extends Component
                 'at' => $item->created_at,
             ]);
 
+        // Small moves were dropped above, before this cap, so they never take one of its slots.
         $feed = $moves->concat($additions)
             ->sortByDesc(fn ($e) => $e['at']->timestamp ?? 0)
             ->take(self::MAX_FEED)

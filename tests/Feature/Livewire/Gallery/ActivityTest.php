@@ -61,6 +61,7 @@ test('a delta spanning a source/variant/currency change is not shown — compari
     $response->assertSee('1 update');
 });
 
+// With the $1 floor the page hides a fabricated zero move whatever the resolver does; the resolver's own guard keeps its coverage in CardPriceResolverDeltaTest.
 test('a card whose newest day only has a non-priority source does not render a fabricated zero delta', function () {
     // Regression for the final whole-branch review's Critical finding:
     // resolve() always prefers tcgplayer when ANY exists, so when today
@@ -276,7 +277,7 @@ test('the value chart prices each copy by its own variant, not one price per car
 
 test('a price move is reported for the variant the collector actually owns', function () {
     // The collector owns only the reverse-holofoil print, which moved
-    // +$0.02. The normal print moved +$1.00 over the same two days.
+    // +$2.00. The normal print moved +$5.00 over the same two days.
     // Running the card-level chain reports the normal print's move for a
     // card no normal copy of which is owned.
     $user = User::factory()->create(['username' => 'carlos']);
@@ -286,15 +287,14 @@ test('a price move is reported for the variant the collector actually owns', fun
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-001', 'condition' => 'NM', 'quantity' => 1, 'variant' => 'reverse-holofoil']);
 
     CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 100]);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 10]);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 200]);
-    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 12]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today()->subDay(), 'currency' => 'USD', 'market_minor' => 1000]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 600]);
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'reverse-holofoil', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => 1200]);
 
-    $response = $this->get('/carlos/activity');
+    $moves = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed')->where('kind', 'move');
 
-    $response->assertOk();
-    $response->assertSee('+$0.02');
-    $response->assertDontSee('+$1.00');
+    expect($moves->map(fn (array $e) => $e['delta']->deltaMinor)->values()->all())->toBe([200]);
+    $this->get('/carlos/activity')->assertOk()->assertSee('+$2.00')->assertDontSee('+$5.00');
 });
 
 /**
@@ -407,8 +407,8 @@ test('the range buttons stay when there is not enough history to chart', functio
 });
 
 test('the feed reuses the cards the headline loaded, so their price rows load once', function () {
-    ownedCardPricedDaysAgo([0 => 300, 1 => 290, 5 => 250]);
-    ownedCardPricedDaysAgo([0 => 900, 2 => 880], 'me05-117', 'reverse-holofoil');
+    ownedCardPricedDaysAgo([0 => 3000, 1 => 2900, 5 => 2500]);
+    ownedCardPricedDaysAgo([0 => 9000, 2 => 8800], 'me05-117', 'reverse-holofoil');
 
     $priceRowLoads = 0;
     DB::listen(function ($query) use (&$priceRowLoads) {
@@ -422,8 +422,8 @@ test('the feed reuses the cards the headline loaded, so their price rows load on
     $feed = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed');
 
     expect($priceRowLoads)->toBe(1)
-        ->and($feed->where('kind', 'added')->map(fn (array $e) => $e['snapshot']?->market_minor)->sort()->values()->all())->toBe([300, 900])
-        ->and($feed->where('kind', 'move')->map(fn (array $e) => $e['delta']->deltaMinor)->sort()->values()->all())->toBe([10, 20]);
+        ->and($feed->where('kind', 'added')->map(fn (array $e) => $e['snapshot']?->market_minor)->sort()->values()->all())->toBe([3000, 9000])
+        ->and($feed->where('kind', 'move')->map(fn (array $e) => $e['delta']->deltaMinor)->sort()->values()->all())->toBe([100, 200]);
 });
 
 test('a feed copy whose card is past the headline\'s card cap is still priced', function () {
@@ -468,4 +468,55 @@ test('a feed copy whose card is past the headline\'s card cap is still priced', 
         ->and($reads->decidingIds(1))->toBe([$leftOut->id])
         ->and($added->first()['card']->id)->toBe($leftOut->id)
         ->and($added->every(fn (array $e) => $e['snapshot']?->market_minor === 1000 + $e['card']->id))->toBeTrue();
+});
+
+/**
+ * One public copy of a card whose price moved from $from to $to (minor
+ * units) between yesterday and today. A USD move is tcgplayer's normal
+ * print; a EUR move is cardmarket's card-wide row, which a copy saved
+ * without a variant falls to.
+ */
+function activityMover(string $tcgdexId, int $from, int $to, string $currency = 'USD', int $quantity = 1): void
+{
+    $user = User::query()->where('username', 'carlos')->first() ?? User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::withoutGlobalScopes()->firstOrCreate(['user_id' => $user->id, 'slug' => 'main'], ['name' => 'My Collection', 'is_public' => true]);
+    $set = Set::query()->firstOrCreate(['tcgdex_id' => 'me05'], ['name' => 'Pitch Black']);
+    $card = Card::create(['tcgdex_id' => $tcgdexId, 'set_id' => $set->id, 'local_id' => substr($tcgdexId, 5), 'name' => 'Card '.$tcgdexId]);
+    [$source, $variant, $copyVariant] = $currency === 'USD' ? ['tcgplayer', 'normal', 'normal'] : ['cardmarket', 'default', null];
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => $tcgdexId, 'condition' => 'NM', 'quantity' => $quantity, 'variant' => $copyVariant]);
+
+    foreach ([1 => $from, 0 => $to] as $daysAgo => $minor) {
+        CardPriceSnapshot::create(['card_id' => $card->id, 'source' => $source, 'variant' => $variant, 'captured_on' => today()->subDays($daysAgo), 'currency' => $currency, 'market_minor' => $minor]);
+    }
+}
+
+test('a price move is listed from $1 up, per card, in its own currency; the copy itself always is', function (int $from, int $to, string $currency, int $quantity, bool $listed) {
+    activityMover('me05-201', $from, $to, $currency, $quantity);
+
+    $feed = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed');
+
+    expect($feed->where('kind', 'move')->count())->toBe($listed ? 1 : 0)
+        ->and($feed->where('kind', 'added')->count())->toBe(1);
+})->with([
+    'up $0.99' => [1000, 1099, 'USD', 1, false],
+    'down $0.99' => [1099, 1000, 'USD', 1, false],
+    'up exactly $1.00' => [1000, 1100, 'USD', 1, true],
+    'down exactly $1.00' => [1100, 1000, 'USD', 1, true],
+    'up €0.99' => [1000, 1099, 'EUR', 1, false],
+    'up €1.50' => [1000, 1150, 'EUR', 1, true],
+    'three copies that each moved $0.50' => [1000, 1050, 'USD', 3, false],
+]);
+
+test('small moves are dropped before the 40-entry cap, so they never push out a real one', function () {
+    foreach (range(1, 41) as $i) {
+        activityMover(sprintf('me05-%03d', $i), 1000, 1050);
+    }
+    ownedCardPricedDaysAgo([3 => 1000, 2 => 1500], 'me05-500');
+    // Every copy is older than every move, so only moves compete for the first slots.
+    CollectionItem::query()->update(['created_at' => now()->subDays(10)]);
+
+    $feed = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed');
+
+    expect($feed)->toHaveCount(40)
+        ->and($feed->where('kind', 'move')->map(fn (array $e) => $e['delta']->deltaMinor)->values()->all())->toBe([500]);
 });
