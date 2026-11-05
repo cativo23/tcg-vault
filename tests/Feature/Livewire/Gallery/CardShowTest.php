@@ -1011,6 +1011,21 @@ test('a read that is not the headline shows its low and trend on separate lines,
         ->toContain('<span class="crd-seg" title="Price trend">trend €6.50</span>');
 });
 
+test('only the headline tag carries the moves, and another source keeps its own low and trend', function () {
+    ['card' => $card] = seedMovedHeadline(); // headline: TCGplayer, +$8.00 on the day and +$32.00 on the week
+    CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 700, 'low_minor' => 500, 'trend_minor' => 650]);
+
+    $html = $this->get('/carlos/me05/116')->getContent();
+    preg_match('#class="crd-htag crd-htag--lead".*?<b>([^<]+)</b>#s', $html, $lead);
+    $chunk = collect(preg_split('/(?=<div class="crd-htag)/', $html))->first(fn (string $tag) => str_contains($tag, '<b>Cardmarket</b>')) ?? '';
+    $cardmarket = strstr($chunk, '</section>', true) ?: $chunk;
+
+    expect($lead[1] ?? null)->toBe('TCGplayer')
+        ->and($html)->toContain('+$8.00 · 1d')->toContain('+$32.00 · 7d')
+        ->and($cardmarket)->toContain('low €5.00')->toContain('trend €6.50')
+        ->and($cardmarket)->not->toContain('· 1d')->not->toContain('· 7d');
+});
+
 test('an empty market shows one sentence and no tags', function () {
     ['collection' => $collection, 'card' => $card] = seedCardPage();
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
