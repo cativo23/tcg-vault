@@ -520,3 +520,17 @@ test('small moves are dropped before the 40-entry cap, so they never push out a 
     expect($feed)->toHaveCount(40)
         ->and($feed->where('kind', 'move')->map(fn (array $e) => $e['delta']->deltaMinor)->values()->all())->toBe([500]);
 });
+
+// The page loads its cards in an order the database picks (not their
+// creation order), so a couple of cards could come back biggest-first by
+// luck. Six in a scrambled order make that luck negligible: only a real
+// ordering rule lists them all biggest first.
+test('moves of the same day are listed biggest first', function () {
+    foreach ([300, 150, 500, 200, 400, 250] as $i => $move) {
+        activityMover(sprintf('me05-%03d', 201 + $i), 1000, 1000 + $move);
+    }
+
+    $moves = Livewire::test(Activity::class, ['username' => 'carlos'])->viewData('feed')->where('kind', 'move');
+
+    expect($moves->map(fn (array $e) => $e['delta']->deltaMinor)->values()->all())->toBe([500, 400, 300, 250, 200, 150]);
+});

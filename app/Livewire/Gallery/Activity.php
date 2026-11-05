@@ -8,6 +8,7 @@ use App\Livewire\Gallery\Concerns\ResolvesPublicCollection;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Services\CardPriceResolver;
 use App\Modules\Catalog\Services\DecidingPriceRows;
+use App\Modules\Catalog\Services\PriceDelta;
 use App\Modules\Catalog\Support\ChartRange;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionValueSeries;
@@ -132,9 +133,11 @@ final class Activity extends Component
                 'at' => $item->created_at,
             ]);
 
-        // Small moves were dropped above, before this cap, so they never take one of its slots.
+        // Newest first. Every move of a day carries that day's midnight, so
+        // moves of the same day go biggest first. Small moves were dropped
+        // above, before this cap, so they never take one of its slots.
         $feed = $moves->concat($additions)
-            ->sortByDesc(fn ($e) => $e['at']->timestamp ?? 0)
+            ->sort(fn (array $a, array $b) => [$b['at']->timestamp ?? 0, self::size($b)] <=> [$a['at']->timestamp ?? 0, self::size($a)])
             ->take(self::MAX_FEED)
             ->values();
 
@@ -162,5 +165,18 @@ final class Activity extends Component
             'description' => "Price movements and recent additions in {$name}'s Pokémon TCG collection.",
             'isOwner' => $this->isOwnerViewing(),
         ]);
+    }
+
+    /**
+     * How big a feed entry's move is, for ordering a day's moves; an
+     * addition has none.
+     *
+     * @param  array<string, mixed>  $entry
+     */
+    private static function size(array $entry): int
+    {
+        $delta = $entry['delta'] ?? null;
+
+        return $delta instanceof PriceDelta ? abs($delta->deltaMinor) : 0;
     }
 }
