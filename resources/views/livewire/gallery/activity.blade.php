@@ -62,9 +62,10 @@
 
         @forelse ($days as $day)
             @php $dayKey = $day['date']->toDateString(); $dayCount = $day['entries']->count(); @endphp
-            <section class="act-day" style="--i: {{ $loop->index }}" aria-labelledby="act-day-{{ $dayKey }}" wire:key="day-{{ $dayKey }}">
+            <section class="act-day" style="--i: {{ $loop->index }}" wire:key="day-{{ $dayKey }}">
                 <h3 class="act-dtab" id="act-day-{{ $dayKey }}"><b>{{ $day['date']->format('j M') }}</b> <span>{{ $dayCount }} {{ Str::plural('update', $dayCount) }}</span></h3>
-                <ul class="act-dsheet">
+                {{-- role="list": list-style: none makes WebKit/VoiceOver drop the list semantics otherwise --}}
+                <ul class="act-dsheet" role="list">
                     @foreach ($day['entries'] as $entry)
                         @php
                             $card = $entry['card'];

@@ -716,6 +716,16 @@ test('the feed is one sheet per day under a tab that counts its updates, and say
         ]);
 });
 
+test('each day sheet keeps its list role and the days are headings, not named landmarks', function () {
+    activitySeedFeed();
+
+    $html = $this->get('/carlos/activity')->getContent();
+
+    expect(substr_count($html, '<ul class="act-dsheet" role="list">'))->toBe(3)
+        ->and($html)->not->toContain('aria-labelledby="act-day-')
+        ->and($html)->toContain('<h3 class="act-dtab" id="act-day-'.today()->toDateString().'">');
+});
+
 test('every row carries its card thumbnail, only additions the plus, a rise is green and a fall is flat grey', function () {
     $this->freezeTime();
     activitySeedFeed();
