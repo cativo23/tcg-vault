@@ -55,6 +55,15 @@ test('the same number written two ways is one slot, owned if either is', functio
         ->and($slots[2])->toBe(['number' => '003', 'state' => 'owned']);
 });
 
+test('the label of a number written two ways does not depend on the order the cards arrive in', function () {
+    $slots = PrintedStrip::slots([
+        ['number' => '3', 'owned' => true],
+        ['number' => '003', 'owned' => false],
+    ], 5);
+
+    expect($slots[2])->toBe(['number' => '003', 'state' => 'owned']);
+});
+
 test('numbers outside 1..total (0, above the total) are treated like lettered ones', function () {
     $slots = PrintedStrip::slots([
         ['number' => '11', 'owned' => true],

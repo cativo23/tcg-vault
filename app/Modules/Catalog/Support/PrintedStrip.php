@@ -36,8 +36,9 @@ final class PrintedStrip
 
             if (ctype_digit($number) && (int) $number >= 1 && (int) $number <= $total) {
                 $position = (int) $number;
+                // The longer spelling ('003' over '3') labels the slot, so the label never depends on input order.
                 $numbered[$position] = isset($numbered[$position])
-                    ? ['number' => $numbered[$position]['number'], 'owned' => $numbered[$position]['owned'] || $owned]
+                    ? ['number' => self::longer($numbered[$position]['number'], $number), 'owned' => $numbered[$position]['owned'] || $owned]
                     : ['number' => $number, 'owned' => $owned];
 
                 continue;
@@ -99,6 +100,15 @@ final class PrintedStrip
     private static function slot(array $card): array
     {
         return ['number' => $card['number'], 'state' => $card['owned'] ? self::OWNED : self::MISSING];
+    }
+
+    private static function longer(string $a, string $b): string
+    {
+        if (strlen($a) !== strlen($b)) {
+            return strlen($a) > strlen($b) ? $a : $b;
+        }
+
+        return strcmp($a, $b) <= 0 ? $a : $b;
     }
 
     /** @return array{state: string, left: float, width: float} */
