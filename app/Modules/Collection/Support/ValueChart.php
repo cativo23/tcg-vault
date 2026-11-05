@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Collection\Support;
 
+use App\Support\DayLabel;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -71,7 +72,7 @@ final readonly class ValueChart
         $points = array_map(fn (array $p) => [
             'x' => round($dayOf($p['date']) / $days * 100, 2),
             'y' => $yOf($p['minor']),
-            'd' => $p['date']->format('j M'),
+            'd' => DayLabel::of($p['date']),
             'v' => Money::format($p['minor'], $currency),
         ], $list);
 

@@ -13,6 +13,7 @@ use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use App\Modules\Collection\Services\CollectionValueSeries;
 use App\Modules\Collection\Services\PublicCollection;
+use App\Support\DayLabel;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -370,8 +371,8 @@ test('history since shows when the collection\'s prices start after the range st
     ownedCardPricedDaysAgo([0 => 300, 46 => 200]);
 
     $this->get('/carlos/activity')->assertDontSee('History since');
-    $this->get('/carlos/activity?range=3m')->assertSeeHtml('History since <span class="act-mono">'.today()->subDays(46)->format('j M').'</span>');
-    $this->get('/carlos/activity?range=1y')->assertSeeHtml('History since <span class="act-mono">'.today()->subDays(46)->format('j M').'</span>');
+    $this->get('/carlos/activity?range=3m')->assertSeeHtml('History since <span class="act-mono">'.DayLabel::of(today()->subDays(46)).'</span>');
+    $this->get('/carlos/activity?range=1y')->assertSeeHtml('History since <span class="act-mono">'.DayLabel::of(today()->subDays(46)).'</span>');
 });
 
 test('history older than the range does not claim a start', function () {
@@ -696,7 +697,7 @@ test('the head is the word Activity and one summary line; other currencies go to
     $html = $this->get('/carlos/activity')->getContent();
 
     expect($html)->toContain('<h1 id="act-h" class="act-who">Activity</h1>')
-        ->and(RevampHtml::text('act-summary', $html))->toBe('$20.50 on '.today()->format('j M'))
+        ->and(RevampHtml::text('act-summary', $html))->toBe('$20.50 on '.DayLabel::of(today()))
         ->and(RevampHtml::text('act-note', $html))->toBe('Also €3.30 priced in EUR, not added to the total.')
         ->and($html)->not->toContain('collection history');
 });
@@ -710,10 +711,19 @@ test('the feed is one sheet per day under a tab that counts its updates, and say
     expect(RevampHtml::text('act-sec-t', $html))->toBe('Latest · 4 updates')
         ->and(RevampHtml::text('act-sec-r', $html))->toBe('Price moves under $1 are not listed.')
         ->and(array_map(fn (string $t) => trim((string) preg_replace('/\s+/', ' ', strip_tags($t))), $tabs[1]))->toBe([
-            today()->format('j M').' 1 update',
-            today()->subDay()->format('j M').' 1 update',
-            today()->subDays(3)->format('j M').' 2 updates',
+            DayLabel::of(today()).' 1 update',
+            DayLabel::of(today()->subDay()).' 1 update',
+            DayLabel::of(today()->subDays(3)).' 2 updates',
         ]);
+});
+
+test('a day from an earlier year carries its year in its tab', function () {
+    ownedCardPricedDaysAgo([], 'me05-321');
+    CollectionItem::query()->update(['created_at' => today()->subYear()->startOfYear()->setTime(12, 0)]);
+
+    $html = $this->get('/carlos/activity')->assertOk()->getContent();
+
+    expect($html)->toContain('<b>1 Jan '.(today()->year - 1).'</b>');
 });
 
 test('each day sheet keeps its list role and the days are headings, not named landmarks', function () {

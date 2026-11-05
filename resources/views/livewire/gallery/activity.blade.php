@@ -3,6 +3,7 @@
 @use('App\Modules\Catalog\Support\ChartRange')
 @use('App\Modules\Catalog\Support\Rarity')
 @use('App\Modules\Collection\Support\ValueChart')
+@use('App\Support\DayLabel')
 @use('App\Support\Money')
 
 @php
@@ -16,7 +17,7 @@
     <section class="act-head" aria-labelledby="act-h">
         <h1 id="act-h" class="act-who">Activity</h1>
         @if ($headCurrency)
-            <p class="act-summary"><span class="act-mono">{{ Money::format($totals[$headCurrency], $headCurrency) }}</span>@if ($updatedAt) on <span class="act-mono">{{ $updatedAt->format('j M') }}</span>@endif</p>
+            <p class="act-summary"><span class="act-mono">{{ Money::format($totals[$headCurrency], $headCurrency) }}</span>@if ($updatedAt) on <span class="act-mono">{{ DayLabel::of($updatedAt) }}</span>@endif</p>
         @endif
         @if ($otherTotals->isNotEmpty())
             <p class="act-note">@foreach ($otherTotals as $currency => $minor)Also {{ Money::format($minor, $currency) }} priced in {{ $currency }}, not added to the total. @endforeach</p>
@@ -37,7 +38,7 @@
                     @if ($chart)
                         @php $first = $series->first()['minor']; $last = $series->last()['minor']; @endphp
                         <p class="act-v">{{ Money::format($last, $primaryCurrency) }} <small class="act-move{{ $chart->up ? ' act-move--up' : '' }}">{{ Money::move($last - $first, $primaryCurrency) }} · {{ $chartRange->label() }}</small></p>
-                        <p class="act-span act-mono">{{ $series->first()['date']->format('j M') }} – {{ $series->last()['date']->format('j M') }}</p>
+                        <p class="act-span act-mono">{{ DayLabel::of($series->first()['date']) }} – {{ DayLabel::of($series->last()['date']) }}</p>
                     @else
                         <p class="act-v">{{ $headCurrency ? Money::format($totals[$headCurrency], $headCurrency) : 'No prices yet' }}</p>
                     @endif
@@ -62,13 +63,13 @@
                         <span class="act-end{{ $chart->up ? ' act-end--up' : '' }}" style="left: 100%; top: {{ $chart->endY }}%" aria-hidden="true"></span>
                         <span class="act-cover" aria-hidden="true"></span>
                     </div>
-                    <p class="act-xlabs act-mono" aria-hidden="true"><span>{{ $series->first()['date']->format('j M') }}</span><span>{{ $series->last()['date']->format('j M') }}</span></p>
+                    <p class="act-xlabs act-mono" aria-hidden="true"><span>{{ DayLabel::of($series->first()['date']) }}</span><span>{{ DayLabel::of($series->last()['date']) }}</span></p>
                 @else
                     <p class="act-no-hist">A value chart appears once two daily price snapshots exist.</p>
                 @endif
             </div>
             @if ($chart && $historySince)
-                <p class="act-since">History since <span class="act-mono">{{ $historySince->format('j M') }}</span></p>
+                <p class="act-since">History since <span class="act-mono">{{ DayLabel::of($historySince) }}</span></p>
             @endif
         </div>
     </section>
@@ -82,7 +83,7 @@
         @forelse ($days as $day)
             @php $dayKey = $day['date']->toDateString(); $dayCount = $day['entries']->count(); @endphp
             <section class="act-day" style="--i: {{ $loop->index }}" wire:key="day-{{ $dayKey }}">
-                <h3 class="act-dtab" id="act-day-{{ $dayKey }}"><b>{{ $day['date']->format('j M') }}</b> <span>{{ $dayCount }} {{ Str::plural('update', $dayCount) }}</span></h3>
+                <h3 class="act-dtab" id="act-day-{{ $dayKey }}"><b>{{ DayLabel::of($day['date']) }}</b> <span>{{ $dayCount }} {{ Str::plural('update', $dayCount) }}</span></h3>
                 {{-- role="list": list-style: none makes WebKit/VoiceOver drop the list semantics otherwise --}}
                 <ul class="act-dsheet" role="list">
                     @foreach ($day['entries'] as $entry)

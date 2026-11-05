@@ -3,8 +3,20 @@
 declare(strict_types=1);
 
 use App\Modules\Collection\Support\ValueChart;
+use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+
+// The readings' short dates drop the year only for the current one, so the clock stays where the fixed 2026 dates below are this year's.
+beforeEach(function () {
+    Carbon::setTestNow('2026-11-05 12:00:00');
+    CarbonImmutable::setTestNow('2026-11-05 12:00:00');
+});
+
+afterEach(function () {
+    Carbon::setTestNow();
+    CarbonImmutable::setTestNow();
+});
 
 /**
  * A value series as the page receives it, from day => minor units.
@@ -60,3 +72,9 @@ test('the chart is up only when it ends higher than it started', function (array
     'rise' => [['2026-10-01' => 100, '2026-10-02' => 300, '2026-10-03' => 200], true],
     'fall' => [['2026-10-01' => 300, '2026-10-02' => 200], false],
 ]);
+
+test('a reading from an earlier year carries its year', function () {
+    $chart = ValueChart::of(activitySeries(['2025-12-30' => 100, '2026-01-02' => 300]), 'USD');
+
+    expect(array_column($chart->points, 'd'))->toBe(['30 Dec 2025', '2 Jan']);
+});
