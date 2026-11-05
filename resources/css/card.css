@@ -321,3 +321,61 @@ html:not(.js) .crd-chart-cover, .still .crd-chart-cover, .crd-settled .crd-chart
   .crd-rel-tab { padding-left: var(--gutter); border-radius: 0 8px 0 0; }
   .crd-rel-sheet { border-radius: 0; }
 }
+
+/* ---------- plate tools (plate.js adds .is-live and positions everything) ---------- */
+.crd-plate { --crd-cal: 1; background-size: calc(10mm * var(--crd-cal)) calc(10mm * var(--crd-cal)); background-position: var(--crd-grid-x, center) var(--crd-grid-y, center); touch-action: pan-y; }
+/* laid out: .crd-pos is the card at its printed size (times the calibration), placed and scaled by one transform; the marks are reparented next to it so scaling never thickens them */
+.crd-plate.is-live { padding: 0; }
+.crd-plate.is-live .crd-pos { position: absolute; left: 0; top: 0; width: calc(63mm * var(--crd-cal)); margin: 0; transform-origin: 0 0; will-change: transform; }
+.crd-pos.is-moving { transition: transform var(--dur-slow) var(--ease-settle); }
+.crd-plate > .crd-marks { inset: auto; left: 0; top: 0; opacity: 0; transition: opacity var(--dur-base) var(--ease-out); }
+.crd-plate.is-live > .crd-marks { opacity: 1; }
+.crd-plate.is-live > .crd-marks.is-moving { opacity: 0; }
+/* tilt: a few degrees under a fine pointer; the card owns the pointer transform, the drop the entrance */
+.crd-card { transform: perspective(1100px) rotateX(var(--crd-rx, 0deg)) rotateY(var(--crd-ry, 0deg)); transition: transform var(--dur-base) var(--ease-out); }
+.crd-card.is-live { transition: transform var(--dur-fast) linear; }
+.crd-card::after { content: ""; position: absolute; inset: 0; border-radius: var(--crd-radius-card); box-shadow: var(--shadow-lift); opacity: 0; transition: opacity var(--dur-base) var(--ease-out); pointer-events: none; }
+.crd-card.is-live::after { opacity: 1; }
+.crd-glare { position: absolute; inset: 0; z-index: 2; overflow: hidden; border-radius: var(--crd-radius-card); pointer-events: none; opacity: 0; transition: opacity var(--dur-base) var(--ease-out); }
+.crd-glare::before { content: ""; position: absolute; inset: -50%;
+  background: linear-gradient(115deg, transparent 38%, var(--color-glint-hi) 47%, var(--color-highlight) 50%, var(--color-glint-hi) 53%, transparent 62%);
+  transform: translate(var(--crd-gx, 0%), var(--crd-gy, 0%)); }
+.crd-card.is-live .crd-glare { opacity: 1; }
+
+.crd-loupe { position: absolute; left: 0; top: 0; z-index: 5; width: 176px; height: 176px; border-radius: 50%; pointer-events: none; opacity: 0;
+  background-repeat: no-repeat; background-color: var(--color-paper-3);
+  box-shadow: 0 0 0 1px var(--color-ink), 0 0 0 5px var(--color-stock), 0 0 0 6px var(--color-rule-2), 0 18px 34px -10px var(--shadow-contact);
+  transition: opacity var(--dur-fast) linear; }
+.crd-loupe.is-on { opacity: 1; }
+.crd-plate.is-loupe { cursor: none; touch-action: none; }
+
+/* the tools need plate.js; without it the plate is a still picture */
+html:not(.js) .crd-tools, html:not(.js) .crd-tool-note { display: none; }
+.crd-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); margin-top: var(--space-md); }
+.crd-inline { padding: 4px 0; border: 0; background: none; cursor: pointer; font-size: var(--text-sm); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.crd-sizes { display: inline-flex; align-items: center; gap: 2px; height: 40px; padding: 3px; border: 1px solid var(--color-rule-2); border-radius: var(--radius-pill); background: var(--color-paper); }
+.crd-sizes button { height: 32px; padding: 0 14px; border: 0; border-radius: var(--radius-pill); background: transparent; font-size: var(--text-sm); font-weight: 600; cursor: pointer; color: var(--color-ink-2); white-space: nowrap; transition: background-color var(--dur-fast) var(--ease-out); }
+.crd-sizes button:hover { background: var(--color-paper-2); }
+.crd-sizes button[aria-pressed="true"] { background: var(--color-ink); color: var(--color-stock); }
+.crd-tool { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 13px; border: 1px solid var(--color-rule-2); border-radius: var(--radius-pill); background: transparent; font-size: var(--text-sm); font-weight: 600; cursor: pointer; white-space: nowrap; transition: border-color var(--dur-base) var(--ease-out); }
+.crd-tool svg { width: 16px; height: 16px; }
+.crd-tool:hover { border-color: var(--color-ink); }
+.crd-tool[aria-pressed="true"] { background: var(--color-ink); color: var(--color-stock); border-color: var(--color-ink); }
+.crd-tool:disabled { opacity: .45; cursor: not-allowed; }
+.crd-tool-note { margin-top: var(--space-sm); max-width: 54ch; min-height: 3em; font-size: var(--text-xs); line-height: 1.5; color: var(--color-muted); }
+.crd-tool-note b { color: var(--color-ink-2); font-weight: 600; }
+.crd-tool-note .crd-mono { font-size: .95em; color: var(--color-ink-2); white-space: nowrap; }
+.crd-calib { margin-top: var(--space-xs); padding: var(--space-md); border-radius: 3px; background: var(--color-stock); box-shadow: var(--shadow-rest); font-size: var(--text-sm); }
+.crd-calib label { display: block; max-width: 48ch; color: var(--color-ink-2); }
+.crd-cal-row { display: flex; align-items: center; gap: var(--space-sm); margin-top: var(--space-xs); }
+.crd-cal-row input { flex: 1 1 auto; min-width: 0; height: 32px; accent-color: var(--color-ink); }
+.crd-cal-row .crd-mono { min-width: 5ch; font-size: var(--text-xs); text-align: right; }
+@media (max-width: 679px) {
+  .crd-tools, .crd-tool-note, .crd-calib { margin-left: var(--gutter); margin-right: var(--gutter); }
+}
+@media (pointer: coarse) {
+  .crd-sizes, .crd-tool { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crd-card { transform: none !important; }
+}

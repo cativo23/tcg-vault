@@ -31,3 +31,10 @@ test('the card stylesheet resets heading and paragraph margins with zero specifi
     expect($css)->toContain(':where(.crd-page) h1, :where(.crd-page) h2, :where(.crd-page) p')
         ->and($css)->not->toMatch('/\.crd-page\s+(h1|h2|p)\b/');
 });
+
+test('the hang-tag segment class keeps its single nowrap rule: nothing else in the card stylesheet restyles it', function () {
+    $css = (string) file_get_contents(resource_path('css/card.css'));
+    preg_match_all('/\.crd-seg(?![-\w])[^{]*\{([^}]*)\}/', $css, $rules);
+
+    expect(array_map('trim', $rules[1]))->toBe(['white-space: nowrap;']);
+});
