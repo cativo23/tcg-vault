@@ -14,14 +14,15 @@ export function nearestIndex(xs, x) {
     return best;
 }
 
-/** The reading a key moves to, clamped at the ends, or null for keys that do nothing. With no reading yet, an arrow steps from the point the chart rests on, the newest. */
+/** The reading a key moves to, clamped at the ends, or null for keys that do nothing. Up steps like Right and Down like Left, as a slider does. With no reading yet, an arrow steps from the point the chart rests on, the newest. */
 export function readingStep(key, current, count) {
     if (count < 1) return null;
     if (key === 'Home') return 0;
     if (key === 'End') return count - 1;
-    if (key !== 'ArrowLeft' && key !== 'ArrowRight') return null;
+    const direction = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[key];
+    if (direction === undefined) return null;
     const from = current < 0 ? count - 1 : current;
-    return Math.max(0, Math.min(count - 1, from + (key === 'ArrowRight' ? 1 : -1)));
+    return Math.max(0, Math.min(count - 1, from + direction));
 }
 
 /** What the reading slot says for one point. */

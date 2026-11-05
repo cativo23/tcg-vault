@@ -27,10 +27,19 @@ test('Home and End jump to the oldest and the newest point', () => {
     assert.equal(readingStep('End', 0, 5), 4);
 });
 
+test('Up steps like Right and Down like Left, as a slider does', () => {
+    assert.equal(readingStep('ArrowUp', 2, 5), 3);
+    assert.equal(readingStep('ArrowDown', 2, 5), 1);
+    assert.equal(readingStep('ArrowUp', 4, 5), 4);
+    assert.equal(readingStep('ArrowDown', 0, 5), 0);
+    assert.equal(readingStep('ArrowUp', -1, 5), 4);
+    assert.equal(readingStep('ArrowDown', -1, 5), 3);
+});
+
 test('other keys and an empty chart do nothing', () => {
     assert.equal(readingStep('Enter', 2, 5), null);
-    assert.equal(readingStep('ArrowUp', 2, 5), null);
     assert.equal(readingStep('ArrowLeft', -1, 0), null);
+    assert.equal(readingStep('ArrowUp', -1, 0), null);
 });
 
 test('the readout is the day and the value', () => {
