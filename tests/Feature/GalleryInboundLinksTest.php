@@ -118,3 +118,30 @@ test('no page wire:navigates into the revamp card page', function (string $path)
     'a set page' => ['/carlos/me05'],
     'activity' => ['/carlos/activity'],
 ]);
+
+/** Every <a> whose href is exactly the set page's URL but that opts into client-side navigation. */
+function navigatingSetPageLinks(string $html): array
+{
+    $url = route('gallery.show', ['username' => 'carlos', 'setTcgdexId' => 'me05']);
+    preg_match_all('#<a\b[^>]*>#', $html, $tags);
+
+    return array_values(array_filter($tags[0], fn (string $tag) => str_contains($tag, 'href="'.$url.'"') && str_contains($tag, 'wire:navigate')));
+}
+
+test('no page wire:navigates into the revamp set page', function (string $path) {
+    $user = User::factory()->create(['username' => 'carlos']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'me05', 'name' => 'Pitch Black', 'card_count' => 120]);
+    $card = Card::create(['tcgdex_id' => 'me05-116', 'set_id' => $set->id, 'local_id' => '116', 'name' => 'Mega Darkrai ex']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = $this->get($path)->assertOk()->getContent();
+
+    // The page really links to the set, so an empty list is not vacuous.
+    expect($html)->toContain('href="'.route('gallery.show', ['username' => 'carlos', 'setTcgdexId' => 'me05']).'"')
+        ->and(navigatingSetPageLinks($html))->toBe([]);
+})->with([
+    'the collection, set tab selected' => ['/carlos?set=me05'],
+    'sets' => ['/carlos/sets'],
+    'a card page' => ['/carlos/me05/116'],
+]);
