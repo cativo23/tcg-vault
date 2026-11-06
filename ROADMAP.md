@@ -354,6 +354,19 @@ interesting it is to build. None of the first five exists in the code yet.
   evict, so they cannot share a process once memory is bounded. Evaluate
   alongside centralizing Redis across other projects on the same host
   rather than standing up a second one-off instance here.
+- **Revamp page polish (v1.7.0 leftovers).** None of these breaks anything;
+  do them when the code is touched anyway. (1) Unify `PriceChart` and
+  `ValueChart` (give `PriceChart::plot()` a `maxStep`, delete `ValueChart`)
+  and fold the copy-link and chart-slider code duplicated in `card.js`,
+  `collection.js` and `activity.js` into shared modules; this also aligns
+  `stepReading` and `readingStep` argument order. (2) After a mouse sweep
+  over a chart, the next arrow key steps from the day under the pointer
+  while the slider still announces the last keyboard value (card and
+  Activity; screen readers only). (3) A manual price's step line stops at
+  its first and last entry in the range instead of carrying the price in
+  force to the range edges. (4) Activity reads the first 500 cards, the
+  collection page 600. (5) A card page strip with fewer than three tiles
+  renders slightly smaller than the mockup.
 - **Copy the backups off the host.** The nightly files still sit on the
   same VPS as the data, so losing polaris2 loses them too. The free tier
   (Cloudflare R2, 10GB) needs billing enabled on the Cloudflare account
