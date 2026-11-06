@@ -200,8 +200,8 @@ test('a gallery page reads price rows only through the deciding query, and not a
     'index, searched' => [Index::class, [], ['search' => 'Card 1'], 1],
     'sets' => [Sets::class, [], [], 1],
     'set page' => [Show::class, ['setTcgdexId' => 'me05'], [], 1],
-    // A search narrows the grid, so the set's owned cards load again for the stats.
-    'set page, searched' => [Show::class, ['setTcgdexId' => 'me05'], ['search' => 'Card'], 2],
+    // A search only narrows the grid: the set loads once either way.
+    'set page, searched' => [Show::class, ['setTcgdexId' => 'me05'], ['search' => 'Card'], 1],
     'activity' => [Activity::class, [], [], 1],
 ]);
 
@@ -286,4 +286,14 @@ test('the seeded collection gives the card page a strip with 7-day moves, so the
 
     expect($related)->not->toBeEmpty()
         ->and($related->filter(fn (array $entry) => $entry['weekDelta'] !== null))->not->toBeEmpty();
+});
+
+test('the seeded set pages show 7-day moves, so the page comparison covers them', function () {
+    $this->freezeTime();
+    seedPagesCollection();
+
+    $entries = collect(['me05', 'sv08'])->flatMap(fn (string $set) => Livewire::withQueryParams(['missing' => true])
+        ->test(Show::class, ['username' => 'carlos', 'setTcgdexId' => $set])->viewData('entries'));
+
+    expect($entries->filter(fn (array $e) => $e['weekDelta'] !== null))->not->toBeEmpty();
 });

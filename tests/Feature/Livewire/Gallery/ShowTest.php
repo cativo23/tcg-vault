@@ -7,9 +7,12 @@ use App\Models\User;
 use App\Modules\Catalog\Models\Card;
 use App\Modules\Catalog\Models\CardPriceSnapshot;
 use App\Modules\Catalog\Models\Set;
+use App\Modules\Catalog\Services\WeekBaselines;
 use App\Modules\Collection\Models\Collection;
 use App\Modules\Collection\Models\CollectionItem;
 use Database\Seeders\PermissionSeeder;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -250,3 +253,197 @@ test('an owner without the use-collection permission gets no link into the set g
 
     $this->actingAs($user)->get('/carlos/me05')->assertOk()->assertDontSee('Edit in my collection');
 });
+
+/**
+ * The demo's 151 in miniature: five cards, three of them owned (001, 003,
+ * 005), USD prices on 003 ($24.99), 005 ($1.50) and the missing 002 ($0.75).
+ *
+ * @param  array<string, mixed>  $setAttributes
+ * @return array{user: User, collection: Collection, set: Set, cards: array<string, Card>}
+ */
+function seedSetPage(array $setAttributes = []): array
+{
+    $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create([
+        'tcgdex_id' => 'sv03.5', 'name' => '151', 'series' => 'Scarlet & Violet', 'abbreviation' => 'MEW',
+        'card_count' => 5, 'released_on' => '2023-09-22', 'logo_url' => 'https://assets.tcgdex.net/en/sv/sv03.5/logo.png',
+        ...$setAttributes,
+    ]);
+
+    $cards = [];
+    foreach ([['001', 'Bulbasaur', 'Common'], ['002', 'Ivysaur', 'Uncommon'], ['003', 'Venusaur ex', 'Double rare'], ['004', 'Charmander', 'Common'], ['005', 'Charmeleon', 'Uncommon']] as [$number, $name, $rarity]) {
+        $cards[$number] = Card::create([
+            'tcgdex_id' => "sv03.5-$number", 'set_id' => $set->id, 'local_id' => $number, 'name' => $name, 'rarity' => $rarity,
+            'official_image_url' => "https://assets.tcgdex.net/en/sv/sv03.5/$number/high.webp",
+        ]);
+    }
+
+    foreach (['001', '003', '005'] as $number) {
+        CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $cards[$number]->id, 'card_tcgdex_id' => "sv03.5-$number", 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    foreach (['003' => 2499, '005' => 150, '002' => 75] as $number => $minor) {
+        CardPriceSnapshot::create(['card_id' => $cards[$number]->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today(), 'currency' => 'USD', 'market_minor' => $minor]);
+    }
+
+    return compact('user', 'collection', 'set', 'cards');
+}
+
+test('the strip, the counts and the missing number come from the whole set, whatever the grid shows', function () {
+    seedSetPage();
+
+    $page = Livewire::withQueryParams(['search' => 'Bulba'])->test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5']);
+
+    expect($page->viewData('entries'))->toHaveCount(1)
+        ->and($page->viewData('ownedCount'))->toBe(3)
+        ->and($page->viewData('totalCount'))->toBe(5)
+        ->and($page->viewData('missingCount'))->toBe(2)
+        ->and($page->viewData('percent'))->toBe(60)
+        ->and(array_column($page->viewData('strip'), 'state'))->toBe(['owned', 'missing', 'owned', 'missing', 'owned'])
+        ->and(array_column($page->viewData('strip'), 'number'))->toBe(['001', '002', '003', '004', '005'])
+        ->and($page->viewData('ticks'))->toBe([['label' => 1, 'left' => '0.00'], ['label' => 5, 'left' => '100.00']])
+        ->and($page->viewData('ownedTotals'))->toBe(['USD' => 2649])
+        ->and($page->viewData('isFiltered'))->toBeTrue();
+});
+
+test('a set the catalogue holds only in part counts its missing cards from what is imported, and the rest is absent from the strip', function () {
+    // 5 of 7 cards imported, 3 owned: the toggle can reveal 2 pockets (imported - owned, not 7 - 3), the other 2 are grey slots.
+    seedSetPage(['card_count' => 7]);
+
+    $page = Livewire::test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5']);
+
+    expect($page->viewData('totalCount'))->toBe(7)
+        ->and($page->viewData('missingCount'))->toBe(2)
+        ->and(array_column($page->viewData('strip'), 'state'))->toBe(['owned', 'missing', 'owned', 'missing', 'owned', 'absent', 'absent'])
+        ->and(array_column($page->viewData('strip'), 'number'))->toBe(['001', '002', '003', '004', '005', null, null]);
+});
+
+test('one imported card, owned, out of a huge set leaves nothing for the toggle to reveal', function () {
+    $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'swsh11', 'name' => 'Lost Origin', 'card_count' => 217]);
+    $card = Card::create(['tcgdex_id' => 'swsh11-123', 'set_id' => $set->id, 'local_id' => '123', 'name' => 'Gastly']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'swsh11-123', 'condition' => 'NM', 'quantity' => 1]);
+
+    $page = Livewire::test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'swsh11']);
+    $states = array_count_values(array_column($page->viewData('strip'), 'state'));
+
+    expect($page->viewData('ownedCount'))->toBe(1)
+        ->and($page->viewData('totalCount'))->toBe(217)
+        ->and($page->viewData('missingCount'))->toBe(0)
+        ->and($states)->toBe(['absent' => 216, 'owned' => 1]);
+});
+
+test('the set code is the abbreviation, else the uppercase tcgdex id', function () {
+    $seed = seedSetPage();
+
+    expect(Livewire::test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5'])->viewData('setCode'))->toBe('MEW');
+
+    $seed['set']->update(['abbreviation' => null]);
+
+    expect(Livewire::test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5'])->viewData('setCode'))->toBe('SV03.5');
+});
+
+test('each owned card carries its 7-day move; a missing card carries none', function () {
+    $this->freezeTime();
+    $seed = seedSetPage();
+    CardPriceSnapshot::create(['card_id' => $seed['cards']['003']->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(7), 'currency' => 'USD', 'market_minor' => 2399]);
+    CardPriceSnapshot::create(['card_id' => $seed['cards']['002']->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(7), 'currency' => 'USD', 'market_minor' => 50]);
+    app(WeekBaselines::class)->refreshAll();
+
+    $entries = Livewire::withQueryParams(['missing' => true])->test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5'])
+        ->viewData('entries')->keyBy(fn (array $e) => $e['card']->local_id);
+
+    expect($entries['003']['weekDelta']?->deltaMinor)->toBe(100)
+        ->and($entries['002']['weekDelta'])->toBeNull()
+        ->and($entries['001']['weekDelta'])->toBeNull();
+});
+
+test('the two priciest owned cards take double pockets only in Value order, without a search, with more than two owned cards showing, whatever the missing toggle says', function (array $query, int $leads, ?Closure $prepare) {
+    $seed = seedSetPage();
+    if ($prepare !== null) {
+        $prepare($seed);
+    }
+
+    expect(Livewire::withQueryParams($query)->test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5'])->viewData('leadCount'))->toBe($leads);
+})->with([
+    'value' => [['sort' => 'value'], 2, null],
+    'value, missing shown, three owned' => [['sort' => 'value', 'missing' => true], 2, null],
+    'value, searched' => [['sort' => 'value', 'search' => 'a'], 0, null],
+    'number' => [[], 0, null],
+    'value, one card left' => [['sort' => 'value', 'rarity' => 'Common'], 0, null],
+    // Pockets do not count: two owned tiles stay single-size when the toggle adds three pockets (5 entries > 2 would have made them double).
+    'value, two owned, missing shown' => [['sort' => 'value', 'missing' => true], 0, fn (array $seed) => CollectionItem::where('card_id', $seed['cards']['005']->id)->delete()],
+    'value, one owned, missing shown' => [['sort' => 'value', 'missing' => true], 0, fn (array $seed) => CollectionItem::whereIn('card_id', [$seed['cards']['003']->id, $seed['cards']['005']->id])->delete()],
+]);
+
+test('Clear drops the search and the rarity, and keeps the order and the missing toggle', function () {
+    seedSetPage();
+
+    Livewire::withQueryParams(['search' => 'saur', 'rarity' => 'Common', 'sort' => 'name', 'missing' => true])
+        ->test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5'])
+        ->call('clearFilters')
+        ->assertSet('search', '')
+        ->assertSet('rarityFilter', '')
+        ->assertSet('sort', 'name')
+        ->assertSet('showMissing', true);
+});
+
+test('the rarity filter lists the set\'s rarities from commonest to rarest', function () {
+    seedSetPage();
+
+    $page = Livewire::test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5']);
+    $html = $page->html();
+
+    expect($page->viewData('rarities')->all())->toBe(['Common', 'Uncommon', 'Double rare'])
+        ->and(strpos($html, '<option value="Common">'))->toBeLessThan(strpos($html, '<option value="Uncommon">'))
+        ->and(strpos($html, '<option value="Uncommon">'))->toBeLessThan(strpos($html, '<option value="Double rare">'));
+});
+
+test('the set page costs the same number of queries for three cards as for thirty, searched or not, with or without pockets', function (array $query, int $fewShown, int $manyShown) {
+    $user = User::factory()->create(['username' => 'demo']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'sv03.5', 'name' => '151', 'card_count' => 30]);
+    $add = function (int $from, int $to) use ($collection, $set) {
+        foreach (range($from, $to) as $i) {
+            $number = sprintf('%03d', $i);
+            $card = Card::create(['tcgdex_id' => "sv03.5-$number", 'set_id' => $set->id, 'local_id' => $number, 'name' => "Card $number"]);
+            // Every fifth card stays unowned, so the pocket path runs when the missing cards are shown.
+            if ($i % 5 !== 0) {
+                CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => $card->tcgdex_id, 'variant' => 'normal', 'condition' => 'NM', 'quantity' => 1]);
+            }
+            // Ten daily rows rising one cent a day: every card's 7-day move is +7.
+            foreach (range(0, 9) as $d) {
+                CardPriceSnapshot::create(['card_id' => $card->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays($d), 'currency' => 'USD', 'market_minor' => 1000 + $i - $d]);
+            }
+        }
+    };
+    // Measured cold both times, so a cache hit on one side cannot hide a per-card read on the other.
+    $queriesFor = function () use ($query): array {
+        Cache::flush();
+        $count = 0;
+        DB::listen(function () use (&$count) {
+            $count++;
+        });
+        $entries = Livewire::withQueryParams($query)->test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5'])->viewData('entries');
+
+        return [$count, $entries];
+    };
+
+    $add(1, 3);
+    app(WeekBaselines::class)->refreshAll();
+    [$few, $fewEntries] = $queriesFor();
+    $add(4, 30);
+    app(WeekBaselines::class)->refreshAll();
+    [$many, $manyEntries] = $queriesFor();
+
+    expect($fewEntries)->toHaveCount($fewShown)
+        ->and($manyEntries)->toHaveCount($manyShown)
+        ->and($manyEntries->filter(fn (array $e) => $e['owned'])->every(fn (array $e) => $e['weekDelta']?->deltaMinor === 7))->toBeTrue()
+        ->and($many)->toBe($few);
+})->with([
+    'unfiltered' => [[], 3, 24],
+    'searched' => [['search' => 'Card'], 3, 24],
+    'missing shown' => [['missing' => true], 3, 30],
+]);
