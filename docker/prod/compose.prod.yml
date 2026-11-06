@@ -9,6 +9,12 @@ services:
     environment:
       REDIS_CLIENT: phpredis
       TELESCOPE_ENABLED: "false"
+      # A runaway request must end as a PHP fatal (logged, HTTP 500), not as a
+      # cgroup SIGKILL, so keep memory_limit well under the container limit.
+      PHP_MEMORY_LIMIT: "128M"
+      # Pool is ondemand (image default). Peak concurrency is about 1-3 requests,
+      # so 4 workers suffice and a burst queues instead of growing past the cap.
+      PHP_FPM_PM_MAX_CHILDREN: "4"
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
