@@ -59,59 +59,81 @@
 
     <section class="set-binder" aria-label="Cards">
         <div class="set-sheet">
-            <div class="nw-toolbar">
-                <div class="nw-count" role="status">Showing <b>{{ $entries->count() }}</b> {{ Str::plural('card', $entries->count()) }}</div>
+            <span class="set-holes" aria-hidden="true"><i></i><i></i><i></i></span>
+            <div class="col-tools">
+                <div class="col-count-row">
+                    <p class="col-count" role="status">Showing <b>{{ $entries->count() }}</b> {{ Str::plural('card', $entries->count()) }}</p>
+                    @if ($isFiltered)
+                        <button type="button" wire:click="clearFilters" class="col-clear">Clear</button>
+                    @endif
+                </div>
 
-                <div class="nw-toolbar-group">
+                <div class="col-controls">
                     <label class="sr-only" for="set-search">Search this set</label>
-                    <input id="set-search" type="search" wire:model.live.debounce.300ms="search" placeholder="Search this set…" class="nw-pill-input w-40 sm:w-52" autocomplete="off">
+                    <span class="col-search">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4.5 4.5"></path></svg>
+                        <input id="set-search" type="search" wire:model.live.debounce.300ms="search" placeholder="Search this set…" autocomplete="off" spellcheck="false">
+                        <span wire:loading wire:target="search" class="col-search-busy" aria-hidden="true"></span>
+                    </span>
 
                     @if ($rarities->count() > 1)
                         <label class="sr-only" for="set-rarity">Filter by rarity</label>
-                        <select id="set-rarity" wire:model.live="rarityFilter" class="nw-pill-select">
-                            <option value="">All rarities</option>
-                            @foreach ($rarities as $rarity)
-                                {{-- title-case the label only; the value must match the stored string --}}
-                                <option value="{{ $rarity }}">{{ Rarity::label($rarity) }}</option>
-                            @endforeach
-                        </select>
+                        <span class="col-select">
+                            <select id="set-rarity" wire:model.live="rarityFilter">
+                                <option value="">All rarities</option>
+                                @foreach ($rarities as $rarity)
+                                    {{-- title-case the label only; the value must match the stored string --}}
+                                    <option value="{{ $rarity }}">{{ Rarity::label($rarity) }}</option>
+                                @endforeach
+                            </select>
+                        </span>
                     @endif
 
-                    <div class="nw-seg" role="group" aria-label="Sort">
-                        <span class="lbl">Sort</span>
+                    <div class="col-seg" role="group" aria-label="Sort">
+                        <span class="col-seg-lbl" aria-hidden="true">Sort</span>
                         <button type="button" wire:click="sortBy('number')" aria-pressed="{{ $sort === 'number' ? 'true' : 'false' }}">Number</button>
                         <button type="button" wire:click="sortBy('value')" aria-pressed="{{ $sort === 'value' ? 'true' : 'false' }}">Value</button>
                         <button type="button" wire:click="sortBy('name')" aria-pressed="{{ $sort === 'name' ? 'true' : 'false' }}">Name</button>
                         <button type="button" wire:click="sortBy('rarity')" aria-pressed="{{ $sort === 'rarity' ? 'true' : 'false' }}">Rarity</button>
                     </div>
 
-                    <div class="nw-seg" role="group" aria-label="Missing cards">
-                        <button type="button" wire:click="toggleMissing" aria-pressed="{{ $showMissing ? 'true' : 'false' }}">Show missing</button>
-                    </div>
+                    {{-- Missing cards stay opt-in; the label says how many the switch reveals. --}}
+                    @if ($missingCount > 0)
+                        <button type="button" class="set-miss-toggle" wire:click="toggleMissing" aria-pressed="{{ $showMissing ? 'true' : 'false' }}"><span class="set-mt-box" aria-hidden="true"></span>Show the {{ $missingCount }} missing</button>
+                    @endif
                 </div>
             </div>
 
             @if ($entries->isEmpty())
-                <div class="nw-empty">
-                    <div class="t">No cards match</div>
+                <div class="col-empty">
+                    <div class="col-pockets" aria-hidden="true"><i></i><i></i><i></i></div>
+                    <h2 class="col-empty-t">No cards match</h2>
                     <p>Nothing in {{ $set->name }} matches that search.</p>
                 </div>
             @else
-                <div class="nw-grid" wire:key="grid-{{ $sort }}-{{ md5($search.$rarityFilter) }}">
+                <ol class="col-grid" wire:key="grid-{{ $sort }}-{{ md5($search.$rarityFilter) }}">
                     @foreach ($entries as $entry)
-                        <x-card-tile
-                            wire:key="tile-{{ $entry['card']->id }}"
-                            :card="$entry['card']"
-                            :snapshot="$entry['snapshot']"
-                            :delta="$entry['delta']"
-                            :items="$entry['items']"
-                            :index="$loop->index"
-                            :eager="$loop->index < 6"
-                            :show-set="false"
-                            :href="route('gallery.card', ['username' => $targetUser->username, 'setTcgdexId' => $set->tcgdex_id, 'localId' => $entry['card']->local_id])"
-                        />
+                        @php
+                            $href = route('gallery.card', ['username' => $targetUser->username, 'setTcgdexId' => $set->tcgdex_id, 'localId' => $entry['card']->local_id]);
+                        @endphp
+                        @if ($entry['owned'])
+                            <x-revamp.card-tile
+                                :card="$entry['card']"
+                                :snapshot="$entry['snapshot']"
+                                :week-delta="$entry['weekDelta']"
+                                :items="$entry['items']"
+                                :index="min($loop->index, 24)"
+                                :eager="$loop->index < 8"
+                                :priority="$loop->index === 0"
+                                :lead="$loop->index < $leadCount"
+                                :in-set="true"
+                                :href="$href"
+                            />
+                        @else
+                            <x-revamp.missing-pocket :card="$entry['card']" :snapshot="$entry['snapshot']" :index="min($loop->index, 24)" :href="$href" />
+                        @endif
                     @endforeach
-                </div>
+                </ol>
             @endif
         </div>
     </section>
@@ -119,4 +141,8 @@
 
 @push('head')
     @vite(['resources/css/collection.css', 'resources/css/set.css'])
+@endpush
+
+@push('scripts')
+    @vite('resources/js/collection.js')
 @endpush

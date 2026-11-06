@@ -573,3 +573,141 @@ test('title, description and share image stay as they were', function () {
         ->assertSee('content="3 of 5 cards from 151 (Scarlet &amp; Violet) in Demo&#039;s Pokémon TCG collection."', false)
         ->assertSee('content="https://assets.tcgdex.net/en/sv/sv03.5/003/high.webp"', false);
 });
+
+test('the missing cards stay hidden by default behind a toggle that says how many there are', function () {
+    seedSetPage();
+
+    $page = Livewire::test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5']);
+    expect($page->html())->toContain('aria-pressed="false"><span class="set-mt-box" aria-hidden="true"></span>Show the 2 missing</button>')
+        ->and($page->html())->not->toContain('Ivysaur');
+
+    $page->call('toggleMissing');
+    expect($page->html())->toContain('aria-pressed="true"><span class="set-mt-box" aria-hidden="true"></span>Show the 2 missing</button>')
+        ->and($page->html())->toContain('Ivysaur');
+});
+
+test('a complete set has no missing toggle', function () {
+    $seed = seedSetPage();
+
+    // Positive control: with two cards missing the toggle is there (this half is what is red before the task).
+    expect($this->get('/demo/sv03.5')->getContent())->toContain('class="set-miss-toggle"');
+
+    foreach (['002', '004'] as $number) {
+        CollectionItem::create(['collection_id' => $seed['collection']->id, 'card_id' => $seed['cards'][$number]->id, 'card_tcgdex_id' => "sv03.5-$number", 'condition' => 'NM', 'quantity' => 1]);
+    }
+
+    expect($this->get('/demo/sv03.5')->getContent())->not->toContain('set-miss-toggle');
+});
+
+test('on a set the catalogue holds only in part, the toggle counts the imported gaps and ignores the cards not imported', function () {
+    // card_count 217, 5 imported, 3 owned: "Show the 2 missing" (not 214), and the other 212 positions are grey slots.
+    seedSetPage(['card_count' => 217]);
+
+    $html = $this->get('/demo/sv03.5')->getContent();
+
+    expect($html)->toContain('Show the 2 missing</button>')
+        ->and(array_count_values(RevampHtml::stripSlots($html)))->toBe(['owned' => 3, 'missing' => 2, 'absent' => 212])
+        ->and(RevampHtml::summary($html))->toStartWith('MEW · 3 of 217 cards');
+});
+
+test('one imported card, owned, out of a huge set has no toggle until another imported card is missing', function () {
+    $user = User::factory()->create(['username' => 'demo', 'name' => 'Demo']);
+    $collection = Collection::factory()->for($user)->create(['is_public' => true, 'slug' => 'main']);
+    $set = Set::create(['tcgdex_id' => 'swsh11', 'name' => 'Lost Origin', 'card_count' => 217]);
+    $card = Card::create(['tcgdex_id' => 'swsh11-123', 'set_id' => $set->id, 'local_id' => '123', 'name' => 'Gastly']);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'swsh11-123', 'condition' => 'NM', 'quantity' => 1]);
+
+    $html = $this->get('/demo/swsh11')->getContent();
+
+    expect(RevampHtml::summary($html))->toBe('SWSH11 · 1 of 217 cards')
+        ->and(array_count_values(RevampHtml::stripSlots($html)))->toBe(['absent' => 216, 'owned' => 1])
+        ->and($html)->not->toContain('set-miss-toggle');
+
+    // Positive control: one more imported card the collector does not own, and the toggle appears.
+    Card::create(['tcgdex_id' => 'swsh11-124', 'set_id' => $set->id, 'local_id' => '124', 'name' => 'Haunter']);
+
+    expect($this->get('/demo/swsh11')->getContent())->toContain('Show the 1 missing</button>');
+});
+
+test('shown, the missing cards sit in number order as empty pockets with their number pencilled in', function () {
+    $seed = seedSetPage();
+
+    $html = Livewire::withQueryParams(['missing' => true])->test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5'])->html();
+    preg_match_all('#<li wire:key="(?:tile|miss)-(\d+)"#', $html, $keys);
+
+    expect(array_map('intval', $keys[1]))->toBe(collect($seed['cards'])->map(fn (Card $card) => $card->id)->values()->all())
+        ->and(substr_count($html, 'class="col-slot set-miss col-enter"'))->toBe(2)
+        // A pocket links to the card page, as the old ghost tile did.
+        ->and($html)->toContain('<a href="'.route('gallery.card', ['username' => 'demo', 'setTcgdexId' => 'sv03.5', 'localId' => '002']).'" class="set-pocket"')
+        ->and($html)->toContain('<span class="set-pencil" aria-hidden="true">002</span>')
+        ->and($html)->toContain('<span class="set-gprice" aria-hidden="true">$0.75</span>');
+});
+
+test('owned cards are the collection\'s tiles, numbered within the set, with the 7-day move', function () {
+    $this->freezeTime();
+    $seed = seedSetPage();
+    CardPriceSnapshot::create(['card_id' => $seed['cards']['003']->id, 'source' => 'tcgplayer', 'variant' => 'normal', 'captured_on' => today()->subDays(7), 'currency' => 'USD', 'market_minor' => 2399]);
+    app(WeekBaselines::class)->refreshAll();
+
+    $html = $this->get('/demo/sv03.5')->getContent();
+
+    expect($html)->toContain('<span class="col-mono">#003</span>')
+        ->and($html)->toContain('<span class="col-delta col-delta--up">+$1.00 · 7d</span>')
+        ->and($html)->toContain('aria-label="Venusaur ex, #003, $24.99, up $1.00 in 7 days"')
+        ->and($html)->toContain('<a href="'.route('gallery.card', ['username' => 'demo', 'setTcgdexId' => 'sv03.5', 'localId' => '003']).'" class="col-card col-tier-silver"');
+});
+
+test('in Value order the two priciest owned cards take double pockets, and in Number order none does', function () {
+    seedSetPage();
+
+    $value = Livewire::withQueryParams(['sort' => 'value'])->test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5'])->html();
+    // A plain request: query params set on Livewire::withQueryParams would carry over to a second Livewire::test().
+    $number = $this->get('/demo/sv03.5')->getContent();
+
+    expect(substr_count($value, 'class="col-slot col-lead col-enter"'))->toBe(2)
+        ->and(strpos($value, 'Venusaur ex'))->toBeLessThan(strpos($value, 'Charmeleon'))
+        ->and($number)->not->toContain('col-lead');
+});
+
+test('switching the missing toggle on never makes owned tiles double-size', function () {
+    $seed = seedSetPage();
+    CollectionItem::where('card_id', $seed['cards']['005']->id)->delete(); // two owned left, three pockets to show
+
+    $html = Livewire::withQueryParams(['sort' => 'value', 'missing' => true])->test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5'])->html();
+
+    expect($html)->not->toContain('col-lead')
+        ->and(substr_count($html, 'class="col-slot set-miss col-enter"'))->toBe(3);
+});
+
+test('Clear shows only while a search or rarity narrows the grid', function () {
+    seedSetPage();
+
+    $page = Livewire::withQueryParams(['search' => 'saur'])->test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5']);
+    expect($page->html())->toContain('<button type="button" wire:click="clearFilters" class="col-clear">Clear</button>');
+
+    $page->call('clearFilters');
+    expect($page->html())->not->toContain('wire:click="clearFilters"');
+});
+
+test('a search matching nothing shows an empty binder page with the approved copy', function () {
+    seedSetPage();
+
+    $html = Livewire::withQueryParams(['search' => 'Mewtwo'])->test(Show::class, ['username' => 'demo', 'setTcgdexId' => 'sv03.5'])->html();
+
+    expect($html)->toContain('<div class="col-pockets" aria-hidden="true"><i></i><i></i><i></i></div>')
+        ->and($html)->toContain('<h2 class="col-empty-t">No cards match</h2>')
+        ->and($html)->toContain('<p>Nothing in 151 matches that search.</p>');
+});
+
+test('the binder is the revamp\'s own: no old classes, no client-side navigation, the collection script for the tiles', function () {
+    $this->seed(PermissionSeeder::class);
+    $seed = seedSetPage();
+
+    $html = $this->actingAs($seed['user'])->get('/demo/sv03.5?missing=1')->assertOk()->getContent();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+
+    expect($html)->not->toContain('class="nw-')
+        ->and($html)->not->toContain('wire:navigate')
+        ->and($html)->toContain('<span class="set-holes" aria-hidden="true"><i></i><i></i><i></i></span>')
+        ->and($html)->toContain($manifest['resources/js/collection.js']['file']);
+});

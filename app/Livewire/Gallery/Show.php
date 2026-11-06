@@ -125,7 +125,6 @@ final class Show extends Component
                 return [
                     'card' => $card,
                     'snapshot' => $snapshot,
-                    'delta' => $resolver->deltaFor($card, $snapshot),
                     // A missing card's pocket shows its price, never a move.
                     'weekDelta' => $owned ? $resolver->weekDeltaFor($card, $snapshot) : null,
                     'items' => $card->collectionItems,
