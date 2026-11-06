@@ -6,6 +6,43 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-05
+
+### Added
+
+- The public pages are rebuilt on one shared "binder" design: landing,
+  collection, sets, activity, card and set pages, each with its own
+  stylesheet, light and dark themes, and motion that respects reduced
+  motion.
+- 7-day price moves (`+$8.00 · 7d`) on collection and set tiles and on the
+  card page, read from a new `card_price_week_baselines` table. The card
+  headline shows both its 1-day and its 7-day move.
+- Card page plate tools: Actual size (63 × 88 mm) with per-screen
+  calibration, a loupe capped at the scan's real resolution, and a slight
+  tilt under a mouse.
+- Price history on the card page behind range tabs; the chart is a keyboard
+  slider on the card and activity pages.
+- Copy link on the collection and card pages.
+
+### Changed
+
+- Price charts break the line and draw a dotted gap for a market day with no
+  price; a manual price is one continuous step line.
+- Day labels show the year only when it is not the current one.
+- The set page shows missing cards as empty pockets and counts them.
+- The `app` container memory limit is 256M (was 192M).
+
+### Removed
+
+- The old card page styles, the sparkline and range-pills components and the
+  old card tile component.
+
+### Deploy notes
+
+- Migrates a new table: run `migrate --force` against the new image, then
+  `prices:refresh-week-baselines`, before redeploying (the deploy stops on a
+  pending migration on purpose).
+
 ## [1.6.19] - 2026-11-03
 
 ### Changed
