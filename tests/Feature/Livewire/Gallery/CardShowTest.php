@@ -862,9 +862,33 @@ test('the plate shows the official art on a static plate with crop marks, and Li
         ->and($html)->toContain('<span class="crd-ring" aria-hidden="true"></span>')
         ->and($html)->toContain('<span class="crd-dim crd-dim--h crd-mono">63 mm</span>')
         ->and($html)->toContain('<span class="crd-dim crd-dim--v crd-mono">88 mm</span>')
-        ->and($html)->not->toContain('data-crd-size')
-        ->and($html)->not->toContain('data-crd-loupe-toggle')
         ->and($html)->not->toContain('data-crd-note');
+});
+
+test('the plate offers Actual size, a loupe, tilt hooks and the calibration panel, and the tool note is not a live region', function () {
+    $html = ownedCardPageHtml();
+
+    expect($html)->toContain('<div class="crd-sizes" role="group" aria-label="Image size" data-crd-size-group>')
+        ->and($html)->toContain('<button type="button" data-crd-size="actual" aria-pressed="false">Actual size</button>')
+        ->and($html)->toContain('<button type="button" data-crd-size="fit" aria-pressed="true">Fitted</button>')
+        ->and($html)->toContain('data-crd-loupe-toggle')
+        ->and($html)->toContain('<div class="crd-loupe" data-crd-loupe aria-hidden="true"></div>')
+        ->and($html)->toContain('<div class="crd-card" data-crd-tilt>')
+        ->and($html)->toContain('<span class="crd-glare" aria-hidden="true"></span>')
+        ->and($html)->toContain('<p class="crd-tool-note" data-crd-tool-note></p>')
+        ->and($html)->toContain('<label for="crd-cal">Hold a real card against the screen and drag until the marks match its edges.</label>')
+        ->and($html)->not->toContain('aria-live');
+});
+
+test('a card with no image offers no size or loupe tools', function () {
+    ['collection' => $collection, 'card' => $card] = seedCardPage();
+    $card->update(['official_image_url' => null]);
+    CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $card->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
+
+    expect($this->get('/carlos/me05/116')->assertOk()->getContent())
+        ->not->toContain('data-crd-loupe-toggle')
+        ->not->toContain('data-crd-size=')
+        ->not->toContain('data-crd-calib');
 });
 
 test('a collector photo leads, with its own alt text, the note that says the printed size is for the official art, and a thumb for each view', function () {
@@ -1141,4 +1165,11 @@ test('the card page ships the card script, and the landing and the collection do
     expect($html)->toContain($script)
         ->and($this->get('/')->getContent())->not->toContain($script)
         ->and($this->get('/carlos')->getContent())->not->toContain($script);
+});
+
+test('the card script bundle carries the plate tools', function () {
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+    $bundle = (string) file_get_contents(public_path('build/'.$manifest['resources/js/card.js']['file']));
+
+    expect($bundle)->toContain('tcg-vault-cal')->toContain('crd:view');
 });

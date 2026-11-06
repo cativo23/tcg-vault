@@ -4,6 +4,7 @@
 import { copyText, tabKeyTarget } from './collection-helpers.js';
 import { nearestIndex, setValue, shareUrl, stepReading, stopsReadingOnLeave } from './card-helpers.js';
 import { degradeImage, legacyCopy } from './dom-helpers.js';
+import './plate.js';
 
 const root = document.documentElement;
 
