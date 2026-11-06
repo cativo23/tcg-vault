@@ -26,7 +26,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * state, the gaps as empty pockets a visitor can switch on to see what is
  * still missing without the gaps competing with the collection.
  */
-#[Layout('layouts.public')]
+#[Layout('layouts.revamp')]
 final class Show extends Component
 {
     use ResolvesPublicCollection;

@@ -10,6 +10,7 @@ export default defineConfig({
                 'resources/js/app.js',
                 'resources/css/revamp.css',
                 'resources/css/collection.css',
+                'resources/css/set.css',
                 'resources/css/sets.css',
                 'resources/js/collection.js',
                 'resources/css/card.css',

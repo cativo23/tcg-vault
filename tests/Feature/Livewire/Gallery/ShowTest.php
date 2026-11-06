@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Tests\Support\RevampHtml;
 
 test('shows only owned cards by default, computes stats from the whole set', function () {
     $user = User::factory()->create(['username' => 'carlos']);
@@ -34,7 +35,7 @@ test('shows only owned cards by default, computes stats from the whole set', fun
     $response->assertOk();
     $response->assertSee('Mega Darkrai ex'); // owned, shown
     $response->assertDontSee('Fomantis'); // not owned — hidden by default (missing cards are opt-in)
-    $response->assertSee('Collected</div>', escape: false); // stats still cover the whole set, unfiltered
+    expect(RevampHtml::summary($response->getContent()))->toBe('ME05 · 1 of 2 cards · $50.00'); // the whole set, unfiltered
     // Swapping the result count with no announcement told assistive tech
     // nothing happened when the search box actually changed the grid.
     $response->assertSee('role="status"', false);
@@ -52,9 +53,11 @@ test('owning even one card out of a huge set never rounds the progress bar down 
     $response = $this->get('/carlos/me02.5');
 
     $response->assertOk();
-    $response->assertSee('1', false);
-    $response->assertSee('of 217 · 1%', false);
-    $response->assertSee('width: 1%', false);
+    $html = $response->getContent();
+    expect(RevampHtml::summary($html))->toBe('ME02.5 · 1 of 217 cards')
+        ->and($html)->toContain('<span class="set-strip-pct" aria-hidden="true">1%</span>')
+        ->and($html)->toContain('aria-label="1% of the set collected"')
+        ->and(RevampHtml::stripSlots($html))->toHaveCount(217);
 });
 
 test('toggling "show missing" reveals cards the collector does not own', function () {
@@ -208,10 +211,12 @@ test('the set page falls back to the local card count when tcgdex reports zero',
     Card::create(['tcgdex_id' => 'me05-003', 'set_id' => $set->id, 'local_id' => '003', 'name' => 'Fomantis']);
     CollectionItem::create(['collection_id' => $collection->id, 'card_id' => $owned->id, 'card_tcgdex_id' => 'me05-116', 'condition' => 'NM', 'quantity' => 1]);
 
-    $this->get('/carlos/me05')
-        ->assertOk()
-        ->assertSee('of 2 · 50%', false)
-        ->assertDontSee('of 0');
+    $html = $this->get('/carlos/me05')->assertOk()->getContent();
+
+    // 'of 0 cards' is what a tcgdex total of 0 would print: it must never reach the copy.
+    expect(RevampHtml::summary($html))->toBe('ME05 · 1 of 2 cards')
+        ->and(RevampHtml::summary($html))->not->toContain('of 0 cards')
+        ->and($html)->toContain('<span class="set-strip-pct" aria-hidden="true">50%</span>');
 });
 
 test('the owner viewing their own public set page gets a link into the set grid', function () {
@@ -239,6 +244,10 @@ test('a visitor, signed in or not, does not get the edit link', function () {
 
     $this->actingAs(User::factory()->create(['username' => 'ash']))
         ->get('/carlos/me05')->assertOk()->assertDontSee('Edit in my collection');
+
+    // Neither visitor gets the owner's bar link either (the layout is tested alone; this is the page).
+    $this->get('/carlos/me05')->assertOk()->assertDontSee('Manage collection');
+    $this->actingAs(User::factory()->create(['username' => 'bea']))->get('/carlos/me05')->assertOk()->assertDontSee('Manage collection');
 });
 
 test('an owner without the use-collection permission gets no link into the set grid', function () {
@@ -447,3 +456,120 @@ test('the set page costs the same number of queries for three cards as for thirt
     'searched' => [['search' => 'Card'], 3, 24],
     'missing shown' => [['missing' => true], 3, 30],
 ]);
+
+test('the set page sits on the revamp shell: Sets is current, its own stylesheets only, indexable', function () {
+    seedSetPage();
+
+    $html = $this->get('/demo/sv03.5')->assertOk()->getContent();
+    $manifest = json_decode((string) file_get_contents(public_path('build/manifest.json')), true);
+
+    expect(RevampHtml::currentNav($html))->toBe('Sets')
+        ->and($html)->toContain('<nav class="bar-nav" aria-label="Gallery">')
+        ->and($html)->toContain('class="col-page set-page"')
+        ->and($html)->toContain($manifest['resources/css/revamp.css']['file'])
+        ->and($html)->toContain($manifest['resources/css/collection.css']['file'])
+        ->and($html)->toContain($manifest['resources/css/set.css']['file'])
+        ->and($html)->not->toContain($manifest['resources/css/app.css']['file'])
+        ->and($html)->not->toContain('noindex');
+});
+
+test('the breadcrumb leads back to the sets, names the series, and marks the set as the current page', function () {
+    $seed = seedSetPage();
+
+    $html = $this->get('/demo/sv03.5')->getContent();
+    expect($html)->toContain('<nav class="set-crumbs" aria-label="Breadcrumb">')
+        ->and($html)->toContain('<li><a href="'.route('gallery.sets', ['username' => 'demo']).'">Sets</a></li>')
+        ->and($html)->toContain('<li>Scarlet &amp; Violet</li>')
+        ->and($html)->toContain('<li aria-current="page">151</li>');
+
+    $seed['set']->update(['series' => null]);
+    expect($this->get('/demo/sv03.5')->getContent())->not->toContain('<li>Scarlet');
+});
+
+test('the head is the set\'s name and logo over one summary line that starts with its code, with no stat boxes', function () {
+    seedSetPage();
+
+    $html = $this->get('/demo/sv03.5')->getContent();
+
+    expect($html)->toContain('<h1 id="set-name" class="set-name">151</h1>')
+        ->and($html)->toContain('<img class="set-logo" src="https://assets.tcgdex.net/en/sv/sv03.5/logo.png" alt="" decoding="async" data-optional>')
+        ->and($html)->toContain('<p class="col-summary"><span class="set-code">MEW</span>')
+        ->and(RevampHtml::summary($html))->toBe('MEW · 3 of 5 cards · $26.49 · released Sep 2023')
+        ->and(RevampHtml::note($html))->toBe('')
+        ->and($html)->not->toContain('Most valuable owned')
+        ->and($html)->not->toContain('nw-stats');
+});
+
+test('the code in the summary is the abbreviation, else the uppercase tcgdex id', function () {
+    $seed = seedSetPage();
+    $seed['set']->update(['abbreviation' => null]);
+
+    expect(RevampHtml::summary($this->get('/demo/sv03.5')->getContent()))->toStartWith('SV03.5 · 3 of 5 cards');
+});
+
+test('the summary drops the value without a price and the release without a date', function (Closure $change, string $summary) {
+    $seed = seedSetPage();
+    $change($seed);
+
+    expect(RevampHtml::summary($this->get('/demo/sv03.5')->getContent()))->toBe($summary);
+})->with([
+    'no price' => [fn (array $seed) => CardPriceSnapshot::query()->delete(), 'MEW · 3 of 5 cards · released Sep 2023'],
+    'no release date' => [fn (array $seed) => $seed['set']->update(['released_on' => null]), 'MEW · 3 of 5 cards · $26.49'],
+    'neither' => [function (array $seed) {
+        CardPriceSnapshot::query()->delete();
+        $seed['set']->update(['released_on' => null]);
+    }, 'MEW · 3 of 5 cards'],
+]);
+
+test('another currency is never added in: it moves to a note under the summary', function () {
+    $seed = seedSetPage();
+    CardPriceSnapshot::create(['card_id' => $seed['cards']['001']->id, 'source' => 'cardmarket', 'variant' => 'default', 'captured_on' => today(), 'currency' => 'EUR', 'market_minor' => 1000]);
+
+    $html = $this->get('/demo/sv03.5')->getContent();
+
+    expect(RevampHtml::summary($html))->toBe('MEW · 3 of 5 cards · $26.49 · released Sep 2023')
+        ->and(RevampHtml::note($html))->toBe('Also €10.00 priced in EUR, not added to the total.');
+});
+
+test('the completion bar is a printed strip: one slot per card in number order, the missing ones hollow', function () {
+    seedSetPage();
+
+    $html = $this->get('/demo/sv03.5')->getContent();
+
+    expect(RevampHtml::stripSlots($html))->toBe(['owned', 'missing', 'owned', 'missing', 'owned'])
+        ->and($html)->toContain('<div class="set-strip-bar" role="progressbar" aria-valuemin="0" aria-valuemax="5" aria-valuenow="3" aria-label="60% of the set collected">')
+        ->and($html)->toContain('<span class="set-strip-miss" title="#002 missing"></span>')
+        ->and($html)->toContain('<span class="set-strip-pct" aria-hidden="true">60%</span>')
+        ->and($html)->toContain('<b style="left: 0.00%">1</b>')
+        ->and($html)->toContain('<b style="left: 100.00%">5</b>');
+});
+
+test('a set the catalogue holds only in part still spans the whole set: grey, unnumbered slots for the cards it has not imported', function () {
+    seedSetPage(['card_count' => 7]);
+
+    $html = $this->get('/demo/sv03.5')->getContent();
+
+    expect(RevampHtml::stripSlots($html))->toBe(['owned', 'missing', 'owned', 'missing', 'owned', 'absent', 'absent'])
+        ->and($html)->toContain('<span class="set-strip-off" title="not in the catalogue yet"></span>')
+        ->and($html)->toContain('<span class="set-strip-miss" title="#004 missing"></span>')
+        ->and(RevampHtml::summary($html))->toStartWith('MEW · 3 of 7 cards');
+});
+
+test('the owner gets Edit in my collection as a plain link into the set grid, and Manage collection in the bar', function () {
+    $this->seed(PermissionSeeder::class);
+    $seed = seedSetPage();
+
+    $html = $this->actingAs($seed['user'])->get('/demo/sv03.5')->assertOk()->getContent();
+
+    expect($html)->toContain('<a class="set-edit" href="'.route('admin.sets.show', ['setTcgdexId' => 'sv03.5']).'">Edit in my collection</a>')
+        ->and($html)->toContain('Manage collection');
+});
+
+test('title, description and share image stay as they were', function () {
+    seedSetPage();
+
+    $this->get('/demo/sv03.5')
+        ->assertSee("151 · Demo's collection · tcg-vault")
+        ->assertSee('content="3 of 5 cards from 151 (Scarlet &amp; Violet) in Demo&#039;s Pokémon TCG collection."', false)
+        ->assertSee('content="https://assets.tcgdex.net/en/sv/sv03.5/003/high.webp"', false);
+});
