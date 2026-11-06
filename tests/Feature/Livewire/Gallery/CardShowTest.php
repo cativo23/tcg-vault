@@ -1102,7 +1102,7 @@ test('the facts are a catalogue label with numbers in the numeral face', functio
     $html = ownedCardPageHtml();
 
     expect($html)->toContain('<dl class="crd-kv">')
-        ->toContain('<div><dt>Illustrator</dt><dd class="crd-val">AKIRA EGAWA</dd></div>')
+        ->toContain('<div><dt>Illustrator</dt><dd>AKIRA EGAWA</dd></div>')
         ->toContain('<div><dt>HP</dt><dd class="crd-mono">280</dd></div>')
         ->toContain('<div><dt>Pokédex</dt><dd class="crd-mono">#0491</dd></div>')
         ->toContain('<div><dt>Catalog ID</dt><dd class="crd-mono">me05-116</dd></div>');

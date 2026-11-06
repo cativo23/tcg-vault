@@ -582,7 +582,7 @@ test('the missing cards stay hidden by default behind a toggle that says how man
         ->and($page->html())->not->toContain('Ivysaur');
 
     $page->call('toggleMissing');
-    expect($page->html())->toContain('aria-pressed="true"><span class="set-mt-box" aria-hidden="true"></span>Show the 2 missing</button>')
+    expect($page->html())->toContain('aria-pressed="true"><span class="set-mt-box" aria-hidden="true"></span>Hide the 2 missing</button>')
         ->and($page->html())->toContain('Ivysaur');
 });
 

@@ -173,17 +173,20 @@ const plateFailed = (img) => {
     img.replaceWith(face);
 };
 
-// `error` does not bubble on <img>: capture phase. The strip's tiles are the collection's (`.col-pic`).
+// `error` does not bubble on <img>: capture phase. The strip's tiles are the collection's (`.col-pic`); a view button's
+// thumbnail just hides, so the button keeps its text label.
 document.addEventListener('error', (event) => {
     const img = event.target;
     if (!(img instanceof HTMLImageElement)) return;
     if (img.matches('[data-crd-img]')) plateFailed(img);
+    else if (img.matches('.crd-view img')) img.hidden = true;
     else degradeImage(img);
 }, true);
 
-const sweepBrokenImages = () => document.querySelectorAll('[data-crd-img], .col-pic img').forEach((img) => {
+const sweepBrokenImages = () => document.querySelectorAll('[data-crd-img], .col-pic img, .crd-view img').forEach((img) => {
     if (!(img.complete && img.naturalWidth === 0 && img.getAttribute('src'))) return;
     if (img.matches('[data-crd-img]')) plateFailed(img);
+    else if (img.matches('.crd-view img')) img.hidden = true;
     else degradeImage(img);
 });
 

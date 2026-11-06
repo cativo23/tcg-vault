@@ -57,7 +57,7 @@
             <div class="crd-sec-head"><h2 id="crd-ft-h" class="crd-sec-t">Card</h2></div>
             <dl class="crd-kv">
                 @foreach ($facts as $k => $v)
-                    <div><dt>{{ $k }}</dt><dd class="{{ in_array($k, $numeric, true) ? 'crd-mono' : 'crd-val' }}">{{ $v }}</dd></div>
+                    <div><dt>{{ $k }}</dt><dd{!! in_array($k, $numeric, true) ? ' class="crd-mono"' : '' !!}>{{ $v }}</dd></div>
                 @endforeach
                 <div><dt>Catalog ID</dt><dd class="crd-mono">{{ $card->tcgdex_id }}</dd></div>
             </dl>

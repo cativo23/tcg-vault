@@ -1,3 +1,5 @@
+import { themeAfterNavigation, themeFromSearch } from './theme-helpers.js';
+
 // A card image that fails to load (tcgdex outage, a deleted photo) falls
 // back to design.md's empty-image state instead of a blank frame; a
 // decorative image (set logo) marked data-optional simply disappears.
@@ -79,6 +81,9 @@ window.addEventListener('resize', markScrollableNav);
 // clicks the toggle.
 const THEME_KEY = 'tcg-vault-theme';
 
+// An explicit ?theme= on the first load (captures, shared links) beats the stored choice until the toggle is clicked.
+let themeOverride = themeFromSearch(window.location.search);
+
 const applyTheme = (theme) => {
     if (theme) document.documentElement.setAttribute('data-theme', theme);
     else document.documentElement.removeAttribute('data-theme');
@@ -93,6 +98,7 @@ const bindThemeToggle = () => {
         btn.dataset.themeBound = '1';
         btn.addEventListener('click', () => {
             const next = currentTheme() === 'dark' ? 'light' : 'dark';
+            themeOverride = null;
             localStorage.setItem(THEME_KEY, next);
             applyTheme(next);
         });
@@ -108,8 +114,10 @@ document.addEventListener('livewire:navigated', bindThemeToggle);
 // on every SPA navigation until the next hard reload. Re-apply it here,
 // same event bindThemeToggle already re-binds on.
 document.addEventListener('livewire:navigated', () => {
-    const stored = localStorage.getItem(THEME_KEY);
-    if (stored) applyTheme(stored);
+    let stored = null;
+    try { stored = localStorage.getItem(THEME_KEY); } catch { stored = null; }
+    const theme = themeAfterNavigation({ override: themeOverride, stored });
+    if (theme) applyTheme(theme);
 });
 
 // The "Saved" tag next to an autosaved field (variant-row partial) —
