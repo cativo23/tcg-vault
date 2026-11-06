@@ -65,6 +65,8 @@ the current, standalone source of truth.
 }
 ```
 
+Page-scoped exception: `--col-who` (`clamp(4.2rem, 1.6rem + 11vw, 11rem)`, defined on `.col-page`) sizes the collector's name on the collection page and the set's name on the set page; the Sets list heading uses the same value as `--sts-who`.
+
 **Non-negotiable rules, not just taste — a few have since been amended
 with narrow, explicit exceptions (marked below), never loosened wholesale:**
 - **Two families plus mono.** Anybody is display only (headings, brand, card names), driven by its *width* axis (`font-variation-settings: 'wdth' N`) for condensed-vs-normal voices; Hanken Grotesk is body and UI text. `font-stretch` does **not** map this axis in Chrome — always set width via `font-variation-settings`, never `font-stretch`. (Archivo, the original single family, is retained only as the display fallback.)
@@ -171,7 +173,7 @@ Rules that came out of building it:
   "No image" face); old-layout pages keep `app.js`. Never a broken frame.
 - `--signal` in the ticker/arrow means one thing: the resolved price went
   UP versus the previous comparable snapshot (`CardPriceResolver::resolveDelta`).
-  Down is `--flat`; no history is a neutral dot. On the revamp collection page the hang tag's move is against the same print seven days earlier (`CardPriceResolver::weekDeltaFor`), not the previous snapshot; the rule is otherwise the same.
+  Down is `--flat`; no history is a neutral dot. On the revamp collection and set pages the hang tag's move is against the same print seven days earlier (`CardPriceResolver::weekDeltaFor`), not the previous snapshot; the rule is otherwise the same.
 - Headline numbers render as their real value; no count-up (retired, see Revamp primitives).
 
 ## Revamp primitives (2026-11, public pages)
@@ -182,8 +184,8 @@ physical thing a collector already knows. Built only from the tokens above.
 - **Hang tag move** — `+$2.40 · 7d` / `−$1.00 · 7d` / `±$0.00 · 7d` under the price in `.col-mono`; green dot only for a rise; nothing when there is no comparable price a week old.
 - **Activity range tabs and day sheets** — on `/{user}/activity` the collection value sits on a stock sheet behind divider tabs `1M · 3M · 6M · 1Y`: a `tablist`/`tab` with manual activation like the collection's set tabs (arrows move focus, Enter or Space selects), selection in `?range=` (absent = 1M). The sheet head reads "Collection value · 3 months", the last value and the range move (`+$12.40 · 3 months`: green only for a rise, a fall `−$659.38` in `--color-flat`), and a muted "History since 15 Sep" sits under the chart when the data starts after the range start. The chart is one continuous line: the series has a value on every sampled day, so nothing is drawn dotted. It is a keyboard `slider` (←/→/Home/End/Esc; value = the day read, value text = the readout), and a pointer reading never reaches the screen reader. Days read `4 Nov`, with the year only when it is not this year (`4 Nov 2025`), on every Activity date. The heading is the collection's name size (`--act-who` = `--col-who`). The feed is one stock sheet per calendar day (UTC) under a divider tab (`4 Nov` · `N updates`); in a row a rise is `--color-accent-deep` with a green dot, a fall is `--color-flat`, an addition's price is ink, and a price move under 1.00 of its own currency is not listed.
 - **Hang tags** — `--radius-tag` stock tags under a card carrying its price; green only when the price is up.
-- **Binder page + pockets** — `--color-binder-page` with clear pockets (`--color-sleeve-*`); a missing card is an empty pocket with its number pencilled in.
-- **Printed strip** — a one-line set progress strip with hollow slots for missing cards (replaces the `.nw-bar` progress bar on set screens).
+- **Binder page + pockets** — `--color-binder-page` with clear pockets (`--color-sleeve-*`); a missing card is an empty pocket with its number pencilled in. On the set page the missing cards are opt-in (`Show the N missing`, N = imported cards minus owned, off by default, hidden when none is missing); each `<x-revamp.missing-pocket>` links to the card page, shows the card's art greyed behind the plastic, its number pencilled in `--set-pencil` (a cool grey, oklch 42% L light / 76% dark, chroma .01, hue 260; set page only, not a global token) in `--text-lg`, and its price on a stock slip; no hang tag, no move.
+- **Printed strip** — a one-line set progress strip with hollow slots for missing cards (replaces the `.nw-bar` progress bar on set screens). On the set page (`.set-strip`) it follows the same slot rule as the sets list (numbered cards at their number, lettered ones after, cards the catalogue has not imported as grey unnumbered slots; an imported card you do not own is hollow and numbered), with the never-round-to-zero % mark and scale marks (`StripScale`) at the first slot, every 50th and the last.
 - **Mini printed strip** — the sets list draws each set with the same slot rule as the set page's printed strip (`PrintedStrip::slots()`): a card whose number is plain digits within the set total sits at its number; lettered numbers (TG, GG, SV…) and numbers outside the total are grouped after the numbered run; a number the catalogue has not imported is a grey, unnumbered slot. On the list the slots are compressed to a 10 px track: owned runs filled, missing runs hollow, unimported slots left as the grey track.
 - **Ticket stub** — one stub per owned copy on the card page.
 - **Catalogue label** — the facts block (set, number, rarity, artist) set as a library label.

@@ -14,6 +14,7 @@
     'eager' => false,
     'priority' => false, // fetchpriority=high: the first tile only
     'lead' => false,     // double-size pocket: high-resolution art, a string on the tag
+    'inSet' => false,    // on its own set's page: numbered within the set (#116); the set is the page
 ])
 
 @php
@@ -41,7 +42,8 @@
                 : ($d < 0 ? 'down '.Money::format(-$d, $currency).' in 7 days' : 'unchanged in 7 days'),
         ];
     }
-    $parts = [$card->name, trim(($card->set?->name ?? '').' '.$card->local_id)];
+    $number = $inSet ? '#'.$card->local_id : ($card->set?->abbreviation ? $card->set->abbreviation.' ' : '').$card->local_id;
+    $parts = [$card->name, $inSet ? $number : trim(($card->set?->name ?? '').' '.$card->local_id)];
     if ($quantity > 1) {
         $parts[] = $quantity.' copies';
     }
@@ -92,7 +94,7 @@
         <span class="col-meta" aria-hidden="true">
             <span class="col-nm">{{ $card->name }}</span>
             <span class="col-sub">
-                <span class="col-mono">{{ $card->set?->abbreviation ? $card->set->abbreviation.' ' : '' }}{{ $card->local_id }}</span>
+                <span class="col-mono">{{ $number }}</span>
                 @if ($graded)
                     <span class="col-slab">{{ $graded->grade_company }} {{ $graded->grade_value }}</span>
                 @elseif ($abbreviation !== '')

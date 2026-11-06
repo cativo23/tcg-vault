@@ -1,4 +1,4 @@
-/* tcg-vault · public collection (/{username}). Loaded only by livewire/gallery/index.blade.php, after revamp.css.
+/* tcg-vault · public collection (/{username}). Loaded by livewire/gallery/index.blade.php after revamp.css, and by the set page (livewire/gallery/show.blade.php) for its tiles, toolbar, grid, summary, note and empty state.
    Every selector is prefixed .col- so nothing collides with revamp.css (.sheet, .copy, .url, .btn, .bar ...).
    The page bar and footer come from revamp.css, so none of their rules live here. */
 

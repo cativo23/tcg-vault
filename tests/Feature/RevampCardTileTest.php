@@ -170,3 +170,12 @@ test('the tile is one keyed list item with a plain link, never client-side navig
         ->and($html)->not->toContain('wire:navigate')
         ->and($html)->not->toContain('class="nw-');
 });
+
+test('on its own set\'s page a tile is numbered within the set, without the set code', function () {
+    $price = tilePrice(19468);
+    $html = renderTile(['snapshot' => $price], ':in-set="true"');
+
+    expect($html)->toContain('<span class="col-mono">#116</span>')
+        ->and($html)->toContain('aria-label="Mega Darkrai ex, #116, $194.68"')
+        ->and($html)->not->toContain('PBL');
+});

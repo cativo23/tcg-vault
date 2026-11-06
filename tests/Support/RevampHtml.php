@@ -35,6 +35,24 @@ final class RevampHtml
         return trim((string) preg_replace('/\s+/', ' ', strip_tags($m[1] ?? '')));
     }
 
+    /**
+     * The set page's printed strip, slot by slot in order: 'owned' for a filled
+     * slot, 'missing' for a hollow numbered one, 'absent' for a grey unnumbered one.
+     *
+     * @return list<string>
+     */
+    public static function stripSlots(string $html): array
+    {
+        preg_match('#<div class="set-strip-bar"[^>]*>(.*?)</div>#s', $html, $m);
+        preg_match_all('#<span(?: class="set-strip-(miss|off)")?[^>]*></span>#', $m[1] ?? '', $spans);
+
+        return array_map(fn (string $kind) => match ($kind) {
+            'miss' => 'missing',
+            'off' => 'absent',
+            default => 'owned',
+        }, $spans[1]);
+    }
+
     private static function textOf(string $class, string $html): string
     {
         preg_match('#<p class="'.$class.'">(.*?)</p>#s', $html, $m);
