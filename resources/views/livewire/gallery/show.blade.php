@@ -99,7 +99,7 @@
 
                     {{-- Missing cards stay opt-in; the label says how many the switch reveals. --}}
                     @if ($missingCount > 0)
-                        <button type="button" class="set-miss-toggle" wire:click="toggleMissing" aria-pressed="{{ $showMissing ? 'true' : 'false' }}"><span class="set-mt-box" aria-hidden="true"></span>Show the {{ $missingCount }} missing</button>
+                        <button type="button" class="set-miss-toggle" wire:click="toggleMissing" aria-pressed="{{ $showMissing ? 'true' : 'false' }}"><span class="set-mt-box" aria-hidden="true"></span>{{ $showMissing ? 'Hide' : 'Show' }} the {{ $missingCount }} missing</button>
                     @endif
                 </div>
             </div>
