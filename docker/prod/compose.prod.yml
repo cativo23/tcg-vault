@@ -11,7 +11,7 @@ services:
       TELESCOPE_ENABLED: "false"
       # A runaway request must end as a PHP fatal (logged, HTTP 500), not as a
       # cgroup SIGKILL, so keep memory_limit well under the container limit.
-      PHP_MEMORY_LIMIT: "128M"
+      PHP_MEMORY_LIMIT: "192M"
       # Pool is ondemand (image default). Peak concurrency is about 1-3 requests,
       # so 4 workers suffice and a burst queues instead of growing past the cap.
       PHP_FPM_PM_MAX_CHILDREN: "4"
@@ -30,7 +30,7 @@ services:
     networks: [space-server_web, tcgvault-internal]
     deploy:
       resources:
-        limits: { cpus: '2.0', memory: 256M }
+        limits: { cpus: '2.0', memory: 384M }
         reservations: { cpus: '0.1', memory: 96M }
     labels:
       - "traefik.enable=true"

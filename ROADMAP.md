@@ -266,6 +266,15 @@ Everything here is live; `CHANGELOG.md` has the detail.
 Checked against the code and production on 2026-10-22. Ordered by how soon
 each one costs something.
 
+- **The collection page runs out of memory as the collection grows.**
+  `/admin` loads every price snapshot of every card in the collection into
+  memory at once (about 190 per card, 339 cards) and sorts them in PHP, so
+  the cost grows with every card added. At 128 MB it fatals and shows the
+  500 page; the limit is now 192 MB, which only delays it. The fix is to
+  stop hydrating whole snapshot histories for the page: read only the rows
+  the resolver needs (the latest price and the week-ago baseline per card)
+  with a bounded query, so memory stays flat however large the collection
+  gets.
 - **Any set added to the catalog later needs its TCGplayer group checked.**
   `catalog:propose-tcgplayer-groups` matches by abbreviation and finds
   nothing for the SWSH sets, so each needs `--set=<id> --group=<id>` by hand
@@ -367,6 +376,16 @@ interesting it is to build. None of the first five exists in the code yet.
   force to the range edges. (4) Activity reads the first 500 cards, the
   collection page 600. (5) A card page strip with fewer than three tiles
   renders slightly smaller than the mockup.
+- **Filter the collection by card type.** Selling a batch of Trainers and
+  Items means finding them first, and the collection can only be filtered
+  by set and price today. Filters: Pokémon (Basic, Stage 1, Stage 2),
+  Trainer (Supporter, Item, Tool, Stadium) and Energy (Basic, Special),
+  each combinable with the existing ones. The card page already reads
+  `stage` from the stored tcgdex payload, so the first step is to confirm
+  that `category`, `stage`, `trainerType` and `energyType` are present on
+  the stored rows and decide whether to index them as columns or read them
+  from the payload. Older stages (BREAK, V, VMAX, ex) need a ruling on
+  whether they fold into the three stages or get their own entries.
 - **Copy the backups off the host.** The nightly files still sit on the
   same VPS as the data, so losing polaris2 loses them too. The free tier
   (Cloudflare R2, 10GB) needs billing enabled on the Cloudflare account
