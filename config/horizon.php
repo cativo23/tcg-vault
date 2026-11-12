@@ -112,12 +112,11 @@ return [
     */
 
     // The framework's default 'recent_failed'/'failed' of 10080 (7 days)
-    // is what let today's failed-job storm balloon redis's own Horizon
-    // bookkeeping past its container memory limit — 25,831 of 27,708 keys
+    // lets a failed-job storm balloon Redis's own Horizon bookkeeping past
+    // its container memory limit — in one such storm 25,831 of 27,708 keys
     // were this telemetry, unrelated to the actual queue backlog. 48h is
     // enough to investigate a real incident; the durable record is the
-    // `failed_jobs` DB table (and, once shipped, Sentry — see
-    // ROADMAP.md's v0.5.0), not this redis-side copy.
+    // `failed_jobs` DB table and Bugsink, not this Redis-side copy.
     //
     // Recent and completed records (about 3 kB each, one per job run) are
     // kept for minutes: the nightly price sync runs tens of thousands of
