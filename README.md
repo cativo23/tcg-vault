@@ -8,48 +8,48 @@
 <p align="center">
   <a href="https://tcgvault.cativo.dev"><img alt="Live" src="https://img.shields.io/badge/live-tcgvault.cativo.dev-37d17f"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <img alt="PHP" src="https://img.shields.io/badge/PHP-8.3%2B-777bb4">
+  <img alt="PHP" src="https://img.shields.io/badge/PHP-8.4-777bb4">
   <img alt="Laravel" src="https://img.shields.io/badge/Laravel-13-ff2d20">
-  <img alt="Livewire" src="https://img.shields.io/badge/Livewire-3-4e56a6">
+  <img alt="Livewire" src="https://img.shields.io/badge/Livewire-4-4e56a6">
 </p>
 
 A personal Pokémon TCG collection tracker. A collector adds the cards they
-own (manually, or by importing a TCGplayer export), and gets a public
-gallery with daily-synced market pricing (tcgplayer USD + cardmarket EUR),
-set completion tracking, and a price/activity history — all sourced from
+own (one by one, a whole set at a time, or from a TCGplayer export) and gets
+a public page with every card, its daily market price, set completion and
+the collection's value over time. The catalog comes from
 [tcgdex](https://tcgdex.dev/).
 
-**Live at [tcgvault.cativo.dev](https://tcgvault.cativo.dev).**
+**Live at [tcgvault.cativo.dev](https://tcgvault.cativo.dev)** — see the
+[demo collection](https://tcgvault.cativo.dev/demo).
 
 <p align="center">
-  <img src=".github/screenshots/landing.png" alt="tcg-vault landing page" width="100%">
+  <img src=".github/screenshots/landing.jpg" alt="tcg-vault landing page" width="100%">
 </p>
 
 <p align="center">
-  <img src=".github/screenshots/gallery.png" alt="A public collection gallery, with daily-synced pricing and a rarity accent per card" width="100%">
+  <img src=".github/screenshots/gallery.jpg" alt="The demo collection: cards on a binder sheet with their price and 7-day move" width="100%">
 </p>
 
 ## Features
 
-- **Daily-synced market pricing** — tcgplayer (USD) and cardmarket (EUR)
-  per card, per variant, via [tcgdex](https://tcgdex.dev/); never a hand-typed value.
-- **Public gallery per collector** — value totals, set completion, price
-  history and an activity feed, all shareable at `/{username}`.
-- **A rarity accent, not just a code** — beyond the collector shorthand
-  (`SIR`, `HR`...), a restrained standard/silver/chase visual tier so the
-  grid is scannable even if you don't read Pokémon rarity abbreviations.
-- **TCGplayer bulk import** — paste an export from the TCGplayer app,
-  preview the match, confirm in chunks.
-- **Your own photo, not just official art** — upload a real photo of your
-  physical card; official art is always the fallback, never the other way
-  round.
+- **Daily market prices, per print.** TCGplayer (USD) from tcgdex and
+  [tcgcsv](https://tcgcsv.com/), with Cardmarket (EUR) as the fallback; each
+  price says where it came from, and a card's chart covers up to a year.
+- **A public page per collector** at `/{username}`: the collection, set
+  completion, each card's page and an activity history with the value chart.
+- **Special prints** — reverse patterns, cosmos holos, stamped promos and
+  Prize Pack prints are their own variants, priced on their own.
+- **Fast entry** — tap through a set's grid with undo, add a whole set, or
+  import a TCGplayer export; export everything back as CSV.
+- **Your own photo** of a copy is shown first; official art is the fallback.
+- **A rarity accent** (standard, silver, chase) so the grid reads at a glance
+  without knowing the abbreviations.
 
 ## Stack
 
-Laravel 13 + Livewire 3 (plain class components) on Sail, Postgres, Redis,
-Horizon for the queue. No frontend framework — Tailwind + a small
-hand-rolled CSS design system (`design.md`, `resources/css/app.css`) plus
-a few lines of vanilla JS (`resources/js/app.js`).
+Laravel 13 + Livewire 4 on PHP 8.4, Postgres 17, Redis and Horizon for the
+queue. No frontend framework: Tailwind 4, a hand-rolled CSS design system
+([`design.md`](design.md)) and small vanilla JS modules.
 
 ## Getting started
 
@@ -78,27 +78,27 @@ the daily schedule runs):
 ```
 
 A re-run skips cards whose sync is still pending; see
-[Manual price refresh](deploy/README.md#manual-price-refresh).
-
-A single card failing (not found, transient network error, or a malformed
-API response) is reported and skipped — it never aborts the rest of an
-import or refresh.
+[Manual price refresh](deploy/README.md#manual-price-refresh). A single card
+failing (not found, a network error, a malformed response) is reported and
+skipped — it never aborts the rest of an import or refresh.
 
 ## Tests
 
 ```bash
 ./vendor/bin/sail artisan test
+./vendor/bin/sail npm run test:js
 ```
 
 TDD-first (red → green → refactor) on every change in this repo.
 
 ## Where to look next
 
-- **`design.md`** — the visual design system (tokens, rules, what's locked
-  vs. amendable). Read before touching any color or layout primitive.
-- **`deploy/README.md`** — how the production deploy actually works
-  (manual build/push/deploy to `polaris2`, no CI yet) and the architecture
-  decisions behind it.
+- [`ROADMAP.md`](ROADMAP.md) — what is left to do, quickest valuable work first.
+- [`CHANGELOG.md`](CHANGELOG.md) — what shipped in each release.
+- [`design.md`](design.md) — the design system: tokens, rules, what is locked.
+- [`deploy/README.md`](deploy/README.md) — how releases deploy to production
+  through GitHub Actions, and every manual production procedure.
+- [`AGENTS.md`](AGENTS.md) — notes for coding agents.
 
 ## License
 

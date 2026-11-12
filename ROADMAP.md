@@ -1,397 +1,193 @@
 # Roadmap
 
-The path from v0.5.0 to a v1.0 beta, and what came after. Scope and ordering follow one rule:
-**irreversible risk first, then correctness, then the things a stranger
-sees.** A bug can be fixed after the fact; a lost database cannot.
+What is left to do, ordered by **value for the effort**: quick, valuable work
+first, big projects after, polish last. At equal effort, anything that risks
+losing or corrupting data goes before anything a visitor merely sees.
 
-Versions follow [SemVer](https://semver.org/); every shipped item lands in
-`CHANGELOG.md` under its release.
+Each item carries its effort and value:
+
+- **Effort** — `S` under half a day with tests · `M` one to two days · `L` more.
+- **Value** — `high` breaks something or misprices cards · `med` a real
+  improvement · `low` polish.
+
+A finished item leaves this file in the same PR that closes it; what shipped
+is in [`CHANGELOG.md`](CHANGELOG.md). Status lines below were checked against
+the code on 2026-11-11; anything marked *(prod)* needs a look at production
+before acting.
 
 ## Where things stand
 
-Checked against the code and production on 2026-10-22 (v1.6.11 live).
+- **v1.7.0 is live** (2026-11-05): every public page is on the binder design.
+  `master` also carries #171, #172 and #174, unreleased; the two compose
+  changes in them (PHP `memory_limit` 192M, `app` limit 384M, 4 FPM workers)
+  were applied by hand on the host, and #172's page fixes wait for a release.
+- **Invite-only private beta** since v1.0.0 (2026-09-29). Registration is
+  closed; invites go out in waves.
+- **Prices:** TCGplayer (USD) from tcgdex and from tcgcsv, which fills any
+  linked print tcgdex leaves unpriced or stale; Cardmarket (EUR) from tcgdex
+  as the fallback. tcgdex's TCGplayer prices were frozen from 2026-10-14 to
+  2026-11-03 and are fresh again; tcgcsv now fills only the gaps.
+- **Backups** run nightly and are kept 14 days, on the same host (accepted
+  risk, see Known limits).
+- **Upstream:** tcgdex v2.49.0 (2026-11-07) is the first release carrying the
+  four merged data fixes (MEP and SVP group ids, 30th Celebration, 30th
+  Classic Collection).
 
-- Three accounts: the owner, one other collector and the example gallery.
-  Registration is closed (invite-only) and two invites exist in total, so
-  the waves have barely started. The catalog holds 4,503 cards in 29 sets, the database is
-  235 MB, and `failed_jobs` holds 2 rows (a Telescope job from 2026-10-06,
-  and one `WarmValueSeriesJob` that hit its attempt limit on the morning of
-  2026-10-22, cause not investigated).
-- Nightly database dumps and photo archives are written and kept for 14
-  days (latest: 2026-10-22). They are still on the same host.
-- Prices: TCGplayer prices arrive from tcgdex and from tcgcsv. tcgdex froze
-  its TCGplayer prices on 2026-10-14, so since v1.6.8 tcgcsv's price takes
-  over for every linked print the same night (3,661 tcgcsv rows against
-  3,750 tcgdex rows on the day checked; the night after, 7,213 tcgcsv rows
-  and none from tcgdex). Every set has a TCGplayer group; the SWSH sets
-  needed a hand mapping because tcgdex's abbreviations (`SIT`, `EVS`, `DAA`)
-  do not match tcgcsv's (`SWSH12`, `SWSH07`, `SWSH03`).
-- Static analysis runs at Larastan level 8; CI runs Pint, Larastan, Pest and
-  `npm run build` plus a dependency audit and a production image build.
+## Now — quick and valuable
 
-## Beta staging
+1. **Bound the collection page's price read.** `S–M · high` — `/admin`
+   (`CollectionItems`) eager-loads 30 days of every snapshot of every owned
+   card, `raw` included, and sorts them in PHP; at 128M it showed the 500
+   page, and 192M only delays it. Load only the deciding rows, as the public
+   pages already do (`DecidingPriceRows::loadOnto`); `SetGrid` has the same
+   pattern. Note its cache key is per card-id set, so a search keystroke
+   writes a new Redis entry while Redis has no `maxmemory`.
+2. **Fix the flaky `CollectionValueSeriesTest`.** `S · med` — "warming sums the
+   totals over card chunks…" fails now and then on CI, and a red `test`
+   check blocks a release. Suspect: `PublicCollection::cardsQuery()` has no
+   `ORDER BY`, so the first-seen currency can differ between the warm run and
+   the page. Try `orderBy('cards.id')`; unconfirmed.
+3. **Release v1.7.1.** `S · med` — CHANGELOG entries for #171, #172, #174 and
+   items 1–2, so the page fixes reach production and the repo's compose file
+   stops differing from the release it ships with.
+4. **One production check pass.** `S · med` *(prod)* — read-only, after a
+   nightly run:
+   - tcgdex v2.49.0: the links and prices of `mep`, `30th` and `30th-c` did
+     not change, and the images and prices tcgcsv fills agree with tcgdex's.
+   - `sv10.5w` (mapped by hand 2026-11-05) has its links and prices.
+   - The held-back list (`gaps_implausible` in the last run summary): the
+     2026-10-22 list predates v1.6.16, which removed the Cardmarket check
+     that held most of them.
+   - The `WarmValueSeriesJob` row in `failed_jobs` (attempt limit, cause never
+     looked at; possibly a worker killed by a deploy).
+5. **A command to link a print to a TCGplayer product.** `S · med-high` —
+   today every admin link is a tinker one-liner. A `catalog:link-tcgplayer`
+   command (card, variant, product, subtype, group; validated against the
+   group's products) makes the open link gaps routine:
+   - ten MEP cards with no link and no image (`mep-055`–`mep-063`,
+     `mep-Museum`);
+   - about 26 deck-exclusive prints tcgdex gives no TCGplayer id;
+   - every stamped print a collector adds (Prize Pack, Pokéween), which
+     never links itself.
+6. **Say where each price came from in the CSV export.** `S · med` — add a
+   `price_source` column (`CollectionCsvExporter::HEADER` has none). Then
+   delete the hand-entered rows tcgcsv now covers (10 rows over 7 prints) —
+   a production write, with a yes.
+7. **Small hygiene.** `S · low` — `composer.json` says `"php": "^8.3"` while
+   the lock needs 8.4 (Pest 5, PHPUnit 13) and every runtime is 8.4; delete
+   the orphaned Breeze pages (verify-email, confirm-password, `dashboard`,
+   `x-application-logo`) and the unused styles and tokens listed at the end
+   of `design.md`.
 
-The beta opens in two steps rather than one, so that the first real users
-arrive while the failure signal is still small enough to read.
+## Next — medium projects
 
-| Stage | Registration | What it unlocks |
-| --- | --- | --- |
-| **v1.0 — wide private beta** (open since 2026-09-29) | Invite-only, via the existing switch in `Staff/PlatformSettings` | Invites go out in waves; error tracking accumulates real traffic; bugs get reported by people who can be asked a follow-up question |
-| **Public beta** (not scheduled; it kept the label "v1.1" only until v1.1.0 shipped special prints) | Open to anyone | Mandatory email verification, signup abuse controls, uploaded-photo moderation, a terms-of-service with real teeth |
+8. **Write the identity matcher's links.** `M · med-high` *(prod)* — the
+   matcher has run in log mode since v1.6.12 and agreed with every existing
+   link (6,916 agree, 0 different, 9 new on 2026-10-26). Turning it on needs
+   code, not just config: `TCGCSV_IDENTITY_LINKS` knows only `log` and off,
+   and `CardTcgplayerLink::TRUST` has no identity level. Roll out with a yes
+   after two matching builds. Plan: `.superpowers/sdd/2026-10-23-price-link-redesign/FINAL.md`.
+9. **Filter the collection by card type.** `M · med` — selling a batch of
+   Trainers means finding them first. Pokémon (Basic, Stage 1, Stage 2),
+   Trainer (Supporter, Item, Tool, Stadium), Energy (Basic, Special),
+   combinable with the set and price filters. The stored tcgdex payload
+   (`raw`) has `category` on every card, `trainerType` on modern trainers
+   (null on some old ones) and `energyType` on energy, so a first version
+   can read the payload without a migration. Needs a ruling on BREAK, V,
+   VMAX and ex. *(prod: count cards with no `category`.)*
+10. **Integrity constraints on prices and links.** `M · med` *(prod)* —
+    CHECKs on source/origin/currency/method, `UNIQUE(product_id, sub_type)`
+    on links, `group_id NOT NULL`; no variant-key CHECK (it would break the
+    nightly sync). Needs the `30th-c-007` cleanup first, with a yes. Same
+    plan file as item 8.
 
-Of the public-beta list, none is built yet. Email verification is not
-mandatory: invite registration marks the address verified, and `User`
-deliberately does not implement `MustVerifyEmail`. Staff can suspend or delete
-a member, but the code has no review of an uploaded photo.
+## Later — big projects
 
-Invite-only does not exempt v1.0 from a privacy policy, a feedback
-channel, or a live example gallery — the first two because real people's
-emails, passwords and photos are already being stored, the third because
-an invited collector who lands on an empty vault has seen nothing worth
-coming back to.
+11. **USD only: stop using Cardmarket.** `L · high` *(prod)* — Cardmarket's
+    figure is EUR and often another print's. Stages: stop reading and writing
+    it together (S2+S4, which also stops storing Cardmarket `raw`), resolver
+    staleness by `source_updated_at`, the remaining read paths (S2b, S2c),
+    the rename (S3), at least 7 days, then purge (S5a) and a CHECK (S5b),
+    both irreversible, and the copy that still promises a euro price
+    (`home.blade.php`, `terms.blade.php`, README) last. On 2026-10-28 about
+    344 prints and 17 cards would have been left with no market price, so
+    re-count first. Plan and red team: `.superpowers/sdd/2026-10-28-remove-cardmarket/`.
+12. **Wishlist / want-list.** `L · med-high` — the feature collectors are most
+    likely to ask for; nothing exists yet.
+13. **Redesign the owner and staff pages.** `L · med` — `/admin`, `/staff`,
+    auth, legal and error pages still use `app.css` and the old primitives
+    (inventory: `.superpowers/sdd/2026-11-05-admin-revamp/INVENTORY.md`).
+    Deleting the retired `--chrome-*` tokens needs a plan for the legal,
+    auth and error pages too, not only `/admin`.
+14. **Multiple collections, deck lists, trade and sale tracking, usage
+    analytics.** `L each · low-med` — in that order of likely demand; none
+    exists.
+15. **Public beta prerequisites.** `L · low until registration opens` —
+    mandatory email verification (`User` does not implement
+    `MustVerifyEmail`, and invite signup marks the address verified), signup
+    abuse controls, uploaded-photo moderation, terms with real teeth.
+16. **Larastan level 9.** `L · low` — most of what level 9 adds is
+    `TcgdexCardCatalogProvider` reading tcgdex's JSON as `mixed`. The fix is
+    a parsing layer that validates each field before building
+    `CardDetailData` / `PriceEntryData`, with its own tests; then raise
+    `phpstan.neon`.
+17. **Copy the backups off the host.** `M · med-high`, last by choice — losing
+    polaris2 loses the backups too. Cloudflare R2's free tier needs billing
+    enabled on the Cloudflare account first.
 
-## v0.6.0 — Durability
+## Polish — when the code is touched anyway
 
-Nothing here is user-visible. All of it is what makes the rest of the
-roadmap safe to attempt.
+- **Revamp leftovers.** (1) Unify `PriceChart` and `ValueChart` (give
+  `PriceChart::plot()` a `maxStep`, delete `ValueChart`) and fold the
+  copy-link and chart-slider code duplicated in `card.js`, `collection.js` and
+  `activity.js` into shared modules, aligning `stepReading` / `readingStep`
+  argument order. (2) After a mouse sweep over a chart, the next arrow key
+  steps from the day under the pointer while the slider still announces the
+  last keyboard value. (3) A manual price's step line stops at its first and
+  last entry instead of reaching the range edges. (4) Activity reads the
+  first 500 cards, the collection page 600. (5) A card page strip with fewer
+  than three tiles renders slightly smaller than the mockup.
+- **Redis.** Give the cache its own instance (a cache wants eviction, a queue
+  must never evict), then set `maxmemory`; consider one shared Redis for the
+  host's projects instead of a second one-off here.
+- **Postgres and PHP-FPM tuning.** `pg_stat_statements`, `track_io_timing`
+  and `work_mem` in one restart; an FPM `max_requests`; `srcset` images.
+- **Slimmer CI/CD.** A feature plus its release runs the full suite four
+  times (PR and push to `master`, twice). Wanted later, after a short design
+  talk. Constraints: branch protection requires `audit`, `test` and `image`,
+  so a workflow-level `paths-ignore` would leave them pending and block the
+  merge, and `auto-release.yml` waits up to 15 min for `test` on the merge
+  commit. Safe levers: job-level conditions (skip `image` when nothing it
+  builds changed), no PR run for `release/*`, a warm npm cache for new
+  branches, and a retry on the `image` job's `composer install` (it failed
+  once on GitHub 504s).
 
-- ~~**Redis persistence**~~ — done. `--appendonly yes --appendfsync
-  everysec` caps the loss window at ~1s instead of losing everything
-  since the last restart, the same failure that dropped a 2,952-job
-  `catalog:refresh-prices` dispatch mid-flight with no error. Memory
-  limit raised 256M → 384M for `BGREWRITEAOF`'s fork/copy-on-write
-  headroom on top of Horizon's own ~160M telemetry floor; confirmed
-  against live polaris2 usage (3.7GB free host RAM) before sizing it.
-- ~~**Persist `storage/logs`**~~ — done, and re-done on 2026-10-22. The
-  `app-logs` named volume is mounted on `app`/`horizon`/`scheduler` and
-  `LOG_CHANNEL=daily` keeps 14 days on it. Production's `.env` had drifted to
-  `LOG_CHANNEL=stderr`, which left `storage/logs` empty and the logs in each
-  container's Docker log (10 MB × 5 files, gone at every deploy): the Redis
-  name-resolution error seen at 18:08 UTC that day was unreadable after the
-  evening's deploy. The `.env` is back on `daily` (checked: the file is
-  written and `horizon` writes to the same one). The `tcgcsv` channel still
-  writes to stderr by design, so its nightly summary stays in the container
-  log and, for 30 days, in the cache (`tcgcsv:shadow:<date>`).
-- ~~**Error tracking**~~ — done. Self-hosted Bugsink (Sentry-protocol-
-  compatible) on `space-server`, at `errors.cativo.dev` (VPN-gated
-  dashboard). `app`/`horizon`/`scheduler` all reach it internally as
-  `http://bugsink:8000` over `space-server_web` — an exception never
-  needs to leave the host network to get reported, and never needs to
-  clear `internal-only`'s VPN gate either.
-- ~~**Queue failure alerting**~~ — shipped in v0.5.0, ahead of this
-  milestone, prompted by the incident that motivated this roadmap in
-  the first place: a Discord alert (`App\Support\DiscordAlerter`, no
-  Slack workspace to route to) now fires if `catalog:refresh-prices`
-  itself errors, or if `catalog:check-pricing-freshness` finds
-  fewer than half of the cards synced in the last 26h. `DISCORD_ALERT_WEBHOOK_URL` is
-  already set on polaris2 (reusing the same webhook `alertmanager-discord`
-  posts host-level infra alerts to) and confirmed delivering.
-- ~~**Clear the `failed_jobs` backlog**~~ — done. 3,098 rows, all
-  `MaxAttemptsExceededException` (mostly `SyncCardPricingJob`, a handful
-  of Telescope's `ProcessPendingUpdates`), none of the job's own
-  "permanent" business exceptions — those are caught and logged inside
-  `handle()` and never reach `failed_jobs`. Root cause turned out to be
-  broader than the 2026-09-24/25 Redis incident: Horizon's
-  `balance: auto` was starving the `default` queue to a single worker
-  every night regardless of Redis health, so a remainder of the nightly
-  `catalog:refresh-prices` fan-out routinely missed `retryUntil()` —
-  fixed separately (`balance: 'off'`, `retryUntil()` 1h → 3h, horizon
-  container memory 192M → 256M). Backed up in full before pruning;
-  `catalog:refresh-prices` re-dispatches every card daily regardless, so
-  no manual re-sync was needed.
-- ~~**Schedule `telescope:prune`**~~ — done. Daily, `--hours=48`, matching
-  this project's other short-lived operational data retention. Telescope has
-  been switched off in production since v1.6.6, so the prune has nothing to
-  do there; it stays for local development.
-- ~~**Verify the production environment**~~ — done. `APP_DEBUG=false` and
-  `SESSION_SECURE_COOKIE=true` confirmed live on polaris2's actual `.env`
-  (not just the template), and added as an explicit line in
-  `deploy/README.md`'s acceptance checklist.
-- ~~**Nightly local backups**~~ — done. A `backup` container dumps the
-  database and archives the photo volume every night, keeps two weeks,
-  and the scheduler alerts Discord if either goes stale. Restore steps
-  are in `deploy/README.md`.
-- **Copy the backups off the host** — moved to the end of Beyond v1.
+## Waiting on something
 
-## v0.7.0 — Correctness and accessibility
+- **The Activity chart in the nightly window** — measure it between 00:00 and
+  01:00 UTC with real traffic, and watch the "activity chart built on a page
+  view" warnings. Build the precomputed per-print table only if one trigger
+  fires: more than 3 page-view builds a week for two weeks, one over 10 s for
+  a non-owner, ten or more public users, a warm run over 200 s, or a second
+  use for per-print daily values.
+- **Automatic links for stamped prints** (Prize Pack group 22880 by name and
+  number) — postponed by the owner; item 5 covers it by hand.
+- **An admin link editor in the UI** — only if item 5's command proves too
+  slow.
+- **A purchase price per copy** — parked by the owner.
+- **Why tcgdex sends no TCGplayer price for about half its cards each night**
+  — unanswered upstream.
 
-- ~~**Duplicate collection items on concurrent add.**~~ — done. A
-  Postgres unique index on the identity tuple (`collection_id, card_id,
-  COALESCE(variant,''), condition, COALESCE(grade_company,''),
-  COALESCE(grade_value,'')` — plain unique would've let two
-  both-ungraded rows past, since Postgres treats each NULL as distinct)
-  closes what `addItemForCard()`'s check-then-act alone couldn't.
-  Deviated from the roadmap's original `lockForUpdate()` plan: this
-  codebase already has a closer precedent for exactly this
-  shape — `InviteManager::createInvite()` catches the unique-violation
-  and merges into the winning row, rather than locking a parent row
-  that doesn't exist yet to lock at check time.
-- ~~**Double-submittable save button.**~~ — done. Added
-  `wire:loading.attr="disabled" wire:target="save"`, matching every
-  other write action in that file.
-- ~~**Modal dialog semantics.**~~ — done. `role="dialog"`,
-  `aria-modal="true"`, `aria-labelledby` pointing at the card name, focus
-  moves to the first focusable element on open, and Tab/Shift+Tab are
-  trapped inside — the same Alpine focus-trap shape as
-  `components/modal.blade.php`, duplicated rather than shared since this
-  modal is a Livewire property re-rendering the whole subtree, not that
-  component's `show`/`x-show` toggle. Trap listens on `window`, not the
-  panel, so it recovers even if a Livewire re-render inside the modal
-  (e.g. the remove-row confirm swap) drops focus to `<body>`. Closing
-  also dispatches an event to return focus to the row's own Edit button
-  — the modal's whole subtree, including whatever held focus, is removed
-  from the DOM on close, not just hidden.
-- ~~**`aria-live` on Livewire search results.**~~ — done. Added
-  `role="status"` (implies `aria-live="polite" aria-atomic="true"`) to
-  the result-count text in the public gallery, the per-set gallery, the
-  collection index, and the card-add search — the fourth spot (card
-  search) had no persistent count at all before this, only a conditional
-  "first N matches" note, so it also gained an always-rendered (if
-  empty) result-count line for a live region to actually announce.
-- ~~**Accessible names on icon-only buttons**~~ — done. Added
-  `aria-label` to the "✕" remove and cancel-remove buttons in
-  `variant-row.blade.php` (kept the existing `title` too, for the mouse
-  tooltip) — a `title` alone is not a reliable accessible name, and is
-  nothing at all on touch. The modal's own "✕" close button already had
-  one.
-- ~~**The 404 page sends anonymous visitors to "Back to login."**~~ —
-  done. Guests now get "Go home" → `route('home')`; an authenticated
-  user's stale link is a different case (their own bookmark going bad),
-  so they get "Back to your collection" instead — neither is asked to
-  log in for a plain 404. 403/419/500 keep "Back to login" unchanged.
-- ~~**N+1 in the TCGplayer import preview.**~~ — done. Both the card
-  lookup and the variant count now run once for the whole import
-  (`whereIn` + `keyBy`/`groupBy`) instead of once per parsed line — a
-  large re-import's preview no longer scales with the export size.
+## Known limits (accepted)
 
-## v0.8.0 — Ready for someone else's eyes
-
-- ~~**A live example gallery**, linked from the landing page.~~ — done.
-  A dedicated `demo` account with fourteen chase cards at real daily
-  prices, seeded by `php artisan demo:seed-gallery`; the landing link only
-  shows once it is public and has cards.
-- ~~**Privacy policy and terms.**~~ — done. `/privacy` and `/terms`,
-  checked claim-by-claim against the code in two compliance reviews;
-  signup states that creating an account accepts them, and a neutral
-  age screen enforces the 13+ minimum.
-- ~~**A feedback / bug-report channel.**~~ — done. "Feedback" in the
-  logged-in top bar opens a form that emails the owner, with the member's
-  username and page attached.
-- ~~**Surface the public/private toggle.**~~ — done. A labelled
-  Private/Public control on My Collection with a line saying who can see
-  it; the FAQ now points there.
-- ~~**Say what account deletion does.**~~ — done. The copy names what is
-  removed and links to the export. Along the way, deletion was fixed for
-  invite-registered users and now also removes photo files.
-- ~~**CSV export.**~~ — done. A full CSV (not the TCGplayer text format,
-  which would drop condition, variant, grade and notes).
-
-Follow-ups raised by the legal review:
-
-- ~~Keep typed passwords out of Telescope and Bugsink request payloads.~~
-  — done. A password-reset token can still appear in a recorded URL or
-  Referer header (single-use, expires in 60 minutes).
-- ~~Self-host the two fonts so visitors' IPs no longer reach Google.~~ — done.
-- ~~Strip location (EXIF) data from uploaded photos.~~ — done, with exiftool,
-  losslessly, keeping only the rotation and colour profile.
-- ~~Purge expired invites and old password-reset tokens on a schedule.~~
-  — done: unaccepted invites 30 days after they expire or are revoked;
-  reset tokens daily.
-- ~~A real admin tool to suspend or delete an account~~ — done: staff
-  Members page (`manage-members`); suspending blocks sign-in and hides the
-  member's page, deleting reuses the self-delete cleanup.
-
-## v0.9.0 — Pipeline hardening
-
-- ~~**Static analysis** (larastan) in `ci.yml`~~ — done, at level 8 with no
-  baseline. Pint and Pest both pass on code with type and null-handling
-  mistakes; neither catches them.
-- ~~**Dependency audit** — `composer audit` and `npm audit`.~~ — done;
-  fails on high and critical advisories.
-- ~~**Build the production image on pull requests.**~~ — done. `deploy.yml` only
-  builds on `release: published`, so a broken Dockerfile surfaces during
-  a deploy rather than during review. It has done exactly that before.
-
-## Unscheduled — Larastan level 9
-
-Level 9 rejects every value typed `mixed`. Most of what it reports beyond
-level 8 is in `TcgdexCardCatalogProvider`, which reads tcgdex's JSON
-without checking its shape. The fix is not annotations: it
-is a parsing layer that validates each tcgdex response field by field
-before building `CardDetailData` / `PriceEntryData`, with its own tests.
-Raise `phpstan.neon` to level 9 once that layer exists.
-
-## v1.0.0 — Wide private beta
-
-Invites go out in waves. No new features; the release is the go/no-go on
-everything above.
-
-~~Go/no-go~~ — go. What it took:
-
-- Nightly local backups, with a production dump restored into a scratch
-  database to prove it (v0.11.0).
-- **Accepted risk:** the backups are still on the same host (the off-host
-  copy is open, last under Beyond v1). They cover a bad migration, a
-  wrong delete or a corrupt volume, but losing polaris2 loses them too.
-  The beta opened
-  anyway because the database is small and the member count is too.
-- Invites emailed from the app, and every email in one branded layout
-  (v0.12.0), checked end to end in production.
-- The invite-email limits hold under parallel requests, and one inbox can
-  hold only one account or pending invite whatever its case (v0.13.0).
-- Production clean on the day: no failed jobs, no open errors beyond
-  tcgdex's own occasional 503s, which retries absorb.
-
-## Shipped since v1.0.0
-
-Everything here is live; `CHANGELOG.md` has the detail.
-
-| Release | What it brought |
-| --- | --- |
-| v1.0.1 – v1.0.2 | Gallery speed (30-day price window, one load per page); Tailwind 4; the nightly sync retries tcgdex 5xx/429 quietly instead of reporting each attempt |
-| v1.1.0 – v1.1.2 | Special prints as their own variants (pattern reverses, cosmos holos, stamped promos) and hand-entered market prices behind `manage-catalog-prices`; a frozen price source no longer outranks a current one |
-| v1.2.0 – v1.2.1 | Price `origin` (`tcgdex`/`tcgcsv`/`hand`) and provenance labels; the tcgcsv shadow sync with its set→group mapping |
-| v1.3.0 – v1.3.1 | tcgcsv fills TCGplayer price gaps (held back and alerted when implausible); a wider cardmarket bound for admin-confirmed links |
-| v1.4.0 | Confetti foil in the "other print" picker |
-| v1.5.0 | My sets, the set grid with one-tap add and undo, "Add a set", per-user import and add limits |
-| v1.6.0 – v1.6.1 | Variant pills and chart ranges (1M–1Y) on the card page and Activity |
-| v1.6.2 – v1.6.7 | Gallery and Activity performance: price index, cached deciding rows, price-data version, Postgres memory, Telescope off, background chart warming |
-| v1.6.8 | tcgcsv replaces a missing or frozen tcgdex TCGplayer price in the same sync |
-| v1.6.9 | Deck-exclusive non-holo prints priced from TCGplayer's Deck Exclusives group |
-| v1.6.10 | 30th Celebration, MEP promos and a few other stamped prints linked to their product and priced |
-| v1.6.11 | Card images from the TCGplayer product for cards tcgdex has none for (`catalog:backfill-images`) |
-
-## Open follow-ups
-
-Checked against the code and production on 2026-10-22. Ordered by how soon
-each one costs something.
-
-- **The collection page runs out of memory as the collection grows.**
-  `/admin` loads every price snapshot of every card in the collection into
-  memory at once (about 190 per card, 339 cards) and sorts them in PHP, so
-  the cost grows with every card added. At 128 MB it fatals and shows the
-  500 page; the limit is now 192 MB, which only delays it. The fix is to
-  stop hydrating whole snapshot histories for the page: read only the rows
-  the resolver needs (the latest price and the week-ago baseline per card)
-  with a bounded query, so memory stays flat however large the collection
-  gets.
-- **Any set added to the catalog later needs its TCGplayer group checked.**
-  `catalog:propose-tcgplayer-groups` matches by abbreviation and finds
-  nothing for the SWSH sets, so each needs `--set=<id> --group=<id>` by hand
-  after confirming the group's product numbers match the set. Until then
-  its prints are never linked and show tcgdex's price, which goes stale.
-  (`swsh3`, the last one, was mapped to group 2675 on 2026-10-23: 201 cards
-  linked, 353 prices written.)
-- **Four prices are held back as implausible** (`swsh3-54` normal,
-  `swsh3-66` holofoil, `swsh3-83` reverse holofoil, `swsh12-156` holofoil),
-  on top of the long-standing `dp2-1`, `dp2-17` and `sv03.5-136`. None is
-  in a collection. Each holds for 3 days and is then written unless
-  cardmarket disagrees; confirm the link of each, or accept it as an admin
-  link, if it matters.
-- **The tcgdex release that carries the merged data fixes.** The four
-  upstream pull requests (MEP and SVP group ids, 30th Celebration, 30th
-  Classic Collection) are all merged, but tcgdex's latest release is still
-  v2.48.0 (2026-09-16) and its API still sends no TCGplayer price for
-  `mep`, `30th` or `30th-c`. When it ships, check that those sets' links and
-  prices do not change and that the images and prices tcgcsv fills agree
-  with tcgdex's. The unresolved question of why tcgdex nulls about half its
-  TCGplayer entries each night (and froze the rest on 2026-10-14) is still
-  open upstream.
-- **Retire the hand-entered prices.** The tcgcsv plan's last phase: 10 manual
-  rows over 7 prints remain, and all 7 now have a tcgcsv link, so tcgcsv's
-  price already shows. Delete or archive them, and add the `price_source`
-  CSV column, which does not exist yet.
-- **Ten MEP cards have no TCGplayer link and no image**: mep-055 to
-  mep-063 and mep-Museum. They show the placeholder and a Cardmarket price.
-  Link them by hand (admin) or wait for tcgdex.
-- **Deck-exclusive prints with no TCGplayer id from tcgdex** (about 26
-  entries) are not covered by the Deck Exclusives group; each needs an admin
-  link.
-- **A copy saved without a variant on a deck-exclusive card shows the
-  non-holo price** (accepted for v1.6.9; other collectors' me05-062, 070
-  and 084).
-- **A flaky test:** `CollectionValueSeriesTest`, "warming sums the totals
-  over card chunks…", failed on CI on 2026-10-22 and passed on rerun. The
-  suspect is a query with no `ORDER BY`; unverified.
-- **Measure the Activity chart inside the nightly price window** (00:00–01:00
-  UTC) with real traffic, and watch the "activity chart built on a page
-  view" warnings against the triggers for a precomputed table (more than 3
-  builds a week for two weeks, one over 10 s for a non-owner, ten or more
-  public users, a warm run over 200 s).
-- **Deferred performance and operations work** (none of it urgent): Redis
-  has no `maxmemory` (its 384 MB container limit is the only bound);
-  raise Redis from 0.5 to 1.0 CPU and the scheduler from 0.25 to 0.5 in
-  `compose.prod.yml` (both are throttled during the nightly sync);
-  `pg_stat_statements`, `track_io_timing` and `work_mem` in one Postgres
-  restart; a `memory_limit` of 128M and FPM `max_requests` on the app service;
-  `srcset` images.
-- **Slim the CI/CD runs.** A feature plus its release runs the full suite
-  three to four times. Wanted later, not mid-task.
-- **Larastan level 9** (see "Unscheduled" above) is unchanged.
-
-## Beyond v1
-
-Ordered by how often a collector is likely to ask for it, not by how
-interesting it is to build. None of the first five exists in the code yet.
-
-- Wishlist / want-list
-- Multiple collections per user (binders, a for-sale pile)
-- Deck lists
-- Trade and sale tracking
-- Usage analytics
-- **tcgcsv.com as the primary TCGplayer price source** — mostly done. tcgdex
-  prices TCGplayer only for sets with a set-level group id and its API
-  changes only on a release, so whole sets went weeks without USD prices
-  (30th Celebration, MEP promos) and Prize Pack prints never got one. tcgdex
-  itself reads TCGplayer prices from tcgcsv, so going direct continues the
-  same series a day fresher; tcgdex stays the catalog and Cardmarket source.
-  Rows keep `source='tcgplayer'` with an `origin` column, so history, deltas
-  and charts are untouched. Prints link to TCGplayer products once (from
-  tcgdex ids, card number in the set's group, or an admin entry), and one
-  daily job fetches about one request per group, following tcgcsv's usage
-  rules (custom User-Agent, check `last-updated.txt`, one pull a day).
-  Phases: ~~schema and provenance labels~~ (v1.2.0), ~~shadow sync~~ (v1.2.0),
-  ~~fill gaps~~ (v1.3.0), ~~replace a missing or frozen tcgdex price in the
-  same sync~~ (v1.6.8, behind `TCGCSV_MODE`, which is `fill` in production and
-  `shadow` rolls it back). Left: retire the hand-entered prices and add the
-  `price_source` CSV column (see Open follow-ups). No backfill: tcgcsv's
-  history archive is withdrawn. Risks: a one-person service, and TCGplayer's
-  own data terms are unverified.
-- **Give the cache its own Redis instance.** It still shares the Horizon
-  queue's Redis (checked: one instance, `noeviction`, no `maxmemory`, AOF
-  on, 9 MB used). A cache wants an eviction policy and a queue must never
-  evict, so they cannot share a process once memory is bounded. Evaluate
-  alongside centralizing Redis across other projects on the same host
-  rather than standing up a second one-off instance here.
-- **Revamp page polish (v1.7.0 leftovers).** None of these breaks anything;
-  do them when the code is touched anyway. (1) Unify `PriceChart` and
-  `ValueChart` (give `PriceChart::plot()` a `maxStep`, delete `ValueChart`)
-  and fold the copy-link and chart-slider code duplicated in `card.js`,
-  `collection.js` and `activity.js` into shared modules; this also aligns
-  `stepReading` and `readingStep` argument order. (2) After a mouse sweep
-  over a chart, the next arrow key steps from the day under the pointer
-  while the slider still announces the last keyboard value (card and
-  Activity; screen readers only). (3) A manual price's step line stops at
-  its first and last entry in the range instead of carrying the price in
-  force to the range edges. (4) Activity reads the first 500 cards, the
-  collection page 600. (5) A card page strip with fewer than three tiles
-  renders slightly smaller than the mockup.
-- **Filter the collection by card type.** Selling a batch of Trainers and
-  Items means finding them first, and the collection can only be filtered
-  by set and price today. Filters: Pokémon (Basic, Stage 1, Stage 2),
-  Trainer (Supporter, Item, Tool, Stadium) and Energy (Basic, Special),
-  each combinable with the existing ones. The card page already reads
-  `stage` from the stored tcgdex payload, so the first step is to confirm
-  that `category`, `stage`, `trainerType` and `energyType` are present on
-  the stored rows and decide whether to index them as columns or read them
-  from the payload. Older stages (BREAK, V, VMAX, ex) need a ruling on
-  whether they fold into the three stages or get their own entries.
-- **Copy the backups off the host.** The nightly files still sit on the
-  same VPS as the data, so losing polaris2 loses them too. The free tier
-  (Cloudflare R2, 10GB) needs billing enabled on the Cloudflare account
-  first. Outside the collector ordering above and last by choice: the
-  same-host risk is accepted for the beta (see v1.0.0), and it waits on
-  that billing step.
+- Backups live on the same host as the data. They cover a bad migration, a
+  wrong delete or a corrupt volume, not losing polaris2 (item 17).
+- A copy saved without a variant on a deck-exclusive card shows the non-holo
+  price: the resolver prefers TCGplayer `normal` to `holofoil`.
+- A new set whose abbreviation differs between tcgdex and tcgcsv (all SWSH
+  sets so far) needs its TCGplayer group mapped by hand
+  (`catalog:propose-tcgplayer-groups --set=… --group=…`); the nightly
+  coverage report names any set left unmapped.
 
 ## Not on the roadmap
 

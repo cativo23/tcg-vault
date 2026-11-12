@@ -7,18 +7,19 @@ still apply for the one-time server setup and for anything the workflows
 deliberately don't automate (migrations, first-time secrets).
 
 ## Cutting a release
+Each PR adds its own `[Unreleased]` entry to `CHANGELOG.md`, so a release
+only moves that heading:
 ```bash
-git checkout -b release/v0.2.0 master
-# update CHANGELOG.md: move the "## [Unreleased]" entries under "## [0.2.0]"
-git commit -am "chore(release): v0.2.0"
-git push -u origin release/v0.2.0
-gh pr create --base master --title "release: v0.2.0" --body "See CHANGELOG.md"
+git checkout -b release/vX.Y.Z master
+# CHANGELOG.md: rename "## [Unreleased]" to "## [X.Y.Z] - YYYY-MM-DD" and add
+# a new empty "## [Unreleased]" above it; list any manual step under "Deploy notes"
+git commit -am "chore(release): vX.Y.Z"
+git push -u origin release/vX.Y.Z
+gh pr create --base master --title "release: vX.Y.Z" --body "See CHANGELOG.md"
 # merging that PR:
-#   1. auto-release.yml creates GitHub Release v0.2.0 from the CHANGELOG section
-#   2. deploy.yml builds+pushes cativo23/tcg-vault:v0.2.0 / :latest, then
-#      SSHes into polaris2 and runs `docker compose pull && up -d`
-# migrations are NEVER run automatically — see the manual step below if
-# this release includes any.
+#   1. auto-release.yml creates GitHub Release vX.Y.Z from the CHANGELOG section
+#   2. deploy.yml builds and pushes cativo23/tcg-vault:vX.Y.Z (and :latest),
+#      then deploys that tag on polaris2 — see "Deploying a release" below
 ```
 
 ## Required GitHub Actions secrets/variables (repo settings → Secrets and variables)
@@ -71,88 +72,67 @@ it. Not the same webhook as `alertmanager-discord`'s — that one is
 host-level infra alerting (CPU, disk), this one is app-level (a stalled
 daily job).
 
-## Build & push (local, repo root)
+## Deploying a release
+`deploy.yml` does this on its own when a Release is published: it copies
+`compose.prod.yml` and the backup script to the server, pulls the release's
+image, refuses to go on if that image has a pending migration, runs `up -d`
+with `IMAGE_TAG` set to the release tag, restarts `backup` (its script is a
+mounted file), waits for `app` to report healthy, and prints the running tags.
+
+Every manual command below runs on the server, from `~/deploy/tcg-vault`:
+```bash
+ssh polaris2
+cd ~/deploy/tcg-vault
+```
+
+**Always name the tag when recreating by hand.** `compose.prod.yml` uses
+`${IMAGE_TAG:-latest}` and only the deploy job sets it, so an `up -d` or
+`--force-recreate` without `IMAGE_TAG=vX.Y.Z` starts the local `:latest`,
+which can be an older release, and the container silently runs old code.
+Afterwards, `docker compose -f compose.prod.yml ps --format '{{.Service}} {{.Image}}'`
+must show the same tag on `app`, `horizon` and `scheduler`.
+
+### A release with a migration
+Migrations are never run automatically, so the deploy job fails on purpose
+(`pending migration(s) on the new image — refusing to start it`). The old
+release keeps serving. Run the migration from the **new** image — `exec`
+would reach the old container, which doesn't have the migration file — plus
+any step the release's "Deploy notes" list, then re-run the failed job:
+```bash
+IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml run --rm --no-deps app php artisan migrate --force
+# e.g. v1.7.0's note: fill the new 7-day-move table before the page uses it
+IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml run --rm --no-deps app php artisan prices:refresh-week-baselines
+```
+Then, from the repo on your machine: `gh run rerun <deploy run id> --failed`.
+
+### Commands a release may call for
+Each is idempotent. Run them with `exec` once the release is up, only when
+its CHANGELOG "Deploy notes" or the situation calls for it:
+
+| Command | When |
+| --- | --- |
+| `php artisan db:seed` | After a release that adds a role or permission. It is the only thing that grants new permissions to existing accounts; skipping it can lock the admin out of `/admin` or Horizon. Safe on any deploy. |
+| `php artisan prices:refresh-week-baselines` | After the migration that creates `card_price_week_baselines`, a restore, or any write outside the app to past price rows. It also runs nightly at 04:15 UTC. |
+| `php artisan prices:bump-version` | After any write to a `card_price_snapshots` row dated before today made outside the app's own price writes (psql, tinker, a data migration, a hand-added price): the gallery and the Activity chart would keep serving the cached prices. Exits non-zero if the cache didn't take it; run it again once the cache is back. |
+| `php artisan gallery:warm-value-series --sync` | After a release that changes the Activity chart's cache key (the key prefix starts cold); the hourly schedule would get there on its own. |
+| `php artisan demo:seed-gallery` | When the demo collection's card list (`config/tcgvault.php`, `demo`) changes. Calls tcgdex for any card not yet in the catalog. |
+| `php artisan catalog:backfill-images` | After new cards of sets tcgdex has no images for (MEP, MEE, 30th Classic Collection) are synced and linked: takes the image of the card's TCGplayer product. `--dry-run` lists first. |
+| `php artisan photos:strip-metadata` | Only for photos stored before uploads were stripped on the way in (already run in production). |
+
+```bash
+docker compose -f compose.prod.yml exec app php artisan <command>
+```
+
+Telescope is off in production through the compose environment; turning it
+on means editing `compose.prod.yml`, not `.env`.
+
+### Building the image by hand
+Only if GitHub Actions is unavailable (repo root, then deploy with
+`IMAGE_TAG` set as above):
 ```bash
 docker login                                # Docker Hub, user cativo23
-docker build -f docker/prod/Dockerfile -t cativo23/tcg-vault:latest .
-docker push cativo23/tcg-vault:latest
-```
-
-## Deploy / redeploy (server)
-
-**One-time step for the release that adds `--appendonly yes` to Redis's
-command — run it before merging that release branch into `master`, not
-after.** `deploy.yml` triggers fully automatically on `release: published`
-with no manual approval gate by default, so once the release branch is
-merged there is no reliable point left to intervene before `up -d`
-recreates the container. Enabling AOF via the command line does *not*
-fall back to loading the existing `dump.rdb` when no `appendonlydir` is
-present yet — Redis just starts empty, silently dropping whatever the
-running instance still holds. Run this against the *currently running*
-`redis` container first:
-```bash
-ssh polaris2
-cd ~/deploy/tcg-vault
-REDIS_PASSWORD=$(grep '^REDIS_PASSWORD=' .env | cut -d= -f2-)
-docker compose -f compose.prod.yml exec redis redis-cli -a "$REDIS_PASSWORD" CONFIG SET appendonly yes
-# Confirm the rewrite finished before merging — mid-rewrite, Redis refuses
-# to shut down cleanly (Docker then force-kills it on its stop grace period):
-docker compose -f compose.prod.yml exec redis redis-cli -a "$REDIS_PASSWORD" INFO persistence | grep -E "aof_rewrite_in_progress|aof_last_bgrewrite_status"
-# expect aof_rewrite_in_progress:0 and aof_last_bgrewrite_status:ok
-```
-
-```bash
-ssh polaris2
-cd ~/deploy/tcg-vault
-docker compose -f compose.prod.yml pull
-# If this release adds a migration, run the two `IMAGE_TAG=vX.Y.Z ... run --rm --no-deps app`
-# lines below (migrate --force, prices:refresh-week-baselines) BEFORE `up -d`.
-docker compose -f compose.prod.yml up -d
-# Migrations are a deliberate manual step (never auto-run):
-docker compose -f compose.prod.yml exec app php artisan migrate --force
-# Fills the 7-day-move read model (card_price_week_baselines). Idempotent;
-# needed once after the migration that creates it (until then the gallery
-# shows no 7-day moves, without error), and it also runs nightly at 04:15 UTC.
-# When the deploy job refused the new image over a pending migration, `exec`
-# would reach the OLD container (no such command): run both steps from the
-# new image instead, before redeploying, with the release tag spelled out
-# (compose falls back to a possibly stale local :latest without it):
-#   IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml run --rm --no-deps app php artisan migrate --force
-#   IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml run --rm --no-deps app php artisan prices:refresh-week-baselines
-# If you ran those two `run` lines, skip the `exec ... migrate --force` line above
-# and the `exec ... prices:refresh-week-baselines` line below. Otherwise run both `exec` lines.
-docker compose -f compose.prod.yml exec app php artisan prices:refresh-week-baselines
-# Every deploy, not just the first: idempotent (firstOrCreate/
-# assignRole no-op if already done), and now also the only thing that
-# backfills roles/permissions onto accounts created before a given
-# deploy — skipping this after the roles/permissions/invites migration
-# lands locks the existing admin out of Horizon and their own /admin,
-# since those now gate on a permission nothing else grants. (Telescope is
-# switched off in production by the compose environment; enabling it again
-# means editing compose.prod.yml, not .env.)
-docker compose -f compose.prod.yml exec app php artisan db:seed
-# Creates or tops up the public example collection the landing page links
-# to (config tcgvault.demo). Idempotent; only needed when that card list
-# changes. Calls tcgdex for any card not already in the Catalog.
-docker compose -f compose.prod.yml exec app php artisan demo:seed-gallery
-# Removes location and other metadata from photos stored before uploads
-# were stripped on the way in. Idempotent; a non-zero exit lists any file
-# exiftool couldn't process.
-docker compose -f compose.prod.yml exec app php artisan photos:strip-metadata
-# Fills in images tcgdex's API leaves out (e.g. MEP and SVP promos) for
-# cards synced before the fallback existed, and, for cards its asset server
-# has none for either (30th Classic Collection, MEE, part of MEP), the image
-# of the card's TCGplayer product — only when its plain-print links agree on
-# one product. Idempotent; checks each file exists before saving it. Add
-# --dry-run to list the pictures without writing them. Run it again after
-# new cards of those sets are synced and linked.
-docker compose -f compose.prod.yml exec app php artisan catalog:backfill-images
-# After a release that changes how the Activity chart is cached (the key
-# prefix, e.g. collection-value-series:v4, starts cold): fill it now
-# instead of leaving the first visitor of each public collection to pay
-# the rebuild. Runs in this process, one user at a time; the hourly
-# schedule does the same in the background.
-docker compose -f compose.prod.yml exec app php artisan gallery:warm-value-series --sync
+docker build -f docker/prod/Dockerfile -t cativo23/tcg-vault:vX.Y.Z .
+docker push cativo23/tcg-vault:vX.Y.Z
 ```
 
 ## Manual price refresh
@@ -166,7 +146,7 @@ still queued, running or retrying (until that job finishes or fails, at most
 about 3 h; the lock ceiling is 4 h) and reports them as
 `Dispatched X, skipped Y (already queued).`
 
-## tcgcsv sync (map groups once, after the release that adds it)
+## tcgcsv sync
 
 `SyncTcgcsvPricesJob` runs daily at 20:30 UTC on Horizon's `supervisor-tcgcsv`
 (connection `redis-long`, queue `tcgcsv`). It links prints to TCGplayer
@@ -292,11 +272,8 @@ today, or whose price was last updated over 3 days ago, among
 stats shift when tcgdex freezes or drops prints.
 
 To roll back, set `TCGCSV_MODE=shadow` in `.env` and recreate the containers
-that read it (a plain `restart` keeps the old environment). Name the release
-that is running as `IMAGE_TAG`: without it compose falls back to the local
-`:latest`, which can be an older release, and the recreated containers run old
-code. Check afterwards that `docker compose -f compose.prod.yml ps` shows the
-same tag on `app`, `horizon` and `scheduler`:
+that read it (a plain `restart` keeps the old environment), naming the running
+release's tag (see "Always name the tag" above):
 
 ```bash
 IMAGE_TAG=vX.Y.Z docker compose -f compose.prod.yml up -d --force-recreate horizon scheduler
@@ -343,6 +320,32 @@ channel (stderr of the `horizon` container) and kept in the cache under
 ```bash
 docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(cache('tcgcsv:shadow:'.now()->toDateString()));"
 ```
+
+### Linking a print to a TCGplayer product by hand
+Discovery and the identity matcher link base prints only. A stamped print
+(Prize Pack `+player-rewards-program`, `pokeween-2026`, staff and other
+promo stamps), a deck-exclusive print with no TCGplayer id from tcgdex, or a
+card whose set has no product ids is never linked on its own; until it is, a
+copy is valued at the plain print's price or at Cardmarket's EUR.
+
+1. Find the product in its TCGplayer group: the group's `products` file lists
+   name and number, and its `prices` file the subtypes (`subTypeName`). Prize
+   Pack prints are in group 22880, Pokéween 2026 in 2374. tcgcsv refuses
+   Python's default User-Agent, so use curl with your own:
+   ```bash
+   curl -s -A "tcg-vault-admin" https://tcgcsv.com/tcgplayer/3/22880/products > products.json
+   curl -s -A "tcg-vault-admin" https://tcgcsv.com/tcgplayer/3/22880/prices > prices.json
+   ```
+2. Store an `admin` link for the print's variant key (the copy's `variant`),
+   with that product, subtype and group:
+   ```bash
+   # Night Stretcher's Prize Pack print (sv06.5-061), as it was linked:
+   docker compose -f compose.prod.yml exec app php artisan tinker --execute="dump(App\Modules\Catalog\Models\CardTcgplayerLink::updateOrCreate(['card_id' => App\Modules\Catalog\Models\Card::where('tcgdex_id', 'sv06.5-061')->value('id'), 'variant' => 'normal+player-rewards-program'], ['product_id' => 619147, 'sub_type' => 'Normal', 'group_id' => 22880, 'method' => 'admin', 'verified_at' => now()])->wasRecentlyCreated);"
+   ```
+3. The price arrives with the next 20:30 UTC run. tcgcsv asks for no re-pull
+   of the same file within 24 h, so wait for it rather than forcing a fresh
+   build; writing a price row by hand instead needs `prices:bump-version`
+   afterwards (see "Commands a release may call for").
 
 ### Identity matcher (log only)
 
@@ -507,18 +510,22 @@ To roll back:
 ```bash
 ssh polaris2
 cd ~/deploy/tcg-vault
-export IMAGE_TAG=v0.1.0   # the known-good release tag
+export IMAGE_TAG=vX.Y.Z   # the known-good release tag
 docker compose -f compose.prod.yml pull
 docker compose -f compose.prod.yml up -d
 ```
 `deploy.yml` itself is release-triggered only (no `workflow_dispatch`), so
 there's no "re-run the last deploy" button — roll back by hand as above, or
-publish the known-good tag as a new GitHub Release.
+publish the known-good tag as a new GitHub Release. A rollback does not undo
+a migration: if the older code cannot run on the newer schema, restore the
+pre-release dump instead (see Backups).
 
 ## Architecture notes
-- **Single image, three services.** `app` (web, port 8080 behind Traefik), `horizon`
-  (queue supervisor — chosen over a bare `queue:work` since Redis is already required),
-  `scheduler` (`schedule:work` — runs the daily `catalog:refresh-prices` job, Phase 4).
+- **One app image, three roles, plus three stock services.** From the app image: `app`
+  (web, port 8080 behind Traefik), `horizon` (queue supervisor — chosen over a bare
+  `queue:work` since Redis is already required) and `scheduler` (`schedule:work`, every
+  job in `routes/console.php`). Stock images: `postgres` and `backup` (both
+  `postgres:17-alpine`) and `redis`.
 - **`horizon` needs its own internet egress, on `tcgvault-egress`, not just
   `tcgvault-internal`.** Queued jobs (`SyncCardPricingJob`, `ImportSetJob`, the daily
   price refresh) call tcgdex's API from inside that container — `tcgvault-internal` is
@@ -537,9 +544,10 @@ publish the known-good tag as a new GitHub Release.
   and the hourly `gallery:warm-value-series` covers the rest, the new day's key at
   00:00 UTC included. Page views that had to build the series log a warning
   (`activity chart built on a page view`).
-- **Own Postgres/Redis**, not shared with tacoview's — decided deliberately (coupling
-  cost > RAM saved, especially once tacoview resumes).
+- **Own Postgres and Redis**, not shared with the host's other projects — decided
+  deliberately (the coupling costs more than the RAM it would save). The cache and
+  the queue still share this Redis (see `ROADMAP.md`, Polish).
 - **Caches** are warmed at container boot via serversideup `AUTORUN_*` flags;
-  **migrations are never auto-run** (manual step above).
+  **migrations are never auto-run** (see "A release with a migration").
 - **DNS** (`tcgvault.cativo.dev`) already resolves via Cloudflare (DNS-only, unproxied);
   Traefik obtains the Let's Encrypt cert on first request. No manual DNS step.

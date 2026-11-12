@@ -1,39 +1,43 @@
 # Design — tcg-vault
 
-Locked design system. Future Hallmark runs read this file first; pages defer
-to it. Amend intentionally — the file is the rule.
+Locked design system. Design runs read this file first; pages defer to it.
+Amend it explicitly — never work around it.
 
-The tokens and rules below came out of a long comparative brainstorm (Carlos
-approved the "Colección" screen after rejecting several other directions
-along the way: nightwire/cyberpunk, luxury-vault gold, auction-ledger
-no-image layouts, per-type accent colors as a blanket rule, and ~6 font
-pairings) — that working history has since been cleaned up; this file is
-the current, standalone source of truth.
+It covers the public pages (landing, collection, sets, set, activity, card),
+the "collector's binder" system. The owner, auth, legal and error pages still
+run an older system, described only in **Legacy** at the end; do not extend it.
+
+Rejected directions, not to be reopened: nightwire/cyberpunk, luxury-vault
+gold, auction-ledger layouts without images, per-card-type accent colours as a
+blanket rule, a hue per rarity string, a price-driven accent, a busy
+rainbow-holo ring, top-loaders and penny sleeves, other font pairings.
 
 ## System
 - Genre · modern-minimal (restrained, data-forward, one accent)
-- Macrostructure · Collector's binder: one summary line + set divider tabs + cards on a stock sheet with hang tags (2026-11 revamp; replaces the masthead + stat band + toolbar dashboard)
+- Macrostructure · collector's binder: one summary line, set divider tabs, and cards on a stock sheet with hang tags
 - Theme · custom (vibe: "bone-paper trading floor, one signal green, cards do the talking")
 - Axes · paper-band: light (bone, not stark white) / display-style: grotesk-variable-width (Anybody display + Hanken Grotesk body + Martian Mono numerals) / accent-hue: warm-neutral base + one cool-green signal
 
-## Tokens (canonical · mirrors `:root` in `resources/css/app.css`)
+## Tokens
+The current tokens live in `resources/css/revamp.css` (`:root`, plus the dark
+blocks). Per-page sheets (`collection.css`, `card.css`, …) add only
+page-scoped values.
+
 ```css
 :root {
-  --color-paper:      oklch(94% 0.012 85);   /* --bone   #f2efe6 */
-  --color-paper-2:    oklch(91% 0.014 85);   /* --bone-2 #e9e5d8 */
-  --color-paper-3:    oklch(87% 0.014 85);   /* --bone-3 #ded9c9 */
-  --color-ink:        oklch(18% 0.006 85);   /* --ink    #141412 */
-  --color-ink-2:      oklch(24% 0.006 85);   /* --ink-2  #23231f */
-  --color-muted:      oklch(46% 0.010 85);   /* --muted  #6d6c62 */
-  --color-stock:      oklch(98.2% 0.007 90); /* raised card-stock: sheets, tags, slips (replaces --paper) */
+  --color-paper:      oklch(94% 0.012 85);   /* page: bone */
+  --color-paper-2:    oklch(91% 0.014 85);
+  --color-paper-3:    oklch(87% 0.014 85);
+  --color-ink:        oklch(18% 0.006 85);
+  --color-ink-2:      oklch(24% 0.006 85);
+  --color-muted:      oklch(46% 0.010 85);
+  --color-stock:      oklch(98.2% 0.007 90); /* raised card-stock: sheets, tags, slips */
   --color-flat:       oklch(52% 0.008 85);   /* neutral price text (down/flat); dark enough for 11px type to pass AA on stock */
   --color-rule:       oklch(18% 0.006 85 / .14); /* hairline dividers only */
   --color-rule-2:     oklch(18% 0.006 85 / .32); /* stronger rule: tabs, tag outlines */
-  --color-accent:     oklch(70% 0.16 155);   /* --signal #37d17f — the ONE accent, means "price up" (fills, dots) */
-  --color-accent-deep: oklch(50% 0.13 155);  /* the same green as TEXT on bone/stock */
-  --color-focus:      var(--color-accent-deep);
-  --color-danger:     oklch(52% 0.18 25);    /* --danger #c23b2e — error/destructive UI only, see rule below */
-  --color-warning:    oklch(72% 0.15 70);    /* --warning #df911a — "needs attention" UI only, see rule below */
+  --color-accent:     oklch(70% 0.16 155);   /* the ONE accent: price up (fills, dots) */
+  --color-accent-deep: oklch(50% 0.13 155);  /* the same green as TEXT on paper/stock */
+  --color-focus:      oklch(50% 0.13 155);   /* = accent-deep */
 
   --font-display: "Anybody", "Archivo", system-ui, sans-serif;  /* wdth axis, set via font-variation-settings */
   --font-body:    "Hanken Grotesk", system-ui, sans-serif;
@@ -43,14 +47,15 @@ the current, standalone source of truth.
   --ease-settle: cubic-bezier(.22,1,.36,1);
   --dur-fast: 120ms;  --dur-base: 240ms;  --dur-slow: 520ms;
 
-  /* Plastic, paper and shadow materials (colour values live in tokens.css of the revamp mockups and in app.css) */
+  /* Plastic, paper and shadow materials */
   --color-sleeve-fill / -edge / -seam, --color-sheen, --color-highlight(-hi), --color-glint(-hi),
   --color-binder-page, --color-grain, --color-string
-  --shadow-rest, --shadow-lift, --shadow-sheet   /* ink-tinted contact + ambient, never coloured */
+  --shadow-contact, --shadow-ambient, --shadow-rest, --shadow-lift, --shadow-sheet   /* ink-tinted, never coloured */
 
   --radius-pill: 999px;  --radius-tag: 3px;  --radius-tab: 8px 8px 0 0;
-  --space-2xs..2xl: 4 / 8 / 12 / 16 / 24 / 40 / 64px;  --gutter: clamp(16px, 4vw, 56px);
-  --text-2xs..md: .6875 / .75 / .875 / 1.0625rem;  --text-display / -h2 / -close: fluid, capped by viewport height
+  --space-2xs..2xl: 4 / 8 / 12 / 16 / 24 / 40 / 64px;  --gutter: clamp(16px, 4vw, 56px);  --bar-h: 56px;
+  --text-2xs..lg: .6875 / .75 / .875 / 1.0625rem / min(1.333rem, .9rem + 1.2svh);
+  --text-display / -h2 / -close: fluid, capped by viewport height
 }
 
 /* Dark theme: surfaces near-black, never pure black. Cards stay the colour. */
@@ -61,266 +66,166 @@ the current, standalone source of truth.
   --color-muted: oklch(65% .012 85);  --color-flat: oklch(74% .012 85);
   --color-rule: oklch(95% .012 85 / .14);  --color-rule-2: oklch(95% .012 85 / .30);
   --color-accent-deep: oklch(82% .17 155);  --color-focus: oklch(82% .17 155);
-  --color-binder-page: oklch(23.5% .006 85);
+  --color-binder-page: oklch(23.5% .006 85);   /* plus the plastic and shadow tokens, retuned for dark */
 }
 ```
 
-Page-scoped exception: `--col-who` (`clamp(4.2rem, 1.6rem + 11vw, 11rem)`, defined on `.col-page`) sizes the collector's name on the collection page and the set's name on the set page; the Sets list heading uses the same value as `--sts-who`.
+Page-scoped values (not global tokens): `--col-who` (`clamp(4.2rem, 1.6rem + 11vw, 11rem)`,
+on `.col-page`) sizes the collector's name on the collection page and the set's
+name on the set page; the Sets heading (`--sts-who`) and Activity heading
+(`--act-who`) use the same value. `--col-foil-1..4`, `--col-silver(-hi)`,
+`--col-chip-ink` (collection) and `--crd-foil-1..4` (card page) tune the rarity
+chips; `--set-pencil` (set page) is the pencilled number on a missing pocket, a
+cool grey (oklch 42% L light / 76% dark, chroma .01, hue 260).
 
-**Non-negotiable rules, not just taste — a few have since been amended
-with narrow, explicit exceptions (marked below), never loosened wholesale:**
-- **Two families plus mono.** Anybody is display only (headings, brand, card names), driven by its *width* axis (`font-variation-settings: 'wdth' N`) for condensed-vs-normal voices; Hanken Grotesk is body and UI text. `font-stretch` does **not** map this axis in Chrome — always set width via `font-variation-settings`, never `font-stretch`. (Archivo, the original single family, is retained only as the display fallback.)
-- **Martian Mono is reserved for numerals only** (prices, card IDs, dates) — never body text, never headings. That's the entire "outlier" budget.
-- **One accent color, period — for price semantics.** `--color-accent` (green) means exactly one thing: "price trending up." Falling/flat prices render in `--color-flat` (neutral), never a second color standing in for price direction. A blanket, unbounded "holo/rainbow treatments and per-card-type accent colors" rule was tried and rejected during the original brainstorm — but see the Rarity accent below for the one narrow, bounded exception since carved out of it (tied to fixed printed rarity, 3 tiers only, never price-driven).
-- **`--color-danger` (red) is a separate, narrow exception**, added after Carlos flagged the original rule as ambiguous when Phase 2 needed a delete/error color: reserved *exclusively* for destructive actions (delete buttons) and validation errors — never for price direction, never decorative, never introduced as a second "accent" competing with green. If a screen needs to show "this failed" or "this is irreversible," `--color-danger` is correct; if it needs to show "this number went down," that's still `--color-flat`, not red.
-- **`--color-warning` (amber) is a third, equally narrow exception**, added after the UX audit found "Review" (a flag meaning *something needs the admin's attention, not that anything failed or will be destroyed*) rendered in the same red as the Delete action right next to it — reusing `--color-danger` for that would blur a real semantic difference: "needs attention" is not "destructive" or "this failed." Reserved *exclusively* for "this needs a look" states (the needs-variant-review flag today). Never for destructive actions (stays `--color-danger`), never for price direction (stays `--color-flat`/`--color-accent`), never applied per-category (e.g. per-rarity) — that would reintroduce the rejected "per-type accent colors" pattern this file already rules out elsewhere.
-- **Card images are the content.** Chrome (masthead, stat band, ticker) carries the visual weight so the grid itself can stay plain — bone background, one hairline border, no ornament competing with the artwork.
-- **Card hover/interaction cascade split**: the outer wrapper (`.slot`) owns the entrance animation (`opacity`/`transform`, `animation-fill-mode: forwards`); the inner `.card` owns the hover/focus transform (`translateY(-9px) scale(1.05)`, `z-index: 30`). Never put both on the same element — a finished `forwards` animation permanently pins `transform` at higher cascade priority than `:hover`, silently killing the hover effect. This bit us once; don't reintroduce it.
-- Every card must render **name/set/price with no image** (`.imgwrap.empty` diagonal-hatch + icon + "Sin imagen") — image is optional, data is not.
-- Motion is `transform`/`opacity` only. Full `prefers-reduced-motion: reduce` fallback kills all animation/transition durations.
-- **Down is neutral everywhere.** A falling price, a down move in Activity, a down arrow: all `--color-flat`, no arrow colour. Green means "price up" and nothing else.
+## Rules
+**Non-negotiable, not just taste. A few carry narrow, explicit exceptions
+(named below); never loosen one wholesale.**
 
-## CTA / interactive voice
-- Primary action (card itself) · full card is the clickable target · `border-radius: 7px` · `box-shadow: 0 0 0 1px ink` resting state
-- Toolbar controls · pill segmented control (`--radius-pill`), active state = filled ink pill on bone
-- Focus state · `outline: 2px solid var(--color-accent)` offset 3px — same visual treatment as hover, so keyboard users get full parity
+### Type
+- **Two families plus mono.** Anybody is display only (headings, brand, card names), driven by its *width* axis (`font-variation-settings: 'wdth' N`) for condensed-vs-normal voices; Hanken Grotesk is body and UI text. `font-stretch` does **not** map this axis in Chrome — always set width via `font-variation-settings`, never `font-stretch`. Archivo is only the display fallback.
+- **Martian Mono is reserved for numerals** (prices, card IDs, dates) — never body text, never headings. That is the whole "outlier" budget. The one exception is a few words on the card page (`.crd-tsub`, `.crd-vo` "owned", `.crd-ch-read`).
 
-## Motion stance
-- App pages: `--dur-fast`/`--dur-base` for hover, focus and state changes; staggered card entrance (~55ms stagger, delay included within `--dur-slow`) with `--ease-out`; a one-off page entrance (the collection and Activity heads, the Activity day sheets and chart cover, the card page's plate, name, price tags and chart cover) may use `--ease-settle`, never longer than `--dur-slow`.
+### Colour meaning
+- **One accent, for price semantics.** `--color-accent` (green) means "price trending up" — fills and dots; `--color-accent-deep` is the same green as text (the pure accent fails contrast as type). A price that falls or stays flat renders in `--color-flat`, no arrow colour, never a second colour: direction is the only thing colour says about a price. No comparable price → show nothing.
+- **Bounded non-price uses of green**, and no others: the focus ring (`--color-focus`), the underline on the current nav item (`--color-accent`), the 2px hairline under the wordmark in emails, and the dot in the brand mark.
+- **Red (danger) is a separate, narrow exception:** destructive actions (delete) and validation errors only — never price direction, never decorative, never a second accent. "This number went down" is `--color-flat`, not red. The binder sheet defines no red token yet; owner pages use legacy `--danger`.
+- **Amber (warning) is a third, equally narrow exception:** "this needs a look" states only (the needs-variant-review flag). It is not "destructive" or "failed" — sharing red with Delete blurred that difference. Never for destructive actions, price direction, or per-category colour (that reintroduces the rejected per-type accents). Owner pages use legacy `--warning`.
+
+### Rarity
+- A tile shows the collector shorthand (`Rarity::abbreviate`: SIR, MHR, RR…); the full name lives on the detail page. tcgdex's literal `"None"` renders nothing, not "N".
+- **`Rarity::tier()` gives a 3-tier accent, the one carve-out from "one accent".** It follows fixed *printed* rarity, never fluctuating market price, with a neutral → silver → foil escalation; it is not a hue per rarity string.
+  - `standard` (Common/Uncommon/Rare) — no accent.
+  - `silver` (Rare Holo, Double Rare, Ultra Rare, Promo, Trainer Gallery Rare Holo) — chip fill `linear-gradient(oklch(96% .006 250) → oklch(88% .008 250))` (dark: 88% → 78%).
+  - `chase` (Illustration/Special Illustration/Hyper/Mega Hyper/Ace Spec/Shiny(Ultra) Rare, Secret Rare) — chip fill of pastel foil (`--col-foil-1..4`, oklch 84–90% L, chroma .07, hues 200/300/20/95), plus a thin foil `.ring` around the card. A restrained foil, not a rainbow ring.
+  - Both chip fills carry ink text `oklch(22% .006 85)`. An unrecognised rarity string tiers as `standard`, never guessed into `chase`: this is a visual accent, not a value judgment.
+- A graded copy replaces the rarity chip with the slab label (`PSA 10`) and gets no tier accent; on the card page its stub reads `PSA 10 graded`.
+
+### Images
+- **Card images are the content.** The page is a quiet sheet — paper, a hairline, no ornament competing with the artwork.
+- **Image is optional, data is not.** Every card renders name, number or set, and price with no image: a hatched face carrying the card name and "No image" (`.col-pic--empty`; `.crd-noimg` on the card page).
+- The collector's own photo is always the primary image when it exists; official art is the alternate view.
+- A failed load retries `low.webp` once as `high.webp`, then shows the "No image" face; a decorative logo disappears; an Activity thumbnail is dropped and its paper frame stays. Never a broken frame. Collection and set tiles (`collection.js`) and the card page (`card.js`) share this through `dom-helpers.js`; Activity uses its own `degradeThumb`.
+
+### Money
+Totals render a currency → amount map (`<x-value-totals>`): first entry big, the rest as `<small>` after "·". **Never sum EUR and USD into one number.**
+
+### Motion
+- Anything that moves uses `transform`/`opacity`. Controls and the theme switch may also transition `background-color`, `color`, `border-color` and `box-shadow`; never layout properties.
+- App pages: `--dur-fast`/`--dur-base` for hover, focus and state changes; a staggered card entrance (30–55 ms per item, capped) with `--ease-out` or `--ease-settle`. A one-off page entrance (the collection, Sets and Activity heads, Activity day sheets and chart cover, the card page's plate, name, price tags and chart cover) may use `--ease-settle`, never longer than `--dur-slow`.
 - Landing only: the scroll choreography may run entrances of 460–900 ms with `--ease-settle`. It is the one place longer timings are allowed.
-- 1 hover primitive (lift + scale) + 1 one-shot sleeve-reflection sweep (plays once per hover)
-- Reduced-motion fallback · all durations → 0, hover collapses to a 2px ink ring only
+- **One hover primitive**: the tile lifts (`translateY(-7px)` on hover-capable pointers; keyboard focus lifts it too) while a deeper shadow fades in, plus one one-shot sleeve-reflection sweep per hover.
+- **Entrance/hover cascade split.** The outer wrapper (`.col-slot`) owns the entrance animation (`opacity`/`transform`, `animation-fill-mode: forwards`); the inner `.col-card` owns the hover/focus transform. Never both on one element: a finished `forwards` animation pins `transform` above `:hover` in the cascade and silently kills the hover.
+- **Reduced motion** (`prefers-reduced-motion: reduce`, or the `still` class): all durations → 0, entrances and sweeps off, hover collapses to a 2px ink ring.
+- **No count-up.** A headline value renders as its real value; no page animates a number.
 
-## Exports
-The tokens live in `resources/css/app.css` (`:root`), which is the source of
-truth — this file documents intent and rules, `app.css` is the exact values.
-Two tokens exist there beyond the set above, both derived from it rather
-than new colors: `--paper` (#fbf9f3, the raised tile/panel surface) and
-`--signal-deep` (#12a45f, a darker green for accent *text* on bone — pure
-`--signal` fails contrast as type; it stays the color for fills, dots,
-rings and the ticker on ink).
+## Interaction
+- Primary action: the whole card is the link target.
+- Controls are pills (`--radius-pill`); a segmented control's active state is a filled ink pill with stock text (`aria-pressed`).
+- Tabs are divider tabs (`--radius-tab`, `--color-rule-2` edge): real `tablist`/`tab` controls with manual activation (arrows move focus, Enter or Space selects).
+- Focus: `outline: 2px solid var(--color-focus)`, offset 3px by default (6px on cards, inside on tabs) — the same treatment as hover, so keyboard users get full parity.
 
-## Primitives (2026-09-14 redesign — all `.nw-*` in `app.css`)
-The approved mockups are now real Blade, one class family, reused across
-every public screen instead of re-styled per page:
-- **Masthead** `.nw-masthead` + `.nw-eyebrow` (label · hairline) + `.nw-h1`
-  (`.nw-display`, sizes `--md`/`--sm`). The h1 is the *subject* — the
-  collector's name on the collection home, the set name on a set, the card
-  name on a card. Never a generic word like "Gallery".
-- **Stat band** `.nw-stats > .nw-stat > .k/.v` (4-up, 2-up under 720px;
-  `.accent` = the one green value; `.v.text` for a name instead of a number).
-- **Toolbar** `.nw-toolbar` = `.nw-count` + `.nw-pill-input` / `.nw-pill-select`
-  + `.nw-seg` (pill segmented control, `aria-pressed` drives the filled state).
-- **Card tile** `<x-card-tile>` = `.nw-slot` (entrance) › `.nw-tile` (hover)
-  › `.chead` (#number · rarity shorthand OR slab label) › `.imgwrap` ›
-  `.cbody` (`.cname`, `.cset` with `×qty`) › `.ticker` (price + direction).
-  `.ghost` = a card in the set the collector does NOT own: dimmed frame,
-  bone header, neutral ticker. **Ownership is the default state; absence is
-  what gets the treatment** — the old green ring on owned cards is gone.
-- **Set card** `.nw-setcard` (logo band, completion row + `.nw-bar`, owned
-  value) and the compact `.nw-chip` rail on the collection home.
-- **Panel / feed** `.nw-panel`, `.nw-section-head`, `.nw-feed`.
-- **Link** `.nw-link` — navigation-style link or button: ink text, no underline,
-  a 2px transparent bottom border that turns `--signal` with `.is-active`
-  (the current nav item). Fades on hover; recolored to the chrome foreground
-  inside `.nw-topbar`.
-- **Inline link** `.nw-inline-link` — a link inside running text or an empty
-  state: ink text, always underlined (3px offset, same as the legal pages).
-  Use it instead of `.nw-link` whenever the link must read as a link
-  without nav chrome.
-- **Footer** `.nw-footer` — tcgdex attribution + the non-affiliation notice.
-- `<x-value-totals>` renders a currency → amount map: first entry big, the
-  rest as `<small>`. **Never sum EUR and USD into one number.**
-
-Rules that came out of building it:
-- Rarity on a tile is the collector shorthand (`Rarity::abbreviate`: SIR,
-  MHR, RR…); the full name lives on the detail page. tcgdex's literal
-  `"None"` renders nothing, not "N".
-- **Rarity gets a 3-tier visual accent (`Rarity::tier()`), amending the
-  "one accent, period" rule above** — added 2026-09-16 after Carlos
-  explicitly reconsidered the original "per-type accent colors: tried
-  and rejected" call for this specific case (undifferentiated tiles are
-  a real usability problem for anyone not already fluent in Pokémon
-  rarity abbreviations), and researched how MTG, Hearthstone, and
-  Pokémon TCG Pocket itself solve the same problem before deciding —
-  all three tie the accent to fixed PRINTED rarity, never fluctuating
-  market price, and all follow the same neutral→silver→gold/apex
-  escalation. tcg-vault's version:
-  - `standard` (Common/Uncommon/Rare) — no accent, unchanged from the
-    original "one accent" look.
-  - `silver` (Rare Holo, Double Rare, Ultra Rare, Promo, Trainer
-    Gallery Rare Holo) — `--rarity-silver` on the chip only.
-  - `chase` (Illustration/Special Illustration/Hyper/Mega Hyper/Ace
-    Spec/Shiny(Ultra) Rare, Secret Rare) — a restrained holo-foil
-    gradient (chip text + a thin gradient hairline around the whole
-    tile), reviewed live as a mockup and approved before implementing.
-    This is deliberately NOT the "rainbow-holo rings" direction
-    rejected during the original brainstorm — Carlos clarified that
-    rejection was about that specific execution (a busier, heavier
-    treatment), not the concept of a holo/rainbow accent itself.
-  - An unrecognized rarity string tiers as `standard` — never guessed
-    into `chase`; this is a visual accent, not a value judgment.
-  - This still does NOT reopen the door to per-rarity-STRING colors
-    (16+ distinct hues) or to a price-driven accent — both were
-    considered and explicitly ruled out in the same conversation.
-- A graded copy replaces the rarity chip with the slab label (`PSA 10`) in
-  `--signal` on ink; on the card page a graded copy's stub reads `PSA 10 graded`.
-- The collector's own photo is always the primary image when it exists;
-  official art is the alternate view, never the other way round.
-- An image that fails to load degrades to the empty-image state (or, for a
-  decorative logo, disappears). The collection page's tiles use
-  `resources/js/collection.js` (retry `low.webp` once as `high.webp`, then the
-  "No image" face); old-layout pages keep `app.js`. Never a broken frame.
-- `--signal` in the ticker/arrow means one thing: the resolved price went
-  UP versus the previous comparable snapshot (`CardPriceResolver::resolveDelta`).
-  Down is `--flat`; no history is a neutral dot. On the revamp collection and set pages the hang tag's move is against the same print seven days earlier (`CardPriceResolver::weekDeltaFor`), not the previous snapshot; the rule is otherwise the same.
-- Headline numbers render as their real value; no count-up (retired, see Revamp primitives).
-
-## Revamp primitives (2026-11, public pages)
-Materials, not boxes: the page is a collector's binder and every primitive is a
-physical thing a collector already knows. Built only from the tokens above.
+## Binder primitives (public pages)
+Materials, not boxes: every primitive is a physical thing a collector already
+knows, built only from the tokens above. Ownership is the default state;
+absence is what gets the treatment (an empty pocket).
 - **Stock sheet** — `--color-stock` surface with `--shadow-sheet` and paper grain; the cards sit on it.
-- **Divider tabs** — `--radius-tab` tabs with a `--color-rule-2` edge; on the collection page they are the set filter (same `setsQuery()` + `$setFilter`, no chip rail, no dropdown). Tabs are real `tablist`/`tab` controls with manual activation; the selected set links to its page.
-- **Hang tag move** — `+$2.40 · 7d` / `−$1.00 · 7d` / `±$0.00 · 7d` under the price in `.col-mono`; green dot only for a rise; nothing when there is no comparable price a week old.
-- **Activity range tabs and day sheets** — on `/{user}/activity` the collection value sits on a stock sheet behind divider tabs `1M · 3M · 6M · 1Y`: a `tablist`/`tab` with manual activation like the collection's set tabs (arrows move focus, Enter or Space selects), selection in `?range=` (absent = 1M). The sheet head reads "Collection value · 3 months", the last value and the range move (`+$12.40 · 3 months`: green only for a rise, a fall `−$659.38` in `--color-flat`), and a muted "History since 15 Sep" sits under the chart when the data starts after the range start. The chart is one continuous line: the series has a value on every sampled day, so nothing is drawn dotted. It is a keyboard `slider` (←/→/Home/End/Esc; value = the day read, value text = the readout), and a pointer reading never reaches the screen reader. Days read `4 Nov`, with the year only when it is not this year (`4 Nov 2025`), on every Activity date. The heading is the collection's name size (`--act-who` = `--col-who`). The feed is one stock sheet per calendar day (UTC) under a divider tab (`4 Nov` · `N updates`); in a row a rise is `--color-accent-deep` with a green dot, a fall is `--color-flat`, an addition's price is ink, and a price move under 1.00 of its own currency is not listed.
-- **Hang tags** — `--radius-tag` stock tags under a card carrying its price; green only when the price is up.
-- **Binder page + pockets** — `--color-binder-page` with clear pockets (`--color-sleeve-*`); a missing card is an empty pocket with its number pencilled in. On the set page the missing cards are opt-in (`Show the N missing`, N = imported cards minus owned, off by default, hidden when none is missing); each `<x-revamp.missing-pocket>` links to the card page, shows the card's art greyed behind the plastic, its number pencilled in `--set-pencil` (a cool grey, oklch 42% L light / 76% dark, chroma .01, hue 260; set page only, not a global token) in `--text-lg`, and its price on a stock slip; no hang tag, no move.
-- **Printed strip** — a one-line set progress strip with hollow slots for missing cards (replaces the `.nw-bar` progress bar on set screens). On the set page (`.set-strip`) it follows the same slot rule as the sets list (numbered cards at their number, lettered ones after, cards the catalogue has not imported as grey unnumbered slots; an imported card you do not own is hollow and numbered), with the never-round-to-zero % mark and scale marks (`StripScale`) at the first slot, every 50th and the last.
-- **Mini printed strip** — the sets list draws each set with the same slot rule as the set page's printed strip (`PrintedStrip::slots()`): a card whose number is plain digits within the set total sits at its number; lettered numbers (TG, GG, SV…) and numbers outside the total are grouped after the numbered run; a number the catalogue has not imported is a grey, unnumbered slot. On the list the slots are compressed to a 10 px track: owned runs filled, missing runs hollow, unimported slots left as the grey track.
-- **Ticket stub** — one stub per owned copy on the card page.
-- **Catalogue label** — the facts block (set, number, rarity, artist) set as a library label.
-- **Plate with crop marks** — the card image at 63×88 mm marks, with Actual size, loupe (capped at scan resolution) and calibration.
-- No top-loaders and no penny sleeves, anywhere.
+- **Collection tile** (`.col-*`, shared by the collection page, the set page and the card page's related strip) — `.col-slot` (entrance) › `.col-card` (hover) › the card frame, with a hang tag under it. Meta: name, `#N` (set abbreviation + number outside a set), rarity chip or slab, `×N` for several copies, stamp text for a stamped print (Prize Pack).
+- **Divider tabs** — on the collection page they are the set filter (`setsQuery()` + `$setFilter`; no chip rail, no dropdown); the selected set links to its page.
+- **Hang tag** — a `--radius-tag` stock tag under a card carrying its price. The move reads `+$2.40 · 7d` / `−$1.00 · 7d` / `±$0.00 · 7d` in `.col-mono` (`Money::move()`), against the same print seven days earlier (`CardPriceResolver::weekDeltaFor`); green dot only for a rise; nothing when there is no comparable price a week old. No price reads "No price".
+- **Binder page + pockets** — `--color-binder-page` with clear pockets (`--color-sleeve-*`); a missing card is an empty pocket with its number pencilled in. On the set page missing cards are opt-in (`Show the N missing`, N = imported cards minus owned, off by default, hidden when none is missing); each `<x-revamp.missing-pocket>` links to the card page, shows the card's art greyed behind the plastic, its number in `--set-pencil` at `--text-lg`, and its price on a stock slip; no hang tag, no move.
+- **Printed strip** — set progress as a one-line strip with hollow slots for missing cards; it replaces a progress bar on public set screens. One slot rule everywhere (`PrintedStrip::slots()`): a card whose number is plain digits within the set total sits at its number; lettered numbers (TG, GG, SV…) and numbers outside the total are grouped after the numbered run; a number the catalogue has not imported is a grey, unnumbered slot; an imported card you do not own is hollow (numbered on the set page). On the set page (`.set-strip`) it carries the never-round-to-zero % mark and scale marks (`StripScale`) at the first slot, every 50th and the last. On the Sets list the slots compress to a 10 px track: owned runs filled, missing runs hollow, unimported slots left as the grey track.
+- **Sets list** — each set is a card under its own divider tab (set code, year): logo tray, name, series, the printed strip, "Completed N / M %" and "Owned value".
 
-**Rarity chips on stock** (amends the Rarity accent in the next section): `silver` is a fill, `linear-gradient(oklch(96% .006 250) → oklch(88% .008 250))` (dark: 88% → 78%), and `chase` is a pastel foil fill (`--foil-1..4`, oklch 84–90% L, chroma .07, hues 200/300/20/95); both carry ink text `oklch(22% .006 85)`. The chase tile keeps a thin foil `.ring` around the card. Printed rarity only, never price-driven. The older text-gradient chase and silver-text chip are retired.
+### Price charts (Activity, card page)
+A stock sheet behind divider tabs `1M · 3M · 6M · 1Y`, selection in `?range=` (absent = 1M). The range move and end dot are green only when the range ended higher (a fall is `--color-flat`). A muted "History since 15 Sep" sits under the chart when the data starts after the range start. Days read `4 Nov`, with the year only when it is not this year (`4 Nov 2025`; `DayLabel::of()`), on every date. The chart is a keyboard `slider` (←/→/Home/End/Esc; value = the day read, value text = the readout); a pointer reading never reaches the screen reader.
 
-**Count-up is retired.** None of the approved revamp pages animates a number (the anti-slop rule bans it); a headline value renders as its real value.
+### Activity page
+- The collection value sits on a stock sheet whose head reads "Collection value · 3 months", the last value and the range move (`+$12.40 · 3 months`). The series has a value on every sampled day, so the chart is one continuous line, nothing dotted. The heading is the collection's name size (`--act-who`).
+- The feed is one stock sheet per calendar day (UTC) under a divider tab (`4 Nov` · `N updates`). In a row a rise is `--color-accent-deep` with a green dot, a fall is `--color-flat`, an addition's price is ink, and a price move under 1.00 of its own currency is not listed.
 
-**Chrome is retired.** The frozen-dark band (`--chrome-bg`/`--chrome-fg`: topbar, footer, tile head and ticker, landing hero/close) is gone from the design: topbar and footer are `--color-paper` with a hairline, and the tile head and ticker live on stock. The tokens stay in `app.css` only until the admin screens are redesigned (next after the public pages); the admin PR deletes them. No new code may reference them.
-
-## Set grid primitives (owner screen)
-`/admin/sets/{set}` reuses `.nw-tile` (`.ghost` = missing), `.nw-setcard` and
-`.nw-bar`, and adds primitives built only from the tokens above:
-- **Variant chip** `.nw-chip-add` (in a `.nw-chips` row under each tile) —
-  dashed outline = zero copies; `.owned` = filled ink with the count in
-  `.mono` (`×2`). A save that did not go through shows `.failed` (`--danger`,
-  failure only) and "Not saved — retry"; a slow save reads "Still saving…",
-  then "Still saving — check your connection". The count never moves until
-  the server confirms. A busy chip is `aria-busy` and ignores taps; on a
-  coarse pointer it is at least 44px.
-- **Toast stack** `.nw-toasts > .nw-toast` — bone text on an ink surface,
-  6 s each, one Undo per toast, at most 4 at once (the oldest unheld one is
-  dropped). Hovering or focusing a toast holds it open; leaving restarts the
-  full time. Reduced motion removes the entrance animation. The stack sits at
-  the bottom centre, moves left of the drawer while it is open, and sits at
-  the top on a phone (2 visible, 1 while the sheet is open, none in a short
-  landscape phone with the sheet open).
-- **Drawer** `.nw-drawer-backdrop > .nw-drawer` — the card editor docked to
-  the right edge (460px), a bottom sheet (max 85vh) at 720px and under.
-  Motion is transform/opacity only; reduced motion removes it.
-- **Import banner** `.nw-import-banner` — bone-2 strip with a hairline
-  border: "Loading cards… 87/165" (count in `.mono`, polled every 5 s), or
-  "N cards missing" with a Retry once no card has arrived for ten minutes.
-  The stalled state (`.stalled`) swaps the border to `--warning` and slows
-  the poll to 60 s, since a slow queue can still recover. "All cards loaded"
-  shows when an import finishes.
-- **Set picker** `.nw-drawer-backdrop > .nw-drawer.nw-pick` on `/admin/sets` —
-  the drawer primitive reused as an "Add a set" dialog (`role="dialog"`,
-  `aria-modal`, labelled by its title). Opening focuses the filter; Tab
-  stays inside, Escape or the close button closes it, and focus returns to
-  the control that opened it (header trigger or the empty-state button).
-  The trap is the shared `focusTrap` Alpine component
-  (`resources/js/app.js`), also used by the card editor drawer and the
-  modal component. A status line reads "N of M sets" (`role="status"`) and
-  a live region announces "Adding the set…". Rows `.nw-pick-row` are logo,
-  name, `ID · N cards` (count in `.mono`) and, for a set the owner already
-  has, a muted "In My sets" tag; they stay selectable. While a pick is in
-  flight rows dim (`.is-busy`), are marked `aria-disabled`, and ignore
-  pointer and keyboard activation, but are never `disabled`, so focus is
-  not dropped. A set with no logo shows its id as
-  text. A failed list shows an `.nw-empty` block with a Retry (and "Try
-  again in a minute" during the short failure window); a failed pick shows
-  `--danger` text in the dialog and does not navigate. The drawer close
-  button (`.nw-dialog-close`) grows to 44px on coarse pointers, as do the
-  rows (64px).
-
-## Card page primitives (public)
-The card page (`/{user}/{set}/{number}`) is on the revamp shell: classes `.crd-*` in `resources/css/card.css`, behaviour in `resources/js/card.js` (pure parts in `card-helpers.js`, covered by `npm run test:js`). Its related strip uses the collection's tile (`.col-*`).
-- **Plate with crop marks** — the card on a `--color-binder-page` sheet with a 10 mm grid, crop ticks and `63 mm` / `88 mm`. *Fitted* scales it into the plate; *Actual size* draws it at 63 x 88 mm times the calibration factor (`localStorage['tcg-vault-cal']`, 0.6 to 1.6, default 1; "Match a real card" opens the slider, Reset removes the key). The **loupe** shows one image pixel per device pixel (`naturalWidth / devicePixelRatio`) and is offered only when that is at least 1.15x what the plate shows; arrows move it (Shift for big steps), Esc puts it away. A collector's photo is shown whole (`object-fit: contain`) with no marks, no ring and no Actual size, under "Your photo of this copy. The printed size applies to the official art."; the loupe works on it. The column is `wire:ignore`. A fine pointer tilts the card a few degrees; reduced motion turns that off. The card moves between sizes in `--dur-slow`.
+### Card page (`/{user}/{set}/{number}`)
+Classes `.crd-*` in `resources/css/card.css`, behaviour in `resources/js/card.js` (pure parts in `card-helpers.js`, covered by `npm run test:js`).
+- **Plate with crop marks** — the card on a `--color-binder-page` sheet with a 10 mm grid, crop ticks and `63 mm` / `88 mm`. *Fitted* scales it into the plate; *Actual size* draws it at 63 x 88 mm times the calibration factor (`localStorage['tcg-vault-cal']`, 0.6 to 1.6, default 1; "Match a real card" opens the slider, Reset removes the key). The **loupe** shows one image pixel per device pixel (`naturalWidth / devicePixelRatio`) and is offered only when that is at least 1.15x what the plate shows (capped at scan resolution); arrows move it (Shift for big steps), Esc puts it away. A collector's photo is shown whole (`object-fit: contain`) with no marks, no ring and no Actual size, under "Your photo of this copy. The printed size applies to the official art."; the loupe works on it. The column is `wire:ignore`. A fine pointer tilts the card a few degrees; reduced motion turns that off. The card moves between sizes in `--dur-slow`.
 - **Variant pills** `.crd-vpill` — little tickets: label, price in `.crd-mono` (`—` when unpriced), muted `×N owned` when held; `aria-pressed`; selection in `?variant=` (`unspecified` for copies with no variant); opens on the collector's priciest copy's variant (owned but unpriced: the variant the set tile prices; unowned: the priciest). Hidden for one variant or none.
-- **Hang tags** `.crd-htag` — one per market read, the headline read edged in ink. The headline shows two moves, `+$8.00 · 1d   +$32.00 · 7d` (`1d` is the real gap in days to the previous price day; `7d` comes from the week-baseline read model), then its low; others show low and trend; `entered D` (manual) and `as of D` (a source that stopped updating) stand alone. Moves use `Money::move()` (`+`, `−`, `±`). Only a rise is green, on the move, never the amount. One short settle on entry.
-- **Price history** — a stock sheet behind divider tabs `1M · 3M · 6M · 1Y`: a `tablist` with manual activation (arrows move focus, Enter/Space selects), selection in `?range=` (absent = 1M). Drawn server-side from `PriceChart`: x by date; a market day with no price breaks the line and is bridged by a dotted segment, a lone day is a dot; a manual price is one continuous step line from its first to its last entry in the range (it holds until changed; it is not carried out to the range edges). The end dot and range move are green only when the range ended higher. "History since 15 Sep" under the chart when the data starts after the range start. Day labels on the chart, "History since" and the tag notes and move titles read `4 Nov`, with the year only when it is not this year (`4 Nov 2025`; `DayLabel::of()`). Hover or the keys read a day; the chart is a keyboard `slider` (←/→/↑/↓/Home/End/Esc; value = the day read, value text = the readout, resting on the newest day) and a pointer reading never reaches the screen reader; the draw-in plays on the first load only.
-- **Ticket stubs** — one per copy: quantity on the stub; condition name and code, or `PSA 10 graded`; variant, `Added D`, `own photo`, notes. **Catalogue label** — the card's facts with dotted leaders; HP, Pokédex and Catalog ID in mono.
-- **More from {set}** — a divider tab over a stock sheet with up to eight owned cards in number order, each the collection's tile (own-print price, `· 7d`, stamps, slab, `×N`), hover sweep included.
+- **Hang tags** `.crd-htag` — one per market read, the headline read edged in ink. The headline shows two moves, `+$8.00 · 1d   +$32.00 · 7d` (`1d` is the real gap in days to the previous price day; `7d` comes from the week-baseline read model), then its low; others show low and trend; `entered D` (manual) and `as of D` (a source that stopped updating) stand alone. Only a rise is green, on the move, never the amount. One short settle on entry.
+- **Price history** — the chart above, drawn server-side from `PriceChart` with x by date: a market day with no price breaks the line and is bridged by a dotted segment, a lone day is a dot; a manual price is one continuous step line from its first to its last entry in the range (it holds until changed; it is not carried out to the range edges). The slider also takes ↑/↓ and rests on the newest day; the draw-in plays on the first load only. Day labels on the chart, "History since", tag notes and move titles all follow the day-label rule.
+- **Ticket stubs** — one per owned copy: quantity on the stub; condition name and code, or `PSA 10 graded`; variant, `Added D`, `own photo`, notes. **Catalogue label** — the card's facts (set, number, rarity, artist, HP, Pokédex, Catalog ID) set as a library label with dotted leaders; HP, Pokédex and Catalog ID in mono.
+- **More from {set}** — a divider tab over a stock sheet with up to eight owned cards in number order, each the collection tile (own-print price, `· 7d`, stamps, slab, `×N`), hover sweep included.
 - **Copy link** — copies the page URL with its `variant=` pair only (never range or display switches).
-- Numerals-only exception: `.crd-tsub`, `.crd-vo` ("owned"), `.crd-ch-read` set a few words in Martian Mono, as the old price note did.
 
-## Theming — dark mode (2026-09-16)
-Three-state precedence, same as every browser-native dark mode: no
-stored preference → the OS's `prefers-color-scheme` decides; a stored
-preference (the toggle, top-right of both topbars) → it wins outright,
-regardless of the OS. `app.js` writes the choice to `localStorage` and
-sets `data-theme` on `<html>`; an inline `<head>` script (before
-`@vite`) applies a stored value before first paint, so there's no flash
-of the wrong theme.
+## Theming — dark mode
+Three-state precedence, as in every browser-native dark mode: no stored preference → the OS's `prefers-color-scheme` decides; a stored preference (the toggle, top-right) → it wins outright. `app.js` writes the choice to `localStorage` (`tcg-vault-theme`) and sets `data-theme` on `<html>`; an inline `<head>` script before `@vite` applies the stored value before first paint, so there is no flash of the wrong theme. A `?theme=` query overrides the stored choice on first load (captures).
 
-**Themed tokens** — these flip between the light values in the Tokens
-table above and their dark counterparts in `app.css`'s
-`prefers-color-scheme`/`[data-theme]` blocks, and every existing rule
-that already referenced them re-themes with no rule-level changes:
-`--bone`/`-2`/`-3`, `--paper`, `--ink`, `--muted`, `--flat`, `--hair`,
-`--danger`, `--warning`, `--signal-deep`.
-
-**Frozen tokens — `--chrome-bg` / `--chrome-fg`** — *retired for public pages, see "Chrome is retired" above; this paragraph describes the legacy admin behaviour until it is redesigned.* The literal
-always-dark values, identical in both themes. The topbar, footer, and
-the card tile's `.chead`/`.ticker` are what design.md's own Primitives
-section already calls "chrome": a fixed dark band that carries visual
-weight regardless of what surrounds it. If `.chead`/`.ticker` rode
-`--ink`/`--bone` like the rest of the page, dark mode would make them
-the same near-black as the (now dark) tile body behind them, erasing
-the accent stripe the design depends on — so those four element
-families, plus `.nw-home-hero`/`.nw-home-close` (already documented
-above as a permanently-dark band, not a new global dark mode), use the
-frozen tokens instead. `--ink-2` and `--rarity-silver` stay defined
-once, outside the dark override block, for the same reason: their only
-consumers already live inside this frozen set.
-
-**Theme-switch transition** — a short `background-color`/`color`/
-`border-color`/`box-shadow` transition merged into each themed
-element's own existing `transition` (never a blanket `*` selector,
-which would fight the card hover/entrance cascade above and force a
-property-diff across every tile in a full grid on every toggle).
-Frozen-chrome elements carry no such transition — their colors never
-change, so there's nothing to animate.
+The themed tokens are the light/dark pairs in the Tokens block above; rules that reference them re-theme with no rule-level changes. Any theme-switch transition merges into each element's own `transition` list — never a blanket `*` selector, which would fight the hover/entrance cascade and force a property diff across every tile on each toggle.
 
 ## Email
-Every email renders through `resources/views/mail/layouts/branded.blade.php`
-(plus its `-text` twin). Email clients drop `<style>` blocks and CSS
-variables, so the layout inlines the hex values from the Tokens above: bone
-background, `--paper` panel, ink text, `--muted` secondary text, and one
-2px `--signal` hairline under the wordmark as the only green. The button is
-an ink pill with bone text (green text on bone fails contrast).
+Every email renders through `resources/views/mail/layouts/branded.blade.php` (plus its `-text` twin). Email clients drop `<style>` blocks and CSS variables, so the layout inlines hex values: paper `#f2efe6` background, stock `#fbf9f3` panel with a `#ded9c9` border, ink `#141412` text, muted `#6d6c62` secondary text, and one 2px `#37d17f` hairline under the wordmark as the only green. The button is an ink pill with paper text (green text on paper fails contrast).
+- **Light only.** `color-scheme: light`; the site's dark theme is not mirrored, because clients that force dark mode invert colours themselves and a second palette would fight that.
+- **Nothing remote.** The wordmark is text, the font is the system stack, and there are no images, so nothing loads from another server when an email is opened.
+- **No markdown mail.** Laravel's markdown mail would run member-written text (feedback) through a markdown parser; plain Blade keeps it escaped.
 
-- **Light only.** `color-scheme: light`; the site's dark theme is not
-  mirrored, because clients that force dark mode invert colours on their
-  own and a second palette would fight that.
-- **Nothing remote.** The wordmark is text, the font is the system stack,
-  and there are no images, so nothing loads from another server when an
-  email is opened.
-- **No markdown mail.** Laravel's markdown mail would run member-written
-  text (feedback) through a markdown parser; plain Blade keeps it escaped.
-
-## Information architecture (public gallery)
-`/` → the owner's gallery. `/{u}/gallery` is **the collection** (every owned
-card, stat band, set rail, filters, sort) — the front door. `/{u}/gallery/sets`
-slices it by set; `/{u}/gallery/{set}` shows every synced card in one set with
-owned first and gaps as ghosts; `/{u}/gallery/{set}/{number}` is the card page;
-`/{u}/gallery/activity` is the history (old `/movimientos` 301s there). Nav is
-Collection · Sets · Activity, always all three linked.
+## Information architecture
+- `/` — the landing page.
+- `/{u}` — the collection: every owned card, set divider tabs, search, sort.
+- `/{u}/sets` — the Sets list. `/{u}/activity` — the history.
+- `/{u}/{set}` — the set page: owned cards, plus opt-in missing pockets. `/{u}/{set}/{number}` — the card page.
+- Two permanent redirects (301): `/{u}/gallery` → `/{u}`, and `/{u}/movimientos` → `/{u}/activity`.
+- Nav is Collection · Sets · Activity, always all three linked on a collector's pages; the landing has the bare bar. The owner also sees "Manage collection" (`/admin`).
+- Owner and platform screens (`/admin…`, `/staff…`, `/profile`), auth and the legal pages (`/privacy`, `/terms`) are the Legacy surface.
 
 ## Language
-- **UI copy: English first**, Spanish is not the default (this reverses the
-  Spanish-language mockups used during brainstorming — those were faster to
-  iterate on with Carlos, not a product decision). Translate all screens to
-  English once the visual design is locked, in a single pass — do not
-  translate incrementally mid-brainstorm.
+UI copy is English.
+
+## Legacy — owner, auth, legal and error pages (until redesigned)
+These pages load `resources/css/app.css` (not `revamp.css`) and use the older
+`.nw-*` system. Do not extend it; the redesign moves them to the binder system
+and deletes this section.
+
+**Token names.** Both naming schemes are live. Legacy names are defined in
+`app.css` (`:root`, plus the `prefers-color-scheme`/`[data-theme]` dark blocks).
+
+| Legacy | Light | Dark | Binder equivalent |
+|---|---|---|---|
+| `--bone` / `-2` / `-3` | #f2efe6 / #e9e5d8 / #ded9c9 | #141412 / #1b1b18 / #242420 | `--color-paper` / `-2` / `-3` |
+| `--paper` (raised tile/panel) | #fbf9f3 | #292925 | `--color-stock` (not `--color-paper`, which is bone) |
+| `--ink` / `--ink-2` | #141412 / #23231f | #f2efe6 / outside the dark block | `--color-ink` / `-2` |
+| `--muted` | #6d6c62 | #8f8d80 | `--color-muted` |
+| `--hair` | rgba(20,20,18,.14) | rgba(242,239,230,.14) | `--color-rule` |
+| `--signal` | #37d17f | same | `--color-accent` |
+| `--signal-deep` (accent text) | #12a45f | #4ee496 | `--color-accent-deep` |
+| `--flat` | #9a988c | #b0ada0 | `--color-flat` (darker, for 11px type) |
+| `--danger` / `--warning` | #c23b2e / #df911a | #e2564a / #f0a83c | none yet |
+
+Also legacy: `--rarity-silver` #9aa0a6, `--radius-card` 7px, `--ease`, and a
+narrower `--gutter` (`clamp(16px, 4vw, 34px)`).
+
+**Chrome tokens.** `--chrome-bg` #141412 / `--chrome-fg` #f2efe6 are literal and identical in both themes: a fixed dark band that must not ride `--ink`/`--bone`, or dark mode would turn the tile head and ticker the same near-black as the tile body. `--ink-2` and `--rarity-silver` stay outside the dark block because their only consumers sit inside that frozen set. Real consumers: `.nw-topbar` (the owner nav bar and the legal pages' bar), `.nw-footer` (legal pages), the owner tile's `.chead` and `.ticker`, and inline colours in the owner nav, the login and sign-up checkboxes and the platform-settings checkbox. The guest and error pages do not use the bar, but `.nw-brand`/`.nw-mark` are styled for it (the guest page overrides them). Deleting the tokens needs a plan for the legal pages, owner nav and those checkboxes, not only the admin screens. No new code may reference them.
+
+**Type.** Archivo is the body font (`--font-sans`) with Martian Mono numerals; Anybody and Hanken Grotesk are not loaded here.
+
+**Colour and focus.** Green appears as `.nw-link.is-active` (the current nav item), `.nw-input:focus` borders and the focus ring (`outline: 2px solid var(--signal)`, offset 3px). The theme-switch transition is a short `background-color`/`color`/`border-color` transition on themed elements; frozen chrome carries none, since its colours never change.
+
+**Owner tile and its motion.** `.nw-slot` (entrance, 480 ms, 55 ms stagger capped at 12) › `.nw-tile` (hover: `translateY(-9px) scale(1.05)`, `z-index: 30`; resting `0 0 0 1px ink` ring, 7px radius) › `.chead` (#number · rarity shorthand) › `.imgwrap` › `.cbody` (`.cname`, `.cset` with `×qty`) › `.ticker` (price). `.ghost` = a card in the set the collector does not own: dimmed frame, bone header, neutral ticker. `.imgwrap.empty` is the old no-image face (diagonal hatch, icon, "No image"). The old rarity chip: `silver` = chip border and text in `--rarity-silver`; `chase` = gradient text with a thin gradient hairline around the tile.
+
+**`.nw-*` primitives still used, and where**
+- Masthead `.nw-masthead` + `.nw-eyebrow` + `.nw-h1` (`--md`/`--sm`, `.nw-display`): masthead on `/admin/sets` and `/admin/sets/{set}`; eyebrow and h1 also on the legal, staff, profile, invite-registration and error pages. The h1 is the subject (the set name, the page's own name), never a generic word.
+- Stat band `.nw-stats > .nw-stat > .k/.v` (4-up, 2-up under 720px; `.accent` = the one green value; `.v.text` for a name): `/admin/sets/{set}` only.
+- Toolbar `.nw-toolbar` = `.nw-count` + `.nw-pill-input` / `.nw-pill-select` + `.nw-seg` (`aria-pressed` drives the filled state): `/admin` and `/admin/sets/{set}`; the pill input also in the set picker, the pill select also on error pages.
+- Set card `.nw-setcard` (logo band, completion row + `.nw-bar`, owned value), via `<x-set-card>`: `/admin/sets` only. `.nw-bar` is also the progress bar on `/admin/sets/{set}`.
+- `.nw-link` — navigation-style link: ink text, no underline, a 2px transparent bottom border that turns `--signal` with `.is-active`; fades on hover; recoloured to the chrome foreground inside `.nw-topbar`. Used in the owner nav and the auth and profile forms. `.nw-inline-link` — ink, always underlined (3px offset): use it for a link inside running text or an empty state; used on `/admin`, `/admin/sets` and the delete-account form.
+- `.nw-footer` — tcgdex attribution and the non-affiliation notice: the legal pages only (`layouts/public`).
+- Form and layout: `.nw-card`, `.nw-input`, `.nw-label`, `.nw-btn-*`, `.nw-row-btn`, `.nw-empty`, `.nw-wrap`, across owner, staff, profile and auth screens.
+
+### Owner set grid (`/admin/sets/{set}`)
+Reuses `.nw-tile` (`.ghost` = missing) and `.nw-bar`, and adds:
+- **Variant chip** `.nw-chip-add` (in a `.nw-chips` row under each tile) — dashed outline = zero copies; `.owned` = filled ink with the count in `.mono` (`×2`). A save that did not go through shows `.failed` (`--danger`, failure only) and "Not saved — retry"; a slow save reads "Still saving…", then "Still saving — check your connection". The count never moves until the server confirms. A busy chip is `aria-busy` and ignores taps; on a coarse pointer it is at least 44px.
+- **Toast stack** `.nw-toasts > .nw-toast` — bone text on an ink surface, 6 s each, one Undo per toast, at most 4 at once (the oldest unheld one is dropped). Hovering or focusing a toast holds it open; leaving restarts the full time. Reduced motion removes the entrance animation. The stack sits at the bottom centre, moves left of the drawer while it is open, and sits at the top on a phone (2 visible, 1 while the sheet is open, none in a short landscape phone with the sheet open).
+- **Drawer** `.nw-drawer-backdrop > .nw-drawer` — the card editor docked to the right edge (460px), a bottom sheet (max 85vh) at 720px and under. Motion is transform/opacity only; reduced motion removes it.
+- **Import banner** `.nw-import-banner` — bone-2 strip with a hairline border: "Loading cards… 87/165" (count in `.mono`, polled every 5 s), or "N cards missing" with a Retry once no card has arrived for ten minutes. The stalled state (`.stalled`) swaps the border to `--warning` and slows the poll to 60 s, since a slow queue can still recover. "All cards loaded" shows when an import finishes.
+- **Set picker** `.nw-drawer-backdrop > .nw-drawer.nw-pick` on `/admin/sets` — the drawer reused as an "Add a set" dialog (`role="dialog"`, `aria-modal`, labelled by its title). Opening focuses the filter; Tab stays inside, Escape or the close button closes it, and focus returns to the control that opened it (header trigger or the empty-state button). The trap is the shared `focusTrap` Alpine component (`resources/js/app.js`), also used by the card editor drawer and the modal component. A status line reads "N of M sets" (`role="status"`) and a live region announces "Adding the set…". Rows `.nw-pick-row` are logo, name, `ID · N cards` (count in `.mono`) and, for a set the owner already has, a muted "In My sets" tag; they stay selectable. While a pick is in flight rows dim (`.is-busy`), are marked `aria-disabled`, and ignore pointer and keyboard activation, but are never `disabled`, so focus is not dropped. A set with no logo shows its id as text. A failed list shows an `.nw-empty` block with a Retry (and "Try again in a minute" during the short failure window); a failed pick shows `--danger` text in the dialog and does not navigate. The drawer close button (`.nw-dialog-close`) grows to 44px on coarse pointers, as do the rows (64px).
+
+### Dead code to delete (no references in views, `app/`, JS or tests)
+- `.nw-panel`, `.nw-feed`, `.nw-section-head` in `app.css`.
+- `.nw-condensed`, `.nw-tag`, `.nw-type-dot` in `app.css` (a test only asserts `nw-type-dot` is absent from the collection page).
+- `--color-loader-edge` and `--color-loader-fill` in `revamp.css`, and the "top-loaders" mention in the plastic comment beside them.

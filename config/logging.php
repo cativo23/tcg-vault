@@ -118,9 +118,9 @@ return [
             'processors' => [PsrLogMessageProcessor::class],
         ],
 
-        // The daily tcgcsv shadow comparison and link changes: evidence the
-        // ROADMAP's go/no-go needs, logged at info while production's
-        // default level is warning — so its own channel and level.
+        // The nightly tcgcsv run summary and link changes, logged at info
+        // while production's default level is warning — so its own channel
+        // and level.
         'tcgcsv' => [
             'driver' => 'monolog',
             'level' => env('LOG_TCGCSV_LEVEL', 'info'),
