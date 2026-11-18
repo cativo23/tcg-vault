@@ -6,6 +6,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-19
+
 ### Changed
 
 - Nightly backups are kept for 5 days instead of 14, so there are never
